@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings, CreditCard, UserRound } from "lucide-react";
+import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings, CreditCard, UserRound, ChevronLeft, Menu } from "lucide-react";
 import ChatMock from "@/components/chat/ChatMock";
 import Analytics from "@/components/analytics/Analytics";
 
@@ -21,19 +21,20 @@ type NavKey =
   | "profile"
   | "home";
 
-const NavItem = ({ icon: Icon, label, active = false, onClick }: { icon: LucideIcon; label: string; active?: boolean; onClick?: () => void }) => (
+const NavItem = ({ icon: Icon, label, active = false, onClick, collapsed }: { icon: LucideIcon; label: string; active?: boolean; onClick?: () => void; collapsed?: boolean }) => (
   <button
     type="button"
     onClick={onClick}
-    className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+    className={`group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-all duration-200 ${
       active
-        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-    }`}
+        ? "bg-blue-100 text-blue-700 border border-blue-200"
+        : "text-muted-foreground hover:bg-blue-50 hover:text-blue-600 hover:border hover:border-blue-100"
+    } ${collapsed ? 'justify-center' : ''}`}
     aria-current={active ? "page" : undefined}
+    title={collapsed ? label : undefined}
   >
-    <Icon className="h-4 w-4" />
-    <span>{label}</span>
+    <Icon className={`h-4 w-4 transition-colors ${active ? 'text-blue-600' : 'group-hover:text-blue-600'}`} />
+    {!collapsed && <span className="transition-opacity duration-200">{label}</span>}
   </button>
 );
 
@@ -52,32 +53,62 @@ const StepCard = ({ step, title, description, emoji }: { step: number; title: st
 
 const Index = () => {
   const [active, setActive] = useState<NavKey>("chat");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen max-w-screen-2xl">
         {/* Sidebar */}
-        <aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar p-4 md:block">
-          <div className="flex items-center gap-2 px-2 py-1">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-brand to-primary" aria-hidden />
-            <span className="text-lg font-semibold">Cekat AI</span>
+        <aside 
+          className={`shrink-0 border-r border-sidebar-border bg-sidebar p-4 transition-all duration-300 ease-in-out ${
+            sidebarCollapsed && !sidebarExpanded ? 'w-16' : 'w-64'
+          } ${sidebarCollapsed ? 'md:block' : 'hidden md:block'}`}
+          onMouseEnter={() => sidebarCollapsed && setSidebarExpanded(true)}
+          onMouseLeave={() => sidebarCollapsed && setSidebarExpanded(false)}
+        >
+          <div className={`flex items-center gap-2 px-2 py-1 transition-all duration-200 ${
+            sidebarCollapsed && !sidebarExpanded ? 'justify-center' : ''
+          }`}>
+            {(!sidebarCollapsed || sidebarExpanded) && (
+              <>
+                <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-brand to-primary" aria-hidden />
+                <span className="text-lg font-semibold transition-opacity duration-200">Cekat AI</span>
+              </>
+            )}
+            {sidebarCollapsed && !sidebarExpanded && (
+              <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-brand to-primary" aria-hidden />
+            )}
           </div>
           <Separator className="my-4" />
+          
+          {/* Collapse Toggle */}
+          <div className={`flex ${sidebarCollapsed && !sidebarExpanded ? 'justify-center' : 'justify-end'} mb-2`}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="h-8 w-8 p-0 hover:bg-blue-50"
+            >
+              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </Button>
+          </div>
+          
           <nav className="flex flex-col gap-1">
-            <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => setActive("chat")} />
-            <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} />
-            <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => setActive("analytics")} />
-            <NavItem icon={Users} label="Contacts" active={active === "contacts"} onClick={() => setActive("contacts")} />
-            <NavItem icon={Megaphone} label="Broadcasts" active={active === "broadcasts"} onClick={() => setActive("broadcasts")} />
-            <NavItem icon={PlugZap} label="Connected Platforms" active={active === "platforms"} onClick={() => setActive("platforms")} />
-            <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => setActive("aiagents")} />
-            <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => setActive("humanagents")} />
+            <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => setActive("chat")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => setActive("analytics")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={Users} label="Contacts" active={active === "contacts"} onClick={() => setActive("contacts")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={Megaphone} label="Broadcasts" active={active === "broadcasts"} onClick={() => setActive("broadcasts")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={PlugZap} label="Connected Platforms" active={active === "platforms"} onClick={() => setActive("platforms")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => setActive("aiagents")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => setActive("humanagents")} collapsed={sidebarCollapsed && !sidebarExpanded} />
           </nav>
-          <div className="mt-auto hidden flex-col gap-1 pt-6 md:flex">
+          <div className={`mt-auto flex-col gap-1 pt-6 ${sidebarCollapsed && !sidebarExpanded ? 'hidden' : 'hidden md:flex'}`}>
             <Separator className="mb-3" />
-            <NavItem icon={Settings} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} />
-            <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} />
-            <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => setActive("profile")} />
+            <NavItem icon={Settings} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={sidebarCollapsed && !sidebarExpanded} />
+            <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => setActive("profile")} collapsed={sidebarCollapsed && !sidebarExpanded} />
           </div>
         </aside>
 
