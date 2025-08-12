@@ -1,12 +1,30 @@
+import { useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings, CreditCard, UserRound } from "lucide-react";
+import ChatMock from "@/components/chat/ChatMock";
 
-const NavItem = ({ icon: Icon, label, active = false }: { icon: any; label: string; active?: boolean }) => (
-  <a
-    href="#"
-    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+type NavKey =
+  | "chat"
+  | "tickets"
+  | "analytics"
+  | "contacts"
+  | "broadcasts"
+  | "platforms"
+  | "aiagents"
+  | "humanagents"
+  | "settings"
+  | "billings"
+  | "profile"
+  | "home";
+
+const NavItem = ({ icon: Icon, label, active = false, onClick }: { icon: LucideIcon; label: string; active?: boolean; onClick?: () => void }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
       active
         ? "bg-sidebar-accent text-sidebar-accent-foreground"
         : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -15,7 +33,7 @@ const NavItem = ({ icon: Icon, label, active = false }: { icon: any; label: stri
   >
     <Icon className="h-4 w-4" />
     <span>{label}</span>
-  </a>
+  </button>
 );
 
 const StepCard = ({ step, title, description, emoji }: { step: number; title: string; description: string; emoji: string }) => (
@@ -32,6 +50,8 @@ const StepCard = ({ step, title, description, emoji }: { step: number; title: st
 );
 
 const Index = () => {
+  const [active, setActive] = useState<NavKey>("chat");
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen max-w-screen-2xl">
@@ -43,20 +63,20 @@ const Index = () => {
           </div>
           <Separator className="my-4" />
           <nav className="flex flex-col gap-1">
-            <NavItem icon={MessageSquare} label="Chat" active />
-            <NavItem icon={Ticket} label="Tickets" />
-            <NavItem icon={BarChart2} label="Analytics" />
-            <NavItem icon={Users} label="Contacts" />
-            <NavItem icon={Megaphone} label="Broadcasts" />
-            <NavItem icon={PlugZap} label="Connected Platforms" />
-            <NavItem icon={Bot} label="AI Agents" />
-            <NavItem icon={ShieldCheck} label="Human Agents" />
+            <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => setActive("chat")} />
+            <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} />
+            <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => setActive("analytics")} />
+            <NavItem icon={Users} label="Contacts" active={active === "contacts"} onClick={() => setActive("contacts")} />
+            <NavItem icon={Megaphone} label="Broadcasts" active={active === "broadcasts"} onClick={() => setActive("broadcasts")} />
+            <NavItem icon={PlugZap} label="Connected Platforms" active={active === "platforms"} onClick={() => setActive("platforms")} />
+            <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => setActive("aiagents")} />
+            <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => setActive("humanagents")} />
           </nav>
           <div className="mt-auto hidden flex-col gap-1 pt-6 md:flex">
             <Separator className="mb-3" />
-            <NavItem icon={Settings} label="Settings" />
-            <NavItem icon={CreditCard} label="Billings" />
-            <NavItem icon={UserRound} label="Profile" />
+            <NavItem icon={Settings} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} />
+            <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} />
+            <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => setActive("profile")} />
           </div>
         </aside>
 
@@ -81,15 +101,24 @@ const Index = () => {
           </header>
 
           {/* Content */}
-          <section className="px-4 py-8 md:px-8">
-            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Selamat datang kembali di Cekat AI!</h1>
-            <div className="mt-6 grid gap-4 md:max-w-2xl">
-              <StepCard step={1} title="Hubungkan Platform" description="Mulai terima pesan dari Whatsapp, IG, dan FB Anda!" emoji="📨" />
-              <StepCard step={2} title="Buat AI Agent" description="Jawab pesan masuk dengan Agent AI Anda." emoji="🤖" />
-              <StepCard step={3} title="Undang Agen Manusia" description="Undang tim Anda untuk membantu menjawab chat." emoji="🧑‍💼" />
-              <StepCard step={4} title="Konek AI Agent ke Inbox" description="Hubungkan AI Agent dan Human Agent ke platform." emoji="🔗" />
-            </div>
-            <p className="mt-4 text-sm text-muted-foreground">Butuh bantuan lebih? <a className="text-brand underline underline-offset-4" href="#">Lihat Tutorial Youtube kami</a></p>
+          <section className="px-4 py-6 md:px-8">
+            {active === "chat" ? (
+              <>
+                <h1 className="sr-only">Chat Inbox</h1>
+                <ChatMock />
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Selamat datang kembali di Cekat AI!</h1>
+                <div className="mt-6 grid gap-4 md:max-w-2xl">
+                  <StepCard step={1} title="Hubungkan Platform" description="Mulai terima pesan dari Whatsapp, IG, dan FB Anda!" emoji="📨" />
+                  <StepCard step={2} title="Buat AI Agent" description="Jawab pesan masuk dengan Agent AI Anda." emoji="🤖" />
+                  <StepCard step={3} title="Undang Agen Manusia" description="Undang tim Anda untuk membantu menjawab chat." emoji="🧑‍💼" />
+                  <StepCard step={4} title="Konek AI Agent ke Inbox" description="Hubungkan AI Agent dan Human Agent ke platform." emoji="🔗" />
+                </div>
+                <p className="mt-4 text-sm text-muted-foreground">Butuh bantuan lebih? <a className="text-brand underline underline-offset-4" href="#">Lihat Tutorial Youtube kami</a></p>
+              </>
+            )}
           </section>
         </main>
       </div>
