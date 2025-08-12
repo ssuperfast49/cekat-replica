@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings, CreditCard, UserRound, ChevronLeft, Menu } from "lucide-react";
 import ChatMock from "@/components/chat/ChatMock";
 import Analytics from "@/components/analytics/Analytics";
+import Contacts from "@/components/contacts/Contacts";
 
 type NavKey =
   | "chat"
@@ -143,6 +144,11 @@ const Index = () => {
               <>
                 <h1 className="sr-only">Analytics Dashboard</h1>
                 <Analytics />
+              </>
+            ) : active === "contacts" ? (
+              <>
+                <h1 className="sr-only">Contacts Management</h1>
+                <Contacts />
               </>
             ) : (
               <>
