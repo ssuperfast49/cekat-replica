@@ -61,9 +61,9 @@ const Index = () => {
       <div className="mx-auto flex min-h-screen max-w-screen-2xl">
         {/* Sidebar */}
         <aside 
-          className={`shrink-0 border-r border-sidebar-border bg-sidebar p-4 transition-all duration-300 ease-in-out ${
-            sidebarExpanded ? 'w-64' : 'w-16'
-          } md:block`}
+          className={`shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out ${
+            sidebarExpanded ? 'w-64' : 'w-20'
+          } md:flex md:flex-col p-4`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
@@ -77,7 +77,7 @@ const Index = () => {
           </div>
           <Separator className="my-4" />
           
-          <nav className="flex flex-col gap-1">
+          <nav className="flex flex-col gap-1 flex-1">
             <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => setActive("chat")} collapsed={!sidebarExpanded} />
             <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} collapsed={!sidebarExpanded} />
             <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => setActive("analytics")} collapsed={!sidebarExpanded} />
@@ -87,7 +87,9 @@ const Index = () => {
             <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => setActive("aiagents")} collapsed={!sidebarExpanded} />
             <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => setActive("humanagents")} collapsed={!sidebarExpanded} />
           </nav>
-          <div className={`mt-auto flex-col gap-1 pt-6 ${sidebarExpanded ? 'flex' : 'hidden'}`}>
+          
+          {/* Footer Navigation - Always Visible */}
+          <div className="mt-auto flex flex-col gap-1 pt-6">
             <Separator className="mb-3" />
             <NavItem icon={Settings} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
             <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} />
