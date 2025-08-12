@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Settings, Trash2, Plus } from "lucide-react";
+import AIAgentSettings from "./AIAgentSettings";
 
 interface AIAgent {
   id: string;
@@ -9,7 +11,7 @@ interface AIAgent {
   creator: string;
 }
 
-const AIAgentCard = ({ agent }: { agent: AIAgent }) => (
+const AIAgentCard = ({ agent, onSettings }: { agent: AIAgent; onSettings: (agent: AIAgent) => void }) => (
   <Card className="p-6 text-center space-y-4 hover:shadow-md transition-shadow">
     <div className="flex flex-col items-center space-y-3">
       <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center text-xl font-semibold text-muted-foreground">
@@ -21,7 +23,7 @@ const AIAgentCard = ({ agent }: { agent: AIAgent }) => (
       </div>
     </div>
     <div className="flex gap-2 justify-center">
-      <Button variant="outline" size="sm" className="gap-2">
+      <Button variant="outline" size="sm" className="gap-2" onClick={() => onSettings(agent)}>
         <Settings className="w-4 h-4" />
         Settings
       </Button>
@@ -45,6 +47,8 @@ const CreateNewCard = () => (
 );
 
 const AIAgents = () => {
+  const [selectedAgent, setSelectedAgent] = useState<AIAgent | null>(null);
+  
   const aiAgents: AIAgent[] = [
     {
       id: "1",
@@ -66,6 +70,15 @@ const AIAgents = () => {
     }
   ];
 
+  if (selectedAgent) {
+    return (
+      <AIAgentSettings 
+        agentName={selectedAgent.name}
+        onBack={() => setSelectedAgent(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
@@ -78,7 +91,7 @@ const AIAgents = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {aiAgents.map((agent) => (
-          <AIAgentCard key={agent.id} agent={agent} />
+          <AIAgentCard key={agent.id} agent={agent} onSettings={setSelectedAgent} />
         ))}
         <CreateNewCard />
       </div>
