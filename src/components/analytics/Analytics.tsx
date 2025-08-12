@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Calendar, ChevronDown, Inbox, Tag, Search, FileText } from "lucide-react";
+import { Calendar, ChevronDown, Inbox, Tag, Search, FileText, Info } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { ChartContainer } from "@/components/ui/chart";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -38,6 +38,21 @@ const handoffData = [
   { name: "11/08", value: 90 },
   { name: "12/08", value: 87 },
   { name: "13/08", value: 82 },
+];
+
+const responseTimeData = [
+  { agent: "Julian", firstResponse: 8, responseTime: 15, resolveTime: 180 },
+  { agent: "Audit 4", firstResponse: 10, responseTime: 20, resolveTime: 0 },
+  { agent: "Agent 01", firstResponse: 12, responseTime: 25, resolveTime: 420 },
+  { agent: "Agent 02", firstResponse: 15, responseTime: 35, resolveTime: 1251 },
+];
+
+const agentChatData = [
+  { agent: "Agent 01", conversations: 168 },
+  { agent: "Julian", conversations: 0 },
+  { agent: "Audit 4", conversations: 213 },
+  { agent: "Agent 02", conversations: 0 },
+  { agent: "Agent 03", conversations: 172 },
 ];
 
 const tableData = [
@@ -285,6 +300,113 @@ export default function Analytics() {
                       </ResponsiveContainer>
                     </ChartContainer>
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="human-agent" className="space-y-6">
+            {/* Human Agent Filters */}
+            <div className="flex gap-4 items-center">
+              <Select defaultValue="all-agent">
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-agent">All Agent</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Button variant="outline" className="gap-2">
+                <Calendar className="w-4 h-4" />
+                Aug 05, 2025 - Aug 12, 2025
+                <ChevronDown className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            {/* Customer Satisfaction Score */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">Customer Satisfaction Score</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center py-12">
+                <h3 className="text-lg font-medium text-muted-foreground mb-2">CSAT Analytics Unavailable</h3>
+                <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
+                  To access CSAT analytics, ensure the CSAT feature is enabled in your settings and that customers have submitted CSAT responses.
+                </p>
+              </CardContent>
+            </Card>
+            
+            {/* Response Time and Chat Count */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Average Response Time */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    Average Response Time
+                    <Info className="w-4 h-4 text-muted-foreground" />
+                  </CardTitle>
+                  <div className="flex gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                      <span><strong>11s</strong> First Response</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-400"></div>
+                      <span><strong>28s</strong> Response Time</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                      <span><strong>20m 51s</strong> Resolve Time</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={chartConfig} className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={responseTimeData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <XAxis dataKey="agent" axisLine={false} tickLine={false} />
+                        <YAxis axisLine={false} tickLine={false} />
+                        <Bar dataKey="resolveTime" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+              
+              {/* Agent Chat Count */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold">Agent Chat Count</CardTitle>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold">612</span>
+                    <span className="text-sm text-muted-foreground">Total Conversation</span>
+                  </div>
+                  <div className="flex gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                      <span>Pending <strong>0</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-400"></div>
+                      <span>Assigned <strong>1</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                      <span>Resolved <strong>611</strong></span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={chartConfig} className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={agentChatData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <XAxis dataKey="agent" axisLine={false} tickLine={false} />
+                        <YAxis axisLine={false} tickLine={false} />
+                        <Bar dataKey="conversations" fill="#60a5fa" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
                 </CardContent>
               </Card>
             </div>
