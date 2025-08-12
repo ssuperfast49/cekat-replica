@@ -8,6 +8,7 @@ import ChatMock from "@/components/chat/ChatMock";
 import Analytics from "@/components/analytics/Analytics";
 import Contacts from "@/components/contacts/Contacts";
 import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
+import AIAgents from "@/components/aiagents/AIAgents";
 
 type NavKey =
   | "chat"
@@ -139,6 +140,11 @@ const Index = () => {
               <>
                 <h1 className="sr-only">Connected Platforms</h1>
                 <ConnectedPlatforms />
+              </>
+            ) : active === "aiagents" ? (
+              <>
+                <h1 className="sr-only">AI Agents</h1>
+                <AIAgents />
               </>
             ) : (
               <>
