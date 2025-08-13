@@ -5,7 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, FileText, Globe, File, HelpCircle, Package, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Undo, Redo, Edit3 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, FileText, Globe, File, HelpCircle, Package, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Undo, Redo, Edit3, Trash2, ChevronDown, Plus } from "lucide-react";
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -47,6 +49,46 @@ const ChatPreview = () => (
 const AIAgentSettings = ({ agentName, onBack }: AIAgentSettingsProps) => {
   const [activeTab, setActiveTab] = useState("general");
   const [stopAfterHandoff, setStopAfterHandoff] = useState(true);
+  const [followups, setFollowups] = useState([
+    {
+      id: 1,
+      prompt: "BTW, lagi ada promo gokil buat kamu ni kak 🔥 Jangan sampai kelewatan. Klik Infonyq Disini 👈 https://imageshack.com/img922/6196/DvdgVP.png",
+      delay: 2,
+      optionsExpanded: false
+    },
+    {
+      id: 2,
+      prompt: "Terakbir nih, jujur aja... pelayanan kita udah kece belum kak? atau Ada yang bisa kita upgrade biar makin mantul? 🤔 Kalau sudah oke Hanya izin tutup percakapan kita dalam 3 menit kedepan ya, Salam JP 🙏",
+      delay: 5,
+      optionsExpanded: false
+    }
+  ]);
+
+  const addFollowup = () => {
+    const newFollowup = {
+      id: Date.now(),
+      prompt: "",
+      delay: 1,
+      optionsExpanded: false
+    };
+    setFollowups([...followups, newFollowup]);
+  };
+
+  const deleteFollowup = (id: number) => {
+    setFollowups(followups.filter(f => f.id !== id));
+  };
+
+  const updateFollowup = (id: number, field: string, value: any) => {
+    setFollowups(followups.map(f => 
+      f.id === id ? { ...f, [field]: value } : f
+    ));
+  };
+
+  const toggleOptions = (id: number) => {
+    setFollowups(followups.map(f => 
+      f.id === id ? { ...f, optionsExpanded: !f.optionsExpanded } : f
+    ));
+  };
 
   return (
     <div className="space-y-6">
@@ -394,11 +436,85 @@ Langsung aja tanya yaa, biar aku bisa bantuin secepatnya! 😊`}
           </Card>
         </TabsContent>
 
-        <TabsContent value="followups">
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Followups</h3>
-            <p className="text-muted-foreground">Configure automated followup messages.</p>
-          </Card>
+        <TabsContent value="followups" className="space-y-6">
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Followups</h2>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>Tambahkan pesan Followup yang akan dikirim kepada <span className="text-blue-600">pelanggan setelah jeda waktu tertentu</span>.</p>
+                <p>Isi dengan prompt. Prompt adalah arahan yang AI akan pakai untuk menulis Followup sesuai dengan history chat dan knowledge anda.</p>
+                <p>Anda juga bisa menulis kondisi Handoff to Agent anda di Prompt</p>
+                <p className="text-blue-600">Anda bisa mengirim gambar di followup. Klik disini untuk Upload gambar.</p>
+              </div>
+            </div>
+
+            {/* Followup Messages */}
+            <div className="space-y-4">
+              {followups.map((followup, index) => (
+                <Card key={followup.id} className="p-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Prompt:</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteFollowup(followup.id)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+
+                    <Textarea
+                      value={followup.prompt}
+                      onChange={(e) => updateFollowup(followup.id, 'prompt', e.target.value)}
+                      className="min-h-[80px]"
+                      placeholder="Enter followup message..."
+                    />
+
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Delay (min):</span>
+                        <Input
+                          type="number"
+                          value={followup.delay}
+                          onChange={(e) => updateFollowup(followup.id, 'delay', parseInt(e.target.value) || 1)}
+                          className="w-20"
+                          min="1"
+                        />
+                      </div>
+                    </div>
+
+                    <Collapsible>
+                      <CollapsibleTrigger
+                        onClick={() => toggleOptions(followup.id)}
+                        className="flex items-center gap-2 text-sm font-medium hover:text-primary"
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform ${followup.optionsExpanded ? 'rotate-180' : ''}`} />
+                        Options
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-4">
+                        <div className="text-sm text-muted-foreground">
+                          Additional options for this followup message can be configured here.
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-between">
+              <Button onClick={addFollowup} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Add Followup
+              </Button>
+              <Button className="bg-green-600 hover:bg-green-700">
+                Save Followups
+              </Button>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="evaluation">
