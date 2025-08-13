@@ -398,10 +398,68 @@ Langsung aja tanya yaa, biar aku bisa bantuin secepatnya! 😊`}
                 </div>
               </TabsContent>
 
-              <TabsContent value="website">
-                <div className="text-center py-12 text-muted-foreground">
-                  <Globe className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Website knowledge sources will be configured here</p>
+              <TabsContent value="website" className="space-y-6">
+                {/* Provide Link Section */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Provide Link</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Provide a link to the page you want the AI to learn from.
+                    </p>
+                  </div>
+
+                  {/* Batch/Single Link Toggle */}
+                  <div className="flex gap-2">
+                    <Button variant="default" size="sm" className="bg-muted text-foreground hover:bg-muted/80">
+                      Batch Link
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      Single Link
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Web Link Collector Section */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Web Link Collector</h3>
+                  
+                  <div className="flex gap-2">
+                    <Input 
+                      placeholder="Link URL" 
+                      className="flex-1"
+                    />
+                    <Button className="bg-blue-600 hover:bg-blue-700">
+                      Collect Link
+                    </Button>
+                  </div>
+
+                  {/* Info Text */}
+                  <div className="flex items-start gap-2 text-sm text-blue-600">
+                    <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center mt-0.5">
+                      <span className="text-white text-xs">!</span>
+                    </div>
+                    <p>
+                      Start with URL and this tool will gather up to <strong>30 unique</strong> links from the site, excluding any files
+                    </p>
+                  </div>
+                </div>
+
+                {/* Trained Link Section */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Trained Link</h3>
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" id="select-all" className="rounded" />
+                      <label htmlFor="select-all" className="text-sm text-blue-600 cursor-pointer">
+                        Select
+                      </label>
+                    </div>
+                    <Input 
+                      placeholder="Search Links" 
+                      className="flex-1"
+                    />
+                  </div>
                 </div>
               </TabsContent>
 
