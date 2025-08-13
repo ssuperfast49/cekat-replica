@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send } from "lucide-react";
+import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, FileText, Globe, File, HelpCircle, Package, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Undo, Redo, Edit3 } from "lucide-react";
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -205,10 +205,185 @@ Langsung aja tanya yaa, biar aku bisa bantuin secepatnya! 😊`}
           </div>
         </TabsContent>
 
-        <TabsContent value="knowledge">
+        <TabsContent value="knowledge" className="space-y-6">
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Knowledge Sources</h3>
-            <p className="text-muted-foreground">Configure knowledge sources for your AI agent.</p>
+            {/* Knowledge Source Type Tabs */}
+            <Tabs defaultValue="text" className="w-full">
+              <TabsList className="grid w-full grid-cols-5 mb-6">
+                <TabsTrigger value="text" className="gap-2">
+                  <FileText className="w-4 h-4" />
+                  Text
+                </TabsTrigger>
+                <TabsTrigger value="website" className="gap-2">
+                  <Globe className="w-4 h-4" />
+                  Website
+                </TabsTrigger>
+                <TabsTrigger value="file" className="gap-2">
+                  <File className="w-4 h-4" />
+                  File
+                </TabsTrigger>
+                <TabsTrigger value="qa" className="gap-2">
+                  <HelpCircle className="w-4 h-4" />
+                  Q&A
+                </TabsTrigger>
+                <TabsTrigger value="product" className="gap-2">
+                  <Package className="w-4 h-4" />
+                  Product
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="text" className="space-y-4">
+                {/* Add Button and Default Button */}
+                <div className="flex gap-2 items-center">
+                  <Button size="sm" className="gap-2">
+                    <Edit3 className="w-4 h-4" />
+                    Add
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    Default
+                  </Button>
+                </div>
+
+                {/* Text Formatting Toolbar */}
+                <div className="flex items-center gap-1 p-2 border rounded-md bg-muted/30">
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Undo className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Redo className="w-4 h-4" />
+                  </Button>
+                  <div className="w-px h-6 bg-border mx-1" />
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Bold className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Italic className="w-4 h-4" />
+                  </Button>
+                  <div className="w-px h-6 bg-border mx-1" />
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignLeft className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignCenter className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignRight className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignJustify className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {/* Content Areas */}
+                <div className="space-y-4">
+                  {/* Panduan Umum Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">📖</span>
+                      </div>
+                      <span>Panduan Umum: Deposit, Withdraw & Tambah Rekening</span>
+                    </div>
+                    <div className="pl-6 space-y-2 text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500">⚠️</span>
+                        <div>
+                          <p className="font-medium">Cara Isi Saldo / Deposit</p>
+                          <p className="text-muted-foreground">Lakukan transfer ke rekening tujuan yang tertera di menu DEPOSIT &gt; REKENING TUJUAN.</p>
+                          <p className="text-muted-foreground">Gunakan metode ATM atau M-Banking (tidak tersedia autodebet).</p>
+                          <p className="text-muted-foreground">Setelah transfer, wajib upload bukti transfer agar diproses lebih cepat.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Khusus Bank BCA Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">🏦</span>
+                      </div>
+                      <span>Khusus Bank BCA</span>
+                    </div>
+                    <div className="pl-6 text-sm text-muted-foreground">
+                      <p>Wajib menggunakan rekening BCA atas nama yang terdaftar di website.</p>
+                      <p>Tidak bisa menggunakan rekening BCA milik orang lain.</p>
+                    </div>
+                  </div>
+
+                  {/* Tambah Rekening Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">💳</span>
+                      </div>
+                      <span>Tambah Rekening / E-Wallet</span>
+                    </div>
+                    <div className="pl-6 text-sm text-muted-foreground">
+                      <p>Bisa menambahkan rekening atau e-wallet selama nama pemiliknya sama dengan yang sudah terdaftar.</p>
+                      <p>Akses dari halaman utama &gt; klik menu REKENING &gt; TAMBAH REKENING.</p>
+                    </div>
+                  </div>
+
+                  {/* Additional Info */}
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>Minimal deposit Via Bank BCA, MANDIRI, BRI, BNI, CIMB, OCBC, BANK JAGO, & Dan Semua Jenis E-wallet adalah 5.000</p>
+                    <p>Minimal deposit QRIS = 10.000</p>
+                    <p>Minimal withdraw Bank & E-wallet = 50.000</p>
+                    <p>Jika menggunakan pulsa, akan dikenakan potongan 20%</p>
+                  </div>
+
+                  {/* Lupa User ID Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">🔐</span>
+                      </div>
+                      <span>Lupa User ID atau Password?</span>
+                    </div>
+                    <div className="pl-6 text-sm text-muted-foreground">
+                      <p>Format reset:</p>
+                      <p>Nama Rekening :</p>
+                      <p>Nomor Rekening :</p>
+                      <p>Bank / E-wallet :</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Character Count */}
+                <div className="text-right text-xs text-muted-foreground">
+                  10931 Characters
+                </div>
+              </TabsContent>
+
+              <TabsContent value="website">
+                <div className="text-center py-12 text-muted-foreground">
+                  <Globe className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Website knowledge sources will be configured here</p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="file">
+                <div className="text-center py-12 text-muted-foreground">
+                  <File className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>File uploads and document management</p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="qa">
+                <div className="text-center py-12 text-muted-foreground">
+                  <HelpCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Question & Answer pairs configuration</p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="product">
+                <div className="text-center py-12 text-muted-foreground">
+                  <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Product knowledge and catalog integration</p>
+                </div>
+              </TabsContent>
+            </Tabs>
           </Card>
         </TabsContent>
 
