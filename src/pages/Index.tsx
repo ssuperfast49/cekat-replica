@@ -12,10 +12,10 @@ import AIAgents from "@/components/aiagents/AIAgents";
 
 type NavKey =
   | "chat"
-  | "tickets"
+  // | "tickets"
   | "analytics"
   | "contacts"
-  | "broadcasts"
+  // | "broadcasts"
   | "platforms"
   | "aiagents"
   | "humanagents"
@@ -24,22 +24,41 @@ type NavKey =
   | "profile"
   | "home";
 
-const NavItem = ({ icon: Icon, label, active = false, onClick, collapsed }: { icon: LucideIcon; label: string; active?: boolean; onClick?: () => void; collapsed?: boolean }) => (
+const NavItem = ({
+  icon: Icon,
+  label,
+  active = false,
+  onClick,
+  collapsed,
+}: {
+  icon: LucideIcon; label: string; active?: boolean; onClick?: () => void; collapsed?: boolean;
+}) => (
   <button
     type="button"
     onClick={onClick}
-    className={`group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-all duration-200 ${
+    className={[
+      // fixed row height + grid for icon/label
+      "grid h-10 w-full grid-cols-[1.125rem,1fr] items-center rounded-md px-3 text-left text-sm transition-all duration-200 gap-2",
       active
         ? "bg-blue-100 text-blue-700 border border-blue-200"
-        : "text-muted-foreground hover:bg-blue-50 hover:text-blue-600 hover:border hover:border-blue-100"
-    }`}
+        : "text-muted-foreground hover:bg-blue-50 hover:text-blue-600 hover:border hover:border-blue-100",
+      collapsed && "grid-cols-[1.125rem,0fr]", // squeeze label column to zero
+    ].join(" ")}
     aria-current={active ? "page" : undefined}
     title={collapsed ? label : undefined}
   >
-    <Icon className={`h-4 w-4 shrink-0 transition-colors ${active ? 'text-blue-600' : 'group-hover:text-blue-600'}`} />
-    <span className={`transition-opacity duration-200 ${collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>{label}</span>
+    <Icon className={`h-4 w-4 shrink-0 transition-colors ${active ? "text-blue-600" : "group-hover:text-blue-600"}`} />
+    <span
+      className={[
+        "overflow-hidden whitespace-nowrap text-ellipsis transition-opacity duration-200",
+        collapsed && "opacity-0 pointer-events-none",
+      ].join(" ")}
+    >
+      {label}
+    </span>
   </button>
 );
+
 
 const StepCard = ({ step, title, description, emoji }: { step: number; title: string; description: string; emoji: string }) => (
   <div className="flex items-start gap-4 rounded-lg border border-border bg-card p-4 shadow-sm transition-transform hover:-translate-y-0.5">
@@ -81,10 +100,10 @@ const Index = () => {
           
           <nav className="flex flex-col gap-1 flex-1">
             <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => setActive("chat")} collapsed={!sidebarExpanded} />
-            <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} collapsed={!sidebarExpanded} />
+            {/* <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} collapsed={!sidebarExpanded} /> */}
             <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => setActive("analytics")} collapsed={!sidebarExpanded} />
             <NavItem icon={Users} label="Contacts" active={active === "contacts"} onClick={() => setActive("contacts")} collapsed={!sidebarExpanded} />
-            <NavItem icon={Megaphone} label="Broadcasts" active={active === "broadcasts"} onClick={() => setActive("broadcasts")} collapsed={!sidebarExpanded} />
+            {/* <NavItem icon={Megaphone} label="Broadcasts" active={active === "broadcasts"} onClick={() => setActive("broadcasts")} collapsed={!sidebarExpanded} /> */}
             <NavItem icon={PlugZap} label="Connected Platforms" active={active === "platforms"} onClick={() => setActive("platforms")} collapsed={!sidebarExpanded} />
             <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => setActive("aiagents")} collapsed={!sidebarExpanded} />
             <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => setActive("humanagents")} collapsed={!sidebarExpanded} />
