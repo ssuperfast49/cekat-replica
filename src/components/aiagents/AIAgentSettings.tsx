@@ -550,10 +550,243 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
           </div>
         </TabsContent>
 
-        <TabsContent value="knowledge">
+        <TabsContent value="knowledge" className="space-y-6">
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Knowledge Sources</h3>
-            <p className="text-muted-foreground">Configure knowledge sources for your AI agent.</p>
+            {/* Knowledge Source Type Tabs */}
+            <Tabs defaultValue="text" className="w-full">
+              <TabsList className="grid w-full grid-cols-5 mb-6">
+                <TabsTrigger value="text" className="gap-2">
+                  <FileText className="w-4 h-4" />
+                  Text
+                </TabsTrigger>
+                <TabsTrigger value="website" className="gap-2">
+                  <Globe className="w-4 h-4" />
+                  Website
+                </TabsTrigger>
+                <TabsTrigger value="file" className="gap-2">
+                  <File className="w-4 h-4" />
+                  File
+                </TabsTrigger>
+                <TabsTrigger value="qa" className="gap-2">
+                  <HelpCircle className="w-4 h-4" />
+                  Q&A
+                </TabsTrigger>
+                <TabsTrigger value="product" className="gap-2">
+                  <Package className="w-4 h-4" />
+                  Product
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="text" className="space-y-4">
+                {/* Add Button and Default Button */}
+                <div className="flex gap-2 items-center">
+                  <Button size="sm" className="gap-2">
+                    <Edit3 className="w-4 h-4" />
+                    Add
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    Default
+                  </Button>
+                </div>
+
+                {/* Text Formatting Toolbar */}
+                <div className="flex items-center gap-1 p-2 border rounded-md bg-muted/30">
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Undo className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Redo className="w-4 h-4" />
+                  </Button>
+                  <div className="w-px h-6 bg-border mx-1" />
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Bold className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Italic className="w-4 h-4" />
+                  </Button>
+                  <div className="w-px h-6 bg-border mx-1" />
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignLeft className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignCenter className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignRight className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <AlignJustify className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {/* Content Areas */}
+                <div className="space-y-4">
+                  {/* Panduan Umum Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">📖</span>
+                      </div>
+                      <span>Panduan Umum: Deposit, Withdraw & Tambah Rekening</span>
+                    </div>
+                    <div className="pl-6 space-y-2 text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="text-orange-500">⚠️</span>
+                        <div>
+                          <p className="font-medium">Cara Isi Saldo / Deposit</p>
+                          <p className="text-muted-foreground">Lakukan transfer ke rekening tujuan yang tertera di menu DEPOSIT &gt; REKENING TUJUAN.</p>
+                          <p className="text-muted-foreground">Gunakan metode ATM atau M-Banking (tidak tersedia autodebet).</p>
+                          <p className="text-muted-foreground">Setelah transfer, wajib upload bukti transfer agar diproses lebih cepat.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Khusus Bank BCA Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">🏦</span>
+                      </div>
+                      <span>Khusus Bank BCA</span>
+                    </div>
+                    <div className="pl-6 text-sm text-muted-foreground">
+                      <p>Wajib menggunakan rekening BCA atas nama yang terdaftar di website.</p>
+                      <p>Tidak bisa menggunakan rekening BCA milik orang lain.</p>
+                    </div>
+                  </div>
+
+                  {/* Tambah Rekening Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">💳</span>
+                      </div>
+                      <span>Tambah Rekening / E-Wallet</span>
+                    </div>
+                    <div className="pl-6 text-sm text-muted-foreground">
+                      <p>Bisa menambahkan rekening atau e-wallet selama nama pemiliknya sama dengan yang sudah terdaftar.</p>
+                      <p>Akses dari halaman utama &gt; klik menu REKENING &gt; TAMBAH REKENING.</p>
+                    </div>
+                  </div>
+
+                  {/* Additional Info */}
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>Minimal deposit Via Bank BCA, MANDIRI, BRI, BNI, CIMB, OCBC, BANK JAGO, & Dan Semua Jenis E-wallet adalah 5.000</p>
+                    <p>Minimal deposit QRIS = 10.000</p>
+                    <p>Minimal withdraw Bank & E-wallet = 50.000</p>
+                    <p>Jika menggunakan pulsa, akan dikenakan potongan 20%</p>
+                  </div>
+
+                  {/* Lupa User ID Section */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
+                        <span className="text-white text-xs">🔐</span>
+                      </div>
+                      <span>Lupa User ID atau Password?</span>
+                    </div>
+                    <div className="pl-6 text-sm text-muted-foreground">
+                      <p>Format reset:</p>
+                      <p>Nama Rekening :</p>
+                      <p>Nomor Rekening :</p>
+                      <p>Bank / E-wallet :</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Character Count */}
+                <div className="text-right text-xs text-muted-foreground">
+                  10931 Characters
+                </div>
+              </TabsContent>
+
+              <TabsContent value="website" className="space-y-6">
+                {/* Provide Link Section */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Provide Link</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Provide a link to the page you want the AI to learn from.
+                    </p>
+                  </div>
+
+                  {/* Batch/Single Link Toggle */}
+                  <div className="flex gap-2">
+                    <Button variant="default" size="sm" className="bg-muted text-foreground hover:bg-muted/80">
+                      Batch Link
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      Single Link
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Web Link Collector Section */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Web Link Collector</h3>
+                  
+                  <div className="flex gap-2">
+                    <Input 
+                      placeholder="Link URL" 
+                      className="flex-1"
+                    />
+                    <Button className="bg-blue-600 hover:bg-blue-700">
+                      Collect Link
+                    </Button>
+                  </div>
+
+                  {/* Info Text */}
+                  <div className="flex items-start gap-2 text-sm text-blue-600">
+                    <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center mt-0.5">
+                      <span className="text-white text-xs">!</span>
+                    </div>
+                    <p>
+                      Start with URL and this tool will gather up to <strong>30 unique</strong> links from the site, excluding any files
+                    </p>
+                  </div>
+                </div>
+
+                {/* Trained Link Section */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Trained Link</h3>
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" id="select-all" className="rounded" />
+                      <label htmlFor="select-all" className="text-sm text-blue-600 cursor-pointer">
+                        Select
+                      </label>
+                    </div>
+                    <Input 
+                      placeholder="Search Links" 
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="file">
+                <div className="text-center py-12 text-muted-foreground">
+                  <File className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>File uploads and document management</p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="qa">
+                <div className="text-center py-12 text-muted-foreground">
+                  <HelpCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Question & Answer pairs configuration</p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="product">
+                <div className="text-center py-12 text-muted-foreground">
+                  <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Product knowledge and catalog integration</p>
+                </div>
+              </TabsContent>
+            </Tabs>
           </Card>
         </TabsContent>
 
@@ -564,11 +797,85 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
           </Card>
         </TabsContent>
 
-        <TabsContent value="followups">
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Followups</h3>
-            <p className="text-muted-foreground">Configure automated followup messages.</p>
-          </Card>
+        <TabsContent value="followups" className="space-y-6">
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Followups</h2>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>Tambahkan pesan Followup yang akan dikirim kepada <span className="text-blue-600">pelanggan setelah jeda waktu tertentu</span>.</p>
+                <p>Isi dengan prompt. Prompt adalah arahan yang AI akan pakai untuk menulis Followup sesuai dengan history chat dan knowledge anda.</p>
+                <p>Anda juga bisa menulis kondisi Handoff to Agent anda di Prompt</p>
+                <p className="text-blue-600">Anda bisa mengirim gambar di followup. Klik disini untuk Upload gambar.</p>
+              </div>
+            </div>
+
+            {/* Followup Messages */}
+            <div className="space-y-4">
+              {followups.map((followup, index) => (
+                <Card key={followup.id} className="p-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Prompt:</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteFollowup(followup.id)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+
+                    <Textarea
+                      value={followup.prompt}
+                      onChange={(e) => updateFollowup(followup.id, 'prompt', e.target.value)}
+                      className="min-h-[80px]"
+                      placeholder="Enter followup message..."
+                    />
+
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Delay (min):</span>
+                        <Input
+                          type="number"
+                          value={followup.delay}
+                          onChange={(e) => updateFollowup(followup.id, 'delay', parseInt(e.target.value) || 1)}
+                          className="w-20"
+                          min="1"
+                        />
+                      </div>
+                    </div>
+
+                    <Collapsible>
+                      <CollapsibleTrigger
+                        onClick={() => toggleOptions(followup.id)}
+                        className="flex items-center gap-2 text-sm font-medium hover:text-primary"
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform ${followup.optionsExpanded ? 'rotate-180' : ''}`} />
+                        Options
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-4">
+                        <div className="text-sm text-muted-foreground">
+                          Additional options for this followup message can be configured here.
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-between">
+              <Button onClick={addFollowup} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Add Followup
+              </Button>
+              <Button className="bg-green-600 hover:bg-green-700">
+                Save Followups
+              </Button>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="evaluation">
