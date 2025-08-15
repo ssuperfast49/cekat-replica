@@ -1,173 +1,51 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight } from "lucide-react";
+import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { useContacts, ContactWithDetails } from "@/hooks/useContacts";
+import { toast } from "@/components/ui/sonner";
 
-const contactsData = [
-  {
-    id: 1,
-    name: "QuickVisitor_FXScC",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 12:52:11",
-    handledBy: ""
-  },
-  {
-    id: 2,
-    name: "HappyGuest_Cy7lm",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "OKBANG TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 12:51:31",
-    handledBy: ""
-  },
-  {
-    id: 3,
-    name: "HappyMember_16M3w",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "OKBANG TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 12:50:11",
-    handledBy: ""
-  },
-  {
-    id: 4,
-    name: "LuckyMember_3MmpK",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 12:48:55",
-    handledBy: ""
-  },
-  {
-    id: 5,
-    name: "LuckyFriend_aP1N0",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 12:27:45",
-    handledBy: ""
-  },
-  {
-    id: 6,
-    name: "QuickVisitor_hd-6H",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 11:45:30",
-    handledBy: ""
-  },
-  {
-    id: 7,
-    name: "CleverMember_UOSur",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 11:44:00",
-    handledBy: ""
-  },
-  {
-    id: 8,
-    name: "BrightGuest_vyVoN",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 10:08:41",
-    handledBy: ""
-  },
-  {
-    id: 9,
-    name: "CleverGuest_JtZZJ",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 09:23:03",
-    handledBy: ""
-  },
-  {
-    id: 10,
-    name: "CleverFriend_e2Y5l",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "OKBANG TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 07:54:53",
-    handledBy: ""
-  },
-  {
-    id: 11,
-    name: "LuckyGuest_Asl6y",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 07:45:30",
-    handledBy: ""
-  },
-  {
-    id: 12,
-    name: "QuickFriend_lbKwH",
-    phone: "",
-    note: "",
-    labelNames: "",
-    inbox: "ANITOTOTO TOP UP CENTER",
-    pipelineStatus: "",
-    chatStatus: "resolved",
-    chatCreatedAt: "2025-08-12 05:48:57",
-    handledBy: ""
-  }
-];
+// Remove hardcoded data - will use Supabase data instead
 
 export default function Contacts() {
-  const [selectedContacts, setSelectedContacts] = useState<number[]>([]);
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [itemsPerPage, setItemsPerPage] = useState(100);
+  
+  // Use the contacts hook
+  const { 
+    contacts, 
+    loading, 
+    error, 
+    totalCount, 
+    fetchContacts, 
+    deleteContact, 
+    deleteMultipleContacts 
+  } = useContacts();
+
+  // Handle search with debouncing
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchContacts(currentPage, itemsPerPage, searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, currentPage, itemsPerPage]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedContacts(contactsData.map(contact => contact.id));
+      setSelectedContacts(contacts.map(contact => contact.id));
     } else {
       setSelectedContacts([]);
     }
   };
 
-  const handleSelectContact = (contactId: number, checked: boolean) => {
+  const handleSelectContact = (contactId: string, checked: boolean) => {
     if (checked) {
       setSelectedContacts([...selectedContacts, contactId]);
     } else {
@@ -175,8 +53,34 @@ export default function Contacts() {
     }
   };
 
-  const isAllSelected = selectedContacts.length === contactsData.length;
-  const isSomeSelected = selectedContacts.length > 0 && selectedContacts.length < contactsData.length;
+  const handleDeleteSelected = async () => {
+    if (selectedContacts.length === 0) return;
+    
+    try {
+      await deleteMultipleContacts(selectedContacts);
+      setSelectedContacts([]);
+      toast.success(`Successfully deleted ${selectedContacts.length} contact(s)`);
+    } catch (error) {
+      toast.error('Failed to delete contacts');
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string) => {
+    try {
+      await deleteContact(contactId);
+      toast.success('Contact deleted successfully');
+    } catch (error) {
+      toast.error('Failed to delete contact');
+    }
+  };
+
+  const handleRefresh = () => {
+    fetchContacts(currentPage, itemsPerPage, searchQuery);
+    toast.info('Contacts refreshed');
+  };
+
+  const isAllSelected = selectedContacts.length === contacts.length && contacts.length > 0;
+  const isSomeSelected = selectedContacts.length > 0 && selectedContacts.length < contacts.length;
 
   return (
     <div className="p-6 space-y-6">
@@ -184,7 +88,9 @@ export default function Contacts() {
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-semibold">Contacts</h1>
-          <p className="text-sm text-muted-foreground">Total Contacts: 4585</p>
+          <p className="text-sm text-muted-foreground">
+            Total Contacts: {loading ? '...' : totalCount.toLocaleString()}
+          </p>
         </div>
         
         {/* Toolbar */}
@@ -203,17 +109,44 @@ export default function Contacts() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh}
+              disabled={loading}
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
           
           <div className="flex gap-2">
             <Button variant="outline">Recipient/Campaign</Button>
-            <Button variant="outline">Edit Selected</Button>
+            <Button 
+              variant="outline" 
+              disabled={selectedContacts.length === 0}
+            >
+              Edit Selected ({selectedContacts.length})
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleDeleteSelected}
+              disabled={selectedContacts.length === 0}
+            >
+              Delete Selected ({selectedContacts.length})
+            </Button>
             <Button variant="outline">Export</Button>
             <Button variant="outline">Customize Columns</Button>
           </div>
         </div>
       </div>
       
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800 text-sm">Error: {error}</p>
+        </div>
+      )}
+
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
@@ -241,48 +174,74 @@ export default function Contacts() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contactsData.map((contact) => (
-                <TableRow key={contact.id}>
-                  <TableCell>
-                    <Checkbox 
-                      checked={selectedContacts.includes(contact.id)}
-                      onCheckedChange={(checked) => handleSelectContact(contact.id, checked as boolean)}
-                      aria-label={`Select ${contact.name}`}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center py-8">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Loading contacts...</span>
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium">{contact.name}</TableCell>
-                  <TableCell>{contact.phone}</TableCell>
-                  <TableCell>{contact.note}</TableCell>
-                  <TableCell>{contact.labelNames}</TableCell>
-                  <TableCell>{contact.inbox}</TableCell>
-                  <TableCell>{contact.pipelineStatus}</TableCell>
-                  <TableCell>
-                    <span className="text-sm text-muted-foreground">
-                      {contact.chatStatus}
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">
-                    {contact.chatCreatedAt}
-                  </TableCell>
-                  <TableCell>{contact.handledBy}</TableCell>
                 </TableRow>
-              ))}
+              ) : contacts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center py-8">
+                    <div className="text-muted-foreground">
+                      {searchQuery ? 'No contacts found matching your search.' : 'No contacts found.'}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                contacts.map((contact) => (
+                  <TableRow key={contact.id}>
+                    <TableCell>
+                      <Checkbox 
+                        checked={selectedContacts.includes(contact.id)}
+                        onCheckedChange={(checked) => handleSelectContact(contact.id, checked as boolean)}
+                        aria-label={`Select ${contact.name}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="h-8 w-8 p-0 bg-red-500 hover:bg-red-600"
+                          onClick={() => handleDeleteContact(contact.id)}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-medium">{contact.name || 'Unnamed Contact'}</TableCell>
+                    <TableCell>{contact.phone || '-'}</TableCell>
+                    <TableCell>{contact.notes || '-'}</TableCell>
+                    <TableCell>{contact.labelNames || '-'}</TableCell>
+                    <TableCell>{contact.inbox || '-'}</TableCell>
+                    <TableCell>{contact.pipelineStatus || '-'}</TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {contact.chatStatus || '-'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {contact.chatCreatedAt || '-'}
+                    </TableCell>
+                    <TableCell>{contact.handledBy || '-'}</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -294,18 +253,20 @@ export default function Contacts() {
           <Button 
             variant="outline" 
             size="sm"
-            disabled={currentPage === 1}
+            disabled={currentPage === 1 || loading}
             onClick={() => setCurrentPage(currentPage - 1)}
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <span className="text-sm">
-            Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">46</span>
+            Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">
+              {Math.ceil(totalCount / itemsPerPage)}
+            </span>
           </span>
           <Button 
             variant="outline" 
             size="sm"
-            disabled={currentPage === 46}
+            disabled={currentPage >= Math.ceil(totalCount / itemsPerPage) || loading}
             onClick={() => setCurrentPage(currentPage + 1)}
           >
             <ChevronRight className="w-4 h-4" />
@@ -314,8 +275,8 @@ export default function Contacts() {
         
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <span>Item per page:</span>
-            <Select defaultValue="100">
+            <span>Items per page:</span>
+            <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value))}>
               <SelectTrigger className="w-20 h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -327,7 +288,7 @@ export default function Contacts() {
             </Select>
             <span>rows</span>
           </div>
-          <span>Total: <span className="font-medium">4,585</span></span>
+          <span>Total: <span className="font-medium">{totalCount.toLocaleString()}</span></span>
         </div>
       </div>
     </div>
