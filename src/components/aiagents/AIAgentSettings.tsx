@@ -5,7 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus } from "lucide-react";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
 
@@ -298,6 +300,39 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
   const [model, setModel] = useState(profile?.model || "gpt-4o-mini");
   const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
+  
+  // Followups state
+  const [followups, setFollowups] = useState([
+    { id: 1, prompt: "Hai! Ada yang bisa saya bantu lagi?", delay: 60, expanded: false },
+    { id: 2, prompt: "Jika ada pertanyaan lain, jangan ragu untuk bertanya!", delay: 120, expanded: false }
+  ]);
+
+  // Followups functions
+  const addFollowup = () => {
+    const newFollowup = {
+      id: Date.now(),
+      prompt: "",
+      delay: 60,
+      expanded: false
+    };
+    setFollowups([...followups, newFollowup]);
+  };
+
+  const deleteFollowup = (id: number) => {
+    setFollowups(followups.filter(f => f.id !== id));
+  };
+
+  const updateFollowup = (id: number, field: string, value: any) => {
+    setFollowups(followups.map(f => 
+      f.id === id ? { ...f, [field]: value } : f
+    ));
+  };
+
+  const toggleOptions = (id: number) => {
+    setFollowups(followups.map(f => 
+      f.id === id ? { ...f, expanded: !f.expanded } : f
+    ));
+  };
 
   // Update form state when profile data loads
   useEffect(() => {
@@ -556,23 +591,23 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
             <Tabs defaultValue="text" className="w-full">
               <TabsList className="grid w-full grid-cols-5 mb-6">
                 <TabsTrigger value="text" className="gap-2">
-                  <FileText className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
                   Text
                 </TabsTrigger>
                 <TabsTrigger value="website" className="gap-2">
-                  <Globe className="w-4 h-4" />
+                      <Globe className="w-4 h-4" />
                   Website
                 </TabsTrigger>
                 <TabsTrigger value="file" className="gap-2">
-                  <File className="w-4 h-4" />
+                  <FileIcon className="w-4 h-4" />
                   File
                 </TabsTrigger>
                 <TabsTrigger value="qa" className="gap-2">
-                  <HelpCircle className="w-4 h-4" />
+                      <HelpCircle className="w-4 h-4" />
                   Q&A
                 </TabsTrigger>
                 <TabsTrigger value="product" className="gap-2">
-                  <Package className="w-4 h-4" />
+                      <Package className="w-4 h-4" />
                   Product
                 </TabsTrigger>
               </TabsList>
@@ -768,7 +803,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
               <TabsContent value="file">
                 <div className="text-center py-12 text-muted-foreground">
-                  <File className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <FileIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>File uploads and document management</p>
                 </div>
               </TabsContent>
@@ -851,7 +886,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                         onClick={() => toggleOptions(followup.id)}
                         className="flex items-center gap-2 text-sm font-medium hover:text-primary"
                       >
-                        <ChevronDown className={`w-4 h-4 transition-transform ${followup.optionsExpanded ? 'rotate-180' : ''}`} />
+                        <ChevronDown className={`w-4 h-4 transition-transform ${followup.expanded ? 'rotate-180' : ''}`} />
                         Options
                       </CollapsibleTrigger>
                       <CollapsibleContent className="pt-4">
