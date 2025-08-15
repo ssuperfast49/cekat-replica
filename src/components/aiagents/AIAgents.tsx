@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Settings, Trash2, Plus, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Settings, Trash2, Plus, Loader2, X } from "lucide-react";
 import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
@@ -73,6 +76,9 @@ const AIAgents = () => {
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newAgentName, setNewAgentName] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("customer-service");
   
   // Use the custom hook for AI profile management
   const { fetchAllProfiles, deleteProfile } = useAIProfiles();
@@ -127,16 +133,30 @@ const AIAgents = () => {
     }
   };
 
-  // Create new AI agent
+  // Open create dialog
   const handleCreateNew = () => {
+    setShowCreateDialog(true);
+  };
+
+  // Handle create agent form submission
+  const handleCreateAgent = () => {
+    if (!newAgentName.trim()) {
+      toast.error('Please enter an AI agent name');
+      return;
+    }
+
     const newAgent: AIAgent = {
       id: 'new',
-      name: 'New AI Agent',
-      initials: 'NA',
+      name: newAgentName.trim(),
+      initials: newAgentName.trim().split(' ').map(word => word.charAt(0)).join('').toUpperCase().slice(0, 2),
       creator: 'Admin',
       created_at: new Date().toISOString(),
     };
+    
     setSelectedAgent(newAgent);
+    setShowCreateDialog(false);
+    setNewAgentName("");
+    setSelectedTemplate("customer-service");
     toast.info('Creating new AI agent...');
   };
 
@@ -240,6 +260,65 @@ const AIAgents = () => {
           </Button>
         </div>
       )}
+
+      {/* Create New Agent Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader className="flex flex-row items-center justify-between">
+            <DialogTitle className="text-xl font-semibold">Create New AI Agent</DialogTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCreateDialog(false)}
+              className="h-6 w-6 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogHeader>
+          
+          <div className="space-y-6 pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Name</label>
+              <Input
+                placeholder="Enter AI name"
+                value={newAgentName}
+                onChange={(e) => setNewAgentName(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Template</label>
+              <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a template" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="customer-service">
+                    <div className="space-y-1">
+                      <div className="font-medium">Customer Service AI</div>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {selectedTemplate === "customer-service" && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  and sales inquiries for your business.
+                </p>
+              )}
+            </div>
+
+            <Button 
+              onClick={handleCreateAgent}
+              className="w-full bg-primary hover:bg-primary/90"
+              disabled={!newAgentName.trim()}
+            >
+              Create AI Agent
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
