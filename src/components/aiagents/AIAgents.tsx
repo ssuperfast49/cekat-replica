@@ -96,15 +96,12 @@ const AIAgents = () => {
           id: profile.id,
           name: profile.name,
           initials: profile.name.split(' ').map(word => word.charAt(0)).join('').toUpperCase().slice(0, 2),
-          creator: profile.name.includes('ANITATOTO') ? 'Hanna' : 
-                   profile.name.includes('OKBANG') ? 'Cathlyn' : 
-                   profile.name.includes('GULTIK') ? 'Sherly' : 'Admin',
+          creator: 'Admin', // Default creator since there's no creator field in the database
           description: profile.description,
           created_at: profile.created_at,
         }));
         
         setAgents(mappedAgents);
-        toast.success(`Loaded ${mappedAgents.length} AI agent${mappedAgents.length !== 1 ? 's' : ''}`);
       }
     } catch (error) {
       console.error('Error fetching agents:', error);

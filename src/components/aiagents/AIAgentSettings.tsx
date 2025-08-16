@@ -37,14 +37,21 @@ const ChatPreview = ({
   temperature: number;
   transfer_conditions: string;
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
-      sender: 'ai',
-      timestamp: new Date()
-    }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Initialize messages with welcome message
+  useEffect(() => {
+    setMessages([
+      {
+        id: '1',
+        content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
+        sender: 'ai',
+        timestamp: new Date()
+      }
+    ]);
+  }, [welcomeMessage]);
+
+
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
@@ -289,14 +296,27 @@ const ChatPreview = ({
 
 const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps) => {
   const [activeTab, setActiveTab] = useState("general");
+  const isNewAgent = !profileId;
   
   // Use the custom hook for AI profile management
   const { profile, loading, saving, error, saveProfile } = useAIProfiles(profileId);
   
-  // Form state - initialize with profile data or defaults
-  const [systemPrompt, setSystemPrompt] = useState(profile?.system_prompt || "");
-  const [welcomeMessage, setWelcomeMessage] = useState(profile?.welcome_message || "");
-  const [transferConditions, setTransferConditions] = useState(profile?.transfer_conditions || "");
+  // Form state - initialize with helpful placeholders for new agents or profile data
+  const [systemPrompt, setSystemPrompt] = useState(
+    isNewAgent 
+      ? "You are a helpful AI assistant for customer service. Be friendly, professional, and helpful. Always respond in Indonesian unless the customer speaks in another language." 
+      : profile?.system_prompt || ""
+  );
+  const [welcomeMessage, setWelcomeMessage] = useState(
+    isNewAgent 
+      ? "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?" 
+      : profile?.welcome_message || ""
+  );
+  const [transferConditions, setTransferConditions] = useState(
+    isNewAgent 
+      ? "Transfer to human agent when:\n- Customer requests to speak with a human\n- Complex technical issues arise\n- Customer is dissatisfied or angry\n- Payment or billing issues\n- Escalation is needed" 
+      : profile?.transfer_conditions || ""
+  );
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
   const [model, setModel] = useState(profile?.model || "gpt-4o-mini");
   const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
@@ -334,9 +354,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
     ));
   };
 
-  // Update form state when profile data loads
+  // Update form state when profile data loads (only for existing agents)
   useEffect(() => {
-    if (profile) {
+    if (profile && !isNewAgent) {
       setSystemPrompt(profile.system_prompt || "");
       setWelcomeMessage(profile.welcome_message || "");
       setTransferConditions(profile.transfer_conditions || "");
@@ -344,7 +364,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setModel(profile.model || "gpt-4o-mini");
       setTemperature(profile.temperature || 0.3);
     }
-  }, [profile]);
+  }, [profile, isNewAgent]);
 
   // Save AI profile
   const handleSave = async () => {
@@ -360,13 +380,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
     try {
       await saveProfile(updateData);
-      toast.success('AI agent settings saved successfully!');
+      toast.success(isNewAgent ? 'AI agent created successfully!' : 'AI agent settings saved successfully!');
     } catch (error) {
-      toast.error('Failed to save AI agent settings');
+      toast.error(isNewAgent ? 'Failed to create AI agent' : 'Failed to save AI agent settings');
     }
   };
 
-  if (loading) {
+  if (loading && !isNewAgent) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin" />
@@ -384,7 +404,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
           Back
         </Button>
         <h1 className="text-2xl font-bold">{agentName}</h1>
-        {profile && (
+        {isNewAgent ? (
+          <Badge variant="outline" className="text-blue-600 border-blue-600">
+            New Agent
+          </Badge>
+        ) : profile && (
           <Badge variant="secondary">
             Last Updated: {new Date(profile.created_at).toLocaleDateString()}
           </Badge>
@@ -431,13 +455,15 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               <Card className="p-6">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-lg font-semibold">
-                    {profile?.name?.charAt(0) || 'A'}
+                    {agentName.charAt(0)}
                   </div>
                   <div>
-                    <h2 className="text-xl font-semibold">{profile?.name || agentName}</h2>
-                    <p className="text-muted-foreground">{profile?.description || 'AI Agent'}</p>
+                    <h2 className="text-xl font-semibold">{agentName}</h2>
+                    <p className="text-muted-foreground">
+                      {isNewAgent ? 'New AI Agent - Configure your settings below' : profile?.description || 'AI Agent'}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      Last Updated: {profile ? new Date(profile.created_at).toLocaleString() : 'Never'}
+                      {isNewAgent ? 'Not saved yet' : `Last Updated: ${profile ? new Date(profile.created_at).toLocaleString() : 'Never'}`}
                     </p>
                   </div>
                 </div>
@@ -454,7 +480,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   className="min-h-[200px] mb-4" 
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="Enter system prompt..."
+                  placeholder={isNewAgent ? 
+                    "Define your AI's personality, behavior, and capabilities here. For example:\n\nYou are a helpful customer service AI assistant. Be friendly, professional, and always respond in Indonesian unless the customer speaks in another language. Help customers with their inquiries about products, services, and support." : 
+                    "Enter system prompt..."
+                  }
                 />
                 
                 <div className="text-right text-xs text-muted-foreground">
@@ -476,7 +505,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   className="min-h-[100px] mb-4" 
                   value={welcomeMessage}
                   onChange={(e) => setWelcomeMessage(e.target.value)}
-                  placeholder="Enter welcome message..."
+                  placeholder={isNewAgent ? 
+                    "This is the first message your AI will send to customers when they start a conversation. Make it welcoming and helpful!" : 
+                    "Enter welcome message..."
+                  }
                 />
                 
                 <div className="text-right text-xs text-muted-foreground">
@@ -496,7 +528,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                     className="min-h-[80px]" 
                     value={transferConditions}
                     onChange={(e) => setTransferConditions(e.target.value)}
-                    placeholder="Enter transfer conditions..."
+                    placeholder={isNewAgent ? 
+                      "Define when your AI should transfer the conversation to a human agent. For example:\n- Customer requests to speak with a human\n- Complex technical issues\n- Payment or billing problems\n- Customer is angry or dissatisfied" : 
+                      "Enter transfer conditions..."
+                    }
                   />
                   <div className="text-right text-xs text-muted-foreground">
                     {transferConditions.length}/750
@@ -564,10 +599,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                 {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    {isNewAgent ? 'Creating...' : 'Saving...'}
                   </>
                 ) : (
-                  'Save AI Settings'
+                  <>
+                    <Settings className="w-4 h-4 mr-2" />
+                    {isNewAgent ? 'Create AI Agent' : 'Save AI Settings'}
+                  </>
                 )}
               </Button>
             </div>

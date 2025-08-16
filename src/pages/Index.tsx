@@ -1,9 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings, CreditCard, UserRound } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings, CreditCard, UserRound, LogOut, User, ChevronDown } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import ChatMock from "@/components/chat/ChatMock";
 import Analytics from "@/components/analytics/Analytics";
 import Contacts from "@/components/contacts/Contacts";
@@ -76,6 +80,23 @@ const StepCard = ({ step, title, description, emoji }: { step: number; title: st
 const Index = () => {
   const [active, setActive] = useState<NavKey>("chat");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  const getUserInitials = (name: string | null, email: string) => {
+    if (name) {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    return email.substring(0, 2).toUpperCase();
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -114,7 +135,7 @@ const Index = () => {
             <Separator className="mb-3" />
             <NavItem icon={Settings} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
             <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} />
-            <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => setActive("profile")} collapsed={!sidebarExpanded} />
+            <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => navigate("/profile")} collapsed={!sidebarExpanded} />
           </div>
         </aside>
 
@@ -130,10 +151,39 @@ const Index = () => {
               <div className="flex items-center gap-3">
                 <Badge className="hidden sm:inline-flex bg-success text-success-foreground">Online</Badge>
                 <div className="text-right hidden sm:block">
-                  <div className="text-sm font-medium">Audit 4</div>
-                  <div className="text-xs text-muted-foreground">audit4@gmail.com</div>
+                  <div className="text-sm font-medium">{user?.user_metadata?.full_name || 'User'}</div>
+                  <div className="text-xs text-muted-foreground">{user?.email}</div>
                 </div>
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-sm font-semibold">D</div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                      <Avatar className="h-9 w-9">
+                        <AvatarImage src={user?.user_metadata?.avatar_url} alt={user?.user_metadata?.full_name || user?.email} />
+                        <AvatarFallback className="text-sm">
+                          {getUserInitials(user?.user_metadata?.full_name, user?.email || '')}
+                        </AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">{user?.user_metadata?.full_name || 'User'}</p>
+                        <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate("/profile")}>
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profile</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut}>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </header>

@@ -40,17 +40,8 @@ export const useAIProfiles = (profileId?: string) => {
           setProfile(data);
         }
       } else {
-        // Fetch first available profile
-        const { data, error } = await supabase
-          .from('ai_profiles')
-          .select('*')
-          .limit(1)
-          .single();
-          
-        if (error) throw error;
-        if (data) {
-          setProfile(data);
-        }
+        // For new agents (no profileId), don't fetch anything
+        setProfile(null);
       }
     } catch (error) {
       console.error('Error fetching AI profile:', error);
@@ -148,7 +139,12 @@ export const useAIProfiles = (profileId?: string) => {
   };
 
   useEffect(() => {
-    fetchProfile();
+    if (profileId) {
+      fetchProfile();
+    } else {
+      // For new agents, set loading to false immediately
+      setLoading(false);
+    }
   }, [profileId]);
 
   return {
