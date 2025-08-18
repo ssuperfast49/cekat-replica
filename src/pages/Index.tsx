@@ -13,6 +13,7 @@ import Analytics from "@/components/analytics/Analytics";
 import Contacts from "@/components/contacts/Contacts";
 import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
 import AIAgents from "@/components/aiagents/AIAgents";
+import { cn } from "@/lib/utils";
 
 type NavKey =
   | "chat"
@@ -40,23 +41,23 @@ const NavItem = ({
   <button
     type="button"
     onClick={onClick}
-    className={[
+    className={cn(
       // fixed row height + grid for icon/label
-      "grid h-10 w-full grid-cols-[1.125rem,1fr] items-center rounded-md px-3 text-left text-sm transition-all duration-200 gap-2",
+      "group grid h-10 w-full grid-cols-[1.125rem,1fr] items-center rounded-md px-3 text-left text-sm transition-all duration-200 gap-2",
       active
         ? "bg-blue-100 text-blue-700 border border-blue-200"
         : "text-muted-foreground hover:bg-blue-50 hover:text-blue-600 hover:border hover:border-blue-100",
-      collapsed && "grid-cols-[1.125rem,0fr]", // squeeze label column to zero
-    ].join(" ")}
+      collapsed && "grid-cols-[1.125rem,0fr]" // squeeze label column to zero
+    )}
     aria-current={active ? "page" : undefined}
     title={collapsed ? label : undefined}
   >
     <Icon className={`h-4 w-4 shrink-0 transition-colors ${active ? "text-blue-600" : "group-hover:text-blue-600"}`} />
     <span
-      className={[
+      className={cn(
         "overflow-hidden whitespace-nowrap text-ellipsis transition-opacity duration-200",
         collapsed && "opacity-0 pointer-events-none",
-      ].join(" ")}
+      )}
     >
       {label}
     </span>
