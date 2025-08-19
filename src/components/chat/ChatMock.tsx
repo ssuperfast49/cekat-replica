@@ -359,41 +359,142 @@ export default function ChatMock() {
       </article>
 
       {/* Details */}
-      <aside className="hidden rounded-lg border bg-card p-4 md:block">
-        <h2 className="text-sm font-semibold">Contact Details</h2>
-        <div className="mt-3 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-semibold">
-            {selected.name[0] || '?'}
-          </div>
+      <aside className="rounded-lg border bg-card p-4">
+        <div className="space-y-4">
+          {/* Contact Header */}
           <div>
-            <div className="text-sm font-medium">{selected.name || 'No contact'}</div>
-            <div className="text-xs text-muted-foreground">Customer</div>
+            <h2 className="text-lg font-semibold">{selected.name || 'No Contact'}</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <MessageSquare className="h-4 w-4 text-blue-500" />
+              <span className="text-sm text-muted-foreground">OKBANG TOP UP CENTER</span>
+            </div>
           </div>
-        </div>
-        <div className="mt-4 space-y-2 text-sm">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Phone className="h-4 w-4" /> 
-            {selected.name ? '+62 812-3456-7890' : 'No phone'}
+
+          {/* Labels */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Labels</h3>
+              <Button variant="outline" size="sm" className="h-7 text-xs">
+                + Add Label
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">No labels yet</p>
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Mail className="h-4 w-4" /> 
-            {selected.name ? 'user@example.com' : 'No email'}
+
+          <Separator />
+
+          {/* Handled By */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Handled By</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                J
+              </div>
+              <span className="text-sm">Julian</span>
+            </div>
           </div>
-        </div>
-        <Separator className="my-4" />
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</h3>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">VIP</Badge>
-            <Badge variant="secondary">Repeat</Badge>
+
+          {/* Collaborators */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Collaborators</h3>
+              <Button variant="outline" size="sm" className="h-7 text-xs">
+                + Add Collaborator
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-secondary-foreground text-xs font-semibold">
+                A
+              </div>
+            </div>
           </div>
-        </div>
-        <Separator className="my-4" />
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="secondary">Assign</Button>
-          <Button variant="secondary">Close</Button>
-          <Button variant="secondary">Snooze</Button>
-          <Button variant="secondary">Spam</Button>
+
+          {/* Notes */}
+          <div>
+            <h3 className="text-sm font-medium mb-2">Notes</h3>
+            <div className="text-sm text-muted-foreground border border-dashed border-gray-300 rounded p-2 text-center">
+              Add a note...
+            </div>
+          </div>
+
+          {/* AI Summary */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">AI Summary</h3>
+              <Button variant="outline" size="sm" className="h-7 text-xs text-blue-600">
+                Generate AI Summary
+              </Button>
+            </div>
+          </div>
+
+          {/* Additional Data */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Additional Data</h3>
+              <Button variant="outline" size="sm" className="h-7 text-xs">
+                Add New Additional Info
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Conversation Details */}
+          <div>
+            <h3 className="text-sm font-medium mb-3">Conversation Details</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Assigned By</span>
+                <span>-</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Handled By</span>
+                <span>Julian</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Resolved By</span>
+                <span>Agent 01</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">AI Handoff At</span>
+                <span>August 13th 2025, 2:57 pm</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Assigned At</span>
+                <span>August 13th 2025, 3:18 pm</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Created At</span>
+                <span>August 13th 2025, 2:51 pm</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Resolved At</span>
+                <span>August 13th 2025, 3:16 pm</span>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Conversation Access */}
+          <div>
+            <h3 className="text-sm font-medium mb-2">Conversation Access</h3>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-green-500"></div>
+              <span className="text-sm text-green-600">Active - Click to Block</span>
+            </div>
+          </div>
+
+          {/* AI Access */}
+          <div>
+            <h3 className="text-sm font-medium mb-2">AI Access</h3>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-green-500"></div>
+              <span className="text-sm text-green-600">AI Access - Click to Block</span>
+            </div>
+          </div>
         </div>
       </aside>
     </section>
