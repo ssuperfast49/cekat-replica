@@ -155,7 +155,7 @@ const HumanAgents = () => {
 
         <TabsContent value="agents" className="space-y-4">
           <div className="rounded-lg border bg-card">
-            <div className="grid grid-cols-[auto,1fr,120px,100px,100px] gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
+            <div className="grid grid-cols-[200px,1fr,120px,120px,100px] gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
               <div>Agent Name</div>
               <div>Email</div>
               <div>Role</div>
@@ -164,7 +164,7 @@ const HumanAgents = () => {
             </div>
             <div className="divide-y">
               {agents.map((agent) => (
-                <div key={agent.id} className="grid grid-cols-[auto,1fr,120px,100px,100px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors">
+                <div key={agent.id} className="grid grid-cols-[200px,1fr,120px,120px,100px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
                       <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
