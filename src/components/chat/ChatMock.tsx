@@ -6,6 +6,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { MessageSquare, Phone, Mail, Clock, CheckCheck, Loader2, RefreshCw, Search, Filter, Plus, List, Users, ChevronDown } from "lucide-react";
 import { useConversations, ConversationWithDetails, MessageWithDetails } from "@/hooks/useConversations";
 import { toast } from "sonner";
@@ -51,6 +53,13 @@ const Bubble = ({ m }: { m: Message }) => {
 export default function ChatMock() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
+  const [newContactOpen, setNewContactOpen] = useState(false);
+  const [newContactForm, setNewContactForm] = useState({
+    inbox: "",
+    name: "",
+    phoneNumber: "",
+    template: ""
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Use the conversations hook
@@ -127,6 +136,19 @@ export default function ChatMock() {
     }
   };
 
+  const handleNewContactSubmit = () => {
+    // Handle form submission logic here
+    console.log("New contact form submitted:", newContactForm);
+    toast.success('Contact created successfully!');
+    setNewContactOpen(false);
+    setNewContactForm({
+      inbox: "",
+      name: "",
+      phoneNumber: "",
+      template: ""
+    });
+  };
+
   const handleConversationSelect = (conversation: Conversation) => {
     fetchMessages(conversation.id);
   };
@@ -168,9 +190,82 @@ export default function ChatMock() {
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
               <Filter className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <Plus className="h-4 w-4" />
-            </Button>
+            <Dialog open={newContactOpen} onOpenChange={setNewContactOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>New Contact</DialogTitle>
+                  <DialogDescription>
+                    Create a new contact and start a conversation.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="inbox" className="text-right">
+                      Inbox
+                    </Label>
+                    <Select value={newContactForm.inbox} onValueChange={(value) => setNewContactForm({...newContactForm, inbox: value})}>
+                      <SelectTrigger className="col-span-3">
+                        <SelectValue placeholder="Select inbox" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                        <SelectItem value="telegram">Telegram</SelectItem>
+                        <SelectItem value="instagram">Instagram</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="name" className="text-right">
+                      Name
+                    </Label>
+                    <Input
+                      id="name"
+                      value={newContactForm.name}
+                      onChange={(e) => setNewContactForm({...newContactForm, name: e.target.value})}
+                      placeholder="Contact name"
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="phone" className="text-right">
+                      Phone
+                    </Label>
+                    <Input
+                      id="phone"
+                      value={newContactForm.phoneNumber}
+                      onChange={(e) => setNewContactForm({...newContactForm, phoneNumber: e.target.value})}
+                      placeholder="Phone number"
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="template" className="text-right">
+                      Template
+                    </Label>
+                    <Select value={newContactForm.template} onValueChange={(value) => setNewContactForm({...newContactForm, template: value})}>
+                      <SelectTrigger className="col-span-3">
+                        <SelectValue placeholder="Select template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="welcome">Welcome Message</SelectItem>
+                        <SelectItem value="follow-up">Follow Up</SelectItem>
+                        <SelectItem value="support">Support Inquiry</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="submit" onClick={handleNewContactSubmit}>
+                    Create Contact
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
               <List className="h-4 w-4" />
             </Button>
