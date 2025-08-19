@@ -144,80 +144,87 @@ export default function ChatMock() {
       )}
 
       {/* Conversations list */}
-      <article className="rounded-lg border bg-card p-3">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold tracking-tight">Conversations</h2>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="hidden md:inline-flex">
+      <article className="rounded-lg border bg-card p-4">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold">Conversations</h2>
+            <Badge variant="secondary" className="text-xs">
               {loading ? '...' : filtered.length} open
             </Badge>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchConversations}
-              disabled={loading}
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchConversations}
+            disabled={loading}
+            className="h-8 w-8 p-0"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search..."
-          className="mb-3"
-          aria-label="Search conversations"
-        />
-        <Separator className="mb-2" />
-        <ScrollArea className="h-[60vh] pr-2">
+        
+        <div className="mb-4 space-y-3">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search..."
+            className="h-9"
+            aria-label="Search conversations"
+          />
+        </div>
+
+        <ScrollArea className="h-[calc(100vh-240px)]">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Loading conversations...</span>
               </div>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-8 text-sm text-muted-foreground">
               {query ? 'No conversations found matching your search.' : 'No conversations found.'}
             </div>
           ) : (
-            <ul className="space-y-2">
+            <div className="space-y-2">
               {filtered.map((c) => (
-                <li key={c.id}>
+                <div key={c.id}>
                   <button
                     type="button"
                     onClick={() => handleConversationSelect(c)}
-                    className={`w-full rounded-md border p-3 text-left transition-colors ${
+                    className={`w-full rounded-lg border p-3 text-left transition-all hover:shadow-sm ${
                       selected.id === c.id
-                        ? "border-brand bg-sidebar-accent"
-                        : "hover:bg-sidebar-accent"
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/30"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-semibold">
-                          {c.name[0]}
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+                        {c.name[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-medium truncate">{c.name}</h3>
+                          <span className="text-xs text-muted-foreground ml-2">{c.time}</span>
                         </div>
-                        <div>
-                          <div className="text-sm font-medium">{c.name}</div>
-                          <div className="text-xs text-muted-foreground line-clamp-1">{c.preview}</div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{c.preview}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge 
+                            variant={c.assigned ? "default" : "secondary"}
+                            className="text-xs"
+                          >
+                            {c.assigned ? 'Assigned' : 'Unassigned'}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            WhatsApp
+                          </Badge>
                         </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">{c.time}</div>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      {c.assigned ? (
-                        <Badge className="bg-success text-success-foreground">Assigned</Badge>
-                      ) : (
-                        <Badge variant="secondary">Unassigned</Badge>
-                      )}
-                      <Badge variant="secondary" className="hidden md:inline-flex">WhatsApp</Badge>
                     </div>
                   </button>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </ScrollArea>
       </article>
