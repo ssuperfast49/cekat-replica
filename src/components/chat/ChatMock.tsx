@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Phone, Mail, Clock, CheckCheck, Loader2, RefreshCw } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MessageSquare, Phone, Mail, Clock, CheckCheck, Loader2, RefreshCw, Search, Filter, Plus, List, Users, ChevronDown } from "lucide-react";
 import { useConversations, ConversationWithDetails, MessageWithDetails } from "@/hooks/useConversations";
 import { toast } from "sonner";
 
@@ -144,89 +146,161 @@ export default function ChatMock() {
       )}
 
       {/* Conversations list */}
-      <article className="rounded-lg border bg-card p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold">Conversations</h2>
-            <Badge variant="secondary" className="text-xs">
-              {loading ? '...' : filtered.length} open
-            </Badge>
+      <article className="rounded-lg border bg-card p-3">
+        {/* Header with dropdown and actions */}
+        <div className="mb-3 flex items-center justify-between">
+          <Select defaultValue="all-agents">
+            <SelectTrigger className="w-32 h-8 text-sm">
+              <SelectValue />
+              <ChevronDown className="h-4 w-4 opacity-50" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-agents">All Agent</SelectItem>
+              <SelectItem value="agent-1">Agent 1</SelectItem>
+              <SelectItem value="agent-2">Agent 2</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Filter className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchConversations}
+              disabled={loading}
+              className="h-8 w-8 p-0"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchConversations}
-            disabled={loading}
-            className="h-8 w-8 p-0"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-        
-        <div className="mb-4 space-y-3">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search..."
-            className="h-9"
-            aria-label="Search conversations"
-          />
         </div>
 
-        <ScrollArea className="h-[calc(100vh-240px)]">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Loading conversations...</span>
-              </div>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              {query ? 'No conversations found matching your search.' : 'No conversations found.'}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map((c) => (
-                <div key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleConversationSelect(c)}
-                    className={`w-full rounded-lg border p-3 text-left transition-all hover:shadow-sm ${
-                      selected.id === c.id
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/30"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
-                        {c.name[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium truncate">{c.name}</h3>
-                          <span className="text-xs text-muted-foreground ml-2">{c.time}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{c.preview}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Badge 
-                            variant={c.assigned ? "default" : "secondary"}
-                            className="text-xs"
-                          >
-                            {c.assigned ? 'Assigned' : 'Unassigned'}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            WhatsApp
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
+        {/* Tabs for Assigned/Unassigned */}
+        <Tabs defaultValue="assigned" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-3">
+            <TabsTrigger value="assigned" className="text-xs">
+              Assigned
+              <Badge variant="secondary" className="ml-2 h-5 text-xs">
+                {filtered.filter(c => c.assigned).length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="unassigned" className="text-xs">
+              Unassigned
+              <Badge variant="secondary" className="ml-2 h-5 text-xs">
+                {filtered.filter(c => !c.assigned).length}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="assigned" className="mt-0">
+            <ScrollArea className="h-[calc(100vh-280px)]">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Loading...</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
+              ) : (
+                <div className="space-y-1">
+                  {filtered.filter(c => c.assigned).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleConversationSelect(c)}
+                      className={`w-full p-3 text-left transition-colors rounded-lg ${
+                        selected.id === c.id
+                          ? "bg-blue-50 border border-blue-200"
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-medium text-gray-900 truncate">{c.name}</h3>
+                            <span className="text-xs text-gray-500 ml-2">{c.time}</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-1">{c.preview}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <div className="flex items-center gap-1">
+                              <MessageSquare className="h-3 w-3 text-blue-500" />
+                              <span className="text-xs text-gray-400">OKBANG TOP UP CE...</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge className="bg-blue-100 text-blue-600 text-xs">
+                            Assigned
+                          </Badge>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="unassigned" className="mt-0">
+            <ScrollArea className="h-[calc(100vh-280px)]">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Loading...</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filtered.filter(c => !c.assigned).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleConversationSelect(c)}
+                      className={`w-full p-3 text-left transition-colors rounded-lg ${
+                        selected.id === c.id
+                          ? "bg-blue-50 border border-blue-200"
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-medium text-gray-900 truncate">{c.name}</h3>
+                            <span className="text-xs text-gray-500 ml-2">{c.time}</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-1">{c.preview}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <div className="flex items-center gap-1">
+                              <MessageSquare className="h-3 w-3 text-blue-500" />
+                              <span className="text-xs text-gray-400">OKBANG TOP UP CE...</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="secondary" className="text-xs">
+                            Unassigned
+                          </Badge>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </article>
 
       {/* Conversation */}
