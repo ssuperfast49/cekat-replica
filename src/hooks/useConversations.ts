@@ -130,7 +130,7 @@ export const useConversations = () => {
       const newMessage = {
         thread_id: threadId,
         direction: 'out' as const,
-        role: 'agent' as const,
+        role: 'assistant' as const,
         type: 'text' as const,
         body: messageText,
         topic: 'chat',

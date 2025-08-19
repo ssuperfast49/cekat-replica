@@ -23,7 +23,7 @@ const ConnectedPlatforms = () => {
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
   const isFetchingRef = useRef(false);
-  const [qrCountdown, setQrCountdown] = useState<number>(10);
+  const [qrCountdown, setQrCountdown] = useState<number>(30);
 
   // Tabs state
   const [activeTab, setActiveTab] = useState("live-chat");
@@ -76,16 +76,16 @@ const ConnectedPlatforms = () => {
     }
   };
 
-  // Auto-refresh QR every 10 seconds with a visible countdown while dialog is open
+  // Auto-refresh QR every 30 seconds with a visible countdown while dialog is open
   useEffect(() => {
     if (!isWhatsAppDialogOpen) return;
-    setQrCountdown(10);
+    setQrCountdown(30);
     const intervalId: ReturnType<typeof setInterval> = setInterval(() => {
       setQrCountdown((prev) => {
         if (prev <= 1) {
           if (!isFetchingRef.current) {
             fetchWhatsAppQr();
-            return 10;
+            return 30;
           }
           return 1;
         }

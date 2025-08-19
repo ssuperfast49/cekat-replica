@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { MessageSquare, Phone, Mail, Clock, CheckCheck, Loader2, RefreshCw, Search, Filter, Plus, List, Users, ChevronDown } from "lucide-react";
 import { useConversations, ConversationWithDetails, MessageWithDetails } from "@/hooks/useConversations";
+import { useContacts } from "@/hooks/useContacts";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 // Legacy interfaces for backward compatibility
 interface Conversation {
@@ -60,6 +62,7 @@ export default function ChatMock() {
     phoneNumber: "",
     template: ""
   });
+  const [isCreatingContact, setIsCreatingContact] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Use the conversations hook
@@ -71,8 +74,14 @@ export default function ChatMock() {
     selectedThreadId,
     fetchConversations,
     fetchMessages,
-    sendMessage,
+    createConversation,
   } = useConversations();
+
+  // Use the contacts hook
+  const { createContact } = useContacts();
+
+  // N8N webhook URL for sending messages
+  const n8nWebhookUrl = "https://primary-production-376c.up.railway.app/webhook/2f6f9767-c3cb-4af3-b749-a496eefc2b74/waha";
 
   // Transform conversations to match the expected format
   const transformedConversations: Conversation[] = useMemo(() => {
@@ -128,25 +137,218 @@ export default function ChatMock() {
     if (!text || !selectedThreadId) return;
     
     try {
-      await sendMessage(selectedThreadId, text);
+      // Get the current conversation to find the contact's phone number
+      const currentConversation = conversations.find(conv => conv.id === selectedThreadId);
+      if (!currentConversation) {
+        toast.error('Conversation not found');
+        return;
+      }
+
+      console.log('Sending message via N8N webhook:', {
+        thread_id: selectedThreadId,
+        contact_name: currentConversation.contact_name,
+        contact_phone: currentConversation.contact_phone,
+        channel_type: currentConversation.channel_type,
+        message_text: text
+      });
+
+             // Format phone number for WAHA API (remove + and add @c.us suffix)
+       const wahaPhoneNumber = currentConversation.contact_phone.replace('+', '') + '@c.us';
+       
+       // Send message via N8N webhook (handles both WAHA API and database storage)
+       const n8nResponse = await fetch(n8nWebhookUrl, {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify({
+           event: "message",
+           session: "default",
+           engine: "WEBJS",
+           payload: {
+             id: `true_${wahaPhoneNumber}_${Date.now()}`,
+             timestamp: Math.floor(Date.now() / 1000),
+             from: wahaPhoneNumber,
+             fromMe: true,
+             source: "app",
+             to: wahaPhoneNumber,
+             body: text,
+             hasMedia: false,
+             ack: 1,
+             vCards: [],
+             _data: {}
+           }
+         })
+       });
+
+      console.log('N8N webhook response status:', n8nResponse.status);
+      
+      if (!n8nResponse.ok) {
+        const errorText = await n8nResponse.text();
+        console.warn('N8N webhook failed:', errorText);
+        toast.error('Failed to send message');
+        return;
+      }
+
+      const responseData = await n8nResponse.json();
+      console.log('Message sent successfully via N8N:', responseData);
+      
+      // Refresh messages to show the new message
+      await fetchMessages(selectedThreadId);
+      
       setDraft("");
       toast.success('Message sent successfully!');
     } catch (error) {
+      console.error('Error sending message:', error);
       toast.error('Failed to send message');
     }
   };
 
-  const handleNewContactSubmit = () => {
-    // Handle form submission logic here
-    console.log("New contact form submitted:", newContactForm);
-    toast.success('Contact created successfully!');
-    setNewContactOpen(false);
-    setNewContactForm({
-      inbox: "",
-      name: "",
-      phoneNumber: "",
-      template: ""
-    });
+  const handleNewContactSubmit = async () => {
+    if (!newContactForm.name.trim() || !newContactForm.phoneNumber.trim()) {
+      toast.error('Please fill in both name and phone number');
+      return;
+    }
+
+    // Validate phone number format for WhatsApp
+    const phoneNumber = newContactForm.phoneNumber.trim();
+    const phoneRegex = /^(\+?62|0)8[1-9][0-9]{6,9}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      toast.error('Please enter a valid Indonesian phone number (e.g., +6281234567890 or 081234567890)');
+      return;
+    }
+
+    // Format phone number for WhatsApp API (ensure it starts with country code)
+    const formattedPhone = phoneNumber.startsWith('+62') 
+      ? phoneNumber 
+      : phoneNumber.startsWith('62') 
+        ? `+${phoneNumber}`
+        : phoneNumber.startsWith('0')
+          ? `+62${phoneNumber.substring(1)}`
+          : `+62${phoneNumber}`;
+
+    setIsCreatingContact(true);
+    
+    try {
+      // 1. Create new contact in database
+      const newContact = await createContact({
+        name: newContactForm.name,
+        phone: formattedPhone,
+        email: null,
+        notes: `Created via chat interface. Inbox: ${newContactForm.inbox}`,
+        locale: 'id'
+      });
+
+      // 2. Get or create WhatsApp channel
+      const { data: channels } = await supabase
+        .from('channels')
+        .select('id')
+        .eq('org_id', '00000000-0000-0000-0000-000000000001')
+        .eq('type', 'whatsapp')
+        .eq('is_active', true)
+        .limit(1);
+
+      let channelId = channels?.[0]?.id;
+      
+      if (!channelId) {
+        // Create WhatsApp channel if it doesn't exist
+        const { data: newChannel } = await supabase
+          .from('channels')
+          .insert([{
+            org_id: '00000000-0000-0000-0000-000000000001',
+            type: 'whatsapp',
+            provider: 'meta',
+            display_name: 'WhatsApp Business',
+            is_active: true
+          }])
+          .select('id')
+          .single();
+        
+        channelId = newChannel?.id;
+      }
+
+      if (!channelId) {
+        throw new Error('Failed to get or create WhatsApp channel');
+      }
+
+      // 3. Create new conversation/thread
+      const newThread = await createConversation(newContact.id, channelId);
+
+             // 4. Send initial message via N8N webhook
+       const initialMessage = getInitialMessage(newContactForm.template);
+       
+               try {
+          // Format phone number for WAHA API (remove + and add @c.us suffix)
+          const wahaPhoneNumber = formattedPhone.replace('+', '') + '@c.us';
+          
+          // Send initial message via N8N webhook (handles both WAHA API and database storage)
+          const n8nResponse = await fetch(n8nWebhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              event: "message",
+              session: "default",
+              engine: "WEBJS",
+              payload: {
+                id: `true_${wahaPhoneNumber}_${Date.now()}`,
+                timestamp: Math.floor(Date.now() / 1000),
+                from: wahaPhoneNumber,
+                fromMe: true,
+                source: "app",
+                to: wahaPhoneNumber,
+                body: initialMessage,
+                hasMedia: false,
+                ack: 1,
+                vCards: [],
+                _data: {}
+              }
+            })
+          });
+
+         if (!n8nResponse.ok) {
+           console.warn('N8N webhook failed for initial message, but contact was created');
+         } else {
+           console.log('Initial message sent successfully via N8N');
+         }
+       } catch (n8nError) {
+         console.warn('N8N webhook error:', n8nError);
+         // Continue even if N8N webhook fails - the contact and thread are still created
+       }
+
+      // 6. Refresh conversations and select the new one
+      await fetchConversations();
+      await fetchMessages(newThread.id);
+
+      toast.success(`Contact ${newContactForm.name} created and initial message sent to ${formattedPhone}!`);
+      setNewContactOpen(false);
+      setNewContactForm({
+        inbox: "",
+        name: "",
+        phoneNumber: "",
+        template: ""
+      });
+
+    } catch (error) {
+      console.error('Error creating contact:', error);
+      toast.error('Failed to create contact: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsCreatingContact(false);
+    }
+  };
+
+  const getInitialMessage = (template: string): string => {
+    switch (template) {
+      case 'welcome':
+        return `Halo ${newContactForm.name}! 👋 Selamat datang di Okbang Top Up Center. Ada yang bisa kami bantu?`;
+      case 'follow-up':
+        return `Halo ${newContactForm.name}! 👋 Terima kasih telah menghubungi kami. Bagaimana kabar Anda hari ini?`;
+      case 'support':
+        return `Halo ${newContactForm.name}! 👋 Terima kasih telah menghubungi tim support kami. Silakan sampaikan keluhan atau pertanyaan Anda.`;
+      default:
+        return `Halo ${newContactForm.name}! 👋 Selamat datang di Okbang Top Up Center. Ada yang bisa kami bantu?`;
+    }
   };
 
   const handleConversationSelect = (conversation: Conversation) => {
@@ -208,7 +410,11 @@ export default function ChatMock() {
                     <Label htmlFor="inbox" className="text-right">
                       Inbox
                     </Label>
-                    <Select value={newContactForm.inbox} onValueChange={(value) => setNewContactForm({...newContactForm, inbox: value})}>
+                    <Select 
+                      value={newContactForm.inbox} 
+                      onValueChange={(value) => setNewContactForm({...newContactForm, inbox: value})}
+                      disabled={isCreatingContact}
+                    >
                       <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Select inbox" />
                       </SelectTrigger>
@@ -229,6 +435,7 @@ export default function ChatMock() {
                       onChange={(e) => setNewContactForm({...newContactForm, name: e.target.value})}
                       placeholder="Contact name"
                       className="col-span-3"
+                      disabled={isCreatingContact}
                     />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -239,15 +446,20 @@ export default function ChatMock() {
                       id="phone"
                       value={newContactForm.phoneNumber}
                       onChange={(e) => setNewContactForm({...newContactForm, phoneNumber: e.target.value})}
-                      placeholder="Phone number"
+                      placeholder="e.g., +6281234567890 or 081234567890"
                       className="col-span-3"
+                      disabled={isCreatingContact}
                     />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="template" className="text-right">
                       Template
                     </Label>
-                    <Select value={newContactForm.template} onValueChange={(value) => setNewContactForm({...newContactForm, template: value})}>
+                    <Select 
+                      value={newContactForm.template} 
+                      onValueChange={(value) => setNewContactForm({...newContactForm, template: value})}
+                      disabled={isCreatingContact}
+                    >
                       <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Select template" />
                       </SelectTrigger>
@@ -260,8 +472,19 @@ export default function ChatMock() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" onClick={handleNewContactSubmit}>
-                    Create Contact
+                  <Button 
+                    type="submit" 
+                    onClick={handleNewContactSubmit}
+                    disabled={isCreatingContact}
+                  >
+                    {isCreatingContact ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      'Create Contact'
+                    )}
                   </Button>
                 </DialogFooter>
               </DialogContent>
