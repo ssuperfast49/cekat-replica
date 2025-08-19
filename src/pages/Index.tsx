@@ -14,6 +14,7 @@ import Contacts from "@/components/contacts/Contacts";
 import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
 import AIAgents from "@/components/aiagents/AIAgents";
 import Settings from "@/components/settings/Settings";
+import HumanAgents from "@/components/humanagents/HumanAgents";
 import { cn } from "@/lib/utils";
 
 type NavKey =
@@ -227,6 +228,11 @@ const Index = () => {
               <>
                 <h1 className="text-2xl font-bold tracking-tight md:text-3xl mb-6">Settings</h1>
                 <Settings />
+              </>
+            ) : active === "humanagents" ? (
+              <>
+                <h1 className="sr-only">Human Agents</h1>
+                <HumanAgents />
               </>
             ) : (
               <>
