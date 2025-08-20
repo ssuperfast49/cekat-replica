@@ -15,6 +15,7 @@ import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
 import AIAgents from "@/components/aiagents/AIAgents";
 import Settings from "@/components/settings/Settings";
 import HumanAgents from "@/components/humanagents/HumanAgents";
+import ProfileDialog from "@/components/auth/ProfileDialog";
 import { cn } from "@/lib/utils";
 
 type NavKey =
@@ -83,6 +84,7 @@ const StepCard = ({ step, title, description, emoji }: { step: number; title: st
 const Index = () => {
   const [active, setActive] = useState<NavKey>("chat");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
@@ -138,7 +140,7 @@ const Index = () => {
             <Separator className="mb-3" />
             <NavItem icon={SettingsIcon} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
             {/* <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} /> */}
-            <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => navigate("/profile")} collapsed={!sidebarExpanded} />
+            <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => setProfileDialogOpen(true)} collapsed={!sidebarExpanded} />
           </div>
         </aside>
 
@@ -182,7 +184,7 @@ const Index = () => {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => navigate("/profile")}>
+                    <DropdownMenuItem onClick={() => setProfileDialogOpen(true)}>
                       <User className="mr-2 h-4 w-4" />
                       <span>Profile</span>
                     </DropdownMenuItem>
@@ -249,6 +251,11 @@ const Index = () => {
           </section>
         </main>
       </div>
+      
+      <ProfileDialog 
+        open={profileDialogOpen} 
+        onOpenChange={setProfileDialogOpen} 
+      />
     </div>
   );
 };
