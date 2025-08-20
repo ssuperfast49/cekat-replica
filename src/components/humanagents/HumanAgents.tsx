@@ -15,10 +15,10 @@ import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreateTeamDialogOpen, setIsCreateTeamDialogOpen] = useState(false);
-  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "Agent" | "Super Agent"; phone?: string }>({ 
+  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "owner" | "admin" | "agent"; phone?: string }>({ 
     name: "", 
     email: "", 
-    role: "Agent" 
+    role: "agent" 
   });
   const [newTeam, setNewTeam] = useState<{ name: string; description: string }>({ 
     name: "", 
@@ -54,11 +54,10 @@ const HumanAgents = () => {
       await createAgent({
         full_name: newAgent.name,
         email: newAgent.email,
-        role: newAgent.role,
-        phone: newAgent.phone
+        role: newAgent.role
       });
 
-      setNewAgent({ name: "", email: "", role: "Agent" });
+      setNewAgent({ name: "", email: "", role: "agent" });
       setIsCreateDialogOpen(false);
       
       toast({
@@ -85,18 +84,14 @@ const HumanAgents = () => {
     }
 
     try {
-      await createTeam({
-        name: newTeam.name,
-        description: newTeam.description || undefined
+      // Since we don't have teams functionality, just show a message
+      toast({
+        title: "Info",
+        description: "Teams functionality is not available in this version",
       });
 
       setNewTeam({ name: "", description: "" });
       setIsCreateTeamDialogOpen(false);
-      
-      toast({
-        title: "Success",
-        description: "Team created successfully",
-      });
     } catch (error) {
       toast({
         title: "Error",
@@ -123,22 +118,14 @@ const HumanAgents = () => {
   };
 
   const handleStatusChange = async (agentId: string, status: "Online" | "Offline") => {
-    try {
-      await updateAgentStatus(agentId, status);
-      toast({
-        title: "Success",
-        description: `Agent status updated to ${status}`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update status",
-        variant: "destructive",
-      });
-    }
+    // Since we don't have status functionality, just show a message
+    toast({
+      title: "Info",
+      description: `Status functionality is not available in this version`,
+    });
   };
 
-  const handleRoleChange = async (agentId: string, role: "Agent" | "Super Agent") => {
+  const handleRoleChange = async (agentId: string, role: "owner" | "admin" | "agent") => {
     try {
       await updateAgentRole(agentId, role);
       toast({
@@ -171,8 +158,20 @@ const HumanAgents = () => {
             <p className="text-muted-foreground">Manage your human agents and teams</p>
           </div>
         </div>
-        <div className="rounded-lg border bg-red-50 p-4">
-          <p className="text-red-800 text-sm">Error: {error}</p>
+        <div className="rounded-lg border bg-red-50 p-6">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -228,13 +227,14 @@ const HumanAgents = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agent-role">Role</Label>
-                <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "Agent" | "Super Agent" })}>
+                <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "owner" | "admin" | "agent" })}>
                   <SelectTrigger className="bg-background border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background border z-50">
-                    <SelectItem value="Agent">Agent</SelectItem>
-                    <SelectItem value="Super Agent">Super Agent</SelectItem>
+                    <SelectItem value="owner">Owner</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="agent">Agent</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -294,32 +294,35 @@ const HumanAgents = () => {
                 </div>
               ) : (
                 agents.map((agent) => (
-                  <div key={agent.id} className="grid grid-cols-[200px,1fr,120px,120px,100px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors">
+                  <div key={agent.user_id} className="grid grid-cols-[200px,1fr,120px,120px,100px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
                         <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                          {getInitials(agent.full_name || agent.email)}
+                          {getInitials(agent.display_name || 'Unknown')}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="font-medium text-blue-600">{agent.full_name || agent.email}</span>
+                      <span className="font-medium text-blue-600">{agent.display_name || 'Unknown User'}</span>
                     </div>
-                    <div className="text-sm text-muted-foreground">{agent.email}</div>
+                    <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
                     <div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="gap-2 h-8">
-                            <Badge variant={agent.role === "Super Agent" ? "default" : "secondary"} className="text-xs">
+                            <Badge variant={agent.role === "admin" ? "default" : "secondary"} className="text-xs">
                               {agent.role}
                             </Badge>
                             <ChevronDown className="h-3 w-3" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="bg-background border z-50">
-                          <DropdownMenuItem onClick={() => handleRoleChange(agent.id, "Agent")}>
-                            <Badge variant="secondary" className="text-xs">Agent</Badge>
+                          <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
+                            <Badge variant="secondary" className="text-xs">agent</Badge>
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleRoleChange(agent.id, "Super Agent")}>
-                            <Badge variant="default" className="text-xs">Super Agent</Badge>
+                          <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "admin")}>
+                            <Badge variant="default" className="text-xs">admin</Badge>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "owner")}>
+                            <Badge variant="default" className="text-xs">owner</Badge>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -334,13 +337,13 @@ const HumanAgents = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="bg-background border z-50">
-                          <DropdownMenuItem onClick={() => handleStatusChange(agent.id, "Online")}>
+                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Online")}>
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-green-500" />
                               Online
                             </div>
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleStatusChange(agent.id, "Offline")}>
+                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Offline")}>
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-gray-400" />
                               Offline
@@ -357,7 +360,7 @@ const HumanAgents = () => {
                         variant="ghost" 
                         size="sm" 
                         className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => handleDeleteAgent(agent.id)}
+                        onClick={() => handleDeleteAgent(agent.user_id)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -449,24 +452,22 @@ const HumanAgents = () => {
                   <div className="space-y-2">
                     <h5 className="text-sm font-medium text-muted-foreground">Team Members</h5>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {agents
-                        .filter(agent => agent.teams?.some(t => t.id === team.id))
-                        .map(agent => (
-                          <div key={agent.id} className="flex items-center gap-2 p-2 rounded border">
-                            <Avatar className="h-6 w-6">
-                              <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                                {getInitials(agent.full_name || agent.email)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{agent.full_name || agent.email}</p>
-                              <p className="text-xs text-muted-foreground truncate">{agent.email}</p>
-                            </div>
-                            <Badge variant="outline" className="text-xs">
-                              {agent.teams?.find(t => t.id === team.id)?.team_member?.role || 'member'}
-                            </Badge>
+                      {agents.map(agent => (
+                        <div key={agent.user_id} className="flex items-center gap-2 p-2 rounded border">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+                              {getInitials(agent.display_name || 'Unknown')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{agent.display_name || 'Unknown User'}</p>
+                            <p className="text-xs text-muted-foreground truncate">{agent.email || 'No email'}</p>
                           </div>
-                        ))}
+                          <Badge variant="outline" className="text-xs">
+                            {agent.role}
+                          </Badge>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
