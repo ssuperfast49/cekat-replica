@@ -43,9 +43,26 @@ const MessageBubble = ({ message, isLastMessage }: MessageBubbleProps) => {
   
   if (isSystem) {
     return (
-      <div className="flex justify-center my-2">
-        <div className="bg-muted px-3 py-1 rounded-full text-xs text-muted-foreground">
-          {message.body || 'System message'}
+      <div className="flex justify-center my-3">
+        <div className="bg-muted/50 border border-border px-4 py-2 rounded-lg max-w-md">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+            <Clock className="h-3 w-3" />
+            <span>{new Date(message.created_at).toLocaleTimeString([], { 
+              hour: "2-digit", 
+              minute: "2-digit" 
+            })}</span>
+            <Badge variant="secondary" className="text-[10px] px-1 py-0">
+              SYSTEM
+            </Badge>
+          </div>
+          <div className="text-sm text-foreground">
+            {message.body || 'System event'}
+          </div>
+          {message.payload && (
+            <div className="mt-1 text-xs text-muted-foreground font-mono">
+              {JSON.stringify(message.payload, null, 2)}
+            </div>
+          )}
         </div>
       </div>
     );
