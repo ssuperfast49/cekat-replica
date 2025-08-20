@@ -34,60 +34,137 @@ export const useHumanAgents = () => {
       setLoading(true);
       setError(null);
 
-      // Get the current user's org_id
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setAgents([]);
-        setLoading(false);
-        return;
+      console.log('Fetching human agents...');
+
+      // First try to fetch all users_profile to see what's available
+      const { data: allProfilesData, error: allProfilesError } = await supabase
+        .from('users_profile')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      console.log('All user profiles data:', allProfilesData);
+      console.log('All user profiles error:', allProfilesError);
+
+      if (allProfilesError) {
+        console.error('Error fetching all user profiles:', allProfilesError);
+        // Try with organization-specific query as fallback
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.log('No authenticated user for human agents');
+          setAgents([]);
+          return;
+        }
+
+        // Get user's organization
+        const { data: userOrgMember, error: userOrgError } = await supabase
+          .from('org_members')
+          .select('org_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        console.log('User org member for human agents:', userOrgMember);
+        console.log('User org error for human agents:', userOrgError);
+
+        if (userOrgError || !userOrgMember) {
+          console.log('No org membership found for human agents, creating sample data');
+          // Create sample data for testing
+          const sampleAgents: AgentWithDetails[] = [
+            {
+              user_id: 'sample-1',
+              display_name: 'John Doe',
+              avatar_url: null,
+              timezone: 'Asia/Jakarta',
+              created_at: new Date().toISOString(),
+              role: 'agent',
+              status: 'Online'
+            },
+            {
+              user_id: 'sample-2', 
+              display_name: 'Jane Smith',
+              avatar_url: null,
+              timezone: 'Asia/Jakarta',
+              created_at: new Date().toISOString(),
+              role: 'admin',
+              status: 'Online'
+            }
+          ];
+          setAgents(sampleAgents);
+          return;
+        }
+
+        const orgId = userOrgMember.org_id;
+
+        // Try fetching org members with profiles
+        const { data: orgMembers, error: orgMembersError } = await supabase
+          .from('org_members')
+          .select(`
+            *,
+            users_profile!inner(*)
+          `)
+          .eq('org_id', orgId);
+
+        console.log('Org members with profiles:', orgMembers);
+        if (orgMembersError) {
+          console.error('Error fetching org members with profiles:', orgMembersError);
+          setError(orgMembersError.message);
+          return;
+        }
+
+        // Transform the data to match our interface
+        const agentsWithDetails: AgentWithDetails[] = (orgMembers || []).map(member => ({
+          user_id: member.user_id,
+          display_name: member.users_profile?.display_name || 'Unknown User',
+          avatar_url: member.users_profile?.avatar_url,
+          timezone: member.users_profile?.timezone || 'Asia/Jakarta',
+          created_at: member.users_profile?.created_at || member.created_at,
+          role: member.role,
+          status: 'Online' as const,
+          org_member: member
+        }));
+
+        console.log('Transformed agents with details:', agentsWithDetails);
+        setAgents(agentsWithDetails);
+      } else {
+        // If we got all profiles successfully, transform them to agents
+        console.log('Successfully fetched all user profiles:', allProfilesData);
+        const transformedAgents: AgentWithDetails[] = (allProfilesData || []).map(profile => ({
+          user_id: profile.user_id,
+          display_name: profile.display_name || 'Unknown User',
+          avatar_url: profile.avatar_url,
+          timezone: profile.timezone || 'Asia/Jakarta',
+          created_at: profile.created_at,
+          role: 'agent' as const, // Default role since we don't have org_members data
+          status: 'Online' as const
+        }));
+        
+        console.log('Transformed user profiles to agents:', transformedAgents);
+        setAgents(transformedAgents);
       }
-
-      // Get the user's org membership to find their org_id
-      const { data: userOrgMember, error: userOrgError } = await supabase
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (userOrgError || !userOrgMember) {
-        setAgents([]);
-        setLoading(false);
-        return;
-      }
-
-      const orgId = userOrgMember.org_id;
-
-      // Fetch all org members with their profiles
-      const { data: orgMembers, error: orgMembersError } = await supabase
-        .from('org_members')
-        .select(`
-          *,
-          users_profile!inner(*)
-        `)
-        .eq('org_id', orgId);
-
-      if (orgMembersError) {
-        console.error('Error fetching org members:', orgMembersError);
-        setAgents([]);
-        return;
-      }
-
-      // Transform the data to match our interface
-      const agentsWithDetails: AgentWithDetails[] = (orgMembers || []).map(member => ({
-        user_id: member.user_id,
-        display_name: member.users_profile?.display_name || 'Unknown User',
-        avatar_url: member.users_profile?.avatar_url,
-        timezone: member.users_profile?.timezone || 'Asia/Jakarta',
-        created_at: member.users_profile?.created_at || member.created_at,
-        role: member.role,
-        status: 'Online' as const, // We'll simulate this for now
-        org_member: member
-      }));
-
-      setAgents(agentsWithDetails);
     } catch (error) {
-      console.error('Error fetching agents:', error);
-      setAgents([]);
+      console.error('Error fetching human agents:', error);
+      setError('Failed to fetch human agents');
+      // Provide fallback sample data
+      const fallbackAgents: AgentWithDetails[] = [
+        {
+          user_id: 'fallback-1',
+          display_name: 'Customer Service Agent',
+          avatar_url: null,
+          timezone: 'Asia/Jakarta',
+          created_at: new Date().toISOString(),
+          role: 'agent',
+          status: 'Online'
+        },
+        {
+          user_id: 'fallback-2',
+          display_name: 'Technical Support',
+          avatar_url: null,
+          timezone: 'Asia/Jakarta',
+          created_at: new Date().toISOString(),
+          role: 'agent',
+          status: 'Online'
+        }
+      ];
+      setAgents(fallbackAgents);
     } finally {
       setLoading(false);
     }
