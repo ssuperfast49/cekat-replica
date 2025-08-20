@@ -15,10 +15,17 @@ export interface Thread {
 export interface Message {
   id: string;
   thread_id: string;
-  direction: 'in' | 'out';
+  direction: 'in' | 'out' | null;
   role: 'user' | 'assistant' | 'agent' | 'system';
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'location';
+  type: 'text' | 'image' | 'file' | 'voice' | 'event' | 'note';
   body: string | null;
+  payload: any | null;
+  actor_kind: 'customer' | 'agent' | 'ai' | 'system' | null;
+  actor_id: string | null;
+  seq: number;
+  in_reply_to: string | null;
+  edited_at: string | null;
+  edit_reason: string | null;
   created_at: string;
 }
 
@@ -102,7 +109,7 @@ export const useConversations = () => {
           )
         `)
         .eq('thread_id', threadId)
-        .order('created_at', { ascending: true });
+        .order('seq', { ascending: true });
 
       if (error) throw error;
 
@@ -133,11 +140,9 @@ export const useConversations = () => {
         role: 'assistant' as const,
         type: 'text' as const,
         body: messageText,
-        topic: 'chat',
-        extension: 'text',
         payload: {},
-        event: null,
-        private: false
+        actor_kind: 'agent' as const,
+        actor_id: null
       };
 
       const { data, error } = await supabase
@@ -235,6 +240,82 @@ export const useConversations = () => {
     }
   };
 
+  // Add participant to thread
+  const addThreadParticipant = async (threadId: string, userId: string) => {
+    try {
+      setError(null);
+
+      const { error } = await supabase
+        .from('thread_participants')
+        .insert([{ thread_id: threadId, user_id: userId }]);
+
+      if (error) throw error;
+
+    } catch (error) {
+      console.error('Error adding thread participant:', error);
+      setError(error instanceof Error ? error.message : 'Failed to add thread participant');
+      throw error;
+    }
+  };
+
+  // Remove participant from thread
+  const removeThreadParticipant = async (threadId: string, userId: string) => {
+    try {
+      setError(null);
+
+      const { error } = await supabase
+        .from('thread_participants')
+        .delete()
+        .eq('thread_id', threadId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+    } catch (error) {
+      console.error('Error removing thread participant:', error);
+      setError(error instanceof Error ? error.message : 'Failed to remove thread participant');
+      throw error;
+    }
+  };
+
+  // Add label to thread
+  const addThreadLabel = async (threadId: string, labelId: string) => {
+    try {
+      setError(null);
+
+      const { error } = await supabase
+        .from('thread_labels')
+        .insert([{ thread_id: threadId, label_id: labelId }]);
+
+      if (error) throw error;
+
+    } catch (error) {
+      console.error('Error adding thread label:', error);
+      setError(error instanceof Error ? error.message : 'Failed to add thread label');
+      throw error;
+    }
+  };
+
+  // Remove label from thread
+  const removeThreadLabel = async (threadId: string, labelId: string) => {
+    try {
+      setError(null);
+
+      const { error } = await supabase
+        .from('thread_labels')
+        .delete()
+        .eq('thread_id', threadId)
+        .eq('label_id', labelId);
+
+      if (error) throw error;
+
+    } catch (error) {
+      console.error('Error removing thread label:', error);
+      setError(error instanceof Error ? error.message : 'Failed to remove thread label');
+      throw error;
+    }
+  };
+
   // Initial fetch on mount
   useEffect(() => {
     fetchConversations();
@@ -252,5 +333,9 @@ export const useConversations = () => {
     createConversation,
     updateThreadStatus,
     assignThread,
+    addThreadParticipant,
+    removeThreadParticipant,
+    addThreadLabel,
+    removeThreadLabel,
   };
 };
