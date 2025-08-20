@@ -13,6 +13,7 @@ import { useConversations, ConversationWithDetails, MessageWithDetails } from "@
 import { useContacts } from "@/hooks/useContacts";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { ChatFilter } from './ChatFilter';
 
 // Legacy interfaces for backward compatibility
 interface Conversation {
@@ -389,9 +390,7 @@ export default function ChatMock() {
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
               <Search className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <Filter className="h-4 w-4" />
-            </Button>
+            <ChatFilter onFilterChange={(filters) => console.log('Filters applied:', filters)} />
             <Dialog open={newContactOpen} onOpenChange={setNewContactOpen}>
               <DialogTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
