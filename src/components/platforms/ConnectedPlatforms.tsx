@@ -8,14 +8,38 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X } from "lucide-react";
+import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
+import { useAIAgents } from "@/hooks/useAIAgents";
+import { useHumanAgents } from "@/hooks/useHumanAgents";
+import { useToast } from "@/hooks/use-toast";
 
 const ConnectedPlatforms = () => {
-  const [selectedInbox, setSelectedInbox] = useState("gultik");
+  const { toast } = useToast();
+  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, uploadProfilePhoto } = usePlatforms();
+  const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
+  const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
+  
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState("gultik-ai");
   const [selectedHumanAgent, setSelectedHumanAgent] = useState("agent-01");
+
+  // Add Platform dialog state
+  const [isAddPlatformDialogOpen, setIsAddPlatformDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newPlatform, setNewPlatform] = useState({
+    brandName: "",
+    websiteUrl: "",
+    businessCategory: "",
+    description: "",
+    whatsappDisplayName: "",
+    profilePhoto: null as File | null,
+    whatsappNumber: "",
+    selectedAIAgent: "",
+    selectedHumanAgents: [] as string[]
+  });
 
   // WhatsApp QR dialog state
   const [isWhatsAppDialogOpen, setIsWhatsAppDialogOpen] = useState(false);
@@ -43,6 +67,94 @@ const ConnectedPlatforms = () => {
   const [loggingOutSessions, setLoggingOutSessions] = useState<Set<string>>(new Set());
 
   const n8nBaseUrl = (import.meta as any).env?.VITE_N8N_BASE_URL || "https://primary-production-376c.up.railway.app/webhook";
+
+  // Get the first platform as default selected if available
+  useEffect(() => {
+    if (platforms.length > 0 && !selectedPlatform) {
+      setSelectedPlatform(platforms[0].id);
+    }
+  }, [platforms, selectedPlatform]);
+
+  const businessCategories = [
+    "E-commerce",
+    "Technology",
+    "Healthcare",
+    "Education",
+    "Finance",
+    "Real Estate",
+    "Food & Beverage",
+    "Travel & Tourism",
+    "Entertainment",
+    "Other"
+  ];
+
+  const handleAddPlatform = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      let profilePhotoUrl = "";
+      if (newPlatform.profilePhoto) {
+        profilePhotoUrl = await uploadProfilePhoto(newPlatform.profilePhoto);
+      }
+
+             const platformData: CreatePlatformData = {
+         brand_name: newPlatform.brandName,
+         website_url: newPlatform.websiteUrl || undefined,
+         business_category: newPlatform.businessCategory || undefined,
+         description: newPlatform.description || undefined,
+         whatsapp_display_name: newPlatform.whatsappDisplayName,
+         profile_photo_url: profilePhotoUrl || undefined,
+         whatsapp_number: newPlatform.whatsappNumber,
+         ai_profile_id: newPlatform.selectedAIAgent || undefined, // Changed from ai_agent_id to ai_profile_id
+         human_agent_ids: newPlatform.selectedHumanAgents
+       };
+
+      await createPlatform(platformData);
+      
+      toast({
+        title: "Success",
+        description: "Platform created successfully!",
+      });
+      
+      setIsAddPlatformDialogOpen(false);
+      // Reset form
+      setNewPlatform({
+        brandName: "",
+        websiteUrl: "",
+        businessCategory: "",
+        description: "",
+        whatsappDisplayName: "",
+        profilePhoto: null,
+        whatsappNumber: "",
+        selectedAIAgent: "",
+        selectedHumanAgents: []
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create platform",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setNewPlatform(prev => ({ ...prev, profilePhoto: file }));
+    }
+  };
+
+  const handleHumanAgentToggle = (agentId: string) => {
+    setNewPlatform(prev => ({
+      ...prev,
+      selectedHumanAgents: prev.selectedHumanAgents.includes(agentId)
+        ? prev.selectedHumanAgents.filter(id => id !== agentId)
+        : [...prev.selectedHumanAgents, agentId]
+    }));
+  };
 
   const fetchWhatsAppQr = async () => {
     if (isFetchingRef.current) return;
@@ -159,13 +271,7 @@ const ConnectedPlatforms = () => {
     }
   };
 
-  const inboxes = [
-    { id: "gultik", name: "GULTIK TOP UP", platform: "GULTIK.AI", status: "active" },
-    { id: "orang", name: "ORANG TOP U...", platform: "ORANG.AI", status: "inactive" },
-    { id: "antatoto", name: "ANTATOTO TOP...", platform: "ANTATOTO.AI", status: "inactive" }
-  ];
-
-  const selectedInboxData = inboxes.find(inbox => inbox.id === selectedInbox);
+  const selectedPlatformData = platforms.find(platform => platform.id === selectedPlatform);
 
   return (
     <div className="flex h-[calc(100vh-120px)]">
@@ -182,42 +288,265 @@ const ConnectedPlatforms = () => {
             This is where you can connect all your platforms
           </p>
           
-          <div className="space-y-2">
-            {inboxes.map((inbox) => (
-              <Card 
-                key={inbox.id}
-                className={`cursor-pointer transition-colors hover:bg-accent ${
-                  selectedInbox === inbox.id ? 'bg-accent border-primary' : ''
-                }`}
-                onClick={() => setSelectedInbox(inbox.id)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-xs font-medium text-blue-600">
-                        {inbox.name.charAt(0)}
-                      </span>
+          {platformsLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="animate-pulse">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-muted"></div>
+                      <div className="flex-1">
+                        <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-muted rounded w-1/2"></div>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm truncate">{inbox.name}</h3>
-                      <p className="text-xs text-muted-foreground">{inbox.platform}</p>
-                    </div>
-                    <Badge 
-                      variant={inbox.status === 'active' ? 'default' : 'secondary'}
-                      className="text-xs"
-                    >
-                      {inbox.status === 'active' ? '●' : '○'}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : platformsError ? (
+            <div className="text-sm text-red-600 p-4">{platformsError}</div>
+          ) : (
+            <div className="space-y-2">
+              {platforms.length === 0 ? (
+                <div className="text-sm text-muted-foreground p-4 text-center">
+                  No platforms found. Create your first platform to get started.
+                </div>
+              ) : (
+                platforms.map((platform) => (
+                  <Card 
+                    key={platform.id}
+                    className={`cursor-pointer transition-colors hover:bg-accent ${
+                      selectedPlatform === platform.id ? 'bg-accent border-primary' : ''
+                    }`}
+                    onClick={() => setSelectedPlatform(platform.id)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          {platform.profile_photo_url ? (
+                            <img
+                              src={platform.profile_photo_url}
+                              alt={platform.brand_name}
+                              className="h-10 w-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-xs font-medium text-blue-600">
+                              {platform.brand_name.charAt(0)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-sm truncate">{platform.brand_name}</h3>
+                          <p className="text-xs text-muted-foreground">{platform.whatsapp_display_name}</p>
+                        </div>
+                        <Badge 
+                          variant={platform.status === 'active' ? 'default' : 'secondary'}
+                          className="text-xs"
+                        >
+                          {platform.status === 'active' ? '●' : '○'}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          )}
 
-          <Button variant="outline" className="w-full mt-4 text-blue-600 border-blue-200 hover:bg-blue-50">
-            <Plus className="h-4 w-4 mr-2" />
-            Click to Connect A Platform
-          </Button>
+          <Dialog open={isAddPlatformDialogOpen} onOpenChange={setIsAddPlatformDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="w-full mt-4 text-blue-600 border-blue-200 hover:bg-blue-50">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Platform
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add New Platform</DialogTitle>
+                <DialogDescription>
+                  Configure your new WhatsApp platform with all the necessary information.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-6">
+                {/* Brand / Org Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="brandName">Brand / Org Name *</Label>
+                  <Input
+                    id="brandName"
+                    placeholder="Enter your brand or organization name"
+                    value={newPlatform.brandName}
+                    onChange={(e) => setNewPlatform(prev => ({ ...prev, brandName: e.target.value }))}
+                  />
+                </div>
+
+                {/* Website / Landing Page URL */}
+                <div className="space-y-2">
+                  <Label htmlFor="websiteUrl">Website / Landing Page URL</Label>
+                  <Input
+                    id="websiteUrl"
+                    type="url"
+                    placeholder="https://your-website.com"
+                    value={newPlatform.websiteUrl}
+                    onChange={(e) => setNewPlatform(prev => ({ ...prev, websiteUrl: e.target.value }))}
+                  />
+                </div>
+
+                {/* Business Category */}
+                <div className="space-y-2">
+                  <Label htmlFor="businessCategory">Business Category</Label>
+                  <Select value={newPlatform.businessCategory} onValueChange={(value) => setNewPlatform(prev => ({ ...prev, businessCategory: value }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select business category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {businessCategories.map((category) => (
+                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Description */}
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Describe your business and what you offer"
+                    value={newPlatform.description}
+                    onChange={(e) => setNewPlatform(prev => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                  />
+                </div>
+
+                {/* WhatsApp Display Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="whatsappDisplayName">WhatsApp Display Name *</Label>
+                  <Input
+                    id="whatsappDisplayName"
+                    placeholder="Name that will appear in WhatsApp"
+                    value={newPlatform.whatsappDisplayName}
+                    onChange={(e) => setNewPlatform(prev => ({ ...prev, whatsappDisplayName: e.target.value }))}
+                  />
+                </div>
+
+                {/* Profile Photo / Logo */}
+                <div className="space-y-2">
+                  <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                      {newPlatform.profilePhoto ? (
+                        <img
+                          src={URL.createObjectURL(newPlatform.profilePhoto)}
+                          alt="Profile"
+                          className="h-16 w-16 rounded-full object-cover"
+                        />
+                      ) : (
+                        <Upload className="h-6 w-6 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <Input
+                        id="profilePhoto"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => document.getElementById('profilePhoto')?.click()}
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Photo
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Recommended: 512x512px, max 2MB
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* WhatsApp Number */}
+                <div className="space-y-2">
+                  <Label htmlFor="whatsappNumber">WhatsApp Number *</Label>
+                  <Input
+                    id="whatsappNumber"
+                    placeholder="+1234567890"
+                    value={newPlatform.whatsappNumber}
+                    onChange={(e) => setNewPlatform(prev => ({ ...prev, whatsappNumber: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Include country code (e.g., +1 for US, +62 for Indonesia)
+                  </p>
+                </div>
+
+                {/* Select AI Agent */}
+                <div className="space-y-2">
+                  <Label htmlFor="aiAgent">Select AI Agent (1) *</Label>
+                  {aiAgentsLoading ? (
+                    <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+                  ) : (
+                    <Select value={newPlatform.selectedAIAgent} onValueChange={(value) => setNewPlatform(prev => ({ ...prev, selectedAIAgent: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose an AI agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {aiAgents.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                {/* Select Human Agents */}
+                <div className="space-y-2">
+                  <Label>Select Human Agents (multiple)</Label>
+                  {humanAgentsLoading ? (
+                    <div className="text-sm text-muted-foreground">Loading human agents...</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {humanAgents.map((agent) => (
+                        <div key={agent.user_id} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id={agent.user_id}
+                            checked={newPlatform.selectedHumanAgents.includes(agent.user_id)}
+                            onChange={() => handleHumanAgentToggle(agent.user_id)}
+                            className="rounded border-gray-300"
+                          />
+                          <Label htmlFor={agent.user_id} className="text-sm cursor-pointer">
+                            {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setIsAddPlatformDialogOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleAddPlatform} 
+                  disabled={
+                    isSubmitting || 
+                    !newPlatform.brandName || 
+                    !newPlatform.whatsappDisplayName || 
+                    !newPlatform.whatsappNumber || 
+                    !newPlatform.selectedAIAgent
+                  }
+                >
+                  {isSubmitting ? "Creating..." : "Create Platform"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <p className="text-xs text-muted-foreground mt-2 text-center">
             Add a new Whatsapp Inbox
           </p>
@@ -234,17 +563,36 @@ const ConnectedPlatforms = () => {
                 <Camera className="h-6 w-6 text-muted-foreground" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">{selectedInboxData?.name.toUpperCase()}</h1>
-                <p className="text-muted-foreground">{selectedInboxData?.platform}</p>
+                <h1 className="text-2xl font-bold">
+                  {selectedPlatformData ? selectedPlatformData.brand_name.toUpperCase() : 'Select Platform'}
+                </h1>
+                <p className="text-muted-foreground">
+                  {selectedPlatformData ? selectedPlatformData.whatsapp_display_name : 'Choose a platform to manage'}
+                </p>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm">
-                Sim
-              </Button>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
+              {selectedPlatformData && (
+                <>
+                  <Button variant="outline" size="sm">
+                    Sim
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      if (selectedPlatformData) {
+                        deletePlatform(selectedPlatformData.id);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 

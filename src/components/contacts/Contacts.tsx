@@ -215,13 +215,13 @@ export default function Contacts() {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button 
+                        {/* <Button 
                           size="sm" 
                           className="h-8 w-8 p-0 bg-red-500 hover:bg-red-600"
                           onClick={() => handleDeleteContact(contact.id)}
                         >
                           ×
-                        </Button>
+                        </Button> */}
                       </div>
                     </TableCell>
                     <TableCell className="font-medium">{contact.name || 'Unnamed Contact'}</TableCell>
