@@ -142,7 +142,7 @@ export const usePlatforms = () => {
            whatsapp_display_name: platformData.whatsapp_display_name,
            profile_photo_url: platformData.profile_photo_url,
            whatsapp_number: platformData.whatsapp_number,
-           ai_profile_id: platformData.ai_agent_id, // Changed from ai_agent_id to ai_profile_id
+           ai_profile_id: platformData.ai_profile_id, // Changed from ai_agent_id to ai_profile_id
          })
          .select()
          .single();
