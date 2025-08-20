@@ -23,8 +23,8 @@ const ConnectedPlatforms = () => {
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState("gultik-ai");
-  const [selectedHumanAgent, setSelectedHumanAgent] = useState("agent-01");
+  const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [selectedHumanAgent, setSelectedHumanAgent] = useState<string>("");
 
   // Add Platform dialog state
   const [isAddPlatformDialogOpen, setIsAddPlatformDialogOpen] = useState(false);
@@ -74,6 +74,13 @@ const ConnectedPlatforms = () => {
       setSelectedPlatform(platforms[0].id);
     }
   }, [platforms, selectedPlatform]);
+
+  // Set the first AI agent as default selected if available
+  useEffect(() => {
+    if (aiAgents.length > 0 && !selectedAgent) {
+      setSelectedAgent(aiAgents[0].id);
+    }
+  }, [aiAgents, selectedAgent]);
 
   const businessCategories = [
     "E-commerce",
@@ -611,14 +618,22 @@ const ConnectedPlatforms = () => {
                       <CardTitle className="text-base">AI Agent</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="gultik-ai">🤖 GULTIK AI</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      {aiAgentsLoading ? (
+                        <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+                      ) : (
+                        <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose an AI agent" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {aiAgents.map((agent) => (
+                              <SelectItem key={agent.id} value={agent.id}>
+                                🤖 {agent.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -644,14 +659,22 @@ const ConnectedPlatforms = () => {
                       <CardTitle className="text-base">Human Agent</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex gap-2">
-                        <div className="flex items-center gap-2 bg-muted px-3 py-1 rounded-md">
-                          <span className="text-sm">👤 Agent 01</span>
-                          <Button variant="ghost" size="sm" className="h-4 w-4 p-0">
-                            <X className="h-3 w-3" />
-                          </Button>
+                      {humanAgentsLoading ? (
+                        <div className="text-sm text-muted-foreground">Loading human agents...</div>
+                      ) : humanAgents.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {humanAgents.map((agent) => (
+                            <div key={agent.user_id} className="flex items-center gap-2 bg-muted px-3 py-1 rounded-md">
+                              <span className="text-sm">👤 {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}</span>
+                              <Button variant="ghost" size="sm" className="h-4 w-4 p-0">
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
                         </div>
-                      </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No human agents available</p>
+                      )}
                     </CardContent>
                   </Card>
 
