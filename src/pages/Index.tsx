@@ -27,7 +27,7 @@ type NavKey =
   | "aiagents"
   | "humanagents"
   | "settings"
-  | "billings"
+  // | "billings"
   | "profile"
   | "home";
 
@@ -137,7 +137,7 @@ const Index = () => {
           <div className="mt-auto flex flex-col gap-1 pt-6">
             <Separator className="mb-3" />
             <NavItem icon={SettingsIcon} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
-            <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} />
+            {/* <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} /> */}
             <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => navigate("/profile")} collapsed={!sidebarExpanded} />
           </div>
         </aside>
