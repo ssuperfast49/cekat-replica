@@ -103,21 +103,42 @@ export const useConversations = () => {
       const { data, error } = await supabase
         .from('messages')
         .select(`
-          *,
-          threads!inner(
-            contacts!inner(name, phone, email)
-          )
+          id,
+          thread_id,
+          direction,
+          role,
+          type,
+          body,
+          payload,
+          actor_kind,
+          actor_id,
+          seq,
+          in_reply_to,
+          edited_at,
+          edit_reason,
+          created_at
         `)
         .eq('thread_id', threadId)
         .order('seq', { ascending: true });
 
       if (error) throw error;
 
+      // Get contact info from thread
+      const { data: threadData } = await supabase
+        .from('threads')
+        .select(`
+          contacts!inner(name, phone, email)
+        `)
+        .eq('id', threadId)
+        .single();
+
+      const contactName = (threadData?.contacts as any)?.name || 'Unknown Contact';
+
       // Transform data to match the expected format
       const transformedData: MessageWithDetails[] = (data || []).map((message: any) => ({
         ...message,
-        contact_name: message.threads?.contacts?.name || 'Unknown Contact',
-        contact_avatar: (message.threads?.contacts?.name || 'U')[0].toUpperCase()
+        contact_name: contactName,
+        contact_avatar: contactName[0]?.toUpperCase() || 'U'
       }));
 
       setMessages(transformedData);
