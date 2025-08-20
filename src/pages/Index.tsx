@@ -6,13 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings, CreditCard, UserRound, LogOut, User, ChevronDown } from "lucide-react";
+import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, CreditCard, UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ChatMock from "@/components/chat/ChatMock";
 import Analytics from "@/components/analytics/Analytics";
 import Contacts from "@/components/contacts/Contacts";
 import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
 import AIAgents from "@/components/aiagents/AIAgents";
+import Settings from "@/components/settings/Settings";
+import HumanAgents from "@/components/humanagents/HumanAgents";
 import { cn } from "@/lib/utils";
 
 type NavKey =
@@ -134,7 +136,7 @@ const Index = () => {
           {/* Footer Navigation - Always Visible */}
           <div className="mt-auto flex flex-col gap-1 pt-6">
             <Separator className="mb-3" />
-            <NavItem icon={Settings} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
+            <NavItem icon={SettingsIcon} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
             <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} />
             <NavItem icon={UserRound} label="Profile" active={active === "profile"} onClick={() => navigate("/profile")} collapsed={!sidebarExpanded} />
           </div>
@@ -146,8 +148,14 @@ const Index = () => {
           <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
               <div className="flex items-center gap-2 md:gap-3">
-                <Button variant="secondary" className="hidden md:inline-flex">Help Center</Button>
-                <Button variant="secondary">WA Support</Button>
+                <Button variant="outline" className="hidden md:inline-flex gap-2 text-blue-600 border-blue-200 hover:bg-blue-50">
+                  <HelpCircle className="h-4 w-4" />
+                  Help Center
+                </Button>
+                <Button variant="outline" className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50">
+                  <MessageCircle className="h-4 w-4" />
+                  WA Support
+                </Button>
               </div>
               <div className="flex items-center gap-3">
                 <Badge className="hidden sm:inline-flex bg-success text-success-foreground">Online</Badge>
@@ -215,6 +223,16 @@ const Index = () => {
               <>
                 <h1 className="sr-only">AI Agents</h1>
                 <AIAgents />
+              </>
+            ) : active === "settings" ? (
+              <>
+                <h1 className="text-2xl font-bold tracking-tight md:text-3xl mb-6">Settings</h1>
+                <Settings />
+              </>
+            ) : active === "humanagents" ? (
+              <>
+                <h1 className="sr-only">Human Agents</h1>
+                <HumanAgents />
               </>
             ) : (
               <>
