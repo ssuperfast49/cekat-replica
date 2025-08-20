@@ -13,6 +13,7 @@ import { useConversations, ConversationWithDetails, MessageWithDetails } from "@
 import { useContacts } from "@/hooks/useContacts";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import { ChatFilter } from './ChatFilter';
 
 // Legacy interfaces for backward compatibility
@@ -76,7 +77,14 @@ export default function ChatMock() {
     fetchConversations,
     fetchMessages,
     createConversation,
+    // exposed action to assign a thread to a user
+    assignThread,
+    setConversationBlocked,
+    setAIAccessEnabled,
   } = useConversations();
+
+  // Current logged-in user
+  const { user } = useAuth();
 
   // Use the contacts hook
   const { createContact } = useContacts();
@@ -354,6 +362,38 @@ export default function ChatMock() {
 
   const handleConversationSelect = (conversation: Conversation) => {
     fetchMessages(conversation.id);
+  };
+
+  const handleTakeoverChat = async () => {
+    if (!selectedThreadId) {
+      toast.error('No conversation selected');
+      return;
+    }
+    if (!user?.id) {
+      toast.error('You must be signed in to take over');
+      return;
+    }
+    try {
+      await assignThread(selectedThreadId, user.id);
+      toast.success('You are now assigned to this chat');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      toast.error(`Failed to take over chat: ${message}`);
+    }
+  };
+
+  const toggleConversationAccess = async () => {
+    if (!selectedThreadId) return;
+    const current = conversations.find(c => c.id === selectedThreadId);
+    if (!current) return;
+    await setConversationBlocked(selectedThreadId, !current.is_blocked);
+  };
+
+  const toggleAIAccess = async () => {
+    if (!selectedThreadId) return;
+    const current = conversations.find(c => c.id === selectedThreadId);
+    if (!current) return;
+    await setAIAccessEnabled(selectedThreadId, !current.ai_access_enabled);
   };
 
   // Auto-scroll to bottom when messages change
@@ -635,9 +675,9 @@ export default function ChatMock() {
               </div>
             </div>
           </div>
-          <Badge className={selected.assigned ? "bg-success text-success-foreground" : "bg-secondary text-secondary-foreground"}>
-            {selected.assigned ? 'Assigned' : 'Unassigned'}
-          </Badge>
+          {selected.assigned && (
+            <Badge className="bg-success text-success-foreground">Assigned</Badge>
+          )}
         </header>
 
         <ScrollArea className="flex-1 p-4">
@@ -650,28 +690,38 @@ export default function ChatMock() {
         </ScrollArea>
 
         <footer className="border-t p-3">
-          <div className="flex items-center gap-2">
-            <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-              placeholder={`Message ${selected.name || 'contact'}...`}
-              aria-label="Type a message"
-              disabled={!selectedThreadId}
-            />
-            <Button 
-              onClick={send} 
-              className="bg-brand text-brand-foreground hover:opacity-90"
-              disabled={!selectedThreadId || !draft.trim()}
+          {selectedThreadId && !selected.assigned ? (
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleTakeoverChat}
+              disabled={!user?.id}
             >
-              Send
+              Click to Takeover Chat
             </Button>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder={`Message ${selected.name || 'contact'}...`}
+                aria-label="Type a message"
+                disabled={!selectedThreadId}
+              />
+              <Button 
+                onClick={send} 
+                className="bg-brand text-brand-foreground hover:opacity-90"
+                disabled={!selectedThreadId || !draft.trim()}
+              >
+                Send
+              </Button>
+            </div>
+          )}
         </footer>
       </article>
 
@@ -705,11 +755,8 @@ export default function ChatMock() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium">Handled By</h3>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
-                J
-              </div>
-              <span className="text-sm">Julian</span>
+            <div className="text-sm">
+              {selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.assignee_name || '—') : '—'}
             </div>
           </div>
 
@@ -764,31 +811,31 @@ export default function ChatMock() {
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Assigned By</span>
-                <span>-</span>
+                <span>{selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.assigned_by_name || '—') : '—'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Handled By</span>
-                <span>Julian</span>
+                <span>{selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.assignee_name || '—') : '—'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Resolved By</span>
-                <span>Agent 01</span>
+                <span>{selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.resolved_by_name || '—') : '—'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">AI Handoff At</span>
-                <span>August 13th 2025, 2:57 pm</span>
+                <span>{selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.ai_handoff_at ? new Date(conversations.find(c=>c.id===selectedThreadId)!.ai_handoff_at as string).toLocaleString() : '—' ) : '—'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Assigned At</span>
-                <span>August 13th 2025, 3:18 pm</span>
+                <span>{selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.assigned_at ? new Date(conversations.find(c=>c.id===selectedThreadId)!.assigned_at as string).toLocaleString() : '—') : '—'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Created At</span>
-                <span>August 13th 2025, 2:51 pm</span>
+                <span>{selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.created_at ? new Date(conversations.find(c=>c.id===selectedThreadId)!.created_at as string).toLocaleString() : '—') : '—'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Resolved At</span>
-                <span>August 13th 2025, 3:16 pm</span>
+                <span>{selectedThreadId ? (conversations.find(c=>c.id===selectedThreadId)?.resolved_at ? new Date(conversations.find(c=>c.id===selectedThreadId)!.resolved_at as string).toLocaleString() : '—') : '—'}</span>
               </div>
             </div>
           </div>
@@ -798,19 +845,23 @@ export default function ChatMock() {
           {/* Conversation Access */}
           <div>
             <h3 className="text-sm font-medium mb-2">Conversation Access</h3>
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-green-500"></div>
-              <span className="text-sm text-green-600">Active - Click to Block</span>
-            </div>
+            <button type="button" onClick={toggleConversationAccess} className="flex items-center gap-2 text-left">
+              <div className={`h-2 w-2 rounded-full ${selectedThreadId && !conversations.find(c=>c.id===selectedThreadId)?.is_blocked ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className={`text-sm ${selectedThreadId && !conversations.find(c=>c.id===selectedThreadId)?.is_blocked ? 'text-green-600' : 'text-red-600'}`}>
+                {selectedThreadId && !conversations.find(c=>c.id===selectedThreadId)?.is_blocked ? 'Active - Click to Block' : 'Blocked - Click to Unblock'}
+              </span>
+            </button>
           </div>
 
           {/* AI Access */}
           <div>
             <h3 className="text-sm font-medium mb-2">AI Access</h3>
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-green-500"></div>
-              <span className="text-sm text-green-600">AI Access - Click to Block</span>
-            </div>
+            <button type="button" onClick={toggleAIAccess} className="flex items-center gap-2 text-left">
+              <div className={`h-2 w-2 rounded-full ${selectedThreadId && conversations.find(c=>c.id===selectedThreadId)?.ai_access_enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className={`text-sm ${selectedThreadId && conversations.find(c=>c.id===selectedThreadId)?.ai_access_enabled ? 'text-green-600' : 'text-red-600'}`}>
+                {selectedThreadId && conversations.find(c=>c.id===selectedThreadId)?.ai_access_enabled ? 'AI Access - Click to Block' : 'AI Blocked - Click to Allow'}
+              </span>
+            </button>
           </div>
         </div>
       </aside>
