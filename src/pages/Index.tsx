@@ -140,7 +140,27 @@ const Index = () => {
             <NavItem icon={SettingsIcon} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
             {/* <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} /> */}
             <ProfilePopover>
-              <NavItem icon={UserRound} label="Profile" active={active === "profile"} collapsed={!sidebarExpanded} />
+              <button
+                type="button"
+                className={cn(
+                  "group grid h-10 w-full grid-cols-[1.125rem,1fr] items-center rounded-md px-3 text-left text-sm transition-all duration-200 gap-2",
+                  active === "profile"
+                    ? "bg-blue-100 text-blue-700 border border-blue-200"
+                    : "text-muted-foreground hover:bg-blue-50 hover:text-blue-600 hover:border hover:border-blue-100",
+                  !sidebarExpanded && "grid-cols-[1.125rem,0fr]"
+                )}
+                title={!sidebarExpanded ? "Profile" : undefined}
+              >
+                <UserRound className={`h-4 w-4 shrink-0 transition-colors ${active === "profile" ? "text-blue-600" : "group-hover:text-blue-600"}`} />
+                <span
+                  className={cn(
+                    "overflow-hidden whitespace-nowrap text-ellipsis transition-opacity duration-200",
+                    !sidebarExpanded && "opacity-0 pointer-events-none",
+                  )}
+                >
+                  Profile
+                </span>
+              </button>
             </ProfilePopover>
           </div>
         </aside>
@@ -186,10 +206,10 @@ const Index = () => {
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <ProfilePopover>
-                      <DropdownMenuItem>
+                      <button className="flex items-center w-full px-2 py-1.5 text-sm text-left hover:bg-accent hover:text-accent-foreground rounded-sm">
                         <User className="mr-2 h-4 w-4" />
                         <span>Profile</span>
-                      </DropdownMenuItem>
+                      </button>
                     </ProfilePopover>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut}>
