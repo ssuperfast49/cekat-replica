@@ -100,7 +100,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
           <Filter className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Filter</DialogTitle>
         </DialogHeader>

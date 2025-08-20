@@ -43,10 +43,10 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
       <PopoverTrigger asChild>
         {children}
       </PopoverTrigger>
-      <PopoverContent className="w-[500px] h-[320px] p-0 overflow-hidden" side="left" align="start">
+      <PopoverContent className="w-[300px] h-[320px] p-0 overflow-hidden" side="left" align="start">
         <div className="flex h-full">
           {/* Sidebar */}
-          <div className="w-36 bg-muted/20 border-r border-border p-3">
+          {/* <div className="w-36 bg-muted/20 border-r border-border p-3">
             <nav className="space-y-1">
               {sidebarItems.map((item) => {
                 const Icon = item.icon;
@@ -67,7 +67,7 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
                 );
               })}
             </nav>
-          </div>
+          </div> */}
 
           {/* Main Content */}
           <div className="flex-1 p-4">
