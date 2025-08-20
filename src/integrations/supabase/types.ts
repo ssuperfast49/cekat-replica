@@ -1190,6 +1190,60 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_human_agents: {
+        Row: {
+          created_at: string
+          platform_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          platform_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          platform_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      platforms: {
+        Row: {
+          ai_profile_id: string | null
+          business_category: string | null
+          created_at: string
+          id: string
+          org_id: string
+          profile_photo_url: string | null
+          updated_at: string
+          whatsapp_display_name: string | null
+          whatsapp_number: string | null
+        }
+        Insert: {
+          ai_profile_id?: string | null
+          business_category?: string | null
+          created_at?: string
+          id?: string
+          org_id: string
+          profile_photo_url?: string | null
+          updated_at?: string
+          whatsapp_display_name?: string | null
+          whatsapp_number?: string | null
+        }
+        Update: {
+          ai_profile_id?: string | null
+          business_category?: string | null
+          created_at?: string
+          id?: string
+          org_id?: string
+          profile_photo_url?: string | null
+          updated_at?: string
+          whatsapp_display_name?: string | null
+          whatsapp_number?: string | null
+        }
+        Relationships: []
+      }
       quick_replies: {
         Row: {
           channel: Database["public"]["Enums"]["channel_type"] | null
