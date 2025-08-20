@@ -27,74 +27,28 @@ export const useAIAgents = () => {
 
       console.log('Fetching AI agents...');
 
-      // First try to fetch all AI profiles to see what's available
-      const { data: allAiAgentsData, error: allAiAgentsError } = await supabase
+      // Fetch all AI profiles for selection
+      const { data: aiAgentsData, error: aiAgentsError } = await supabase
         .from('ai_profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
-      console.log('All AI agents data:', allAiAgentsData);
-      console.log('All AI agents error:', allAiAgentsError);
+      console.log('AI agents data:', aiAgentsData);
+      console.log('AI agents error:', aiAgentsError);
 
-      if (allAiAgentsError) {
-        console.error('Error fetching all AI agents:', allAiAgentsError);
-        // Try with organization-specific query as fallback
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          console.log('No authenticated user');
-          setAIAgents([]);
-          return;
-        }
-
-        // Get user's organization
-        const { data: userOrgMember, error: userOrgError } = await supabase
-          .from('org_members')
-          .select('org_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        console.log('User org member:', userOrgMember);
-        console.log('User org error:', userOrgError);
-
-        if (userOrgError || !userOrgMember) {
-          console.log('No org membership found, using default org');
-          // Try with default org
-          const { data: defaultOrgData, error: defaultOrgError } = await supabase
-            .from('ai_profiles')
-            .select('*')
-            .eq('org_id', '00000000-0000-0000-0000-000000000001')
-            .order('created_at', { ascending: false });
-
-          console.log('Default org AI agents:', defaultOrgData);
-          setAIAgents(defaultOrgData || []);
-          return;
-        }
-
-        const orgId = userOrgMember.org_id;
-
-        // Fetch AI agents from ai_profiles table for user's org
-        const { data: aiAgentsData, error: aiAgentsError } = await supabase
-          .from('ai_profiles')
-          .select('*')
-          .eq('org_id', orgId)
-          .order('created_at', { ascending: false });
-
-        console.log('Org-specific AI agents:', aiAgentsData);
-        if (aiAgentsError) {
-          console.error('Error fetching org AI agents:', aiAgentsError);
-          setError(aiAgentsError.message);
-          return;
-        }
-
-        setAIAgents(aiAgentsData || []);
-      } else {
-        // If we got all agents successfully, use them
-        console.log('Successfully fetched all AI agents:', allAiAgentsData);
-        setAIAgents(allAiAgentsData || []);
+      if (aiAgentsError) {
+        console.error('Error fetching AI agents:', aiAgentsError);
+        setError(aiAgentsError.message);
+        setAIAgents([]);
+        return;
       }
+
+      console.log('Successfully fetched AI agents:', aiAgentsData);
+      setAIAgents(aiAgentsData || []);
     } catch (error) {
       console.error('Error fetching AI agents:', error);
       setError('Failed to fetch AI agents');
+      setAIAgents([]);
     } finally {
       setLoading(false);
     }
