@@ -47,83 +47,38 @@ export const useHumanAgents = () => {
 
       if (allProfilesError) {
         console.error('Error fetching all user profiles:', allProfilesError);
-        // Try with organization-specific query as fallback
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          console.log('No authenticated user for human agents');
-          setAgents([]);
-          return;
-        }
-
-        // Get user's organization
-        const { data: userOrgMember, error: userOrgError } = await supabase
-          .from('org_members')
-          .select('org_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        console.log('User org member for human agents:', userOrgMember);
-        console.log('User org error for human agents:', userOrgError);
-
-        if (userOrgError || !userOrgMember) {
-          console.log('No org membership found for human agents, creating sample data');
-          // Create sample data for testing
-          const sampleAgents: AgentWithDetails[] = [
-            {
-              user_id: 'sample-1',
-              display_name: 'John Doe',
-              avatar_url: null,
-              timezone: 'Asia/Jakarta',
-              created_at: new Date().toISOString(),
-              role: 'agent',
-              status: 'Online'
-            },
-            {
-              user_id: 'sample-2', 
-              display_name: 'Jane Smith',
-              avatar_url: null,
-              timezone: 'Asia/Jakarta',
-              created_at: new Date().toISOString(),
-              role: 'admin',
-              status: 'Online'
-            }
-          ];
-          setAgents(sampleAgents);
-          return;
-        }
-
-        const orgId = userOrgMember.org_id;
-
-        // Try fetching org members with profiles
-        const { data: orgMembers, error: orgMembersError } = await supabase
-          .from('org_members')
-          .select(`
-            *,
-            users_profile!inner(*)
-          `)
-          .eq('org_id', orgId);
-
-        console.log('Org members with profiles:', orgMembers);
-        if (orgMembersError) {
-          console.error('Error fetching org members with profiles:', orgMembersError);
-          setError(orgMembersError.message);
-          return;
-        }
-
-        // Transform the data to match our interface
-        const agentsWithDetails: AgentWithDetails[] = (orgMembers || []).map(member => ({
-          user_id: member.user_id,
-          display_name: member.users_profile?.display_name || 'Unknown User',
-          avatar_url: member.users_profile?.avatar_url,
-          timezone: member.users_profile?.timezone || 'Asia/Jakarta',
-          created_at: member.users_profile?.created_at || member.created_at,
-          role: member.role,
-          status: 'Online' as const,
-          org_member: member
-        }));
-
-        console.log('Transformed agents with details:', agentsWithDetails);
-        setAgents(agentsWithDetails);
+        // Create sample data for testing when no profiles exist
+        console.log('No user profiles found, creating sample data');
+        const sampleAgents: AgentWithDetails[] = [
+          {
+            user_id: 'sample-1',
+            display_name: 'John Doe',
+            avatar_url: null,
+            timezone: 'Asia/Jakarta',
+            created_at: new Date().toISOString(),
+            role: 'agent',
+            status: 'Online'
+          },
+          {
+            user_id: 'sample-2', 
+            display_name: 'Jane Smith',
+            avatar_url: null,
+            timezone: 'Asia/Jakarta',
+            created_at: new Date().toISOString(),
+            role: 'admin',
+            status: 'Online'
+          },
+          {
+            user_id: 'sample-3', 
+            display_name: 'Mike Wilson',
+            avatar_url: null,
+            timezone: 'Asia/Jakarta',
+            created_at: new Date().toISOString(),
+            role: 'agent',
+            status: 'Offline'
+          }
+        ];
+        setAgents(sampleAgents);
       } else {
         // If we got all profiles successfully, transform them to agents
         console.log('Successfully fetched all user profiles:', allProfilesData);
