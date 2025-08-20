@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
 import { Settings, CreditCard, User, Lock, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -43,13 +42,10 @@ const ProfileDialog = ({ open, onOpenChange }: ProfileDialogProps) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[600px] p-0 overflow-hidden">
+      <DialogContent className="max-w-2xl h-[400px] p-0 overflow-hidden">
         <div className="flex h-full">
           {/* Sidebar */}
-          <div className="w-64 bg-muted/30 border-r border-border p-4">
-            <DialogHeader className="px-0 pb-4">
-              <DialogTitle className="text-lg font-semibold">Account</DialogTitle>
-            </DialogHeader>
+          <div className="w-48 bg-muted/20 border-r border-border p-4">
             <nav className="space-y-1">
               {sidebarItems.map((item) => {
                 const Icon = item.icon;
@@ -74,88 +70,64 @@ const ProfileDialog = ({ open, onOpenChange }: ProfileDialogProps) => {
 
           {/* Main Content */}
           <div className="flex-1 p-6">
-            {activeTab === "profile" && (
-              <div className="space-y-6">
-                {/* User Info */}
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-16 w-16">
-                    <AvatarImage src={user?.user_metadata?.avatar_url} alt={user?.user_metadata?.full_name || user?.email} />
-                    <AvatarFallback className="text-lg bg-primary text-primary-foreground">
-                      {getUserInitials(user?.user_metadata?.full_name, user?.email || '')}
-                    </AvatarFallback>
-                  </Avatar>
+            <div className="space-y-6">
+              {/* User Info */}
+              <div className="flex items-center gap-4">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={user?.user_metadata?.avatar_url} alt={user?.user_metadata?.full_name || user?.email} />
+                  <AvatarFallback className="text-sm bg-blue-100 text-blue-600">
+                    {getUserInitials(user?.user_metadata?.full_name, user?.email || '')}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h2 className="text-lg font-semibold">{user?.user_metadata?.full_name || 'Audit 4'}</h2>
+                  <p className="text-sm text-muted-foreground">{user?.email}</p>
+                </div>
+              </div>
+
+              {/* Settings */}
+              <div className="space-y-4">
+                {/* Online Status */}
+                <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-semibold">{user?.user_metadata?.full_name || 'User'}</h2>
-                    <p className="text-muted-foreground">{user?.email}</p>
+                    <span className="text-sm text-muted-foreground">Online Status</span>
+                    <div className="text-sm font-medium">Online</div>
                   </div>
+                  <Switch
+                    checked={onlineStatus}
+                    onCheckedChange={setOnlineStatus}
+                  />
                 </div>
 
-                <Separator />
-
-                {/* Settings */}
-                <div className="space-y-6">
-                  {/* Online Status */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Online Status</label>
-                      <p className="text-sm text-foreground">{onlineStatus ? "Online" : "Offline"}</p>
-                    </div>
-                    <Switch
-                      checked={onlineStatus}
-                      onCheckedChange={setOnlineStatus}
-                    />
+                {/* Notifications */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm text-muted-foreground">Notifications</span>
+                    <div className="text-sm font-medium">Disabled</div>
                   </div>
+                  <Switch
+                    checked={notifications}
+                    onCheckedChange={setNotifications}
+                  />
+                </div>
 
-                  {/* Notifications */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Notifications</label>
-                      <p className="text-sm text-foreground">{notifications ? "Enabled" : "Disabled"}</p>
-                    </div>
-                    <Switch
-                      checked={notifications}
-                      onCheckedChange={setNotifications}
-                    />
-                  </div>
+                {/* Reset Password */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Reset Password</span>
+                  <Button variant="ghost" size="sm" className="p-2">
+                    <Lock className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </div>
 
-                  <Separator />
-
-                  {/* Actions */}
-                  <div className="space-y-3">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start gap-3"
-                    >
-                      <Lock className="h-4 w-4" />
-                      Reset Password
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start gap-3 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={handleSignOut}
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Log Out
-                    </Button>
-                  </div>
+                {/* Log Out */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Log Out</span>
+                  <Button variant="ghost" size="sm" className="p-2" onClick={handleSignOut}>
+                    <LogOut className="h-4 w-4 text-muted-foreground" />
+                  </Button>
                 </div>
               </div>
-            )}
-
-            {activeTab === "settings" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Settings</h3>
-                <p className="text-muted-foreground">Application settings will be available here.</p>
-              </div>
-            )}
-
-            {activeTab === "billings" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Billings</h3>
-                <p className="text-muted-foreground">Billing information and subscription details will be available here.</p>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </DialogContent>
