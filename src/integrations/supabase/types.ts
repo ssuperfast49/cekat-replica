@@ -1385,33 +1385,60 @@ export type Database = {
       }
       threads: {
         Row: {
+          additional_data: Json
+          ai_access_enabled: boolean
+          ai_handoff_at: string | null
+          assigned_at: string | null
+          assigned_by_user_id: string | null
           assignee_user_id: string | null
           channel_id: string
           contact_id: string
           created_at: string
           id: string
+          is_blocked: boolean
           last_msg_at: string
+          notes: string | null
           org_id: string
+          resolved_at: string | null
+          resolved_by_user_id: string | null
           status: Database["public"]["Enums"]["thread_status"]
         }
         Insert: {
+          additional_data?: Json
+          ai_access_enabled?: boolean
+          ai_handoff_at?: string | null
+          assigned_at?: string | null
+          assigned_by_user_id?: string | null
           assignee_user_id?: string | null
           channel_id: string
           contact_id: string
           created_at?: string
           id?: string
+          is_blocked?: boolean
           last_msg_at?: string
+          notes?: string | null
           org_id: string
+          resolved_at?: string | null
+          resolved_by_user_id?: string | null
           status?: Database["public"]["Enums"]["thread_status"]
         }
         Update: {
+          additional_data?: Json
+          ai_access_enabled?: boolean
+          ai_handoff_at?: string | null
+          assigned_at?: string | null
+          assigned_by_user_id?: string | null
           assignee_user_id?: string | null
           channel_id?: string
           contact_id?: string
           created_at?: string
           id?: string
+          is_blocked?: boolean
           last_msg_at?: string
+          notes?: string | null
           org_id?: string
+          resolved_at?: string | null
+          resolved_by_user_id?: string | null
           status?: Database["public"]["Enums"]["thread_status"]
         }
         Relationships: [

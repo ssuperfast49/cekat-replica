@@ -8,6 +8,15 @@ export interface Thread {
   channel_id: string;
   status: 'open' | 'pending' | 'closed';
   assignee_user_id: string | null;
+  assigned_by_user_id?: string | null;
+  resolved_by_user_id?: string | null;
+  ai_handoff_at?: string | null;
+  assigned_at?: string | null;
+  resolved_at?: string | null;
+  is_blocked?: boolean;
+  ai_access_enabled?: boolean;
+  notes?: string | null;
+  additional_data?: any;
   last_msg_at: string;
   created_at: string;
 }
@@ -39,6 +48,9 @@ export interface ConversationWithDetails extends Thread {
   last_message_preview: string;
   message_count: number;
   assigned: boolean;
+  assigned_by_name?: string;
+  assignee_name?: string;
+  resolved_by_name?: string;
 }
 
 export interface MessageWithDetails extends Message {
@@ -72,6 +84,21 @@ export const useConversations = () => {
 
       if (error) throw error;
 
+      // Build user map for display names
+      const userIds: string[] = Array.from(new Set(
+        (data || []).flatMap((t: any) => [t.assigned_by_user_id, t.assignee_user_id, t.resolved_by_user_id]).filter(Boolean)
+      ));
+
+      let userIdToName: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles, error: profileErr } = await supabase
+          .from('users_profile')
+          .select('user_id, display_name')
+          .in('user_id', userIds);
+        if (profileErr) throw profileErr;
+        userIdToName = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.display_name || '—']));
+      }
+
       // Transform data to match the expected format
       const transformedData: ConversationWithDetails[] = (data || []).map((thread: any) => ({
         ...thread,
@@ -82,7 +109,10 @@ export const useConversations = () => {
         channel_type: thread.channels?.type || 'web',
         last_message_preview: 'Last message preview...', // This would come from messages table
         message_count: 0, // This would be calculated from messages table
-        assigned: !!thread.assignee_user_id
+        assigned: !!thread.assignee_user_id,
+        assigned_by_name: thread.assigned_by_user_id ? (userIdToName[thread.assigned_by_user_id] || '—') : '—',
+        assignee_name: thread.assignee_user_id ? (userIdToName[thread.assignee_user_id] || '—') : '—',
+        resolved_by_name: thread.resolved_by_user_id ? (userIdToName[thread.resolved_by_user_id] || '—') : '—',
       }));
 
       setConversations(transformedData);
@@ -103,21 +133,42 @@ export const useConversations = () => {
       const { data, error } = await supabase
         .from('messages')
         .select(`
-          *,
-          threads!inner(
-            contacts!inner(name, phone, email)
-          )
+          id,
+          thread_id,
+          direction,
+          role,
+          type,
+          body,
+          payload,
+          actor_kind,
+          actor_id,
+          seq,
+          in_reply_to,
+          edited_at,
+          edit_reason,
+          created_at
         `)
         .eq('thread_id', threadId)
         .order('seq', { ascending: true });
 
       if (error) throw error;
 
+      // Get contact info from thread
+      const { data: threadData } = await supabase
+        .from('threads')
+        .select(`
+          contacts!inner(name, phone, email)
+        `)
+        .eq('id', threadId)
+        .single();
+
+      const contactName = (threadData?.contacts as any)?.name || 'Unknown Contact';
+
       // Transform data to match the expected format
       const transformedData: MessageWithDetails[] = (data || []).map((message: any) => ({
         ...message,
-        contact_name: message.threads?.contacts?.name || 'Unknown Contact',
-        contact_avatar: (message.threads?.contacts?.name || 'U')[0].toUpperCase()
+        contact_name: contactName,
+        contact_avatar: contactName[0]?.toUpperCase() || 'U'
       }));
 
       setMessages(transformedData);
@@ -219,12 +270,13 @@ export const useConversations = () => {
       setError(null);
 
       const newThread = {
-        org_id: '00000000-0000-0000-0000-000000000001',
+        // org_id is enforced by RLS via WITH CHECK using org membership
+        org_id: (await supabase.auth.getUser()).data.user?.id || '00000000-0000-0000-0000-000000000001',
         contact_id: contactId,
         channel_id: channelId,
         status: 'open' as const,
         assignee_user_id: null
-      };
+      } as any;
 
       const { data, error } = await supabase
         .from('threads')
@@ -267,15 +319,13 @@ export const useConversations = () => {
     }
   };
 
-  // Assign thread to user
-  const assignThread = async (threadId: string, userId: string) => {
+  // Assign thread to current user (uses RPC to also set audit fields)
+  const assignThread = async (threadId: string, _userId: string) => {
     try {
       setError(null);
 
       const { error } = await supabase
-        .from('threads')
-        .update({ assignee_user_id: userId })
-        .eq('id', threadId);
+        .rpc('takeover_thread', { p_thread_id: threadId });
 
       if (error) throw error;
 
