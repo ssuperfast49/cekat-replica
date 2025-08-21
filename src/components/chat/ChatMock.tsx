@@ -108,15 +108,29 @@ export default function ChatMock() {
 
   // Transform messages to match the expected format
   const transformedMessages: Message[] = useMemo(() => {
-    return messages.map((msg) => ({
-      id: msg.id,
-      author: msg.direction === 'in' ? 'customer' : 'agent',
-      text: msg.body || '',
-      time: new Date(msg.created_at).toLocaleTimeString([], { 
-        hour: "2-digit", 
-        minute: "2-digit" 
-      }),
-    }));
+    return messages.map((msg) => {
+      // Determine author based on role and direction
+      let author: 'customer' | 'agent' = 'customer';
+      if (msg.role === 'assistant' || msg.role === 'agent') {
+        author = 'agent';
+      } else if (msg.role === 'user') {
+        author = 'customer';
+      } else if (msg.direction === 'out') {
+        author = 'agent';
+      } else if (msg.direction === 'in') {
+        author = 'customer';
+      }
+
+      return {
+        id: msg.id,
+        author,
+        text: msg.body || '',
+        time: new Date(msg.created_at).toLocaleTimeString([], { 
+          hour: "2-digit", 
+          minute: "2-digit" 
+        }),
+      };
+    });
   }, [messages]);
 
   // Get selected conversation
