@@ -24,10 +24,17 @@ export interface Thread {
 export interface Message {
   id: string;
   thread_id: string;
-  direction: 'in' | 'out';
+  direction: 'in' | 'out' | null;
   role: 'user' | 'assistant' | 'agent' | 'system';
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'location';
+  type: 'text' | 'image' | 'file' | 'voice' | 'event' | 'note';
   body: string | null;
+  payload: any | null;
+  actor_kind: 'customer' | 'agent' | 'ai' | 'system' | null;
+  actor_id: string | null;
+  seq: number;
+  in_reply_to: string | null;
+  edited_at: string | null;
+  edit_reason: string | null;
   created_at: string;
 }
 
@@ -72,7 +79,7 @@ export const useConversations = () => {
           contacts(name, phone, email),
           channels(display_name, type)
         `)
-        .eq('org_id', '00000000-0000-0000-0000-000000000001')
+        // NOTE: scope by org via RLS; avoid hardcoding org_id
         .order('last_msg_at', { ascending: false });
 
       if (error) throw error;
@@ -126,21 +133,42 @@ export const useConversations = () => {
       const { data, error } = await supabase
         .from('messages')
         .select(`
-          *,
-          threads!inner(
-            contacts!inner(name, phone, email)
-          )
+          id,
+          thread_id,
+          direction,
+          role,
+          type,
+          body,
+          payload,
+          actor_kind,
+          actor_id,
+          seq,
+          in_reply_to,
+          edited_at,
+          edit_reason,
+          created_at
         `)
         .eq('thread_id', threadId)
-        .order('created_at', { ascending: true });
+        .order('seq', { ascending: true });
 
       if (error) throw error;
+
+      // Get contact info from thread
+      const { data: threadData } = await supabase
+        .from('threads')
+        .select(`
+          contacts!inner(name, phone, email)
+        `)
+        .eq('id', threadId)
+        .single();
+
+      const contactName = (threadData?.contacts as any)?.name || 'Unknown Contact';
 
       // Transform data to match the expected format
       const transformedData: MessageWithDetails[] = (data || []).map((message: any) => ({
         ...message,
-        contact_name: message.threads?.contacts?.name || 'Unknown Contact',
-        contact_avatar: (message.threads?.contacts?.name || 'U')[0].toUpperCase()
+        contact_name: contactName,
+        contact_avatar: contactName[0]?.toUpperCase() || 'U'
       }));
 
       setMessages(transformedData);
@@ -163,11 +191,9 @@ export const useConversations = () => {
         role: 'assistant' as const,
         type: 'text' as const,
         body: messageText,
-        topic: 'chat',
-        extension: 'text',
         payload: {},
-        event: null,
-        private: false
+        actor_kind: 'agent' as const,
+        actor_id: null
       };
 
       const { data, error } = await supabase
@@ -195,12 +221,13 @@ export const useConversations = () => {
       setError(null);
 
       const newThread = {
-        org_id: '00000000-0000-0000-0000-000000000001',
+        // org_id is enforced by RLS via WITH CHECK using org membership
+        org_id: (await supabase.auth.getUser()).data.user?.id || '00000000-0000-0000-0000-000000000001',
         contact_id: contactId,
         channel_id: channelId,
         status: 'open' as const,
         assignee_user_id: null
-      };
+      } as any;
 
       const { data, error } = await supabase
         .from('threads')
@@ -263,36 +290,78 @@ export const useConversations = () => {
     }
   };
 
-  // Toggle conversation access (block/unblock)
-  const setConversationBlocked = async (threadId: string, blocked: boolean) => {
+  // Add participant to thread
+  const addThreadParticipant = async (threadId: string, userId: string) => {
     try {
       setError(null);
+
       const { error } = await supabase
-        .from('threads')
-        .update({ is_blocked: blocked })
-        .eq('id', threadId);
+        .from('thread_participants')
+        .insert([{ thread_id: threadId, user_id: userId }]);
+
       if (error) throw error;
-      await fetchConversations();
+
     } catch (error) {
-      console.error('Error updating conversation access:', error);
-      setError(error instanceof Error ? error.message : 'Failed to update conversation access');
+      console.error('Error adding thread participant:', error);
+      setError(error instanceof Error ? error.message : 'Failed to add thread participant');
       throw error;
     }
   };
 
-  // Toggle AI access on a conversation
-  const setAIAccessEnabled = async (threadId: string, enabled: boolean) => {
+  // Remove participant from thread
+  const removeThreadParticipant = async (threadId: string, userId: string) => {
     try {
       setError(null);
+
       const { error } = await supabase
-        .from('threads')
-        .update({ ai_access_enabled: enabled })
-        .eq('id', threadId);
+        .from('thread_participants')
+        .delete()
+        .eq('thread_id', threadId)
+        .eq('user_id', userId);
+
       if (error) throw error;
-      await fetchConversations();
+
     } catch (error) {
-      console.error('Error updating AI access:', error);
-      setError(error instanceof Error ? error.message : 'Failed to update AI access');
+      console.error('Error removing thread participant:', error);
+      setError(error instanceof Error ? error.message : 'Failed to remove thread participant');
+      throw error;
+    }
+  };
+
+  // Add label to thread
+  const addThreadLabel = async (threadId: string, labelId: string) => {
+    try {
+      setError(null);
+
+      const { error } = await supabase
+        .from('thread_labels')
+        .insert([{ thread_id: threadId, label_id: labelId }]);
+
+      if (error) throw error;
+
+    } catch (error) {
+      console.error('Error adding thread label:', error);
+      setError(error instanceof Error ? error.message : 'Failed to add thread label');
+      throw error;
+    }
+  };
+
+  // Remove label from thread
+  const removeThreadLabel = async (threadId: string, labelId: string) => {
+    try {
+      setError(null);
+
+      const { error } = await supabase
+        .from('thread_labels')
+        .delete()
+        .eq('thread_id', threadId)
+        .eq('label_id', labelId);
+
+      if (error) throw error;
+
+    } catch (error) {
+      console.error('Error removing thread label:', error);
+      setError(error instanceof Error ? error.message : 'Failed to remove thread label');
       throw error;
     }
   };
@@ -314,7 +383,9 @@ export const useConversations = () => {
     createConversation,
     updateThreadStatus,
     assignThread,
-    setConversationBlocked,
-    setAIAccessEnabled,
+    addThreadParticipant,
+    removeThreadParticipant,
+    addThreadLabel,
+    removeThreadLabel,
   };
 };
