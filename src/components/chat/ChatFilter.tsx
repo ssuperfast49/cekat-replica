@@ -16,13 +16,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { useAIAgents } from '@/hooks/useAIAgents';
 import { useHumanAgents } from '@/hooks/useHumanAgents';
 
@@ -48,6 +43,8 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
   const [open, setOpen] = useState(false);
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [resolvedOpen, setResolvedOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     dateRange: {},
     inbox: '',
@@ -197,19 +194,26 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Resolved By</label>
-              <Select value={filters.resolvedBy} onValueChange={(value) => handleFilterChange('resolvedBy', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose Agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Agents</SelectItem>
-                  {humanAgents.map((agent) => (
-                    <SelectItem key={agent.user_id} value={agent.user_id}>
-                      {agent.display_name || `Agent ${agent.user_id.slice(0, 8)}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={resolvedOpen} onOpenChange={setResolvedOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between">
+                    {humanAgents.find(a=>a.user_id===filters.resolvedBy)?.display_name || 'Choose Agent'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[320px] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search Resolved By Agent" />
+                    <CommandEmpty>No agent found.</CommandEmpty>
+                    <CommandGroup>
+                      {humanAgents.map(agent => (
+                        <CommandItem key={agent.user_id} onSelect={() => { handleFilterChange('resolvedBy', agent.user_id); setResolvedOpen(false); }}>
+                          <span className="ml-2">{agent.display_name || 'Unknown'}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
@@ -217,19 +221,26 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Agent</label>
-              <Select value={filters.agent} onValueChange={(value) => handleFilterChange('agent', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose Agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Agents</SelectItem>
-                  {humanAgents.map((agent) => (
-                    <SelectItem key={agent.user_id} value={agent.user_id}>
-                      {agent.display_name || `Agent ${agent.user_id.slice(0, 8)}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={agentOpen} onOpenChange={setAgentOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between">
+                    {humanAgents.find(a=>a.user_id===filters.agent)?.display_name || 'Choose Agent'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[320px] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search Handled By Agent" />
+                    <CommandEmpty>No agent found.</CommandEmpty>
+                    <CommandGroup>
+                      {humanAgents.map(agent => (
+                        <CommandItem key={agent.user_id} onSelect={() => { handleFilterChange('agent', agent.user_id); setAgentOpen(false); }}>
+                          <span className="ml-2">{agent.display_name || 'Unknown'}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-2">
