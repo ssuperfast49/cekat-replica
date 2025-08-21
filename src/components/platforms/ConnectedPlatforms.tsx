@@ -123,25 +123,39 @@ const ConnectedPlatforms = () => {
         throw new Error(`Request failed with status ${response.status}`);
       }
       
-      const json = await response.json();
-      const payload = Array.isArray(json) ? json[0] : json;
-      
-      if (!payload || !payload.data || !payload.mimetype) {
-        throw new Error("Invalid QR response shape");
+      // Check if response is an image
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('image/')) {
+        // Response is an image, convert to data URL
+        const blob = await response.blob();
+        const dataUrl = URL.createObjectURL(blob);
+        setQrImageUrl(dataUrl);
+      } else {
+        // Try to parse as JSON
+        try {
+          const json = await response.json();
+          const payload = Array.isArray(json) ? json[0] : json;
+          
+          if (!payload || !payload.data || !payload.mimetype) {
+            throw new Error("Invalid QR response shape");
+          }
+          
+          const dataUrl = `data:${payload.mimetype};base64,${payload.data}`;
+          setQrImageUrl(dataUrl);
+        } catch (jsonError) {
+          // If JSON parsing fails, try to get the response as text and check if it's base64
+          const text = await response.text();
+          if (text && text.length > 0) {
+            // Assume it's a base64 encoded image
+            const dataUrl = `data:image/png;base64,${text}`;
+            setQrImageUrl(dataUrl);
+          } else {
+            throw new Error("Invalid response format");
+          }
+        }
       }
       
-      const dataUrl = `data:${payload.mimetype};base64,${payload.data}`;
-      setQrImageUrl(dataUrl);
-      
-      // Simulate successful connection after QR generation
-      setTimeout(() => {
-        setIsWhatsAppConnected(true);
-        setIsFetchingQR(false);
-        toast({
-          title: "Success",
-          description: "WhatsApp connected successfully!",
-        });
-      }, 2000);
+      setIsFetchingQR(false);
       
     } catch (error: any) {
       setQrError(error?.message || "Failed to generate QR");
@@ -158,6 +172,15 @@ const ConnectedPlatforms = () => {
         profilePhotoUrl = await uploadProfilePhoto(newPlatform.profilePhoto);
       }
 
+      // Format phone number to required format: 6287776858347@c.us
+      let formattedPhoneNumber = formData.phoneNumber;
+      if (selectedPlatformType === 'whatsapp' && formData.phoneNumber) {
+        // Remove any non-digit characters
+        const cleanNumber = formData.phoneNumber.replace(/\D/g, '');
+        // Add 62 prefix and @c.us suffix
+        formattedPhoneNumber = `62${cleanNumber}@c.us`;
+      }
+
       const platformData: CreatePlatformData = {
         brand_name: formData.brandName,
         website_url: formData.websiteUrl || undefined,
@@ -165,7 +188,7 @@ const ConnectedPlatforms = () => {
         description: formData.description || undefined,
         whatsapp_display_name: formData.displayName,
         profile_photo_url: profilePhotoUrl || undefined,
-        whatsapp_number: formData.phoneNumber,
+        whatsapp_number: formattedPhoneNumber,
         ai_profile_id: formData.selectedAIAgent || undefined,
         human_agent_ids: formData.selectedHumanAgents
       };
@@ -234,13 +257,36 @@ const ConnectedPlatforms = () => {
       if (!response.ok) {
         throw new Error(`Request failed with status ${response.status}`);
       }
-      const json = await response.json();
-      const payload = Array.isArray(json) ? json[0] : json;
-      if (!payload || !payload.data || !payload.mimetype) {
-        throw new Error("Invalid QR response shape");
+      
+      // Check if response is an image
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('image/')) {
+        // Response is an image, convert to data URL
+        const blob = await response.blob();
+        const dataUrl = URL.createObjectURL(blob);
+        setQrImageUrl(dataUrl);
+      } else {
+        // Try to parse as JSON
+        try {
+          const json = await response.json();
+          const payload = Array.isArray(json) ? json[0] : json;
+          if (!payload || !payload.data || !payload.mimetype) {
+            throw new Error("Invalid QR response shape");
+          }
+          const dataUrl = `data:${payload.mimetype};base64,${payload.data}`;
+          setQrImageUrl(dataUrl);
+        } catch (jsonError) {
+          // If JSON parsing fails, try to get the response as text and check if it's base64
+          const text = await response.text();
+          if (text && text.length > 0) {
+            // Assume it's a base64 encoded image
+            const dataUrl = `data:image/png;base64,${text}`;
+            setQrImageUrl(dataUrl);
+          } else {
+            throw new Error("Invalid response format");
+          }
+        }
       }
-      const dataUrl = `data:${payload.mimetype};base64,${payload.data}`;
-      setQrImageUrl(dataUrl);
     } catch (error: any) {
       setQrError(error?.message || "Failed to generate QR");
     } finally {
@@ -248,6 +294,54 @@ const ConnectedPlatforms = () => {
       setIsFetchingQR(false);
     }
   };
+
+  // Check WhatsApp session status via polling
+  const checkSessionStatus = async () => {
+    try {
+      const response = await fetch('https://waha-production-c0b8.up.railway.app/api/sessions/default', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Check if session is connected and working
+        if (data && data.status === 'WORKING' && data.me && data.me.id) {
+          setIsWhatsAppConnected(true);
+          setQrImageUrl(null); // Hide QR code when connected
+          toast({
+            title: "Success",
+            description: "WhatsApp connected successfully!",
+          });
+          return true;
+        } else {
+          setIsWhatsAppConnected(false);
+          return false;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error("Error checking session status:", error);
+      return false;
+    }
+  };
+
+  // Poll session status every 5 seconds when QR is shown
+  useEffect(() => {
+    if (!qrImageUrl || isWhatsAppConnected) return;
+    
+    const pollInterval = setInterval(async () => {
+      const isConnected = await checkSessionStatus();
+      if (isConnected) {
+        clearInterval(pollInterval);
+      }
+    }, 5000); // Poll every 5 seconds
+    
+    return () => clearInterval(pollInterval);
+  }, [qrImageUrl, isWhatsAppConnected]);
 
   // Auto-refresh QR every 30 seconds with a visible countdown while dialog is open
   useEffect(() => {
@@ -520,18 +614,22 @@ const ConnectedPlatforms = () => {
                  {selectedPlatformType === 'whatsapp' ? (
                    // WhatsApp-specific fields
                    <>
-                     <div className="space-y-2">
-                       <Label htmlFor="phoneNumber">WhatsApp Number *</Label>
-                       <Input
-                         id="phoneNumber"
-                         placeholder="+1234567890"
-                         value={newPlatform.phoneNumber}
-                         onChange={(e) => setNewPlatform(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                       />
-                       <p className="text-xs text-muted-foreground">
-                         Include country code (e.g., +1 for US, +62 for Indonesia)
-                       </p>
-                     </div>
+                                           <div className="space-y-2">
+                        <Label htmlFor="phoneNumber">WhatsApp Number *</Label>
+                        <div className="flex">
+                          <div className="flex items-center px-3 py-2 bg-muted border border-r-0 rounded-l-md text-sm text-muted-foreground">
+                            +62
+                          </div>
+                          <Input
+                            id="phoneNumber"
+                            placeholder="87776858347"
+                            value={newPlatform.phoneNumber}
+                            onChange={(e) => setNewPlatform(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                            className="rounded-l-none"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">Enter number without the +62 prefix (e.g., 87776858347). Will be saved as 6287776858347@c.us</p>
+                      </div>
 
                      {/* WhatsApp Connection Section */}
                      <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
@@ -1052,18 +1150,23 @@ window.mychat.position = "bottom-right";
                       <p className="text-sm text-muted-foreground mb-3">
                         Login to your WhatsApp account by scanning a QR code with your phone.
                       </p>
-                      <Dialog
-                        open={isWhatsAppDialogOpen}
-                        onOpenChange={(open) => {
-                          setIsWhatsAppDialogOpen(open);
-                          if (open) {
-                            fetchWhatsAppQr();
-                          } else {
-                            setQrImageUrl(null);
-                            setQrError(null);
-                          }
-                        }}
-                      >
+                                             <Dialog
+                         open={isWhatsAppDialogOpen}
+                         onOpenChange={(open) => {
+                           setIsWhatsAppDialogOpen(open);
+                           if (open) {
+                             // First check if already connected
+                             checkSessionStatus().then((isConnected) => {
+                               if (!isConnected) {
+                                 fetchWhatsAppQr();
+                               }
+                             });
+                           } else {
+                             setQrImageUrl(null);
+                             setQrError(null);
+                           }
+                         }}
+                       >
                         <DialogTrigger asChild>
                           <Button className="bg-green-600 hover:bg-green-700 text-white">Login with WhatsApp</Button>
                         </DialogTrigger>
@@ -1084,19 +1187,25 @@ window.mychat.position = "bottom-right";
                                 <Button variant="outline" onClick={fetchWhatsAppQr}>Retry</Button>
                               </div>
                             )}
-                            {qrImageUrl && (
-                              <>
-                                <img
-                                  src={qrImageUrl}
-                                  alt="WhatsApp QR"
-                                  className="w-64 h-64 rounded-md border"
-                                />
-                                <div className="flex items-center gap-3">
-                                  <Button variant="outline" onClick={fetchWhatsAppQr} disabled={isFetchingQR}>Refresh now</Button>
-                                  <span className="text-xs text-muted-foreground">Auto refresh in {qrCountdown}s</span>
-                                </div>
-                              </>
-                            )}
+                                                         {qrImageUrl && (
+                               <>
+                                 <img
+                                   src={qrImageUrl}
+                                   alt="WhatsApp QR"
+                                   className="w-64 h-64 rounded-md border"
+                                 />
+                                 <div className="flex items-center gap-3">
+                                   <Button 
+                                     variant="outline" 
+                                     onClick={checkSessionStatus}
+                                     disabled={isFetchingQR}
+                                   >
+                                     Check Connection
+                                   </Button>
+                                   <span className="text-xs text-muted-foreground">Auto check every 5s</span>
+                                 </div>
+                               </>
+                             )}
                           </div>
                         </DialogContent>
                       </Dialog>
