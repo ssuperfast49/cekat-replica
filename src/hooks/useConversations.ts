@@ -67,7 +67,7 @@ export const useConversations = () => {
           contacts(name, phone, email),
           channels(display_name, type)
         `)
-        .eq('org_id', '00000000-0000-0000-0000-000000000001')
+        // .eq('org_id', '00000000-0000-0000-0000-000000000001')
         .order('last_msg_at', { ascending: false });
 
       if (error) throw error;
@@ -130,14 +130,23 @@ export const useConversations = () => {
   };
 
   // Send a new message
-  const sendMessage = async (threadId: string, messageText: string) => {
+  const sendMessage = async (threadId: string, messageText: string, role: 'agent' | 'assistant' = 'assistant') => {
     try {
       setError(null);
+
+      // First, get the thread details to extract channel_id and contact_id
+      const { data: threadData, error: threadError } = await supabase
+        .from('threads')
+        .select('channel_id, contact_id')
+        .eq('id', threadId)
+        .single();
+
+      if (threadError) throw threadError;
 
       const newMessage = {
         thread_id: threadId,
         direction: 'out' as const,
-        role: 'assistant' as const,
+        role: role,
         type: 'text' as const,
         body: messageText,
         payload: {},
@@ -145,6 +154,7 @@ export const useConversations = () => {
         actor_id: null
       };
 
+      // Insert message into database
       const { data, error } = await supabase
         .from('messages')
         .insert([newMessage])
@@ -152,6 +162,45 @@ export const useConversations = () => {
         .single();
 
       if (error) throw error;
+
+      // Get contact details for webhook payload
+      const { data: contactData, error: contactError } = await supabase
+        .from('contacts')
+        .select('phone')
+        .eq('id', threadData.contact_id)
+        .single();
+
+      if (contactError) {
+        console.warn('Error fetching contact details:', contactError);
+      }
+
+      // Send webhook to external service
+      try {
+        const webhookPayload = {
+          channel_id: threadData.channel_id,
+          contact_id: threadData.contact_id,
+          contact_phone: contactData?.phone || null,
+          body: messageText,
+          type: 'text',
+          direction: 'out',
+          role: role
+        };
+
+        const webhookResponse = await fetch('https://primary-production-376c.up.railway.app/webhook/send-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload)
+        });
+
+        if (!webhookResponse.ok) {
+          console.warn('Webhook call failed:', webhookResponse.status, webhookResponse.statusText);
+        }
+      } catch (webhookError) {
+        console.error('Error calling webhook:', webhookError);
+        // Don't throw here - we still want to save the message locally even if webhook fails
+      }
 
       // Refresh messages
       await fetchMessages(threadId);

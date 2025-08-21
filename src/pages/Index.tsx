@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, CreditCard, UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import ChatMock from "@/components/chat/ChatMock";
+import ConversationPage from "@/components/chat/ConversationPage";
 import Analytics from "@/components/analytics/Analytics";
 import Contacts from "@/components/contacts/Contacts";
 import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
@@ -227,7 +227,7 @@ const Index = () => {
             {active === "chat" ? (
               <>
                 <h1 className="sr-only">Chat Inbox</h1>
-                <ChatMock />
+                <ConversationPage />
               </>
             ) : active === "analytics" ? (
               <>
