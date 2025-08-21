@@ -329,8 +329,37 @@ export const useConversations = () => {
 
       if (error) throw error;
 
+      // Create a system event message noting the takeover
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const currentUserId = userRes?.user?.id || null;
+
+        let displayName: string | null = null;
+        if (currentUserId) {
+          const { data: profile } = await supabase
+            .from('users_profile')
+            .select('display_name')
+            .eq('user_id', currentUserId)
+            .single();
+          displayName = profile?.display_name || null;
+        }
+
+        await supabase.from('messages').insert([{
+          thread_id: threadId,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Conversation taken over by ${displayName || userRes?.user?.email || 'agent'}.`,
+          payload: { event: 'takeover', user_id: currentUserId }
+        }]);
+      } catch (e) {
+        // Non-fatal; continue even if event message insert fails
+        console.warn('Failed to insert takeover event message', e);
+      }
+
       // Refresh conversations
       await fetchConversations();
+      await fetchMessages(threadId);
 
     } catch (error) {
       console.error('Error assigning thread:', error);
