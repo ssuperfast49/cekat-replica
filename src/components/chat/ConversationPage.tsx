@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChatFilter } from "./ChatFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
@@ -34,6 +35,8 @@ import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 
 interface MessageBubbleProps {
   message: MessageWithDetails;
@@ -135,20 +138,49 @@ export default function ConversationPage() {
   const { createContact } = useContacts();
   const { agents: humanAgents } = useHumanAgents();
   const { user } = useAuth();
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [collabOpen, setCollabOpen] = useState(false);
 
   // Filter conversations based on search query
+  const [filters, setFilters] = useState<any>({});
   const filteredConversations = useMemo(() => {
-    return conversations.filter((conv) =>
+    let list = conversations.filter((conv) =>
       `${conv.contact_name} ${conv.last_message_preview}`.toLowerCase().includes(query.toLowerCase())
     );
-  }, [conversations, query]);
+    if (filters.status && filters.status !== 'all') {
+      if (filters.status === 'resolved') {
+        list = list.filter(c => c.status === 'closed');
+      } else {
+        list = list.filter(c => c.status === filters.status);
+      }
+    }
+    if (filters.agent && filters.agent !== 'all') {
+      list = list.filter(c => c.assignee_user_id === filters.agent);
+    }
+    if (filters.resolvedBy && filters.resolvedBy !== 'all') {
+      list = list.filter(c => (c as any).resolved_by_user_id === filters.resolvedBy);
+    }
+    if (filters.inbox && filters.inbox !== 'all') {
+      list = list.filter(c => c.channel_type === filters.inbox);
+    }
+    // Date range filter
+    if (filters.dateRange?.from || filters.dateRange?.to) {
+      const from = filters.dateRange.from ? new Date(filters.dateRange.from).getTime() : -Infinity;
+      const to = filters.dateRange.to ? new Date(filters.dateRange.to).getTime() : Infinity;
+      list = list.filter(c => {
+        const ts = new Date(c.created_at).getTime();
+        return ts >= from && ts <= to;
+      });
+    }
+    return list;
+  }, [conversations, query, filters]);
 
   // Get selected conversation
   const selectedConversation = useMemo(() => {
     if (!selectedThreadId) {
-      return filteredConversations[0] || null;
+      return null; // Do not auto-pick any thread on first load
     }
-    return filteredConversations.find(c => c.id === selectedThreadId) || filteredConversations[0] || null;
+    return filteredConversations.find(c => c.id === selectedThreadId) || null;
   }, [selectedThreadId, filteredConversations]);
 
   const handleTakeoverChat = async () => {
@@ -281,9 +313,12 @@ export default function ConversationPage() {
       <aside className="rounded-lg border bg-card p-3">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-medium">Conversations</h2>
-          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-            <Plus className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <ChatFilter onFilterChange={setFilters} />
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -494,18 +529,102 @@ export default function ConversationPage() {
         )}
       </article>
 
-      {/* Right sidebar styled like ChatMock (details) */}
+      {/* Right sidebar - Conversation info */}
       <aside className="rounded-lg border bg-card p-4">
         {selectedConversation ? (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            {/* Header */}
             <div>
-              <h2 className="text-lg font-semibold">{selectedConversation.contact_name}</h2>
+              <h2 className="text-lg font-semibold">{selectedConversation.contact_name || 'Unknown Contact'}</h2>
               <div className="flex items-center gap-2 mt-1">
                 <MessageSquare className="h-4 w-4 text-blue-500" />
                 <span className="text-sm text-muted-foreground">{selectedConversation.channel_type}</span>
               </div>
             </div>
-            <Separator />
+
+            {/* Labels */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Labels</h3>
+              <Button variant="outline" size="sm" className="h-8">
+                <Tag className="h-4 w-4 mr-2" /> Add Label
+              </Button>
+            </div>
+            <div className="text-sm text-muted-foreground">No labels yet</div>
+
+            {/* Handled By */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Handled By</h3>
+              <Popover open={assignOpen} onOpenChange={setAssignOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8">
+                    <UserPlus className="h-4 w-4 mr-2" /> Assign Agent
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0">
+                  <Command>
+                    <CommandInput placeholder="Search agent" />
+                    <CommandEmpty>No agent found.</CommandEmpty>
+                    <CommandGroup>
+                      {humanAgents.map((agent) => (
+                        <CommandItem key={agent.user_id} onSelect={async()=>{ if(!selectedConversation) return; await assignThread(selectedConversation.id, agent.user_id); setAssignOpen(false); }}>
+                          {agent.display_name || 'Agent'}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Collaborators */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Collaborators</h3>
+              <Popover open={collabOpen} onOpenChange={setCollabOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8">
+                    <UserPlus className="h-4 w-4 mr-2" /> Add Collaborator
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0">
+                  <Command>
+                    <CommandInput placeholder="Search agent" />
+                    <CommandEmpty>No agent found.</CommandEmpty>
+                    <CommandGroup>
+                      {humanAgents.map((agent) => (
+                        <CommandItem key={agent.user_id} onSelect={async()=>{ if(!selectedConversation) return; await handleAddParticipant(agent.user_id); setCollabOpen(false); }}>
+                          {agent.display_name || 'Agent'}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <h3 className="text-sm font-medium mb-2">Notes</h3>
+              <div className="flex items-center gap-2">
+                <Input placeholder="Add a note..." />
+                <Button variant="outline" size="icon" className="h-9 w-9"> 
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* AI Summary */}
+            <div>
+              <h3 className="text-sm font-medium mb-2">AI Summary</h3>
+              <Button variant="outline" className="w-full h-10" onClick={()=>toast.message('AI summary generation coming soon')}>Generate AI Summary</Button>
+            </div>
+
+            {/* Additional Data */}
+            <div>
+              <h3 className="text-sm font-medium mb-2">Additional Data</h3>
+              <Button variant="outline" className="w-full h-10">Add New Additional Info</Button>
+            </div>
+
+            {/* Conversation Details */}
             <div>
               <h3 className="text-sm font-medium mb-3">Conversation Details</h3>
               <div className="space-y-2 text-sm">
@@ -517,25 +636,6 @@ export default function ConversationPage() {
                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Created At</span><span>{selectedConversation.created_at ? new Date(selectedConversation.created_at).toLocaleString() : '—'}</span></div>
                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved At</span><span>{(selectedConversation as any).resolved_at ? new Date((selectedConversation as any).resolved_at).toLocaleString() : '—'}</span></div>
               </div>
-            </div>
-            <Separator />
-            <div>
-              <h3 className="text-sm font-medium mb-2">Conversation Access</h3>
-              <button type="button" onClick={async()=>{const next=!Boolean((selectedConversation as any).is_blocked); const {error}=await supabase.from('threads').update({is_blocked:next}).eq('id',selectedConversation.id); if(error){toast.error('Failed to update conversation access')} else {await fetchConversations();}}} className="flex items-center gap-2 text-left">
-                <div className={`h-2 w-2 rounded-full ${!(selectedConversation as any).is_blocked ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className={`text-sm ${!(selectedConversation as any).is_blocked ? 'text-green-600' : 'text-red-600'}`}>
-                  {!(selectedConversation as any).is_blocked ? 'Active - Click to Block' : 'Blocked - Click to Unblock'}
-                </span>
-              </button>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium mb-2">AI Access</h3>
-              <button type="button" onClick={async()=>{const next=!Boolean((selectedConversation as any).ai_access_enabled !== false); const {error}=await supabase.from('threads').update({ai_access_enabled:!((selectedConversation as any).ai_access_enabled===false)}).eq('id',selectedConversation.id); if(error){toast.error('Failed to update AI access')} else {await fetchConversations();}}} className="flex items-center gap-2 text-left">
-                <div className={`h-2 w-2 rounded-full ${(selectedConversation as any).ai_access_enabled !== false ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className={`text-sm ${(selectedConversation as any).ai_access_enabled !== false ? 'text-green-600' : 'text-red-600'}`}>
-                  {(selectedConversation as any).ai_access_enabled !== false ? 'AI Access - Click to Block' : 'AI Blocked - Click to Allow'}
-                </span>
-              </button>
             </div>
           </div>
         ) : (

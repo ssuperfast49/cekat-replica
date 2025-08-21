@@ -171,14 +171,6 @@ const Index = () => {
           <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
               <div className="flex items-center gap-2 md:gap-3">
-                <Button variant="outline" className="hidden md:inline-flex gap-2 text-blue-600 border-blue-200 hover:bg-blue-50">
-                  <HelpCircle className="h-4 w-4" />
-                  Help Center
-                </Button>
-                <Button variant="outline" className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50">
-                  <MessageCircle className="h-4 w-4" />
-                  WA Support
-                </Button>
               </div>
               <div className="flex items-center gap-3">
                 <Badge className="hidden sm:inline-flex bg-success text-success-foreground">Online</Badge>
