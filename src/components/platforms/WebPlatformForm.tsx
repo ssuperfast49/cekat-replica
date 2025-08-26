@@ -1,0 +1,260 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Upload } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAIAgents } from "@/hooks/useAIAgents";
+import { useHumanAgents } from "@/hooks/useHumanAgents";
+
+interface WebPlatformFormProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (formData: any) => Promise<void>;
+  isSubmitting?: boolean;
+}
+
+const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: WebPlatformFormProps) => {
+  const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
+  const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
+
+  const [formData, setFormData] = useState({
+    brandName: "",
+    description: "",
+    displayName: "",
+    profilePhoto: null as File | null,
+    websiteUrl: "",
+    businessCategory: "",
+    selectedAIAgent: "",
+    selectedHumanAgents: [] as string[]
+  });
+
+  const businessCategories = [
+    "E-commerce",
+    "Technology",
+    "Healthcare",
+    "Education",
+    "Finance",
+    "Real Estate",
+    "Food & Beverage",
+    "Travel & Tourism",
+    "Entertainment",
+    "Other"
+  ];
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setFormData(prev => ({ ...prev, profilePhoto: file }));
+    }
+  };
+
+  const handleHumanAgentToggle = (agentId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedHumanAgents: prev.selectedHumanAgents.includes(agentId)
+        ? prev.selectedHumanAgents.filter(id => id !== agentId)
+        : [...prev.selectedHumanAgents, agentId]
+    }));
+  };
+
+  const isFormValid = formData.brandName && 
+    formData.displayName && 
+    formData.selectedAIAgent &&
+    formData.websiteUrl;
+
+  const handleSubmit = async () => {
+    try {
+      const submitData = {
+        ...formData,
+        platformType: 'web' as const
+      };
+
+      await onSubmit(submitData);
+    } catch (error) {
+      console.error('Error submitting form:', error);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Setup Web Live Chat Platform</DialogTitle>
+          <DialogDescription>
+            Configure your new web live chat platform with all the necessary information.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-6">
+          {/* Brand Name */}
+          <div className="space-y-2">
+            <Label htmlFor="brandName">Brand / Org Name *</Label>
+            <Input
+              id="brandName"
+              placeholder="Enter your brand or organization name"
+              value={formData.brandName}
+              onChange={(e) => setFormData(prev => ({ ...prev, brandName: e.target.value }))}
+            />
+          </div>
+
+          {/* Description */}
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              placeholder="Describe your business and what you offer"
+              value={formData.description}
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              rows={3}
+            />
+          </div>
+
+          {/* Chat Display Name */}
+          <div className="space-y-2">
+            <Label htmlFor="displayName">Chat Display Name *</Label>
+            <Input
+              id="displayName"
+              placeholder="Name that will appear in the chat widget"
+              value={formData.displayName}
+              onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
+            />
+          </div>
+
+          {/* Website URL */}
+          <div className="space-y-2">
+            <Label htmlFor="websiteUrl">Website URL *</Label>
+            <Input
+              id="websiteUrl"
+              type="url"
+              placeholder="https://your-website.com"
+              value={formData.websiteUrl}
+              onChange={(e) => setFormData(prev => ({ ...prev, websiteUrl: e.target.value }))}
+            />
+            <p className="text-xs text-muted-foreground">
+              The website where you want to embed the live chat
+            </p>
+          </div>
+
+          {/* Business Category */}
+          <div className="space-y-2">
+            <Label htmlFor="businessCategory">Business Category</Label>
+            <Select 
+              value={formData.businessCategory} 
+              onValueChange={(value) => setFormData(prev => ({ ...prev, businessCategory: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select business category" />
+              </SelectTrigger>
+              <SelectContent>
+                {businessCategories.map((category) => (
+                  <SelectItem key={category} value={category}>{category}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Profile Photo / Logo */}
+          <div className="space-y-2">
+            <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                {formData.profilePhoto ? (
+                  <img
+                    src={URL.createObjectURL(formData.profilePhoto)}
+                    alt="Profile"
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <Input
+                  id="profilePhoto"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => document.getElementById('profilePhoto')?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Photo
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Recommended: 512x512px, max 2MB
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Select AI Agent */}
+          <div className="space-y-2">
+            <Label htmlFor="aiAgent">Select AI Agent *</Label>
+            {aiAgentsLoading ? (
+              <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+            ) : (
+              <Select 
+                value={formData.selectedAIAgent} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, selectedAIAgent: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose an AI agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  {aiAgents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Select Human Agents */}
+          <div className="space-y-2">
+            <Label>Select Human Agents (optional)</Label>
+            {humanAgentsLoading ? (
+              <div className="text-sm text-muted-foreground">Loading human agents...</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {humanAgents.map((agent) => (
+                  <div key={agent.user_id} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={agent.user_id}
+                      checked={formData.selectedHumanAgents.includes(agent.user_id)}
+                      onChange={() => handleHumanAgentToggle(agent.user_id)}
+                      className="rounded border-gray-300"
+                    />
+                    <Label htmlFor={agent.user_id} className="text-sm cursor-pointer">
+                      {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={isSubmitting || !isFormValid}
+          >
+            {isSubmitting ? "Creating..." : "Create Web Live Chat Platform"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default WebPlatformForm;
