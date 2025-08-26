@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe } from "lucide-react";
+import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
@@ -29,7 +29,7 @@ const ConnectedPlatforms = () => {
   // Platform selection and setup state
   const [isPlatformSelectionOpen, setIsPlatformSelectionOpen] = useState(false);
   const [isPlatformSetupOpen, setIsPlatformSetupOpen] = useState(false);
-  const [selectedPlatformType, setSelectedPlatformType] = useState<'whatsapp' | 'web' | null>(null);
+  const [selectedPlatformType, setSelectedPlatformType] = useState<'whatsapp' | 'web' | 'telegram' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isWhatsAppConnected, setIsWhatsAppConnected] = useState(false);
   const [newPlatform, setNewPlatform] = useState({
@@ -40,6 +40,8 @@ const ConnectedPlatforms = () => {
     displayName: "",
     profilePhoto: null as File | null,
     phoneNumber: "",
+    telegramBotToken: "",
+    telegramBotUsername: "",
     selectedAIAgent: "",
     selectedHumanAgents: [] as string[]
   });
@@ -85,6 +87,24 @@ const ConnectedPlatforms = () => {
     }
   }, [aiAgents, selectedAgent]);
 
+  // Helper function to determine platform type
+  const getPlatformType = (platform: any): 'whatsapp' | 'web' | 'telegram' => {
+    // If platform has whatsapp_number, it's a WhatsApp platform
+    // If platform has telegram_bot_token, it's a Telegram platform
+    // If platform has website_url but no whatsapp_number or telegram_bot_token, it's a web platform
+    if (platform.whatsapp_number) {
+      return 'whatsapp';
+    }
+    if (platform.telegram_bot_token) {
+      return 'telegram';
+    }
+    return 'web';
+  };
+
+  // Get the selected platform data
+  const selectedPlatformData = platforms.find(platform => platform.id === selectedPlatform);
+  const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
+
   const businessCategories = [
     "E-commerce",
     "Technology",
@@ -98,7 +118,7 @@ const ConnectedPlatforms = () => {
     "Other"
   ];
 
-  const handlePlatformSelect = (platformType: 'whatsapp' | 'web') => {
+  const handlePlatformSelect = (platformType: 'whatsapp' | 'web' | 'telegram') => {
     setSelectedPlatformType(platformType);
     setIsWhatsAppConnected(false); // Reset connection status
     setIsPlatformSelectionOpen(false);
@@ -188,7 +208,9 @@ const ConnectedPlatforms = () => {
         description: formData.description || undefined,
         whatsapp_display_name: formData.displayName,
         profile_photo_url: profilePhotoUrl || undefined,
-        whatsapp_number: formattedPhoneNumber,
+        whatsapp_number: selectedPlatformType === 'whatsapp' ? formattedPhoneNumber : undefined,
+        telegram_bot_token: selectedPlatformType === 'telegram' ? formData.telegramBotToken : undefined,
+        telegram_bot_username: selectedPlatformType === 'telegram' ? formData.telegramBotUsername : undefined,
         ai_profile_id: formData.selectedAIAgent || undefined,
         human_agent_ids: formData.selectedHumanAgents
       };
@@ -210,6 +232,8 @@ const ConnectedPlatforms = () => {
         displayName: "",
         profilePhoto: null,
         phoneNumber: "",
+        telegramBotToken: "",
+        telegramBotUsername: "",
         selectedAIAgent: "",
         selectedHumanAgents: []
       });
@@ -426,8 +450,6 @@ const ConnectedPlatforms = () => {
     }
   };
 
-  const selectedPlatformData = platforms.find(platform => platform.id === selectedPlatform);
-
   return (
     <div className="flex h-[calc(100vh-120px)]">
       {/* Left Sidebar - Inboxes List */}
@@ -526,33 +548,45 @@ const ConnectedPlatforms = () => {
                 </p>
               </DialogHeader>
 
-              <div className="px-6 pb-6">
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <button
-                    onClick={() => handlePlatformSelect('whatsapp')}
-                    className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-                      <MessageCircle className="h-6 w-6 text-white" />
-                    </div>
-                    <span className="text-sm font-medium text-center">WhatsApp</span>
-                    <span className="text-xs text-muted-foreground text-center mt-1">
-                      Connect your WhatsApp Business account
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => handlePlatformSelect('web')}
-                    className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-                      <Globe className="h-6 w-6 text-white" />
-                    </div>
-                    <span className="text-sm font-medium text-center">Web Live Chat</span>
-                    <span className="text-xs text-muted-foreground text-center mt-1">
-                      Add live chat to your website
-                    </span>
-                  </button>
-                </div>
+                             <div className="px-6 pb-6">
+                 <div className="grid grid-cols-3 gap-3 mb-4">
+                   <button
+                     onClick={() => handlePlatformSelect('whatsapp')}
+                     className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
+                   >
+                     <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
+                       <MessageCircle className="h-6 w-6 text-white" />
+                     </div>
+                     <span className="text-sm font-medium text-center">WhatsApp</span>
+                     <span className="text-xs text-muted-foreground text-center mt-1">
+                       Connect your WhatsApp Business account
+                     </span>
+                   </button>
+                   <button
+                     onClick={() => handlePlatformSelect('web')}
+                     className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
+                   >
+                     <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
+                       <Globe className="h-6 w-6 text-white" />
+                     </div>
+                     <span className="text-sm font-medium text-center">Web Live Chat</span>
+                     <span className="text-xs text-muted-foreground text-center mt-1">
+                       Add live chat to your website
+                     </span>
+                   </button>
+                   <button
+                     onClick={() => handlePlatformSelect('telegram')}
+                     className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
+                   >
+                     <div className="w-12 h-12 rounded-full bg-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
+                       <Send className="h-6 w-6 text-white" />
+                     </div>
+                     <span className="text-sm font-medium text-center">Telegram Bot</span>
+                     <span className="text-xs text-muted-foreground text-center mt-1">
+                       Connect your Telegram bot via BotFather
+                     </span>
+                   </button>
+                 </div>
 
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">
@@ -566,14 +600,14 @@ const ConnectedPlatforms = () => {
                      {/* Platform Setup Form Dialog */}
            <Dialog open={isPlatformSetupOpen} onOpenChange={setIsPlatformSetupOpen}>
              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-               <DialogHeader>
-                 <DialogTitle>
-                   Setup {selectedPlatformType === 'whatsapp' ? 'WhatsApp' : 'Web Live Chat'} Platform
-                 </DialogTitle>
-                 <DialogDescription>
-                   Configure your new {selectedPlatformType === 'whatsapp' ? 'WhatsApp' : 'web live chat'} platform with all the necessary information.
-                 </DialogDescription>
-               </DialogHeader>
+                               <DialogHeader>
+                  <DialogTitle>
+                    Setup {selectedPlatformType === 'whatsapp' ? 'WhatsApp' : selectedPlatformType === 'telegram' ? 'Telegram Bot' : 'Web Live Chat'} Platform
+                  </DialogTitle>
+                  <DialogDescription>
+                    Configure your new {selectedPlatformType === 'whatsapp' ? 'WhatsApp' : selectedPlatformType === 'telegram' ? 'Telegram bot' : 'web live chat'} platform with all the necessary information.
+                  </DialogDescription>
+                </DialogHeader>
                
                <div className="space-y-6">
                  {/* Common Fields for both platforms */}
@@ -598,23 +632,23 @@ const ConnectedPlatforms = () => {
                    />
                  </div>
 
-                 <div className="space-y-2">
-                   <Label htmlFor="displayName">
-                     {selectedPlatformType === 'whatsapp' ? 'WhatsApp' : 'Chat'} Display Name *
-                   </Label>
-                   <Input
-                     id="displayName"
-                     placeholder={`Name that will appear in ${selectedPlatformType === 'whatsapp' ? 'WhatsApp' : 'chat'}`}
-                     value={newPlatform.displayName}
-                     onChange={(e) => setNewPlatform(prev => ({ ...prev, displayName: e.target.value }))}
-                   />
-                 </div>
+                                   <div className="space-y-2">
+                    <Label htmlFor="displayName">
+                      {selectedPlatformType === 'whatsapp' ? 'WhatsApp' : selectedPlatformType === 'telegram' ? 'Telegram Bot' : 'Chat'} Display Name *
+                    </Label>
+                    <Input
+                      id="displayName"
+                      placeholder={`Name that will appear in ${selectedPlatformType === 'whatsapp' ? 'WhatsApp' : selectedPlatformType === 'telegram' ? 'Telegram' : 'chat'}`}
+                      value={newPlatform.displayName}
+                      onChange={(e) => setNewPlatform(prev => ({ ...prev, displayName: e.target.value }))}
+                    />
+                  </div>
 
-                 {/* Platform-specific fields */}
-                 {selectedPlatformType === 'whatsapp' ? (
-                   // WhatsApp-specific fields
-                   <>
-                                           <div className="space-y-2">
+                                   {/* Platform-specific fields */}
+                  {selectedPlatformType === 'whatsapp' ? (
+                    // WhatsApp-specific fields
+                    <>
+                      <div className="space-y-2">
                         <Label htmlFor="phoneNumber">WhatsApp Number *</Label>
                         <div className="flex">
                           <div className="flex items-center px-3 py-2 bg-muted border border-r-0 rounded-l-md text-sm text-muted-foreground">
@@ -631,99 +665,176 @@ const ConnectedPlatforms = () => {
                         <p className="text-xs text-muted-foreground">Enter number without the +62 prefix (e.g., 87776858347). Will be saved as 6287776858347@c.us</p>
                       </div>
 
-                     {/* WhatsApp Connection Section */}
-                     <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-                       <div className="flex items-center justify-between">
-                         <div>
-                           <Label className="text-sm font-medium">WhatsApp Connection</Label>
-                           <p className="text-xs text-muted-foreground">
-                             Connect your WhatsApp account to enable messaging
-                           </p>
-                         </div>
-                         {isWhatsAppConnected && (
-                           <Badge variant="default" className="text-xs">
-                             ✓ Connected
-                           </Badge>
-                         )}
-                       </div>
-                       
-                       {!isWhatsAppConnected ? (
-                         <div className="space-y-3">
-                           {qrImageUrl ? (
-                             <div className="flex flex-col items-center gap-3">
-                               <img
-                                 src={qrImageUrl}
-                                 alt="WhatsApp QR"
-                                 className="w-48 h-48 rounded-md border"
-                               />
-                               <p className="text-xs text-center text-muted-foreground">
-                                 Scan this QR code with your WhatsApp app
-                               </p>
-                               <Button 
-                                 variant="outline" 
-                                 size="sm"
-                                 onClick={handleWhatsAppConnection}
-                                 disabled={isFetchingQR}
-                               >
-                                 {isFetchingQR ? "Generating..." : "Refresh QR"}
-                               </Button>
-                             </div>
-                           ) : (
-                             <Button 
-                               onClick={handleWhatsAppConnection}
-                               disabled={isFetchingQR}
-                               className="w-full"
-                             >
-                               {isFetchingQR ? "Generating QR..." : "Connect WhatsApp"}
-                             </Button>
-                           )}
-                           
-                           {qrError && (
-                             <div className="text-sm text-red-600 text-center">{qrError}</div>
-                           )}
-                         </div>
-                       ) : (
-                         <div className="text-sm text-green-600 text-center">
-                           ✓ WhatsApp successfully connected
-                         </div>
-                       )}
-                     </div>
-                   </>
-                 ) : (
-                   // Web Live Chat specific fields
-                   <>
-                     <div className="space-y-2">
-                       <Label htmlFor="websiteUrl">Website URL *</Label>
-                       <Input
-                         id="websiteUrl"
-                         type="url"
-                         placeholder="https://your-website.com"
-                         value={newPlatform.websiteUrl}
-                         onChange={(e) => setNewPlatform(prev => ({ ...prev, websiteUrl: e.target.value }))}
-                       />
-                       <p className="text-xs text-muted-foreground">
-                         The website where you want to embed the live chat
-                       </p>
-                     </div>
+                      {/* WhatsApp Connection Section */}
+                      <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Label className="text-sm font-medium">WhatsApp Connection</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Connect your WhatsApp account to enable messaging
+                            </p>
+                          </div>
+                          {isWhatsAppConnected && (
+                            <Badge variant="default" className="text-xs">
+                              ✓ Connected
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        {!isWhatsAppConnected ? (
+                          <div className="space-y-3">
+                            {qrImageUrl ? (
+                              <div className="flex flex-col items-center gap-3">
+                                <img
+                                  src={qrImageUrl}
+                                  alt="WhatsApp QR"
+                                  className="w-48 h-48 rounded-md border"
+                                />
+                                <p className="text-xs text-center text-muted-foreground">
+                                  Scan this QR code with your WhatsApp app
+                                </p>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={handleWhatsAppConnection}
+                                  disabled={isFetchingQR}
+                                >
+                                  {isFetchingQR ? "Generating..." : "Refresh QR"}
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button 
+                                onClick={handleWhatsAppConnection}
+                                disabled={isFetchingQR}
+                                className="w-full"
+                              >
+                                {isFetchingQR ? "Generating QR..." : "Connect WhatsApp"}
+                              </Button>
+                            )}
+                            
+                            {qrError && (
+                              <div className="text-sm text-red-600 text-center">{qrError}</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-green-600 text-center">
+                            ✓ WhatsApp successfully connected
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : selectedPlatformType === 'telegram' ? (
+                    // Telegram-specific fields
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="telegramBotToken">Telegram Bot Token *</Label>
+                        <Input
+                          id="telegramBotToken"
+                          type="password"
+                          placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                          value={newPlatform.telegramBotToken}
+                          onChange={(e) => setNewPlatform(prev => ({ ...prev, telegramBotToken: e.target.value }))}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Get this token from @BotFather on Telegram. Format: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+                        </p>
+                      </div>
 
-                     <div className="space-y-2">
-                       <Label htmlFor="businessCategory">Business Category</Label>
-                       <Select 
-                         value={newPlatform.businessCategory} 
-                         onValueChange={(value) => setNewPlatform(prev => ({ ...prev, businessCategory: value }))}
-                       >
-                         <SelectTrigger>
-                           <SelectValue placeholder="Select business category" />
-                         </SelectTrigger>
-                         <SelectContent>
-                           {businessCategories.map((category) => (
-                             <SelectItem key={category} value={category}>{category}</SelectItem>
-                           ))}
-                         </SelectContent>
-                       </Select>
-                     </div>
-                   </>
-                 )}
+                      <div className="space-y-2">
+                        <Label htmlFor="telegramBotUsername">Bot Username *</Label>
+                        <div className="flex">
+                          <div className="flex items-center px-3 py-2 bg-muted border border-r-0 rounded-l-md text-sm text-muted-foreground">
+                            @
+                          </div>
+                          <Input
+                            id="telegramBotUsername"
+                            placeholder="your_bot_username"
+                            value={newPlatform.telegramBotUsername}
+                            onChange={(e) => setNewPlatform(prev => ({ ...prev, telegramBotUsername: e.target.value }))}
+                            className="rounded-l-none"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Your bot's username without the @ symbol (e.g., my_customer_service_bot)
+                        </p>
+                      </div>
+
+                      {/* Telegram Connection Section */}
+                      <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Label className="text-sm font-medium">Telegram Bot Setup</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Follow these steps to set up your Telegram bot
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="text-sm space-y-2">
+                            <p className="font-medium">Step 1: Create a bot with BotFather</p>
+                            <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
+                              <li>Open Telegram and search for @BotFather</li>
+                              <li>Send /newbot command</li>
+                              <li>Choose a name for your bot</li>
+                              <li>Choose a username (must end with 'bot')</li>
+                              <li>Copy the bot token provided</li>
+                            </ol>
+                          </div>
+                          
+                          <div className="text-sm space-y-2">
+                            <p className="font-medium">Step 2: Configure bot settings</p>
+                            <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
+                              <li>Send /setdescription to set bot description</li>
+                              <li>Send /setabouttext to set about text</li>
+                              <li>Send /setcommands to set available commands</li>
+                            </ol>
+                          </div>
+                          
+                          <div className="text-sm space-y-2">
+                            <p className="font-medium">Step 3: Enable webhook (optional)</p>
+                            <p className="text-xs text-muted-foreground">
+                              Your bot will automatically receive messages once connected to our platform.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    // Web Live Chat specific fields
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="websiteUrl">Website URL *</Label>
+                        <Input
+                          id="websiteUrl"
+                          type="url"
+                          placeholder="https://your-website.com"
+                          value={newPlatform.websiteUrl}
+                          onChange={(e) => setNewPlatform(prev => ({ ...prev, websiteUrl: e.target.value }))}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          The website where you want to embed the live chat
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="businessCategory">Business Category</Label>
+                        <Select 
+                          value={newPlatform.businessCategory} 
+                          onValueChange={(value) => setNewPlatform(prev => ({ ...prev, businessCategory: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select business category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {businessCategories.map((category) => (
+                              <SelectItem key={category} value={category}>{category}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
 
                  {/* Profile Photo / Logo */}
                  <div className="space-y-2">
@@ -814,17 +925,18 @@ const ConnectedPlatforms = () => {
                  <Button variant="outline" onClick={() => setIsPlatformSetupOpen(false)} disabled={isSubmitting}>
                    Cancel
                  </Button>
-                 <Button 
-                   onClick={() => handlePlatformSetup(newPlatform)} 
-                   disabled={
-                     isSubmitting || 
-                     !newPlatform.brandName || 
-                     !newPlatform.displayName || 
-                     !newPlatform.selectedAIAgent ||
-                     (selectedPlatformType === 'whatsapp' && (!newPlatform.phoneNumber || !isWhatsAppConnected)) ||
-                     (selectedPlatformType === 'web' && !newPlatform.websiteUrl)
-                   }
-                 >
+                                   <Button 
+                    onClick={() => handlePlatformSetup(newPlatform)} 
+                    disabled={
+                      isSubmitting || 
+                      !newPlatform.brandName || 
+                      !newPlatform.displayName || 
+                      !newPlatform.selectedAIAgent ||
+                      (selectedPlatformType === 'whatsapp' && (!newPlatform.phoneNumber || !isWhatsAppConnected)) ||
+                      (selectedPlatformType === 'telegram' && (!newPlatform.telegramBotToken || !newPlatform.telegramBotUsername)) ||
+                      (selectedPlatformType === 'web' && !newPlatform.websiteUrl)
+                    }
+                  >
                    {isSubmitting ? "Creating..." : "Create Platform"}
                  </Button>
                </div>
@@ -898,7 +1010,14 @@ const ConnectedPlatforms = () => {
                       {aiAgentsLoading ? (
                         <div className="text-sm text-muted-foreground">Loading AI agents...</div>
                       ) : (
-                        <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                        <Select 
+                          value={selectedPlatformData?.ai_profile_id || ""} 
+                          onValueChange={(value) => {
+                            // Here you would typically update the platform's AI agent
+                            // For now, we'll just update the local state
+                            setSelectedAgent(value);
+                          }}
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Choose an AI agent" />
                           </SelectTrigger>
@@ -1022,36 +1141,39 @@ const ConnectedPlatforms = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Link LiveChat */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        Link LiveChat 
-                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="bg-muted p-3 rounded-md">
-                        <Input 
-                          value="https://live.cekat.ai/livechat?IP_3Xb83e94"
-                          readOnly
-                          className="bg-background"
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
+                  {/* Link LiveChat - Only show for web platforms */}
+                  {currentPlatformType === 'web' && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          Link LiveChat 
+                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="bg-muted p-3 rounded-md">
+                          <Input 
+                            value="https://live.cekat.ai/livechat?IP_3Xb83e94"
+                            readOnly
+                            className="bg-background"
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                  {/* Embed Code */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        Embed Code 
-                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Textarea
-                        value={`<script type="text/javascript">
+                  {/* Embed Code - Only show for web platforms */}
+                  {currentPlatformType === 'web' && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          Embed Code 
+                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Textarea
+                          value={`<script type="text/javascript">
 window.mychat = window.mychat || [];
 window.mychat.storage = "https://live.cekat.ai/socket.io";
 window.mychat.key = "3Xb83e94";
@@ -1068,150 +1190,159 @@ window.mychat.position = "bottom-right";
   s.parentNode.insertBefore(script, s);
 })();
 </script>`}
-                        readOnly
-                        className="font-mono text-xs h-48 bg-muted"
-                      />
-                    </CardContent>
-                  </Card>
+                          readOnly
+                          className="font-mono text-xs h-48 bg-muted"
+                        />
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </TabsContent>
 
               <TabsContent value="whatsapp">
-                <div className="grid gap-6">
-                  {/* Sessions List */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Existing WhatsApp Sessions</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {isSessionsLoading && (
-                        <div className="text-sm text-muted-foreground">Loading sessions...</div>
-                      )}
-                      {sessionsError && (
-                        <div className="text-sm text-red-600">{sessionsError}</div>
-                      )}
-                      {!isSessionsLoading && !sessionsError && (
-                        <div className="space-y-3">
-                          {sessions.length === 0 && (
-                            <div className="text-sm text-muted-foreground">No sessions found.</div>
-                          )}
-                          {sessions.map((s, idx) => {
-                            const rawId = s?.me?.id || "";
-                            const phone = rawId ? rawId.replace(/@c\.us$/, "") : "";
-                            const name = s?.me?.pushName || "-";
-                            const status: string = String(s?.status || "UNKNOWN").toUpperCase();
-                            const sessionName = s?.name || "";
-                            const isLoggingOut = sessionName ? loggingOutSessions.has(sessionName) : false;
-                            const hasNumber = Boolean(phone);
-                            const isScanQr = status === "SCAN_QR_CODE";
-                            const isLoggedIn = status === "WORKING" && hasNumber;
-                            const logoutDisabled = !isLoggedIn || ["STARTING", "STOPPED"].includes(status);
-                            return (
-                              <div key={idx} className="flex items-center justify-between rounded-md border p-3">
-                                <div>
-                                  <div className="text-sm font-medium">{name}</div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {isScanQr || !hasNumber ? "No WhatsApp number connected" : phone}
+                {currentPlatformType === 'whatsapp' ? (
+                  <div className="grid gap-6">
+                    {/* Sessions List */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Existing WhatsApp Sessions</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {isSessionsLoading && (
+                          <div className="text-sm text-muted-foreground">Loading sessions...</div>
+                        )}
+                        {sessionsError && (
+                          <div className="text-sm text-red-600">{sessionsError}</div>
+                        )}
+                        {!isSessionsLoading && !sessionsError && (
+                          <div className="space-y-3">
+                            {sessions.length === 0 && (
+                              <div className="text-sm text-muted-foreground">No sessions found.</div>
+                            )}
+                            {sessions.map((s, idx) => {
+                              const rawId = s?.me?.id || "";
+                              const phone = rawId ? rawId.replace(/@c\.us$/, "") : "";
+                              const name = s?.me?.pushName || "-";
+                              const status: string = String(s?.status || "UNKNOWN").toUpperCase();
+                              const sessionName = s?.name || "";
+                              const isLoggingOut = sessionName ? loggingOutSessions.has(sessionName) : false;
+                              const hasNumber = Boolean(phone);
+                              const isScanQr = status === "SCAN_QR_CODE";
+                              const isLoggedIn = status === "WORKING" && hasNumber;
+                              const logoutDisabled = !isLoggedIn || ["STARTING", "STOPPED"].includes(status);
+                              return (
+                                <div key={idx} className="flex items-center justify-between rounded-md border p-3">
+                                  <div>
+                                    <div className="text-sm font-medium">{name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {isScanQr || !hasNumber ? "No WhatsApp number connected" : phone}
+                                    </div>
+                                    {(isScanQr || !hasNumber) && (
+                                      <div className="text-[11px] text-amber-600 mt-1">Awaiting QR scan to connect</div>
+                                    )}
                                   </div>
-                                  {(isScanQr || !hasNumber) && (
-                                    <div className="text-[11px] text-amber-600 mt-1">Awaiting QR scan to connect</div>
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant={isLoggedIn ? 'default' : 'secondary'} className="text-xs">
+                                      {status}
+                                    </Badge>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={!sessionName || isLoggingOut || logoutDisabled}
+                                      onClick={() => logoutWhatsAppSession(sessionName)}
+                                    >
+                                      {isLoggingOut ? "Logging out..." : "Logout"}
+                                    </Button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant={isLoggedIn ? 'default' : 'secondary'} className="text-xs">
-                                    {status}
-                                  </Badge>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={!sessionName || isLoggingOut || logoutDisabled}
-                                    onClick={() => logoutWhatsAppSession(sessionName)}
-                                  >
-                                    {isLoggingOut ? "Logging out..." : "Logout"}
-                                  </Button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* WhatsApp Connection */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        Connect WhatsApp
-                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Login to your WhatsApp account by scanning a QR code with your phone.
-                      </p>
-                                             <Dialog
-                         open={isWhatsAppDialogOpen}
-                         onOpenChange={(open) => {
-                           setIsWhatsAppDialogOpen(open);
-                           if (open) {
-                             // First check if already connected
-                             checkSessionStatus().then((isConnected) => {
-                               if (!isConnected) {
-                                 fetchWhatsAppQr();
-                               }
-                             });
-                           } else {
-                             setQrImageUrl(null);
-                             setQrError(null);
-                           }
-                         }}
-                       >
-                        <DialogTrigger asChild>
-                          <Button className="bg-green-600 hover:bg-green-700 text-white">Login with WhatsApp</Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>WhatsApp Login</DialogTitle>
-                            <DialogDescription>
-                              Scan this QR in WhatsApp: Menu → Linked devices → Link a device.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="flex flex-col items-center justify-center gap-4">
-                            {isFetchingQR && (
-                              <div className="text-sm text-muted-foreground">Generating QR...</div>
-                            )}
-                            {qrError && (
-                              <div className="w-full">
-                                <div className="text-sm text-red-600 mb-2">{qrError}</div>
-                                <Button variant="outline" onClick={fetchWhatsAppQr}>Retry</Button>
-                              </div>
-                            )}
-                                                         {qrImageUrl && (
-                               <>
-                                 <img
-                                   src={qrImageUrl}
-                                   alt="WhatsApp QR"
-                                   className="w-64 h-64 rounded-md border"
-                                 />
-                                 <div className="flex items-center gap-3">
-                                   <Button 
-                                     variant="outline" 
-                                     onClick={checkSessionStatus}
-                                     disabled={isFetchingQR}
-                                   >
-                                     Check Connection
-                                   </Button>
-                                   <span className="text-xs text-muted-foreground">Auto check every 5s</span>
-                                 </div>
-                               </>
-                             )}
+                              );
+                            })}
                           </div>
-                        </DialogContent>
-                      </Dialog>
-                    </CardContent>
-                  </Card>
-                </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* WhatsApp Connection */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          Connect WhatsApp
+                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Login to your WhatsApp account by scanning a QR code with your phone.
+                        </p>
+                        <Dialog
+                          open={isWhatsAppDialogOpen}
+                          onOpenChange={(open) => {
+                            setIsWhatsAppDialogOpen(open);
+                            if (open) {
+                              // First check if already connected
+                              checkSessionStatus().then((isConnected) => {
+                                if (!isConnected) {
+                                  fetchWhatsAppQr();
+                                }
+                              });
+                            } else {
+                              setQrImageUrl(null);
+                              setQrError(null);
+                            }
+                          }}
+                        >
+                          <DialogTrigger asChild>
+                            <Button className="bg-green-600 hover:bg-green-700 text-white">Login with WhatsApp</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>WhatsApp Login</DialogTitle>
+                              <DialogDescription>
+                                Scan this QR in WhatsApp: Menu → Linked devices → Link a device.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="flex flex-col items-center justify-center gap-4">
+                              {isFetchingQR && (
+                                <div className="text-sm text-muted-foreground">Generating QR...</div>
+                              )}
+                              {qrError && (
+                                <div className="w-full">
+                                  <div className="text-sm text-red-600 mb-2">{qrError}</div>
+                                  <Button variant="outline" onClick={fetchWhatsAppQr}>Retry</Button>
+                                </div>
+                              )}
+                              {qrImageUrl && (
+                                <>
+                                  <img
+                                    src={qrImageUrl}
+                                    alt="WhatsApp QR"
+                                    className="w-64 h-64 rounded-md border"
+                                  />
+                                  <div className="flex items-center gap-3">
+                                    <Button 
+                                      variant="outline" 
+                                      onClick={checkSessionStatus}
+                                      disabled={isFetchingQR}
+                                    >
+                                      Check Connection
+                                    </Button>
+                                    <span className="text-xs text-muted-foreground">Auto check every 5s</span>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">
+                      This platform is not configured for WhatsApp. Only WhatsApp platforms can access this tab.
+                    </p>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
