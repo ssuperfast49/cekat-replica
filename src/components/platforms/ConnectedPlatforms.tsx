@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import WhatsAppPlatformForm from "./WhatsAppPlatformForm";
 import TelegramPlatformForm from "./TelegramPlatformForm";
 import WebPlatformForm from "./WebPlatformForm";
+import WEBHOOK_CONFIG from "@/config/webhook";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
@@ -53,7 +54,7 @@ const ConnectedPlatforms = () => {
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [loggingOutSessions, setLoggingOutSessions] = useState<Set<string>>(new Set());
 
-  const n8nBaseUrl = (import.meta as any).env?.VITE_N8N_BASE_URL || "https://primary-production-376c.up.railway.app/webhook";
+  const n8nBaseUrl = WEBHOOK_CONFIG.BASE_URL;
 
   // Get the first platform as default selected if available
   useEffect(() => {
@@ -156,10 +157,10 @@ const ConnectedPlatforms = () => {
     setIsSessionsLoading(true);
     setSessionsError(null);
     try {
-      let response = await fetch(`${n8nBaseUrl}/get_sessions`, { method: "POST" });
+      let response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), { method: "POST" });
       if (!response.ok) {
         // Fallback to POST if GET is not supported
-        response = await fetch(`${n8nBaseUrl}/get_sessions`, {
+        response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
@@ -185,7 +186,7 @@ const ConnectedPlatforms = () => {
     }
   }, [activeTab]);
 
-  const logoutEndpoint = "https://primary-production-376c.up.railway.app/webhook/logout_session";
+  const logoutEndpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.LOGOUT_SESSION);
   const logoutWhatsAppSession = async (sessionName: string) => {
     if (!sessionName) return;
     setLoggingOutSessions((prev) => {

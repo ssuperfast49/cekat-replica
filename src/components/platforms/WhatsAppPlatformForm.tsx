@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { useToast } from "@/hooks/use-toast";
+import WEBHOOK_CONFIG from "@/config/webhook";
 
 interface WhatsAppPlatformFormProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [qrError, setQrError] = useState<string | null>(null);
   const isFetchingRef = useRef(false);
 
-  const n8nBaseUrl = (import.meta as any).env?.VITE_N8N_BASE_URL || "https://primary-production-376c.up.railway.app/webhook";
+  const n8nBaseUrl = WEBHOOK_CONFIG.BASE_URL;
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -64,7 +65,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       setQrError(null);
       setQrImageUrl(null);
       
-      const response = await fetch(`${n8nBaseUrl}/get_login_qr`, {
+      const response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_LOGIN_QR), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
