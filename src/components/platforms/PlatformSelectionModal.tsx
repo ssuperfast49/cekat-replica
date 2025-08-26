@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { X, MessageCircle, Globe } from "lucide-react";
+import { X, MessageCircle, Globe, Send } from "lucide-react";
 
 interface PlatformSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPlatformSelect: (platform: 'whatsapp' | 'web') => void;
+  onPlatformSelect: (platform: 'whatsapp' | 'web' | 'telegram') => void;
 }
 
 const PlatformSelectionModal = ({ isOpen, onClose, onPlatformSelect }: PlatformSelectionModalProps) => {
-  const [selectedPlatform, setSelectedPlatform] = useState<'whatsapp' | 'web' | null>(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<'whatsapp' | 'web' | 'telegram' | null>(null);
 
-  const handlePlatformSelect = (platform: 'whatsapp' | 'web') => {
+  const handlePlatformSelect = (platform: 'whatsapp' | 'web' | 'telegram') => {
     setSelectedPlatform(platform);
     onPlatformSelect(platform);
     onClose();
@@ -33,6 +33,14 @@ const PlatformSelectionModal = ({ isOpen, onClose, onPlatformSelect }: PlatformS
       description: 'Add live chat to your website',
       icon: Globe,
       color: 'bg-blue-500',
+      iconColor: 'text-white'
+    },
+    {
+      id: 'telegram' as const,
+      name: 'Telegram Bot',
+      description: 'Connect your Telegram bot via BotFather',
+      icon: Send,
+      color: 'bg-blue-400',
       iconColor: 'text-white'
     }
   ];
@@ -58,7 +66,7 @@ const PlatformSelectionModal = ({ isOpen, onClose, onPlatformSelect }: PlatformS
         </DialogHeader>
 
         <div className="px-6 pb-6">
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             {platforms.map((platform) => (
               <button
                 key={platform.id}

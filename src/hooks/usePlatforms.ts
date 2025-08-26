@@ -10,7 +10,9 @@ export interface Platform {
   description?: string;
   whatsapp_display_name: string;
   profile_photo_url?: string;
-  whatsapp_number: string;
+  whatsapp_number?: string;
+  telegram_bot_token?: string;
+  telegram_bot_username?: string;
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   status: 'active' | 'inactive' | 'pending';
   created_at: string;
@@ -32,7 +34,9 @@ export interface CreatePlatformData {
   description?: string;
   whatsapp_display_name: string;
   profile_photo_url?: string;
-  whatsapp_number: string;
+  whatsapp_number?: string;
+  telegram_bot_token?: string;
+  telegram_bot_username?: string;
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   human_agent_ids?: string[];
 }
@@ -177,6 +181,8 @@ export const usePlatforms = () => {
           whatsapp_display_name: platformData.whatsapp_display_name,
           profile_photo_url: platformData.profile_photo_url,
           whatsapp_number: platformData.whatsapp_number,
+          telegram_bot_token: platformData.telegram_bot_token,
+          telegram_bot_username: platformData.telegram_bot_username,
           ai_profile_id: platformData.ai_profile_id,
         })
         .select()
