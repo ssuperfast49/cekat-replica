@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import WEBHOOK_CONFIG from '@/config/webhook';
 
 export interface Thread {
   id: string;
@@ -237,7 +238,7 @@ export const useConversations = () => {
           role: role
         };
 
-        const webhookResponse = await fetch('https://primary-production-376c.up.railway.app/webhook/send-message', {
+        const webhookResponse = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.SEND_MESSAGE), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus } from "lucide-react";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
+import WEBHOOK_CONFIG from "@/config/webhook";
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -111,7 +112,7 @@ const ChatPreview = ({
 
       console.log('Sending request to API:', requestBody);
 
-      const response = await fetch('https://primary-production-376c.up.railway.app/webhook/chat-ai-agent-settings', {
+      const response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

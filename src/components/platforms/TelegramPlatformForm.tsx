@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
+import { useToast } from "@/hooks/use-toast";
+import WEBHOOK_CONFIG from "@/config/webhook";
 
 interface TelegramPlatformFormProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ interface TelegramPlatformFormProps {
 }
 
 const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: TelegramPlatformFormProps) => {
+  const { toast } = useToast();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
@@ -55,14 +58,54 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   const handleSubmit = async () => {
     try {
+      // First, send to Telegram webhook
+      const telegramWebhookData = {
+        brand_name: formData.brandName,
+        description: formData.description,
+        display_name: formData.displayName,
+        telegram_bot_token: formData.telegramBotToken,
+        telegram_bot_username: formData.telegramBotUsername,
+        ai_profile_id: formData.selectedAIAgent,
+        human_agent_ids: formData.selectedHumanAgents,
+        platform_type: 'telegram'
+      };
+
+      const webhookUrl = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.CREATE_PLATFORM);
+      
+      const webhookResponse = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(telegramWebhookData),
+      });
+
+      if (!webhookResponse.ok) {
+        throw new Error(`Telegram webhook failed with status ${webhookResponse.status}`);
+      }
+
+      const webhookResult = await webhookResponse.json();
+      console.log('Telegram webhook response:', webhookResult);
+
+      // Then submit to the main form handler
       const submitData = {
         ...formData,
         platformType: 'telegram' as const
       };
 
       await onSubmit(submitData);
-    } catch (error) {
+      
+      toast({
+        title: "Success",
+        description: "Telegram platform created and webhook sent successfully!",
+      });
+    } catch (error: any) {
       console.error('Error submitting form:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create Telegram platform",
+        variant: "destructive",
+      });
     }
   };
 
