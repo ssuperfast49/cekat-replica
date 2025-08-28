@@ -14,6 +14,8 @@ export const WEBHOOK_CONFIG = {
     // Telegram endpoints
     TELEGRAM: {
       CREATE_PLATFORM: "/telegram/create-platform",
+      // Provider-specific send endpoint
+      SEND_MESSAGE: "/telegram/send-message",
     },
     
     // AI Agent endpoints
@@ -23,7 +25,10 @@ export const WEBHOOK_CONFIG = {
     
     // Message endpoints
     MESSAGE: {
+      // Default generic send endpoint
       SEND_MESSAGE: "/send-message",
+      // WhatsApp provider-specific send endpoint
+      WHATSAPP_SEND_MESSAGE: "/whatsapp/send-message",
     },
   },
   
@@ -37,6 +42,19 @@ export const WEBHOOK_CONFIG = {
     const baseUrl = WEBHOOK_CONFIG.BASE_URL.replace('/webhook', '/webhook-test');
     return `${baseUrl}${endpoint}`;
   },
+};
+
+// Map provider to its send-message path
+const PROVIDER_SEND_PATHS: Record<string, string> = {
+  telegram: WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.SEND_MESSAGE,
+  whatsapp: WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.WHATSAPP_SEND_MESSAGE,
+};
+
+// Setter to switch the active send-message endpoint based on provider
+export const setSendMessageProvider = (provider: string) => {
+  const key = (provider || '').toLowerCase();
+  const newPath = PROVIDER_SEND_PATHS[key] || WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.SEND_MESSAGE;
+  WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.SEND_MESSAGE = newPath;
 };
 
 export default WEBHOOK_CONFIG;
