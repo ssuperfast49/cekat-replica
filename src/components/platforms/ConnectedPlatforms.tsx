@@ -304,7 +304,7 @@ const ConnectedPlatforms = () => {
                 Add Platform
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+            <DialogContent className="sm:max-w-xl p-0 overflow-hidden">
               <DialogHeader className="p-6 pb-4">
                 <div className="flex items-center justify-between">
                   <DialogTitle className="text-lg font-semibold">Platform</DialogTitle>
@@ -413,10 +413,7 @@ const ConnectedPlatforms = () => {
               {selectedPlatformData && (
                 <>
                   <Button variant="outline" size="sm">
-                    Sim
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Settings className="h-4 w-4" />
+                    Save
                   </Button>
                   <Button 
                     variant="outline" 
