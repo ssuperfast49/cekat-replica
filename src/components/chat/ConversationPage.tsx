@@ -37,6 +37,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import { setSendMessageProvider } from "@/config/webhook";
 
 interface MessageBubbleProps {
   message: MessageWithDetails;
@@ -205,6 +206,11 @@ export default function ConversationPage() {
 
   // Handle conversation selection
   const handleConversationSelect = async (threadId: string) => {
+    // Set provider based on the selected conversation's channel.provider
+    const conv = filteredConversations.find(c => c.id === threadId);
+    if (conv?.channel?.provider) {
+      setSendMessageProvider(conv.channel.provider);
+    }
     setSelectedThreadId(threadId);
     await fetchMessages(threadId);
   };
@@ -215,7 +221,7 @@ export default function ConversationPage() {
     if (!text || !selectedThreadId) return;
     
     try {
-      await sendMessage(selectedThreadId, text);
+      await sendMessage(selectedThreadId, text, 'assistant');
       setDraft("");
       toast.success("Message sent successfully");
     } catch (error) {
@@ -259,6 +265,13 @@ export default function ConversationPage() {
       }
     };
   }, [messageSearch, messages]);
+
+  // Update webhook provider whenever selected conversation changes
+  useEffect(() => {
+    if (selectedConversation?.channel?.provider) {
+      setSendMessageProvider(selectedConversation.channel.provider);
+    }
+  }, [selectedConversation?.channel?.provider]);
 
   // Add participant to thread
   const handleAddParticipant = async (userId: string) => {

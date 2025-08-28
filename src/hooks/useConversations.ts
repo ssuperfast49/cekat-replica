@@ -46,6 +46,13 @@ export interface ConversationWithDetails extends Thread {
   contact_email: string;
   channel_name: string;
   channel_type: string;
+  channel_provider?: string;
+  channel?: {
+    provider?: string;
+    type?: string;
+    display_name?: string;
+    external_id?: string;
+  };
   last_message_preview: string;
   message_count: number;
   assigned: boolean;
@@ -78,7 +85,7 @@ export const useConversations = () => {
         .select(`
           *,
           contacts(name, phone, email),
-          channels(display_name, type)
+          channels(display_name, type, provider, external_id)
         `)
         // .eq('org_id', '00000000-0000-0000-0000-000000000001')
         .order('last_msg_at', { ascending: false });
@@ -108,6 +115,13 @@ export const useConversations = () => {
         contact_email: thread.contacts?.email || '',
         channel_name: thread.channels?.display_name || 'Unknown Channel',
         channel_type: thread.channels?.type || 'web',
+        channel_provider: thread.channels?.provider || undefined,
+        channel: {
+          provider: thread.channels?.provider,
+          type: thread.channels?.type,
+          display_name: thread.channels?.display_name,
+          external_id: thread.channels?.external_id,
+        },
         last_message_preview: 'Last message preview...', // This would come from messages table
         message_count: 0, // This would be calculated from messages table
         assigned: !!thread.assignee_user_id,
@@ -182,7 +196,11 @@ export const useConversations = () => {
   };
 
   // Send a new message
-  const sendMessage = async (threadId: string, messageText: string, role: 'agent' | 'assistant' = 'assistant') => {
+  const sendMessage = async (
+    threadId: string,
+    messageText: string,
+    role: 'agent' | 'assistant' = 'assistant'
+  ) => {
     try {
       setError(null);
 
@@ -218,7 +236,7 @@ export const useConversations = () => {
       // Get contact details for webhook payload
       const { data: contactData, error: contactError } = await supabase
         .from('contacts')
-        .select('phone')
+        .select('phone, external_id')
         .eq('id', threadData.contact_id)
         .single();
 
@@ -232,7 +250,8 @@ export const useConversations = () => {
           channel_id: threadData.channel_id,
           contact_id: threadData.contact_id,
           contact_phone: contactData?.phone || null,
-          body: messageText,
+          external_id: contactData?.external_id || null,
+          text: messageText,
           type: 'text',
           direction: 'out',
           role: role

@@ -104,18 +104,11 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       const webhookResult = await webhookResponse.json();
       console.log('Telegram webhook response:', webhookResult);
 
-      // Then submit to the main form handler
-      const submitData = {
-        ...formData,
-        platformType: 'telegram' as const
-      };
-
-      await onSubmit(submitData);
-      
       toast({
         title: "Success",
         description: "Telegram platform created and webhook sent successfully!",
       });
+      onClose();
     } catch (error: any) {
       console.error('Error submitting form:', error);
       toast({
