@@ -27,7 +27,6 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
   const [formData, setFormData] = useState({
-    brandName: "",
     description: "",
     displayName: "",
     profilePhoto: null as File | null,
@@ -66,8 +65,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
     }));
   };
 
-  const isFormValid = formData.brandName && 
-    formData.displayName && 
+  const isFormValid = formData.displayName && 
     formData.selectedAIAgent &&
     formData.websiteUrl;
 
@@ -95,16 +93,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
         </DialogHeader>
         
         <div className="space-y-6">
-          {/* Brand Name */}
-          <div className="space-y-2">
-            <Label htmlFor="brandName">Brand / Org Name *</Label>
-            <Input
-              id="brandName"
-              placeholder="Enter your brand or organization name"
-              value={formData.brandName}
-              onChange={(e) => setFormData(prev => ({ ...prev, brandName: e.target.value }))}
-            />
-          </div>
+          {/* Removed brand/org name in favor of Display Name */}
 
           {/* Description */}
           <div className="space-y-2">
@@ -118,9 +107,9 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
             />
           </div>
 
-          {/* Chat Display Name */}
+          {/* Display Name */}
           <div className="space-y-2">
-            <Label htmlFor="displayName">Chat Display Name *</Label>
+            <Label htmlFor="displayName">Display Name *</Label>
             <Input
               id="displayName"
               placeholder="Name that will appear in the chat widget"

@@ -27,7 +27,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
   const [formData, setFormData] = useState({
-    brandName: "",
+    displayName: "",
     description: "",
     profilePhoto: null as File | null,
     telegramBotToken: "",
@@ -51,7 +51,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     }));
   };
 
-  const isFormValid = formData.brandName && 
+  const isFormValid = formData.displayName && 
     formData.selectedAIAgent &&
     formData.telegramBotToken;
 
@@ -77,7 +77,8 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
       // First, send to Telegram webhook
       const telegramWebhookData = {
-        brand_name: formData.brandName,
+        brand_name: formData.displayName,
+        display_name: formData.displayName,
         description: formData.description,
         telegram_bot_token: formData.telegramBotToken,
         ai_profile_id: formData.selectedAIAgent,
@@ -136,14 +137,14 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         </DialogHeader>
         
         <div className="space-y-6">
-          {/* Brand Name */}
+          {/* Display Name */}
           <div className="space-y-2">
-            <Label htmlFor="brandName">Brand / Org Name *</Label>
+            <Label htmlFor="displayName">Display Name *</Label>
             <Input
-              id="brandName"
-              placeholder="Enter your brand or organization name"
-              value={formData.brandName}
-              onChange={(e) => setFormData(prev => ({ ...prev, brandName: e.target.value }))}
+              id="displayName"
+              placeholder="Enter the display name"
+              value={formData.displayName}
+              onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
             />
           </div>
 

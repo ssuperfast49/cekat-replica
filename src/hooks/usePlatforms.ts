@@ -4,15 +4,11 @@ import { supabase } from '@/lib/supabase';
 export interface Platform {
   id: string;
   org_id: string;
-  brand_name: string;
+  display_name?: string;
   website_url?: string;
   business_category?: string;
   description?: string;
-  whatsapp_display_name: string;
   profile_photo_url?: string;
-  whatsapp_number?: string;
-  telegram_bot_token?: string;
-  telegram_bot_username?: string;
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   status: 'active' | 'inactive' | 'pending';
   created_at: string;
@@ -28,15 +24,11 @@ export interface PlatformWithAgents extends Platform {
 }
 
 export interface CreatePlatformData {
-  brand_name: string;
+  display_name: string;
   website_url?: string;
   business_category?: string;
   description?: string;
-  whatsapp_display_name: string;
   profile_photo_url?: string;
-  whatsapp_number?: string;
-  telegram_bot_token?: string;
-  telegram_bot_username?: string;
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   human_agent_ids?: string[];
 }
@@ -141,32 +133,19 @@ export const usePlatforms = () => {
         throw new Error('User not authenticated');
       }
 
-      // Create new organization
-      const { data: newOrg, error: orgError } = await supabase
-        .from('orgs')
-        .insert({
-          name: platformData.brand_name
-        })
-        .select()
-        .single();
-
-      if (orgError) {
-        throw orgError;
-      }
-
-      const orgId = newOrg.id;
-
-      // Add current user as owner of the new organization
-      const { error: ownerError } = await supabase
+      // Use existing organization of the current user
+      const { data: userOrgs, error: userOrgsError } = await supabase
         .from('org_members')
-        .insert({
-          org_id: orgId,
-          user_id: user.id,
-          role: 'owner'
-        });
+        .select('org_id')
+        .eq('user_id', user.id)
+        .limit(1);
 
-      if (ownerError) {
-        console.error('Error adding current user as owner:', ownerError);
+      if (userOrgsError) {
+        throw userOrgsError;
+      }
+      const orgId = userOrgs?.[0]?.org_id;
+      if (!orgId) {
+        throw new Error('User not found in any organization');
       }
 
       // Create platform
@@ -174,15 +153,11 @@ export const usePlatforms = () => {
         .from('platforms')
         .insert({
           org_id: orgId,
-          brand_name: platformData.brand_name,
+          display_name: platformData.display_name,
           website_url: platformData.website_url,
           business_category: platformData.business_category,
           description: platformData.description,
-          whatsapp_display_name: platformData.whatsapp_display_name,
           profile_photo_url: platformData.profile_photo_url,
-          whatsapp_number: platformData.whatsapp_number,
-          telegram_bot_token: platformData.telegram_bot_token,
-          telegram_bot_username: platformData.telegram_bot_username,
           ai_profile_id: platformData.ai_profile_id,
         })
         .select()
@@ -192,22 +167,7 @@ export const usePlatforms = () => {
         throw platformError;
       }
 
-      // Add selected human agents to the new organization
-      if (platformData.human_agent_ids && platformData.human_agent_ids.length > 0) {
-        const orgMemberData = platformData.human_agent_ids.map(userId => ({
-          org_id: orgId,
-          user_id: userId,
-          role: 'agent'
-        }));
-
-        const { error: orgMembersError } = await supabase
-          .from('org_members')
-          .insert(orgMemberData);
-
-        if (orgMembersError) {
-          console.error('Error adding human agents to organization:', orgMembersError);
-        }
-      }
+      // Do not modify org_members on platform creation
 
       // Refresh platforms list
       await fetchPlatforms();

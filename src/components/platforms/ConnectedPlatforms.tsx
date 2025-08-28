@@ -12,6 +12,7 @@ import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Tras
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
+import { useChannels } from "@/hooks/useChannels";
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +26,7 @@ const ConnectedPlatforms = () => {
   const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, uploadProfilePhoto } = usePlatforms();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
+  const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
   
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string>("");
@@ -72,20 +74,21 @@ const ConnectedPlatforms = () => {
 
   // Helper function to determine platform type
   const getPlatformType = (platform: any): 'whatsapp' | 'web' | 'telegram' => {
-    // If platform has whatsapp_number, it's a WhatsApp platform
-    // If platform has telegram_bot_token, it's a Telegram platform
-    // If platform has website_url but no whatsapp_number or telegram_bot_token, it's a web platform
-    if (platform.whatsapp_number) {
-      return 'whatsapp';
-    }
-    if (platform.telegram_bot_token) {
-      return 'telegram';
-    }
+    const orgId = platform?.org_id;
+    const channels = orgId ? channelsByOrg[orgId] : undefined;
+    const provider = channels?.[0]?.provider;
+    if (provider === 'whatsapp') return 'whatsapp';
+    if (provider === 'telegram') return 'telegram';
     return 'web';
   };
 
   // Get the selected platform data
   const selectedPlatformData = platforms.find(platform => platform.id === selectedPlatform);
+  useEffect(() => {
+    // Preload channels for each org
+    const uniqueOrgIds = Array.from(new Set(platforms.map(p => p.org_id)));
+    uniqueOrgIds.forEach(orgId => { fetchChannelsByOrg(orgId); });
+  }, [platforms, fetchChannelsByOrg]);
   const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
 
   const businessCategories = [
@@ -118,15 +121,11 @@ const ConnectedPlatforms = () => {
       }
 
       const platformData: CreatePlatformData = {
-        brand_name: formData.brandName,
+        display_name: formData.displayName || formData.platformName || formData.brandName,
         website_url: formData.websiteUrl || undefined,
         business_category: formData.businessCategory || undefined,
         description: formData.description || undefined,
-        whatsapp_display_name: formData.displayName,
         profile_photo_url: profilePhotoUrl || undefined,
-        whatsapp_number: formData.platformType === 'whatsapp' ? formData.phoneNumber : undefined,
-        telegram_bot_token: formData.platformType === 'telegram' ? formData.telegramBotToken : undefined,
-        telegram_bot_username: formData.platformType === 'telegram' ? formData.telegramBotUsername : undefined,
         ai_profile_id: formData.selectedAIAgent || undefined,
         human_agent_ids: formData.selectedHumanAgents
       };
@@ -270,18 +269,18 @@ const ConnectedPlatforms = () => {
                           {platform.profile_photo_url ? (
                             <img
                               src={platform.profile_photo_url}
-                              alt={platform.brand_name}
+                              alt={platform.display_name || 'Platform'}
                               className="h-10 w-10 rounded-full object-cover"
                             />
                           ) : (
                             <span className="text-xs font-medium text-blue-600">
-                              {platform.brand_name.charAt(0)}
+                              {(platform.display_name || '').charAt(0) || "?"}
                             </span>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-sm truncate">{platform.brand_name}</h3>
-                          <p className="text-xs text-muted-foreground">{platform.whatsapp_display_name}</p>
+                          <h3 className="font-medium text-sm truncate">{platform.display_name || 'Unnamed Platform'}</h3>
+                          <p className="text-xs text-muted-foreground">{platform.description || platform.website_url || ''}</p>
                         </div>
                         <Badge 
                           variant={platform.status === 'active' ? 'default' : 'secondary'}
@@ -402,10 +401,12 @@ const ConnectedPlatforms = () => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold">
-                  {selectedPlatformData ? selectedPlatformData.brand_name.toUpperCase() : 'Select Platform'}
+                  {selectedPlatformData?.display_name
+                    ? selectedPlatformData.display_name.toUpperCase()
+                    : 'Select Platform'}
                 </h1>
                 <p className="text-muted-foreground">
-                  {selectedPlatformData ? selectedPlatformData.whatsapp_display_name : 'Choose a platform to manage'}
+                  {selectedPlatformData ? (selectedPlatformData.description || selectedPlatformData.website_url || '') : 'Choose a platform to manage'}
                 </p>
               </div>
             </div>
