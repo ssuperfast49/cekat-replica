@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
 
 interface WhatsAppPlatformFormProps {
@@ -21,13 +23,13 @@ interface WhatsAppPlatformFormProps {
 
 const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: WhatsAppPlatformFormProps) => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
   const [formData, setFormData] = useState({
-    brandName: "",
+    platformName: "",
     description: "",
-    displayName: "",
     profilePhoto: null as File | null,
     phoneNumber: "",
     selectedAIAgent: "",
@@ -40,8 +42,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
   const isFetchingRef = useRef(false);
-
-  const n8nBaseUrl = WEBHOOK_CONFIG.BASE_URL;
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -57,6 +57,18 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         ? prev.selectedHumanAgents.filter(id => id !== agentId)
         : [...prev.selectedHumanAgents, agentId]
     }));
+  };
+
+  const getUserOrgId = async () => {
+    if (!user) return null;
+    
+    const { data: userOrgMember } = await supabase
+      .from('org_members')
+      .select('org_id')
+      .eq('user_id', user.id)
+      .single();
+    
+    return userOrgMember?.org_id || null;
   };
 
   const handleWhatsAppConnection = async () => {
@@ -165,14 +177,47 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     return () => clearInterval(pollInterval);
   }, [qrImageUrl, isWhatsAppConnected]);
 
-  const isFormValid = formData.brandName && 
-    formData.displayName && 
+  const isFormValid = formData.platformName && 
     formData.selectedAIAgent &&
     formData.phoneNumber &&
     isWhatsAppConnected;
 
   const handleSubmit = async () => {
     try {
+      // Get user's organization ID
+      const orgId = await getUserOrgId();
+      if (!orgId) {
+        throw new Error('User not found in any organization');
+      }
+
+      // First, send to WhatsApp webhook
+      const whatsappWebhookData = {
+        platform_name: formData.platformName,
+        description: formData.description,
+        phone_number: formData.phoneNumber,
+        ai_profile_id: formData.selectedAIAgent,
+        human_agent_ids: formData.selectedHumanAgents,
+        org_id: orgId,
+        platform_type: 'whatsapp'
+      };
+
+      const webhookUrl = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.CREATE_PLATFORM || '/whatsapp/create-platform');
+      
+      const webhookResponse = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(whatsappWebhookData),
+      });
+
+      if (!webhookResponse.ok) {
+        throw new Error(`WhatsApp webhook failed with status ${webhookResponse.status}`);
+      }
+
+      const webhookResult = await webhookResponse.json();
+      console.log('WhatsApp webhook response:', webhookResult);
+
       // Format phone number - just clean it without adding @c.us suffix
       let formattedPhoneNumber = formData.phoneNumber;
       if (formData.phoneNumber) {
@@ -182,6 +227,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         formattedPhoneNumber = cleanNumber;
       }
 
+      // Then submit to the main form handler
       const submitData = {
         ...formData,
         phoneNumber: formattedPhoneNumber,
@@ -189,8 +235,18 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       };
 
       await onSubmit(submitData);
-    } catch (error) {
+      
+      toast({
+        title: "Success",
+        description: "WhatsApp platform created and webhook sent successfully!",
+      });
+    } catch (error: any) {
       console.error('Error submitting form:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create WhatsApp platform",
+        variant: "destructive",
+      });
     }
   };
 
@@ -205,14 +261,14 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         </DialogHeader>
         
         <div className="space-y-6">
-          {/* Brand Name */}
+          {/* Platform Name */}
           <div className="space-y-2">
-            <Label htmlFor="brandName">Brand / Org Name *</Label>
+            <Label htmlFor="platformName">Platform Name *</Label>
             <Input
-              id="brandName"
-              placeholder="Enter your brand or organization name"
-              value={formData.brandName}
-              onChange={(e) => setFormData(prev => ({ ...prev, brandName: e.target.value }))}
+              id="platformName"
+              placeholder="Enter your platform or brand name"
+              value={formData.platformName}
+              onChange={(e) => setFormData(prev => ({ ...prev, platformName: e.target.value }))}
             />
           </div>
 
@@ -225,17 +281,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               value={formData.description}
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               rows={3}
-            />
-          </div>
-
-          {/* WhatsApp Display Name */}
-          <div className="space-y-2">
-            <Label htmlFor="displayName">WhatsApp Display Name *</Label>
-            <Input
-              id="displayName"
-              placeholder="Name that will appear in WhatsApp"
-              value={formData.displayName}
-              onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
             />
           </div>
 

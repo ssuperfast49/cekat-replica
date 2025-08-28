@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
 
 interface TelegramPlatformFormProps {
@@ -20,16 +22,15 @@ interface TelegramPlatformFormProps {
 
 const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: TelegramPlatformFormProps) => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
   const [formData, setFormData] = useState({
     brandName: "",
     description: "",
-    displayName: "",
     profilePhoto: null as File | null,
     telegramBotToken: "",
-    telegramBotUsername: "",
     selectedAIAgent: "",
     selectedHumanAgents: [] as string[]
   });
@@ -51,22 +52,37 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   };
 
   const isFormValid = formData.brandName && 
-    formData.displayName && 
     formData.selectedAIAgent &&
-    formData.telegramBotToken &&
-    formData.telegramBotUsername;
+    formData.telegramBotToken;
+
+  const getUserOrgId = async () => {
+    if (!user) return null;
+    
+    const { data: userOrgMember } = await supabase
+      .from('org_members')
+      .select('org_id')
+      .eq('user_id', user.id)
+      .single();
+    
+    return userOrgMember?.org_id || null;
+  };
 
   const handleSubmit = async () => {
     try {
+      // Get user's organization ID
+      const orgId = await getUserOrgId();
+      if (!orgId) {
+        throw new Error('User not found in any organization');
+      }
+
       // First, send to Telegram webhook
       const telegramWebhookData = {
         brand_name: formData.brandName,
         description: formData.description,
-        display_name: formData.displayName,
         telegram_bot_token: formData.telegramBotToken,
-        telegram_bot_username: formData.telegramBotUsername,
         ai_profile_id: formData.selectedAIAgent,
         human_agent_ids: formData.selectedHumanAgents,
+        org_id: orgId,
         platform_type: 'telegram'
       };
 
@@ -143,16 +159,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             />
           </div>
 
-          {/* Telegram Bot Display Name */}
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Telegram Bot Display Name *</Label>
-            <Input
-              id="displayName"
-              placeholder="Name that will appear in Telegram"
-              value={formData.displayName}
-              onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
-            />
-          </div>
+
 
           {/* Telegram Bot Token */}
           <div className="space-y-2">
@@ -166,26 +173,6 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             />
             <p className="text-xs text-muted-foreground">
               Get this token from @BotFather on Telegram. Format: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-            </p>
-          </div>
-
-          {/* Telegram Bot Username */}
-          <div className="space-y-2">
-            <Label htmlFor="telegramBotUsername">Bot Username *</Label>
-            <div className="flex">
-              <div className="flex items-center px-3 py-2 bg-muted border border-r-0 rounded-l-md text-sm text-muted-foreground">
-                @
-              </div>
-              <Input
-                id="telegramBotUsername"
-                placeholder="your_bot_username"
-                value={formData.telegramBotUsername}
-                onChange={(e) => setFormData(prev => ({ ...prev, telegramBotUsername: e.target.value }))}
-                className="rounded-l-none"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Your bot's username without the @ symbol (e.g., my_customer_service_bot)
             </p>
           </div>
 
@@ -206,7 +193,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                 <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
                   <li>Open Telegram and search for @BotFather</li>
                   <li>Send /newbot command</li>
-                  <li>Choose a name for your bot</li>
+                  <li>Choose a name for your bot (organization name)</li>
                   <li>Choose a username (must end with 'bot')</li>
                   <li>Copy the bot token provided</li>
                 </ol>
