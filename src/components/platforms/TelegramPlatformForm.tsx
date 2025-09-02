@@ -104,9 +104,43 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       const webhookResult = await webhookResponse.json();
       console.log('Telegram webhook response:', webhookResult);
 
+      // Create channel entry with Telegram Bot Token stored in channels.secret_token
+      const { data: channel, error: channelErr } = await supabase
+        .from('channels')
+        .insert({
+          org_id: orgId,
+          display_name: formData.displayName,
+          type: 'inbox',
+          provider: 'telegram',
+          ai_profile_id: formData.selectedAIAgent,
+          secret_token: formData.telegramBotToken,
+          credentials: { telegram_bot_token: formData.telegramBotToken },
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (channelErr) {
+        throw channelErr;
+      }
+
+      // Link selected human agents to the newly created channel
+      if (channel && formData.selectedHumanAgents.length > 0) {
+        const rows = formData.selectedHumanAgents.map(userId => ({
+          channel_id: channel.id,
+          user_id: userId,
+        }));
+        const { error: linkErr } = await supabase
+          .from('channel_agents')
+          .insert(rows);
+        if (linkErr) {
+          console.error('Failed linking human agents to channel:', linkErr);
+        }
+      }
+
       toast({
         title: "Success",
-        description: "Telegram platform created and webhook sent successfully!",
+        description: "Telegram channel created and webhook sent successfully!",
       });
       onClose();
     } catch (error: any) {

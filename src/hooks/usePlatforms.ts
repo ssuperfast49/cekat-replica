@@ -10,6 +10,7 @@ export interface Platform {
   description?: string;
   profile_photo_url?: string;
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
+  provider?: 'whatsapp' | 'web' | 'telegram';
   status: 'active' | 'inactive' | 'pending';
   created_at: string;
   updated_at: string;
@@ -30,6 +31,7 @@ export interface CreatePlatformData {
   description?: string;
   profile_photo_url?: string;
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
+  provider: 'whatsapp' | 'web' | 'telegram';
   human_agent_ids?: string[];
 }
 
@@ -62,27 +64,24 @@ export const usePlatforms = () => {
 
       const orgIds = userOrgs.map(org => org.org_id);
 
-      // Fetch platforms for all user's organizations
-      const { data: platformsData, error: platformsError } = await supabase
-        .from('platforms')
+      // Fetch channels for all user's organizations (platforms merged into channels)
+      const { data: channelsData, error: channelsError } = await supabase
+        .from('channels')
         .select(`
-          *,
-          orgs!inner (
-            name
-          )
+          *
         `)
         .in('org_id', orgIds)
         .order('created_at', { ascending: false });
 
-      if (platformsError) {
-        console.error('Error fetching platforms:', platformsError);
-        setError(platformsError.message);
+      if (channelsError) {
+        console.error('Error fetching channels:', channelsError);
+        setError(channelsError.message);
         return;
       }
 
-      // For each platform, get the human agents (org members)
+      // Map channels to platform-like objects and attach human agents (org members)
       const platformsWithAgents = await Promise.all(
-        (platformsData || []).map(async (platform: any) => {
+        (channelsData || []).map(async (ch: any) => {
           const { data: orgMembers, error: orgMembersError } = await supabase
             .from('org_members')
             .select(`
@@ -93,18 +92,22 @@ export const usePlatforms = () => {
                 email
               )
             `)
-            .eq('org_id', platform.org_id);
+            .eq('org_id', ch.org_id);
 
           if (orgMembersError) {
             console.error('Error fetching org members for platform:', orgMembersError);
             return {
-              ...platform,
+              ...ch,
+              provider: ch.provider,
+              status: ch.is_active ? 'active' : 'inactive',
               human_agents: []
             };
           }
 
           return {
-            ...platform,
+            ...ch,
+            provider: ch.provider,
+            status: ch.is_active ? 'active' : 'inactive',
             human_agents: (orgMembers || []).map((member: any) => ({
               user_id: member.user_id,
               display_name: member.users_profile?.display_name,
@@ -148,17 +151,18 @@ export const usePlatforms = () => {
         throw new Error('User not found in any organization');
       }
 
-      // Create platform
-      const { data: newPlatform, error: platformError } = await supabase
-        .from('platforms')
+      // Create channel (formerly platform)
+      const { data: newChannel, error: platformError } = await supabase
+        .from('channels')
         .insert({
           org_id: orgId,
           display_name: platformData.display_name,
-          website_url: platformData.website_url,
-          business_category: platformData.business_category,
-          description: platformData.description,
+          credentials: {},
+          provider: platformData.provider,
+          type: 'inbox',
           profile_photo_url: platformData.profile_photo_url,
           ai_profile_id: platformData.ai_profile_id,
+          is_active: true,
         })
         .select()
         .single();
@@ -172,7 +176,7 @@ export const usePlatforms = () => {
       // Refresh platforms list
       await fetchPlatforms();
 
-      return newPlatform;
+      return newChannel;
     } catch (error: any) {
       console.error('Error creating platform:', error);
       setError(error.message || 'Failed to create platform');
@@ -185,8 +189,13 @@ export const usePlatforms = () => {
       setError(null);
 
       const { error: platformError } = await supabase
-        .from('platforms')
-        .update(updates)
+        .from('channels')
+        .update({
+          display_name: updates.display_name,
+          profile_photo_url: updates.profile_photo_url,
+          ai_profile_id: updates.ai_profile_id,
+          provider: updates.provider,
+        })
         .eq('id', platformId);
 
       if (platformError) {
@@ -197,9 +206,9 @@ export const usePlatforms = () => {
       if (updates.human_agent_ids !== undefined) {
         // Remove existing human agents
         const { error: deleteError } = await supabase
-          .from('platform_human_agents')
+          .from('channel_agents')
           .delete()
-          .eq('platform_id', platformId);
+          .eq('channel_id', platformId);
 
         if (deleteError) {
           console.error('Error removing human agents:', deleteError);
@@ -208,12 +217,12 @@ export const usePlatforms = () => {
         // Add new human agents
         if (updates.human_agent_ids.length > 0) {
           const humanAgentData = updates.human_agent_ids.map(userId => ({
-            platform_id: platformId,
+            channel_id: platformId,
             user_id: userId
           }));
 
           const { error: insertError } = await supabase
-            .from('platform_human_agents')
+            .from('channel_agents')
             .insert(humanAgentData);
 
           if (insertError) {
@@ -236,7 +245,7 @@ export const usePlatforms = () => {
       setError(null);
 
       const { error } = await supabase
-        .from('platforms')
+        .from('channels')
         .delete()
         .eq('id', platformId);
 

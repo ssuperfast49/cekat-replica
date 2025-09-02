@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Mail, Lock, Eye, EyeOff, User, ArrowLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import pkg from "../../../package.json";
 import { toast } from "@/components/ui/sonner";
 
 interface LoginProps {
@@ -225,6 +226,7 @@ export default function Login({ onBack }: LoginProps) {
                     "Sign In"
                   )}
                 </Button>
+                <p className="text-xs text-muted-foreground text-center mt-2">v{(pkg as any)?.version}</p>
               </form>
             </TabsContent>
 

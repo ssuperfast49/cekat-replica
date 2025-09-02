@@ -10,6 +10,10 @@ export const WEBHOOK_CONFIG = {
       GET_LOGIN_QR: "/get_login_qr",
       GET_SESSIONS: "/get_sessions",
       LOGOUT_SESSION: "/logout_session",
+      CREATE_PLATFORM: "/whatsapp/create-platform",
+      CREATE_SESSION: "/create_session",
+      DISCONNECT_SESSION: "/disconnect_session",
+      DELETE_SESSION: "/delete_session",
     },
     // Telegram endpoints
     TELEGRAM: {

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Upload } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -40,8 +40,11 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [isWhatsAppConnected, setIsWhatsAppConnected] = useState(false);
   const [isFetchingQR, setIsFetchingQR] = useState(false);
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
+  const [sessionName, setSessionName] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
   const isFetchingRef = useRef(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -71,18 +74,89 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     return userOrgMember?.org_id || null;
   };
 
-  const handleWhatsAppConnection = async () => {
+  const handleWhatsAppConnection = async (): Promise<{ qr: string; sessionName: string } | null> => {
     try {
       setIsFetchingQR(true);
       setQrError(null);
       setQrImageUrl(null);
       
+      // 1) Create a WAHA session first to ensure an empty session exists
+      const createSessionUrl = 'https://primary-production-376c.up.railway.app/webhook/create_session';
+      const webhookUrlForWaha = 'https://primary-production-376c.up.railway.app/webhook/2f6f9767-c3cb-4af3-b749-a496eefc2b74/waha';
+      const sName = (formData.platformName || 'default').replace(/\s/g, '');
+      const sessionPayload = {
+        name: sName,
+        start: true,
+        config: {
+          metadata: {
+            'user.id': user?.id || '',
+            'user.email': user?.email || ''
+          },
+          proxy: null,
+          debug: false,
+          noweb: {
+            store: { enabled: true, fullSync: false }
+          },
+          webhooks: [
+            {
+              url: webhookUrlForWaha,
+              events: [
+                'message',
+                'session.status',
+                'message.reaction',
+                'message.any',
+                'message.ack',
+                'message.waiting',
+                'message.revoked',
+                'state.change',
+                'group.join',
+                'group.leave',
+                'presence.update',
+                'poll.vote',
+                'poll.vote.failed',
+                'chat.archive',
+                'call.received',
+                'call.accepted',
+                'call.rejected',
+                'label.upsert',
+                'label.deleted',
+                'label.chat.added',
+                'label.chat.deleted',
+                'engine.event'
+              ],
+              hmac: null,
+              retries: null,
+              customHeaders: null
+            }
+          ]
+        }
+      } as const;
+
+      try {
+        const createRes = await fetch(createSessionUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sessionPayload),
+        });
+        if (!createRes.ok) {
+          // If session already exists, continue; otherwise surface error
+          const text = await createRes.text();
+          if (createRes.status !== 409) {
+            throw new Error(`Create session failed (${createRes.status}): ${text || 'Unknown error'}`);
+          }
+        }
+      } catch (e: any) {
+        // Bubble up create-session errors
+        throw e;
+      }
+
+      // 2) Fetch QR for login
       const response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_LOGIN_QR), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ session_name: sName }),
       });
       
       if (!response.ok) {
@@ -96,6 +170,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         const blob = await response.blob();
         const dataUrl = URL.createObjectURL(blob);
         setQrImageUrl(dataUrl);
+        setSessionName(sName);
+        setIsFetchingQR(false);
+        return { qr: dataUrl, sessionName: sName };
       } else {
         // Try to parse as JSON
         try {
@@ -108,6 +185,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
           
           const dataUrl = `data:${payload.mimetype};base64,${payload.data}`;
           setQrImageUrl(dataUrl);
+          setSessionName(sName);
+          setIsFetchingQR(false);
+          return { qr: dataUrl, sessionName: sName };
         } catch (jsonError) {
           // If JSON parsing fails, try to get the response as text and check if it's base64
           const text = await response.text();
@@ -115,6 +195,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             // Assume it's a base64 encoded image
             const dataUrl = `data:image/png;base64,${text}`;
             setQrImageUrl(dataUrl);
+            setSessionName(sName);
+            setIsFetchingQR(false);
+            return { qr: dataUrl, sessionName: sName };
           } else {
             throw new Error("Invalid response format");
           }
@@ -122,10 +205,11 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       }
       
       setIsFetchingQR(false);
-      
+      return null;
     } catch (error: any) {
       setQrError(error?.message || "Failed to generate QR");
       setIsFetchingQR(false);
+      return null;
     }
   };
 
@@ -177,46 +261,41 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     return () => clearInterval(pollInterval);
   }, [qrImageUrl, isWhatsAppConnected]);
 
-  const isFormValid = formData.platformName && 
-    formData.selectedAIAgent &&
-    formData.phoneNumber &&
-    isWhatsAppConnected;
+  const hasRequiredFields = Boolean(formData.platformName && formData.selectedAIAgent && formData.phoneNumber);
+
+  const handleCancel = async () => {
+    try {
+      setIsCancelling(true);
+    } finally {
+      setIsCancelling(false);
+      // Reset all local states so popup is clean next open
+      setFormData({
+        platformName: "",
+        description: "",
+        profilePhoto: null,
+        phoneNumber: "",
+        selectedAIAgent: "",
+        selectedHumanAgents: []
+      });
+      setIsWhatsAppConnected(false);
+      setIsFetchingQR(false);
+      setQrImageUrl(null);
+      setQrError(null);
+      onClose();
+    }
+  };
 
   const handleSubmit = async () => {
     try {
+      setIsCreating(true);
       // Get user's organization ID
       const orgId = await getUserOrgId();
       if (!orgId) {
         throw new Error('User not found in any organization');
       }
 
-      // First, send to WhatsApp webhook
-      const whatsappWebhookData = {
-        platform_name: formData.platformName,
-        description: formData.description,
-        phone_number: formData.phoneNumber,
-        ai_profile_id: formData.selectedAIAgent,
-        human_agent_ids: formData.selectedHumanAgents,
-        org_id: orgId,
-        platform_type: 'whatsapp'
-      };
-
-      const webhookUrl = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.CREATE_PLATFORM || '/whatsapp/create-platform');
-      
-      const webhookResponse = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(whatsappWebhookData),
-      });
-
-      if (!webhookResponse.ok) {
-        throw new Error(`WhatsApp webhook failed with status ${webhookResponse.status}`);
-      }
-
-      const webhookResult = await webhookResponse.json();
-      console.log('WhatsApp webhook response:', webhookResult);
+      // First, CREATE SESSION and fetch QR immediately (no connect button)
+      const qrResult = await handleWhatsAppConnection();
 
       // Format phone number - just clean it without adding @c.us suffix
       let formattedPhoneNumber = formData.phoneNumber;
@@ -236,10 +315,14 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
       await onSubmit(submitData);
       
-      toast({
-        title: "Success",
-        description: "WhatsApp platform created and webhook sent successfully!",
-      });
+      toast({ title: "Success", description: "Channel successfully created." });
+      // Close form popup and show QR dialog in parent with latest QR data
+      if (qrResult) {
+        try {
+          window.dispatchEvent(new CustomEvent('open-wa-qr', { detail: { sessionName: qrResult.sessionName, qr: qrResult.qr } }));
+        } catch {}
+      }
+      onClose();
     } catch (error: any) {
       console.error('Error submitting form:', error);
       toast({
@@ -247,6 +330,8 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         description: error.message || "Failed to create WhatsApp platform",
         variant: "destructive",
       });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -293,71 +378,13 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               </div>
               <Input
                 id="phoneNumber"
-                placeholder="87776858347"
+                placeholder="8XXXXXXXXXX"
                 value={formData.phoneNumber}
                 onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
                 className="rounded-l-none"
               />
             </div>
-            <p className="text-xs text-muted-foreground">Enter your phone number (e.g., 6287776858347)</p>
-          </div>
-
-          {/* WhatsApp Connection Section */}
-          <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium">WhatsApp Connection</Label>
-                <p className="text-xs text-muted-foreground">
-                  Connect your WhatsApp account to enable messaging
-                </p>
-              </div>
-              {isWhatsAppConnected && (
-                <Badge variant="default" className="text-xs">
-                  ✓ Connected
-                </Badge>
-              )}
-            </div>
-            
-            {!isWhatsAppConnected ? (
-              <div className="space-y-3">
-                {qrImageUrl ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <img
-                      src={qrImageUrl}
-                      alt="WhatsApp QR"
-                      className="w-48 h-48 rounded-md border"
-                    />
-                    <p className="text-xs text-center text-muted-foreground">
-                      Scan this QR code with your WhatsApp app
-                    </p>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={handleWhatsAppConnection}
-                      disabled={isFetchingQR}
-                    >
-                      {isFetchingQR ? "Generating..." : "Refresh QR"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button 
-                    onClick={handleWhatsAppConnection}
-                    disabled={isFetchingQR}
-                    className="w-full"
-                  >
-                    {isFetchingQR ? "Generating QR..." : "Connect WhatsApp"}
-                  </Button>
-                )}
-                
-                {qrError && (
-                  <div className="text-sm text-red-600 text-center">{qrError}</div>
-                )}
-              </div>
-            ) : (
-              <div className="text-sm text-green-600 text-center">
-                ✓ WhatsApp successfully connected
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">Enter your phone number (e.g., 628XXXXXXXXXX)</p>
           </div>
 
           {/* Profile Photo / Logo */}
@@ -383,8 +410,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <Button
+                <Button 
                   variant="outline"
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
                   onClick={() => document.getElementById('profilePhoto')?.click()}
                 >
                   <Upload className="h-4 w-4 mr-2" />
@@ -446,14 +474,30 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Cancel
+          <Button variant="outline" onClick={handleCancel} disabled={isSubmitting || isCancelling} className="text-blue-700 border-blue-200 hover:bg-blue-50">
+            {isCancelling ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Cancelling...
+              </>
+            ) : (
+              "Cancel"
+            )}
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={isSubmitting || !isFormValid}
+            disabled={isSubmitting || isCreating || !hasRequiredFields}
+            className="bg-blue-100 hover:bg-blue-200 text-blue-700 transition-all duration-200 hover:shadow-md active:scale-[.98]"
+            aria-busy={isSubmitting || isCreating}
           >
-            {isSubmitting ? "Creating..." : "Create WhatsApp Platform"}
+            {isSubmitting || isCreating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              "Create WhatsApp Platform"
+            )}
           </Button>
         </div>
       </DialogContent>
