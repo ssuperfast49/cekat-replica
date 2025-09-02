@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +86,37 @@ const Index = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const validMenus: NavKey[] = [
+    "chat",
+    "analytics",
+    "contacts",
+    "platforms",
+    "aiagents",
+    "humanagents",
+    "settings",
+    // "profile", // not a primary content menu
+    // "home", // landing content
+  ];
+
+  const updateMenuParam = (menu: NavKey, options?: { replace?: boolean }) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("menu", menu);
+    setSearchParams(next, options);
+  };
+
+  // Sync active tab from URL on load and when the query changes
+  useEffect(() => {
+    const menuParam = searchParams.get("menu");
+    if (menuParam && (validMenus as string[]).includes(menuParam)) {
+      const typedMenu = menuParam as NavKey;
+      if (typedMenu !== active) setActive(typedMenu);
+    } else {
+      // Ensure the URL always has a valid menu param
+      if (!menuParam) updateMenuParam("chat", { replace: true });
+    }
+  }, [searchParams]);
 
   const handleSignOut = async () => {
     try {
@@ -124,20 +155,20 @@ const Index = () => {
           <Separator className="my-4" />
           
           <nav className="flex flex-col gap-1 flex-1">
-            <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => setActive("chat")} collapsed={!sidebarExpanded} />
+            <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => { setActive("chat"); updateMenuParam("chat"); }} collapsed={!sidebarExpanded} />
             {/* <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} collapsed={!sidebarExpanded} /> */}
-            <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => setActive("analytics")} collapsed={!sidebarExpanded} />
-            <NavItem icon={Users} label="Contacts" active={active === "contacts"} onClick={() => setActive("contacts")} collapsed={!sidebarExpanded} />
+            <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => { setActive("analytics"); updateMenuParam("analytics"); }} collapsed={!sidebarExpanded} />
+            <NavItem icon={Users} label="Contacts" active={active === "contacts"} onClick={() => { setActive("contacts"); updateMenuParam("contacts"); }} collapsed={!sidebarExpanded} />
             {/* <NavItem icon={Megaphone} label="Broadcasts" active={active === "broadcasts"} onClick={() => setActive("broadcasts")} collapsed={!sidebarExpanded} /> */}
-            <NavItem icon={PlugZap} label="Connected Platforms" active={active === "platforms"} onClick={() => setActive("platforms")} collapsed={!sidebarExpanded} />
-            <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => setActive("aiagents")} collapsed={!sidebarExpanded} />
-            <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => setActive("humanagents")} collapsed={!sidebarExpanded} />
+            <NavItem icon={PlugZap} label="Connected Platforms" active={active === "platforms"} onClick={() => { setActive("platforms"); updateMenuParam("platforms"); }} collapsed={!sidebarExpanded} />
+            <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => { setActive("aiagents"); updateMenuParam("aiagents"); }} collapsed={!sidebarExpanded} />
+            <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => { setActive("humanagents"); updateMenuParam("humanagents"); }} collapsed={!sidebarExpanded} />
           </nav>
           
           {/* Footer Navigation - Always Visible */}
           <div className="mt-auto flex flex-col gap-1 pt-6">
             <Separator className="mb-3" />
-            <NavItem icon={SettingsIcon} label="Settings" active={active === "settings"} onClick={() => setActive("settings")} collapsed={!sidebarExpanded} />
+            <NavItem icon={SettingsIcon} label="Settings" active={active === "settings"} onClick={() => { setActive("settings"); updateMenuParam("settings"); }} collapsed={!sidebarExpanded} />
             {/* <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} /> */}
             <ProfilePopover>
               <button

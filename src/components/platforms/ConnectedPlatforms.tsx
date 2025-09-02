@@ -8,10 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send } from "lucide-react";
+import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader as DangerHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+// Removed tabs; rendering is based on provider
 import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
+import { supabase } from "@/lib/supabase";
 import { useChannels } from "@/hooks/useChannels";
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
@@ -23,7 +25,7 @@ import WEBHOOK_CONFIG from "@/config/webhook";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
-  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, uploadProfilePhoto } = usePlatforms();
+  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, uploadProfilePhoto, fetchPlatforms } = usePlatforms();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
@@ -39,8 +41,7 @@ const ConnectedPlatforms = () => {
 
 
 
-  // Tabs state
-  const [activeTab, setActiveTab] = useState("live-chat");
+  // No tabs; view is determined by provider
 
   // Sessions state
   type WahaSession = {
@@ -55,6 +56,12 @@ const ConnectedPlatforms = () => {
   const [isSessionsLoading, setIsSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [loggingOutSessions, setLoggingOutSessions] = useState<Set<string>>(new Set());
+  const [deletingSessions, setDeletingSessions] = useState<Set<string>>(new Set());
+  const [connectingSession, setConnectingSession] = useState<string | null>(null);
+  const [connectQR, setConnectQR] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
+  const [lastConnectSessionName, setLastConnectSessionName] = useState<string | null>(null);
 
   const n8nBaseUrl = WEBHOOK_CONFIG.BASE_URL;
 
@@ -74,9 +81,7 @@ const ConnectedPlatforms = () => {
 
   // Helper function to determine platform type
   const getPlatformType = (platform: any): 'whatsapp' | 'web' | 'telegram' => {
-    const orgId = platform?.org_id;
-    const channels = orgId ? channelsByOrg[orgId] : undefined;
-    const provider = channels?.[0]?.provider;
+    const provider = platform?.provider;
     if (provider === 'whatsapp') return 'whatsapp';
     if (provider === 'telegram') return 'telegram';
     return 'web';
@@ -90,6 +95,206 @@ const ConnectedPlatforms = () => {
     uniqueOrgIds.forEach(orgId => { fetchChannelsByOrg(orgId); });
   }, [platforms, fetchChannelsByOrg]);
   const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
+
+  const renderPlatformDetails = (includeWebExtras: boolean) => (
+    <>
+      {/* AI Agent */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">AI Agent</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {aiAgentsLoading ? (
+            <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+          ) : (
+            <Select 
+              value={selectedPlatformData?.ai_profile_id || ""} 
+              onValueChange={(value) => {
+                setSelectedAgent(value);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Choose an AI agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {aiAgents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    🤖 {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Teams */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Teams</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">
+            You don't have any divisions yet. Create it now.
+          </p>
+          <Button variant="outline" className="text-blue-600">
+            <Plus className="h-4 w-4 mr-2" />
+            Create Division
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Human Agent */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Human Agent</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {humanAgentsLoading ? (
+            <div className="text-sm text-muted-foreground">Loading human agents...</div>
+          ) : humanAgents.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {humanAgents.map((agent) => (
+                <div key={agent.user_id} className="flex items-center gap-2 bg-muted px-3 py-1 rounded-md">
+                  <span className="text-sm">👤 {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}</span>
+                  <Button variant="ghost" size="sm" className="h-4 w-4 p-0">
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No human agents available</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Chat Distribution Method */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Chat Distribution Method</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Select defaultValue="least-assigned">
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="least-assigned">Least Assigned First</SelectItem>
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      {/* Customer Satisfaction Feature */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            Customer Satisfaction Feature (CSAT) 
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            Tingkatkan review kualitas live chat Anda melalui fitur agent
+          </p>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <Label className="text-sm font-medium">Frequently Asked Questions (FAQ)</Label>
+              <div className="mt-2 flex gap-2">
+                <Input placeholder="0 Question" className="flex-1" />
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                  ADD FAQ →
+                </Button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Social Link</Label>
+              <div className="mt-2 flex gap-2">
+                <Input placeholder="0 Social Link" className="flex-1" />
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                  ADD LINK →
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* User Info Requirement */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">User Info Requirement</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center space-x-2">
+            <Switch id="user-info" />
+            <Label htmlFor="user-info" className="text-sm">
+              Disable
+            </Label>
+          </div>
+        </CardContent>
+      </Card>
+
+      {includeWebExtras && (
+        <>
+          {/* Link LiveChat */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                Link LiveChat 
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-muted p-3 rounded-md">
+                <Input 
+                  value="https://live.cekat.ai/livechat?IP_3Xb83e94"
+                  readOnly
+                  className="bg-background"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Embed Code */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                Embed Code 
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={`<script type="text/javascript">
+window.mychat = window.mychat || [];
+window.mychat.storage = "https://live.cekat.ai/socket.io";
+window.mychat.key = "3Xb83e94";
+window.mychat.frameWidth = "768px";
+window.mychat.frameHeight = "500px";
+window.mychat.accessibility = "GULTIK-3Xb83e94";
+window.mychat.position = "bottom-right";
+(function() {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.async = true;
+  script.src = window.mychat.storage;
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(script, s);
+})();
+</script>`}
+                readOnly
+                className="font-mono text-xs h-48 bg-muted"
+              />
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Danger Zone moved out; rendered at bottom of page */}
+    </>
+  );
 
   const businessCategories = [
     "E-commerce",
@@ -127,6 +332,7 @@ const ConnectedPlatforms = () => {
         description: formData.description || undefined,
         profile_photo_url: profilePhotoUrl || undefined,
         ai_profile_id: formData.selectedAIAgent || undefined,
+        provider: selectedPlatformType || 'web',
         human_agent_ids: formData.selectedHumanAgents
       };
 
@@ -171,6 +377,9 @@ const ConnectedPlatforms = () => {
       const json = await response.json();
       const list: WahaSession[] = Array.isArray(json) ? json : [json];
       setSessions(list);
+      // Sync sessions to channels table
+      await syncSessionsToChannels(list);
+      await fetchPlatforms();
     } catch (error: any) {
       setSessionsError(error?.message || "Failed to load sessions");
     } finally {
@@ -178,12 +387,69 @@ const ConnectedPlatforms = () => {
     }
   };
 
-  // Load sessions when switching to WhatsApp tab
+  const syncSessionsToChannels = async (list: WahaSession[]) => {
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const user = userRes?.user;
+      if (!user) return;
+      const { data: userOrgs } = await supabase
+        .from('org_members')
+        .select('org_id')
+        .eq('user_id', user.id)
+        .limit(1);
+      const orgId = userOrgs?.[0]?.org_id;
+      if (!orgId) return;
+      // Fetch all whatsapp channels once to avoid duplicates; use normalized name match
+      const { data: existingChannels } = await supabase
+        .from('channels')
+        .select('id, display_name, provider')
+        .eq('org_id', orgId)
+        .eq('provider', 'whatsapp');
+
+      for (const s of list) {
+        const sessionName = s?.name || '';
+        if (!sessionName) continue;
+        const status = String(s?.status || '').toUpperCase();
+        const meId = s?.me?.id || null;
+        const isActive = status === 'WORKING' && Boolean(meId);
+        const normalized = (sessionName || '').toLowerCase().replace(/\s/g, '');
+        const match = (existingChannels || []).find(ch => (ch.display_name || '').toLowerCase().replace(/\s/g, '') === normalized);
+        if (!match) {
+          // If there's no matching channel created via UI (spaced name), skip insert to avoid duplicates
+          continue;
+        }
+        await supabase
+          .from('channels')
+          .update({
+            is_active: isActive,
+            external_id: meId,
+            credentials: { waha_status: s?.status || null, me_id: meId },
+          })
+          .eq('id', match.id);
+      }
+    } catch (e) {
+      console.error('Failed to sync sessions to channels', e);
+    }
+  };
+
+  // Load sessions for WhatsApp provider
   useEffect(() => {
-    if (activeTab === "whatsapp") {
+    if (currentPlatformType === 'whatsapp') {
       fetchWhatsAppSessions();
     }
-  }, [activeTab]);
+  }, [currentPlatformType]);
+
+  // Listen for open-wa-qr event from form to open QR dialog with fetched image
+  useEffect(() => {
+    const handler = (e: any) => {
+      const d = e?.detail || {};
+      setConnectQR(d.qr || null);
+      if (d.sessionName) setLastConnectSessionName(d.sessionName);
+      setIsConnectDialogOpen(true);
+    };
+    window.addEventListener('open-wa-qr' as any, handler);
+    return () => window.removeEventListener('open-wa-qr' as any, handler);
+  }, []);
 
   const logoutEndpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.LOGOUT_SESSION);
   const logoutWhatsAppSession = async (sessionName: string) => {
@@ -212,6 +478,91 @@ const ConnectedPlatforms = () => {
         next.delete(sessionName);
         return next;
       });
+    }
+  };
+
+  const deleteWhatsAppSession = async (sessionName: string) => {
+    if (!sessionName) return;
+    setDeletingSessions((prev) => new Set(prev).add(sessionName));
+    try {
+      const endpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION || "/delete_session");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_name: sessionName }),
+      });
+      if (!res.ok) throw new Error(`Delete failed ${res.status}`);
+      await fetchWhatsAppSessions();
+      toast({ title: "Deleted", description: `Session ${sessionName} deleted` });
+    } catch (e: any) {
+      setSessionsError(e?.message || "Failed to delete session");
+    } finally {
+      setDeletingSessions((prev) => { const n = new Set(prev); n.delete(sessionName); return n; });
+    }
+  };
+
+  const openConnectDialog = async (sessionName: string) => {
+    setConnectingSession(sessionName);
+    setConnectError(null);
+    setConnectQR(null);
+    setIsConnectDialogOpen(true);
+    setLastConnectSessionName(sessionName);
+    try {
+      const res = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_LOGIN_QR), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_name: sessionName }),
+      });
+      if (!res.ok) throw new Error(`QR request failed: ${res.status}`);
+      const ct = res.headers.get('content-type');
+      if (ct && ct.includes('image/')) {
+        const blob = await res.blob();
+        setConnectQR(URL.createObjectURL(blob));
+      } else {
+        try {
+          const json = await res.json();
+          const payload = Array.isArray(json) ? json[0] : json;
+          if (!payload?.data || !payload?.mimetype) throw new Error('Invalid QR');
+          setConnectQR(`data:${payload.mimetype};base64,${payload.data}`);
+        } catch {
+          const text = await res.text();
+          if (text) setConnectQR(`data:image/png;base64,${text}`);
+        }
+      }
+    } catch (e: any) {
+      setConnectError(e?.message || 'Failed to get QR');
+    } finally {
+      setConnectingSession(null);
+    }
+  };
+
+  const disconnectWhatsAppSession = async (sessionName: string) => {
+    if (!sessionName) return;
+    setLoggingOutSessions((prev) => new Set(prev).add(sessionName));
+    try {
+      const endpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DISCONNECT_SESSION || "/disconnect_session");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_name: sessionName }),
+      });
+      if (!res.ok) throw new Error(`Disconnect failed ${res.status}`);
+      // Poll sessions until status is not working
+      const started = Date.now();
+      while (Date.now() - started < 20000) {
+        await fetchWhatsAppSessions();
+        const s = sessions.find((x) => (x.name || "") === sessionName);
+        const rawStatus = String(s?.status || "").toUpperCase();
+        const hasNumber = Boolean(s?.me?.id);
+        const isLoggedIn = rawStatus === "WORKING" && hasNumber;
+        if (!isLoggedIn) break;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      toast({ title: "Disconnected", description: `Session ${sessionName} disconnected` });
+    } catch (e: any) {
+      setSessionsError(e?.message || "Failed to disconnect session");
+    } finally {
+      setLoggingOutSessions((prev) => { const n = new Set(prev); n.delete(sessionName); return n; });
     }
   };
 
@@ -280,6 +631,7 @@ const ConnectedPlatforms = () => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-sm truncate">{platform.display_name || 'Unnamed Platform'}</h3>
+                          <p className="text-[11px] text-muted-foreground capitalize">{getPlatformType(platform)}</p>
                           <p className="text-xs text-muted-foreground">{platform.description || platform.website_url || ''}</p>
                         </div>
                         <Badge 
@@ -300,7 +652,7 @@ const ConnectedPlatforms = () => {
             <DialogTrigger asChild>
               <Button variant="outline" className="w-full mt-4 text-blue-600 border-blue-200 hover:bg-blue-50">
                 <Plus className="h-4 w-4 mr-2" />
-                Add Platform
+                Add Channel
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-xl p-0 overflow-hidden">
@@ -433,14 +785,51 @@ const ConnectedPlatforms = () => {
           </div>
 
           <div className="grid gap-6">
-            <Tabs defaultValue="live-chat" value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="mb-2">
-                <TabsTrigger value="live-chat">Live Chat</TabsTrigger>
-                <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="live-chat">
-                <div className="grid gap-6">
+            {selectedPlatformData && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Channel Details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <div className="text-muted-foreground">Provider</div>
+                      <div className="capitalize">{getPlatformType(selectedPlatformData)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Status</div>
+                      <div>{selectedPlatformData.status === 'active' ? 'Active' : 'Inactive'}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Display Name</div>
+                      <div>{selectedPlatformData.display_name || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">AI Agent</div>
+                      <div>{aiAgents.find(a => a.id === (selectedPlatformData as any)?.ai_profile_id)?.name || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Created At</div>
+                      <div>{selectedPlatformData.created_at ? new Date(selectedPlatformData.created_at as any).toLocaleString() : '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">External ID</div>
+                      <div>{(selectedPlatformData as any)?.external_id || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Secret Token</div>
+                      <div>{(() => { const t = (selectedPlatformData as any)?.secret_token as string | undefined; if (!t) return '—'; return t.length > 8 ? `${t.slice(0,4)}••••${t.slice(-2)}` : '••••'; })()}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Channel ID</div>
+                      <div>{selectedPlatformData.id}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {currentPlatformType === 'web' && (
+              <div className="grid gap-6">
                   {/* AI Agent */}
                   <Card>
                     <CardHeader>
@@ -575,45 +964,42 @@ const ConnectedPlatforms = () => {
                       <div className="flex items-center space-x-2">
                         <Switch id="user-info" />
                         <Label htmlFor="user-info" className="text-sm">
-                          Disable (Skip Asking for Name and Phone Number)
+                          Disable
                         </Label>
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Link LiveChat - Only show for web platforms */}
-                  {currentPlatformType === 'web' && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          Link LiveChat 
-                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="bg-muted p-3 rounded-md">
-                          <Input 
-                            value="https://live.cekat.ai/livechat?IP_3Xb83e94"
-                            readOnly
-                            className="bg-background"
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                  {/* Link LiveChat */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        Link LiveChat 
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="bg-muted p-3 rounded-md">
+                        <Input 
+                          value="https://live.cekat.ai/livechat?IP_3Xb83e94"
+                          readOnly
+                          className="bg-background"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                  {/* Embed Code - Only show for web platforms */}
-                  {currentPlatformType === 'web' && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          Embed Code 
-                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <Textarea
-                          value={`<script type="text/javascript">
+                  {/* Embed Code */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        Embed Code 
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        value={`<script type="text/javascript">
 window.mychat = window.mychat || [];
 window.mychat.storage = "https://live.cekat.ai/socket.io";
 window.mychat.key = "3Xb83e94";
@@ -630,106 +1016,170 @@ window.mychat.position = "bottom-right";
   s.parentNode.insertBefore(script, s);
 })();
 </script>`}
-                          readOnly
-                          className="font-mono text-xs h-48 bg-muted"
-                        />
-                      </CardContent>
-                    </Card>
-                  )}
+                        readOnly
+                        className="font-mono text-xs h-48 bg-muted"
+                      />
+                    </CardContent>
+                  </Card>
                 </div>
-              </TabsContent>
+            )}
 
-              <TabsContent value="whatsapp">
-                {currentPlatformType === 'whatsapp' ? (
-                  <div className="grid gap-6">
-                    {/* Sessions List */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Existing WhatsApp Sessions</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {isSessionsLoading && (
-                          <div className="text-sm text-muted-foreground">Loading sessions...</div>
+            {currentPlatformType === 'whatsapp' && (
+              <div className="grid gap-6">
+                {renderPlatformDetails(false)}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">WhatsApp Sessions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {isSessionsLoading && (
+                      <div className="text-sm text-muted-foreground">Loading sessions...</div>
+                    )}
+                    {sessionsError && (
+                      <div className="text-sm text-red-600">{sessionsError}</div>
+                    )}
+                    {!isSessionsLoading && !sessionsError && (
+                      <div className="space-y-3">
+                        {sessions.length === 0 && (
+                          <div className="text-sm text-muted-foreground">No sessions found.</div>
                         )}
-                        {sessionsError && (
-                          <div className="text-sm text-red-600">{sessionsError}</div>
-                        )}
-                        {!isSessionsLoading && !sessionsError && (
-                          <div className="space-y-3">
-                            {sessions.length === 0 && (
-                              <div className="text-sm text-muted-foreground">No sessions found.</div>
-                            )}
-                            {sessions.map((s, idx) => {
-                              const rawId = s?.me?.id || "";
-                              const phone = rawId ? rawId.replace(/@c\.us$/, "") : "";
-                              const name = s?.me?.pushName || "-";
-                              const status: string = String(s?.status || "UNKNOWN").toUpperCase();
-                              const sessionName = s?.name || "";
-                              const isLoggingOut = sessionName ? loggingOutSessions.has(sessionName) : false;
-                              const hasNumber = Boolean(phone);
-                              const isScanQr = status === "SCAN_QR_CODE";
-                              const isLoggedIn = status === "WORKING" && hasNumber;
-                              const logoutDisabled = !isLoggedIn || ["STARTING", "STOPPED"].includes(status);
-                              return (
-                                <div key={idx} className="flex items-center justify-between rounded-md border p-3">
-                                  <div>
-                                    <div className="text-sm font-medium">{name}</div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {isScanQr || !hasNumber ? "No WhatsApp number connected" : phone}
-                                    </div>
-                                    {(isScanQr || !hasNumber) && (
-                                      <div className="text-[11px] text-amber-600 mt-1">Awaiting QR scan to connect</div>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant={isLoggedIn ? 'default' : 'secondary'} className="text-xs">
-                                      {status}
-                                    </Badge>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={!sessionName || isLoggingOut || logoutDisabled}
-                                      onClick={() => logoutWhatsAppSession(sessionName)}
-                                    >
-                                      {isLoggingOut ? "Logging out..." : "Logout"}
-                                    </Button>
-                                  </div>
+                        {sessions.map((s, idx) => {
+                          const rawId = s?.me?.id || "";
+                          const phone = rawId ? rawId.replace(/@c\.us$/, "") : "";
+                          const name = s?.me?.pushName || "-";
+                          const status: string = String(s?.status || "UNKNOWN").toUpperCase();
+                          const sessionName = s?.name || "";
+                          const isBusy = loggingOutSessions.has(sessionName) || deletingSessions.has(sessionName) || connectingSession === sessionName;
+                          const hasNumber = Boolean(phone);
+                          const isScanQr = status === "SCAN_QR_CODE";
+                          const isLoggedIn = status === "WORKING" && hasNumber;
+                          return (
+                            <div key={idx} className="flex items-center justify-between rounded-md border p-3">
+                              <div>
+                                <div className="text-sm font-medium">{name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {isScanQr || !hasNumber ? "Not connected" : phone}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {!isLoggedIn ? (
+                                  <Button
+                                    variant="outline"
+                                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                    size="sm"
+                                    disabled={isBusy}
+                                    onClick={() => openConnectDialog(sessionName)}
+                                  >
+                                    {connectingSession === sessionName ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                                    disabled={isBusy}
+                                    onClick={() => disconnectWhatsAppSession(sessionName)}
+                                  >
+                                    {loggingOutSessions.has(sessionName) ? <Loader2 className="h-3 w-3 animate-spin" /> : "Disconnect"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                <Dialog open={isConnectDialogOpen} onOpenChange={setIsConnectDialogOpen}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Connect WhatsApp</DialogTitle>
+                      <DialogDescription>
+                        Scan this QR with your WhatsApp app to connect.
+                      </DialogDescription>
+                    </DialogHeader>
+                    {connectError && (
+                      <div className="text-sm text-red-600">{connectError}</div>
+                    )}
+                    {connectQR ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <img src={connectQR} alt="QR" className="w-56 h-56 rounded border" />
+                        <Button
+                          variant="outline"
+                          onClick={() => openConnectDialog(lastConnectSessionName || (selectedPlatformData?.display_name || '').replace(/\s/g, ''))}
+                          disabled={Boolean(connectingSession)}
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                        >
+                          {connectingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh QR'}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-60">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    )}
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
 
-                    {/* WhatsApp Connection */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          Connect WhatsApp
-                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          Login to your WhatsApp account by scanning a QR code with your phone.
-                        </p>
-                                                 <Button className="bg-green-600 hover:bg-green-700 text-white">
-                           WhatsApp connection is handled in the platform setup form
-                         </Button>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">
-                      This platform is not configured for WhatsApp. Only WhatsApp platforms can access this tab.
-                    </p>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+            {currentPlatformType === 'telegram' && (
+              <div className="grid gap-6">
+                {renderPlatformDetails(false)}
+              </div>
+            )}
           </div>
+
+          {/* Danger Zone - always at bottom */}
+          {selectedPlatformData && (
+            <div className="mt-8">
+              <Card className="bg-red-50">
+                <CardHeader>
+                  <CardTitle className="text-base text-red-700">Danger Zone</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-red-700">Delete this channel</div>
+                      <div className="text-xs text-red-600/80">This action cannot be undone.</div>
+                    </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button className="bg-red-600 hover:bg-red-700 text-white">Delete Channel</Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <DangerHeader>
+                          <AlertDialogTitle>Delete channel?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete {selectedPlatformData?.display_name || 'this channel'}. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </DangerHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={async () => {
+                              if (!selectedPlatformData) return;
+                              try {
+                                await deletePlatform(selectedPlatformData.id);
+                                toast({ title: "Deleted", description: "Channel has been deleted." });
+                                setSelectedPlatform(null);
+                              } catch (e: any) {
+                                toast({ title: "Error", description: e?.message || "Failed to delete channel", variant: "destructive" });
+                              }
+                            }}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
     </div>
