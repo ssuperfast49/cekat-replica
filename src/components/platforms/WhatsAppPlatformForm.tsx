@@ -261,7 +261,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     return () => clearInterval(pollInterval);
   }, [qrImageUrl, isWhatsAppConnected]);
 
-  const hasRequiredFields = Boolean(formData.platformName && formData.selectedAIAgent && formData.phoneNumber);
+  const hasRequiredFields = Boolean(formData.platformName && formData.selectedAIAgent);
 
   const handleCancel = async () => {
     try {
@@ -297,19 +297,10 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       // First, CREATE SESSION and fetch QR immediately (no connect button)
       const qrResult = await handleWhatsAppConnection();
 
-      // Format phone number - just clean it without adding @c.us suffix
-      let formattedPhoneNumber = formData.phoneNumber;
-      if (formData.phoneNumber) {
-        // Remove any non-digit characters
-        const cleanNumber = formData.phoneNumber.replace(/\D/g, '');
-        // Just use the clean number without @c.us suffix
-        formattedPhoneNumber = cleanNumber;
-      }
-
       // Then submit to the main form handler
       const submitData = {
         ...formData,
-        phoneNumber: formattedPhoneNumber,
+        phoneNumber: undefined,
         platformType: 'whatsapp' as const
       };
 
@@ -372,23 +363,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             />
           </div>
 
-          {/* WhatsApp Number */}
-          <div className="space-y-2">
-            <Label htmlFor="phoneNumber">WhatsApp Number *</Label>
-            <div className="flex">
-              <div className="flex items-center px-3 py-2 bg-muted border border-r-0 rounded-l-md text-sm text-muted-foreground">
-                +62
-              </div>
-              <Input
-                id="phoneNumber"
-                placeholder="8XXXXXXXXXX"
-                value={formData.phoneNumber}
-                onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className="rounded-l-none"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">Enter your phone number (e.g., 628XXXXXXXXXX)</p>
-          </div>
+          {/* WhatsApp Number removed per requirements */}
 
           {/* Profile Photo / Logo */}
           <div className="space-y-2">
