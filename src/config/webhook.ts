@@ -20,6 +20,7 @@ export const WEBHOOK_CONFIG = {
       CREATE_PLATFORM: "/telegram/create-platform",
       // Provider-specific send endpoint
       SEND_MESSAGE: "/telegram/send-message",
+      DELETE_WEBHOOK: "/telegram/delete-webhook",
     },
     
     // AI Agent endpoints

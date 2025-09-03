@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -34,6 +34,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     selectedAIAgent: "",
     selectedHumanAgents: [] as string[]
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -69,6 +70,8 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   const handleSubmit = async () => {
     try {
+      if (submitting) return;
+      setSubmitting(true);
       // Get user's organization ID
       const orgId = await getUserOrgId();
       if (!orgId) {
@@ -104,44 +107,13 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       const webhookResult = await webhookResponse.json();
       console.log('Telegram webhook response:', webhookResult);
 
-      // Create channel entry with Telegram Bot Token stored in channels.secret_token
-      const { data: channel, error: channelErr } = await supabase
-        .from('channels')
-        .insert({
-          org_id: orgId,
-          display_name: formData.displayName,
-          type: 'inbox',
-          provider: 'telegram',
-          ai_profile_id: formData.selectedAIAgent,
-          secret_token: formData.telegramBotToken,
-          credentials: { telegram_bot_token: formData.telegramBotToken },
-          is_active: true,
-        })
-        .select()
-        .single();
-
-      if (channelErr) {
-        throw channelErr;
-      }
-
-      // Link selected human agents to the newly created channel
-      if (channel && formData.selectedHumanAgents.length > 0) {
-        const rows = formData.selectedHumanAgents.map(userId => ({
-          channel_id: channel.id,
-          user_id: userId,
-        }));
-        const { error: linkErr } = await supabase
-          .from('channel_agents')
-          .insert(rows);
-        if (linkErr) {
-          console.error('Failed linking human agents to channel:', linkErr);
-        }
-      }
-
       toast({
         title: "Success",
         description: "Telegram channel created and webhook sent successfully!",
       });
+      try {
+        window.dispatchEvent(new CustomEvent('refresh-platforms'));
+      } catch {}
       onClose();
     } catch (error: any) {
       console.error('Error submitting form:', error);
@@ -150,6 +122,8 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         description: error.message || "Failed to create Telegram platform",
         variant: "destructive",
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -331,14 +305,20 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting || submitting}>
             Cancel
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={isSubmitting || !isFormValid}
+            disabled={isSubmitting || submitting || !isFormValid}
           >
-            {isSubmitting ? "Creating..." : "Create Telegram Bot Platform"}
+            {isSubmitting || submitting ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Creating...
+              </span>
+            ) : (
+              "Create Telegram Bot Platform"
+            )}
           </Button>
         </div>
       </DialogContent>

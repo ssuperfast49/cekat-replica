@@ -322,6 +322,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
           window.dispatchEvent(new CustomEvent('open-wa-qr', { detail: { sessionName: qrResult.sessionName, qr: qrResult.qr } }));
         } catch {}
       }
+      try {
+        window.dispatchEvent(new CustomEvent('refresh-platforms'));
+      } catch {}
       onClose();
     } catch (error: any) {
       console.error('Error submitting form:', error);
