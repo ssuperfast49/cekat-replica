@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -35,6 +35,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
     selectedAIAgent: "",
     selectedHumanAgents: [] as string[]
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const businessCategories = [
     "E-commerce",
@@ -71,14 +72,21 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
   const handleSubmit = async () => {
     try {
+      if (submitting) return;
+      setSubmitting(true);
       const submitData = {
         ...formData,
         platformType: 'web' as const
       };
 
       await onSubmit(submitData);
+      try {
+        window.dispatchEvent(new CustomEvent('refresh-platforms'));
+      } catch {}
     } catch (error) {
       console.error('Error submitting form:', error);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -237,14 +245,20 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting || submitting}>
             Cancel
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={isSubmitting || !isFormValid}
+            disabled={isSubmitting || submitting || !isFormValid}
           >
-            {isSubmitting ? "Creating..." : "Create Web Live Chat Platform"}
+            {isSubmitting || submitting ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Creating...
+              </span>
+            ) : (
+              "Create Web Live Chat Platform"
+            )}
           </Button>
         </div>
       </DialogContent>

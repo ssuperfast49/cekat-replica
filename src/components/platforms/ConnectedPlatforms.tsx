@@ -94,6 +94,13 @@ const ConnectedPlatforms = () => {
     const uniqueOrgIds = Array.from(new Set(platforms.map(p => p.org_id)));
     uniqueOrgIds.forEach(orgId => { fetchChannelsByOrg(orgId); });
   }, [platforms, fetchChannelsByOrg]);
+
+  // Listen for refresh-platforms event to refetch channels/platforms
+  useEffect(() => {
+    const handler = () => { fetchPlatforms(); };
+    window.addEventListener('refresh-platforms' as any, handler);
+    return () => window.removeEventListener('refresh-platforms' as any, handler);
+  }, [fetchPlatforms]);
   const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
 
   const renderPlatformDetails = (includeWebExtras: boolean) => (
@@ -771,9 +778,23 @@ window.mychat.position = "bottom-right";
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => {
-                      if (selectedPlatformData) {
-                        deletePlatform(selectedPlatformData.id);
+                    onClick={async () => {
+                      if (!selectedPlatformData) return;
+                      try {
+                        // Call provider-specific webhook cleanup before deleting
+                        const provider = getPlatformType(selectedPlatformData);
+                        if (provider === 'telegram') {
+                          const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK);
+                          await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ channel_id: selectedPlatformData.id })
+                          });
+                        }
+                        // TODO: add WhatsApp delete webhook when available
+                        await deletePlatform(selectedPlatformData.id);
+                      } catch (e: any) {
+                        toast({ title: 'Error', description: e?.message || 'Failed to delete channel', variant: 'destructive' });
                       }
                     }}
                   >
