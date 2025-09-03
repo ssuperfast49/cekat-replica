@@ -62,6 +62,8 @@ const ConnectedPlatforms = () => {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const [lastConnectSessionName, setLastConnectSessionName] = useState<string | null>(null);
+  const pollConnectTimer = useRef<number | null>(null);
+  const [isDeletingChannel, setIsDeletingChannel] = useState(false);
 
   const n8nBaseUrl = WEBHOOK_CONFIG.BASE_URL;
 
@@ -458,6 +460,45 @@ window.mychat.position = "bottom-right";
     return () => window.removeEventListener('open-wa-qr' as any, handler);
   }, []);
 
+  // While QR modal open, poll sessions to detect when it becomes connected
+  useEffect(() => {
+    const startPolling = () => {
+      if (!lastConnectSessionName || !isConnectDialogOpen) return;
+      const check = async () => {
+        try {
+          let response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), { method: "POST" });
+          if (!response.ok) {
+            response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            });
+          }
+          if (!response.ok) return;
+          const json = await response.json();
+          const list: WahaSession[] = Array.isArray(json) ? json : [json];
+          const s = (list || []).find((x: any) => (x?.name || '') === lastConnectSessionName);
+          const status = String(s?.status || '').toUpperCase();
+          const connected = Boolean(s?.me?.id) && status === 'WORKING';
+          if (connected) {
+            // Close QR modal and mark active
+            setIsConnectDialogOpen(false);
+            setConnectQR(null);
+            await fetchWhatsAppSessions();
+            try { window.dispatchEvent(new CustomEvent('refresh-platforms')); } catch {}
+            toast({ title: 'Connected', description: 'WhatsApp connected successfully.' });
+          }
+        } catch {}
+      };
+      // kick immediately then poll every 3s
+      check();
+      pollConnectTimer.current = window.setInterval(check, 3000) as unknown as number;
+    };
+
+    startPolling();
+    return () => { if (pollConnectTimer.current) { clearInterval(pollConnectTimer.current); pollConnectTimer.current = null; } };
+  }, [isConnectDialogOpen, lastConnectSessionName]);
+
   const logoutEndpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.LOGOUT_SESSION);
   const logoutWhatsAppSession = async (sessionName: string) => {
     if (!sessionName) return;
@@ -778,9 +819,11 @@ window.mychat.position = "bottom-right";
                   <Button 
                     variant="outline" 
                     size="sm"
+                    disabled={isDeletingChannel}
                     onClick={async () => {
                       if (!selectedPlatformData) return;
                       try {
+                        setIsDeletingChannel(true);
                         // Call provider-specific webhook cleanup before deleting
                         const provider = getPlatformType(selectedPlatformData);
                         if (provider === 'telegram') {
@@ -791,14 +834,24 @@ window.mychat.position = "bottom-right";
                             body: JSON.stringify({ channel_id: selectedPlatformData.id })
                           });
                         }
-                        // TODO: add WhatsApp delete webhook when available
+                        if (provider === 'whatsapp') {
+                          const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION || '/delete_session');
+                          const sessionName = (selectedPlatformData.display_name || '').replace(/\s/g, '');
+                          await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ session_name: sessionName })
+                          });
+                        }
                         await deletePlatform(selectedPlatformData.id);
                       } catch (e: any) {
                         toast({ title: 'Error', description: e?.message || 'Failed to delete channel', variant: 'destructive' });
+                      } finally {
+                        setIsDeletingChannel(false);
                       }
                     }}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    {isDeletingChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   </Button>
                 </>
               )}
@@ -1180,18 +1233,39 @@ window.mychat.position = "bottom-right";
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
                             className="bg-red-600 hover:bg-red-700 text-white"
+                            disabled={isDeletingChannel}
                             onClick={async () => {
                               if (!selectedPlatformData) return;
                               try {
+                                setIsDeletingChannel(true);
+                                const provider = getPlatformType(selectedPlatformData);
+                                if (provider === 'whatsapp') {
+                                  const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION || '/delete_session');
+                                  const sessionName = (selectedPlatformData.display_name || '').replace(/\s/g, '');
+                                  await fetch(url, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ session_name: sessionName })
+                                  });
+                                } else if (provider === 'telegram') {
+                                  const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK);
+                                  await fetch(url, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ channel_id: selectedPlatformData.id })
+                                  });
+                                }
                                 await deletePlatform(selectedPlatformData.id);
                                 toast({ title: "Deleted", description: "Channel has been deleted." });
                                 setSelectedPlatform(null);
                               } catch (e: any) {
                                 toast({ title: "Error", description: e?.message || "Failed to delete channel", variant: "destructive" });
+                              } finally {
+                                setIsDeletingChannel(false);
                               }
                             }}
                           >
-                            Delete
+                            {isDeletingChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
