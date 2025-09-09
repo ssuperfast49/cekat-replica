@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MessageSquare, Ticket, BarChart2, Users, Megaphone, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, CreditCard, UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
+import { UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ConversationPage from "@/components/chat/ConversationPage";
 import Analytics from "@/components/analytics/Analytics";
@@ -16,21 +16,13 @@ import AIAgents from "@/components/aiagents/AIAgents";
 import Settings from "@/components/settings/Settings";
 import HumanAgents from "@/components/humanagents/HumanAgents";
 import ProfilePopover from "@/components/auth/ProfileDialog";
+import PermissionNavItem from "@/components/navigation/PermissionNavItem";
+import RoleBadge from "@/components/rbac/RoleBadge";
+import { useNavigation } from "@/hooks/useNavigation";
+import { NAVIGATION_ORDER, NavKey } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 
-type NavKey =
-  | "chat"
-  // | "tickets"
-  | "analytics"
-  | "contacts"
-  // | "broadcasts"
-  | "platforms"
-  | "aiagents"
-  | "humanagents"
-  | "settings"
-  // | "billings"
-  | "profile"
-  | "home";
+// NavKey is now imported from navigation config
 
 const NavItem = ({
   icon: Icon,
@@ -87,18 +79,9 @@ const Index = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { getDefaultNavItem, getNavItem } = useNavigation();
 
-  const validMenus: NavKey[] = [
-    "chat",
-    "analytics",
-    "contacts",
-    "platforms",
-    "aiagents",
-    "humanagents",
-    "settings",
-    // "profile", // not a primary content menu
-    // "home", // landing content
-  ];
+  const validMenus: NavKey[] = NAVIGATION_ORDER;
 
   const updateMenuParam = (menu: NavKey, options?: { replace?: boolean }) => {
     const next = new URLSearchParams(searchParams);
@@ -117,6 +100,15 @@ const Index = () => {
       if (!menuParam) updateMenuParam("chat", { replace: true });
     }
   }, [searchParams]);
+
+  // Auto-redirect to first accessible navigation item if current one is not accessible
+  useEffect(() => {
+    const defaultNav = getDefaultNavItem();
+    if (defaultNav && !validMenus.includes(active)) {
+      setActive(defaultNav);
+      updateMenuParam(defaultNav, { replace: true });
+    }
+  }, [getDefaultNavItem, active, validMenus]);
 
   const handleSignOut = async () => {
     try {
@@ -152,37 +144,52 @@ const Index = () => {
               Cekat AI
             </span>
           </div>
+          
+          {/* User Role Display */}
+          <div className={`px-2 py-2 transition-opacity duration-200 ${
+            sidebarExpanded ? 'opacity-100' : 'opacity-0'
+          }`}>
+            <RoleBadge className="text-xs" />
+          </div>
+          
           <Separator className="my-4" />
           
           <nav className="flex flex-col gap-1 flex-1">
-            <NavItem icon={MessageSquare} label="Chat" active={active === "chat"} onClick={() => { setActive("chat"); updateMenuParam("chat"); }} collapsed={!sidebarExpanded} />
-            {/* <NavItem icon={Ticket} label="Tickets" active={active === "tickets"} onClick={() => setActive("tickets")} collapsed={!sidebarExpanded} /> */}
-            <NavItem icon={BarChart2} label="Analytics" active={active === "analytics"} onClick={() => { setActive("analytics"); updateMenuParam("analytics"); }} collapsed={!sidebarExpanded} />
-            <NavItem icon={Users} label="Contacts" active={active === "contacts"} onClick={() => { setActive("contacts"); updateMenuParam("contacts"); }} collapsed={!sidebarExpanded} />
-            {/* <NavItem icon={Megaphone} label="Broadcasts" active={active === "broadcasts"} onClick={() => setActive("broadcasts")} collapsed={!sidebarExpanded} /> */}
-            <NavItem icon={PlugZap} label="Connected Platforms" active={active === "platforms"} onClick={() => { setActive("platforms"); updateMenuParam("platforms"); }} collapsed={!sidebarExpanded} />
-            <NavItem icon={Bot} label="AI Agents" active={active === "aiagents"} onClick={() => { setActive("aiagents"); updateMenuParam("aiagents"); }} collapsed={!sidebarExpanded} />
-            <NavItem icon={ShieldCheck} label="Human Agents" active={active === "humanagents"} onClick={() => { setActive("humanagents"); updateMenuParam("humanagents"); }} collapsed={!sidebarExpanded} />
+            {NAVIGATION_ORDER.map((navKey) => {
+              const navItem = getNavItem(navKey);
+              return (
+                <PermissionNavItem
+                  key={navKey}
+                  icon={navItem.icon}
+                  label={navItem.label}
+                  active={active === navKey}
+                  onClick={() => {
+                    setActive(navKey);
+                    updateMenuParam(navKey);
+                  }}
+                  collapsed={!sidebarExpanded}
+                  permissions={navItem.permissions}
+                  requireAll={navItem.requireAll}
+                />
+              );
+            })}
           </nav>
           
           {/* Footer Navigation - Always Visible */}
           <div className="mt-auto flex flex-col gap-1 pt-6">
             <Separator className="mb-3" />
-            <NavItem icon={SettingsIcon} label="Settings" active={active === "settings"} onClick={() => { setActive("settings"); updateMenuParam("settings"); }} collapsed={!sidebarExpanded} />
             {/* <NavItem icon={CreditCard} label="Billings" active={active === "billings"} onClick={() => setActive("billings")} collapsed={!sidebarExpanded} /> */}
             <ProfilePopover>
               <button
                 type="button"
                 className={cn(
                   "group grid h-10 w-full grid-cols-[1.125rem,1fr] items-center rounded-md px-3 text-left text-sm transition-all duration-200 gap-2",
-                  active === "profile"
-                    ? "bg-blue-100 text-blue-700 border border-blue-200"
-                    : "text-muted-foreground hover:bg-blue-50 hover:text-blue-600 hover:border hover:border-blue-100",
+                  "text-muted-foreground hover:bg-blue-50 hover:text-blue-600 hover:border hover:border-blue-100",
                   !sidebarExpanded && "grid-cols-[1.125rem,0fr]"
                 )}
                 title={!sidebarExpanded ? "Profile" : undefined}
               >
-                <UserRound className={`h-4 w-4 shrink-0 transition-colors ${active === "profile" ? "text-blue-600" : "group-hover:text-blue-600"}`} />
+                <UserRound className="h-4 w-4 shrink-0 transition-colors group-hover:text-blue-600" />
                 <span
                   className={cn(
                     "overflow-hidden whitespace-nowrap text-ellipsis transition-opacity duration-200",

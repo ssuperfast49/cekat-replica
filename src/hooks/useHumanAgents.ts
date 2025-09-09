@@ -1,25 +1,26 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export interface UserProfile {
-  user_id: string;
+// New interface for v_users view
+export interface VUser {
+  id: string;
+  email: string;
   display_name: string | null;
   avatar_url: string | null;
-  timezone: string;
+  timezone: string | null;
   created_at: string;
+  roles: (string | null)[];
 }
 
-export interface OrgMember {
-  org_id: string;
+export interface AgentWithDetails {
   user_id: string;
-  role: 'owner' | 'admin' | 'agent';
+  email: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  timezone: string | null;
   created_at: string;
-}
-
-export interface AgentWithDetails extends UserProfile {
-  org_member?: OrgMember;
-  email?: string; // We'll get this from auth.users if needed
-  role: 'owner' | 'admin' | 'agent';
+  roles: string[];
+  primaryRole: 'master_agent' | 'super_agent' | 'agent' | null;
   status: 'Online' | 'Offline'; // We'll simulate this for now
 }
 
@@ -28,98 +29,70 @@ export const useHumanAgents = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch all agents for the organization
+  // Helper function to get primary role from roles array
+  const getPrimaryRole = (roles: (string | null)[]): 'master_agent' | 'super_agent' | 'agent' | null => {
+    // Filter out null values and get valid roles
+    const validRoles = roles?.filter((role): role is string => role !== null && role !== undefined) || [];
+    
+    if (validRoles.includes('master_agent')) return 'master_agent';
+    if (validRoles.includes('super_agent')) return 'super_agent';
+    if (validRoles.includes('agent')) return 'agent';
+    return null;
+  };
+
+  // Fetch all agents using the v_users view
   const fetchAgents = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log('Fetching human agents...');
+      console.log('Fetching human agents from v_users...');
 
-      // First try to fetch all users_profile to see what's available
-      const { data: allProfilesData, error: allProfilesError } = await supabase
-        .from('users_profile')
+      // Use the new v_users view - much simpler!
+      const { data: usersData, error: usersError } = await supabase
+        .from('v_users')
         .select('*')
         .order('created_at', { ascending: false });
 
-      console.log('All user profiles data:', allProfilesData);
-      console.log('All user profiles error:', allProfilesError);
+      console.log('v_users data:', usersData);
+      console.log('v_users error:', usersError);
 
-      if (allProfilesError) {
-        console.error('Error fetching all user profiles:', allProfilesError);
-        // Create sample data for testing when no profiles exist
-        console.log('No user profiles found, creating sample data');
-        const sampleAgents: AgentWithDetails[] = [
-          {
-            user_id: 'sample-1',
-            display_name: 'John Doe',
-            avatar_url: null,
-            timezone: 'Asia/Jakarta',
-            created_at: new Date().toISOString(),
-            role: 'agent',
-            status: 'Online'
-          },
-          {
-            user_id: 'sample-2', 
-            display_name: 'Jane Smith',
-            avatar_url: null,
-            timezone: 'Asia/Jakarta',
-            created_at: new Date().toISOString(),
-            role: 'admin',
-            status: 'Online'
-          },
-          {
-            user_id: 'sample-3', 
-            display_name: 'Mike Wilson',
-            avatar_url: null,
-            timezone: 'Asia/Jakarta',
-            created_at: new Date().toISOString(),
-            role: 'agent',
-            status: 'Offline'
-          }
-        ];
-        setAgents(sampleAgents);
-      } else {
-        // If we got all profiles successfully, transform them to agents
-        console.log('Successfully fetched all user profiles:', allProfilesData);
-        const transformedAgents: AgentWithDetails[] = (allProfilesData || []).map(profile => ({
-          user_id: profile.user_id,
-          display_name: profile.display_name || 'Unknown User',
-          avatar_url: profile.avatar_url,
-          timezone: profile.timezone || 'Asia/Jakarta',
-          created_at: profile.created_at,
-          role: 'agent' as const, // Default role since we don't have org_members data
-          status: 'Online' as const
-        }));
-        
-        console.log('Transformed user profiles to agents:', transformedAgents);
-        setAgents(transformedAgents);
+      if (usersError) {
+        console.error('Error fetching from v_users:', usersError);
+        setError('Failed to fetch user data');
+        return;
       }
+
+      // Transform v_users data to AgentWithDetails
+      const transformedAgents: AgentWithDetails[] = (usersData || []).map(user => {
+        const validRoles = user.roles?.filter((role): role is string => role !== null && role !== undefined) || [];
+        const primaryRole = getPrimaryRole(user.roles || []);
+        
+        console.log(`User ${user.display_name}:`, {
+          originalRoles: user.roles,
+          validRoles: validRoles,
+          primaryRole: primaryRole
+        });
+        
+        return {
+          user_id: user.id,
+          email: user.email,
+          display_name: user.display_name,
+          avatar_url: user.avatar_url,
+          timezone: user.timezone,
+          created_at: user.created_at,
+          roles: validRoles,
+          primaryRole: primaryRole,
+          status: 'Online' as const // We'll simulate this for now
+        };
+      });
+
+      console.log('Transformed agents:', transformedAgents);
+      setAgents(transformedAgents);
     } catch (error) {
       console.error('Error fetching human agents:', error);
       setError('Failed to fetch human agents');
-      // Provide fallback sample data
-      const fallbackAgents: AgentWithDetails[] = [
-        {
-          user_id: 'fallback-1',
-          display_name: 'Customer Service Agent',
-          avatar_url: null,
-          timezone: 'Asia/Jakarta',
-          created_at: new Date().toISOString(),
-          role: 'agent',
-          status: 'Online'
-        },
-        {
-          user_id: 'fallback-2',
-          display_name: 'Technical Support',
-          avatar_url: null,
-          timezone: 'Asia/Jakarta',
-          created_at: new Date().toISOString(),
-          role: 'agent',
-          status: 'Online'
-        }
-      ];
-      setAgents(fallbackAgents);
+      setAgents([]); // Clear agents on error
     } finally {
       setLoading(false);
     }
@@ -129,37 +102,20 @@ export const useHumanAgents = () => {
   const createAgent = async (agentData: {
     full_name: string;
     email: string;
-    role: 'owner' | 'admin' | 'agent';
+    role: 'master_agent' | 'super_agent' | 'agent';
   }) => {
     try {
       setError(null);
 
-      // First, create a user in auth.users (this would typically be done through signup)
-      // For now, we'll assume the user already exists and we're just adding them to the org
-      
-      // Get the current user's org_id
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      const { data: userOrgMember } = await supabase
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!userOrgMember) {
-        throw new Error('User not found in any organization');
-      }
-
-      const orgId = userOrgMember.org_id;
+      // For demo purposes, we'll create a temporary user entry
+      // In a real app, this would involve auth.users creation
+      const tempUserId = `temp-${Date.now()}`;
 
       // Create user profile
       const { data: profileData, error: profileError } = await supabase
         .from('users_profile')
         .insert([{
-          user_id: `temp-${Date.now()}`, // This should be a real user_id from auth.users
+          user_id: tempUserId,
           display_name: agentData.full_name,
           timezone: 'Asia/Jakarta'
         }])
@@ -168,16 +124,24 @@ export const useHumanAgents = () => {
 
       if (profileError) throw profileError;
 
-      // Create org member record
-      const { error: memberError } = await supabase
-        .from('org_members')
+      // Get the role ID for the specified role
+      const { data: roleData, error: roleError } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('name', agentData.role)
+        .single();
+
+      if (roleError) throw roleError;
+
+      // Assign the role to the user
+      const { error: userRoleError } = await supabase
+        .from('user_roles')
         .insert([{
-          org_id: orgId,
-          user_id: profileData.user_id,
-          role: agentData.role
+          user_id: tempUserId,
+          role_id: roleData.id
         }]);
 
-      if (memberError) throw memberError;
+      if (userRoleError) throw userRoleError;
 
       // Refresh the agents list
       await fetchAgents();
@@ -191,21 +155,39 @@ export const useHumanAgents = () => {
   };
 
   // Update agent role
-  const updateAgentRole = async (agentId: string, role: 'owner' | 'admin' | 'agent') => {
+  const updateAgentRole = async (agentId: string, role: 'master_agent' | 'super_agent' | 'agent') => {
     try {
       setError(null);
 
-      const { error } = await supabase
-        .from('org_members')
-        .update({ role })
+      // Get the role ID for the new role
+      const { data: roleData, error: roleError } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('name', role)
+        .single();
+
+      if (roleError) throw roleError;
+
+      // First, remove existing role assignments for this user
+      const { error: deleteError } = await supabase
+        .from('user_roles')
+        .delete()
         .eq('user_id', agentId);
 
-      if (error) throw error;
+      if (deleteError) throw deleteError;
 
-      // Update local state
-      setAgents(prev => prev.map(agent => 
-        agent.user_id === agentId ? { ...agent, role } : agent
-      ));
+      // Then add the new role assignment
+      const { error: insertError } = await supabase
+        .from('user_roles')
+        .insert([{
+          user_id: agentId,
+          role_id: roleData.id
+        }]);
+
+      if (insertError) throw insertError;
+
+      // Refresh the agents list to get updated data from v_users
+      await fetchAgents();
     } catch (error) {
       console.error('Error updating agent role:', error);
       setError(error instanceof Error ? error.message : 'Failed to update agent role');
@@ -218,16 +200,24 @@ export const useHumanAgents = () => {
     try {
       setError(null);
 
-      // Delete org member record
-      const { error: memberError } = await supabase
-        .from('org_members')
+      // Delete user role assignments first
+      const { error: roleError } = await supabase
+        .from('user_roles')
         .delete()
         .eq('user_id', agentId);
 
-      if (memberError) throw memberError;
+      if (roleError) throw roleError;
 
-      // Update local state
-      setAgents(prev => prev.filter(agent => agent.user_id !== agentId));
+      // Delete user profile
+      const { error: profileError } = await supabase
+        .from('users_profile')
+        .delete()
+        .eq('user_id', agentId);
+
+      if (profileError) throw profileError;
+
+      // Refresh the agents list
+      await fetchAgents();
     } catch (error) {
       console.error('Error deleting agent:', error);
       setError(error instanceof Error ? error.message : 'Failed to delete agent');

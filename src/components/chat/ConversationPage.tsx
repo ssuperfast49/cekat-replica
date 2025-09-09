@@ -375,6 +375,9 @@ export default function ConversationPage() {
                         <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview}</p>
                         <div className="flex items-center gap-2 mt-2">
                           <Badge className="bg-blue-100 text-blue-600 text-xs">Assigned</Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {conv.channel?.provider}
+                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -397,6 +400,9 @@ export default function ConversationPage() {
                         <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview}</p>
                         <div className="flex items-center gap-2 mt-2">
                           <Badge variant="secondary" className="text-xs">Unassigned</Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {conv.channel?.provider}
+                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -420,6 +426,9 @@ export default function ConversationPage() {
                         <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview}</p>
                         <div className="flex items-center gap-2 mt-2">
                           <Badge className="bg-green-100 text-green-700 text-xs">Resolved</Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {conv.channel?.provider}
+                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -448,23 +457,11 @@ export default function ConversationPage() {
                     <h2 className="text-base font-semibold leading-tight">
                       {selectedConversation.contact_name}
                     </h2>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Badge variant="outline">
-                        {selectedConversation.channel_type}
-                      </Badge>
-                      {selectedConversation.contact_phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {selectedConversation.contact_phone}
-                        </span>
-                      )}
-                      {selectedConversation.contact_email && (
-                        <span className="flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {selectedConversation.contact_email}
-                        </span>
-                      )}
-                    </div>
+                    {selectedConversation.contact_phone && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {selectedConversation.contact_phone}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -551,7 +548,16 @@ export default function ConversationPage() {
               <h2 className="text-lg font-semibold">{selectedConversation.contact_name || 'Unknown Contact'}</h2>
               <div className="flex items-center gap-2 mt-1">
                 <MessageSquare className="h-4 w-4 text-blue-500" />
-                <span className="text-sm text-muted-foreground">{selectedConversation.channel_type}</span>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {selectedConversation.channel?.display_name || selectedConversation.channel?.provider || 'Unknown'}
+                  </Badge>
+                  {selectedConversation.channel?.type && (
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedConversation.channel.type}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
 

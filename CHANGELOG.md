@@ -1,4 +1,13 @@
 # Change Log
+# [0.0.4] FE WEB CEKAT 2025-09-03
+### Updates
+- Integrate RBAC and enhance agent management features
+- Added RBACProvider to App component for role-based access control.
+- Updated HumanAgents component to utilize PermissionGate for role management and agent creation.
+- Refactored agent role handling to support new roles: master_agent and super_agent.
+- Enhanced ConversationPage to display channel provider information for better context.
+- Improved useHumanAgents hook to fetch agents from the new v_users view, streamlining data retrieval and role assignment.
+
 # [0.0.3] FE WEB CEKAT 2025-09-03
 ### Updates
 - Implement WhatsApp session polling and enhance deletion handling
