@@ -11,11 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
+import PermissionGate from "@/components/rbac/PermissionGate";
+import { useRBAC } from "@/contexts/RBACContext";
+import { PERMISSIONS, ROLES } from "@/types/rbac";
 
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreateTeamDialogOpen, setIsCreateTeamDialogOpen] = useState(false);
-  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "owner" | "admin" | "agent"; phone?: string }>({ 
+  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent"; phone?: string }>({ 
     name: "", 
     email: "", 
     role: "agent" 
@@ -25,6 +28,7 @@ const HumanAgents = () => {
     description: "" 
   });
   const { toast } = useToast();
+  const { hasPermission } = useRBAC();
 
   const {
     agents,
@@ -125,7 +129,7 @@ const HumanAgents = () => {
     });
   };
 
-  const handleRoleChange = async (agentId: string, role: "owner" | "admin" | "agent") => {
+  const handleRoleChange = async (agentId: string, role: "master_agent" | "super_agent" | "agent") => {
     try {
       await updateAgentRole(agentId, role);
       toast({
@@ -184,13 +188,14 @@ const HumanAgents = () => {
           <h1 className="text-2xl font-bold tracking-tight">Human Agent Settings</h1>
           <p className="text-muted-foreground">Manage your human agents and teams</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Create Agent
-            </Button>
-          </DialogTrigger>
+        <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_CREATE}>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create Agent
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-md bg-background border">
             <DialogHeader>
               <DialogTitle>Create New Agent</DialogTitle>
@@ -227,14 +232,16 @@ const HumanAgents = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agent-role">Role</Label>
-                <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "owner" | "admin" | "agent" })}>
+                <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" })}>
                   <SelectTrigger className="bg-background border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background border z-50">
-                    <SelectItem value="owner">Owner</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="agent">Agent</SelectItem>
+                    <SelectItem value="super_agent">Super Agent</SelectItem>
+                    <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_CREATE}>
+                      <SelectItem value="master_agent">Master Agent</SelectItem>
+                    </PermissionGate>
                   </SelectContent>
                 </Select>
               </div>
@@ -248,7 +255,8 @@ const HumanAgents = () => {
               </div>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </PermissionGate>
       </div>
 
       <Tabs defaultValue="agents" className="space-y-6">
@@ -286,10 +294,12 @@ const HumanAgents = () => {
                     <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-lg font-semibold mb-2">No Agents Yet</h3>
                     <p className="text-muted-foreground mb-4">Create your first agent to get started.</p>
-                    <Button onClick={() => setIsCreateDialogOpen(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Agent
-                    </Button>
+                    <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_CREATE}>
+                      <Button onClick={() => setIsCreateDialogOpen(true)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Agent
+                      </Button>
+                    </PermissionGate>
                   </div>
                 </div>
               ) : (
@@ -305,27 +315,41 @@ const HumanAgents = () => {
                     </div>
                     <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
                     <div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="gap-2 h-8">
-                            <Badge variant={agent.role === "admin" ? "default" : "secondary"} className="text-xs">
-                              {agent.role}
-                            </Badge>
-                            <ChevronDown className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="bg-background border z-50">
-                          <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
-                            <Badge variant="secondary" className="text-xs">agent</Badge>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "admin")}>
-                            <Badge variant="default" className="text-xs">admin</Badge>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "owner")}>
-                            <Badge variant="default" className="text-xs">owner</Badge>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {hasPermission(PERMISSIONS.SUPER_AGENTS_EDIT) ? (
+                        // Editable role dropdown for users with edit permission
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="gap-2 h-8">
+                              <Badge variant={agent.primaryRole === "master_agent" ? "default" : "secondary"} className="text-xs">
+                                {agent.primaryRole === "master_agent" ? "Master Agent" : 
+                                 agent.primaryRole === "super_agent" ? "Super Agent" : 
+                                 agent.primaryRole === "agent" ? "Agent" : "No Role"}
+                              </Badge>
+                              <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="bg-background border z-50">
+                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
+                              <Badge variant="secondary" className="text-xs">Agent</Badge>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
+                              <Badge variant="default" className="text-xs">Super Agent</Badge>
+                            </DropdownMenuItem>
+                            {hasPermission(PERMISSIONS.SUPER_AGENTS_CREATE) && (
+                              <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "master_agent")}>
+                                <Badge variant="default" className="text-xs">Master Agent</Badge>
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        // Read-only role badge for users without edit permission
+                        <Badge variant={agent.primaryRole === "master_agent" ? "default" : "secondary"} className="text-xs">
+                          {agent.primaryRole === "master_agent" ? "Master Agent" : 
+                           agent.primaryRole === "super_agent" ? "Super Agent" : 
+                           agent.primaryRole === "agent" ? "Agent" : "No Role"}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <DropdownMenu>
@@ -353,17 +377,21 @@ const HumanAgents = () => {
                       </DropdownMenu>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => handleDeleteAgent(agent.user_id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_EDIT}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </PermissionGate>
+                      <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_DELETE}>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDeleteAgent(agent.user_id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </PermissionGate>
                     </div>
                   </div>
                 ))
@@ -464,7 +492,9 @@ const HumanAgents = () => {
                             <p className="text-xs text-muted-foreground truncate">{agent.email || 'No email'}</p>
                           </div>
                           <Badge variant="outline" className="text-xs">
-                            {agent.role}
+                            {agent.primaryRole === "master_agent" ? "Master Agent" : 
+                             agent.primaryRole === "super_agent" ? "Super Agent" : 
+                             agent.primaryRole === "agent" ? "Agent" : "No Role"}
                           </Badge>
                         </div>
                       ))}
