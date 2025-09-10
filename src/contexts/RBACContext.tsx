@@ -125,7 +125,31 @@ export function RBACProvider({ children }: RBACProviderProps) {
 
   // Permission checking functions
   const hasPermission = (permission: PermissionName | string): boolean => {
-    return userPermissions.some(p => p.name === permission);
+    if (!permission) return false;
+
+    const normalizedInput = String(permission).trim().toLowerCase();
+
+    // 1) Direct match against human-readable name (e.g., "Messages: Read")
+    const matchedByName = userPermissions.some(p => (p.name || '').trim().toLowerCase() === normalizedInput);
+    if (matchedByName) return true;
+
+    // 2) Match against machine key resource.action (e.g., "messages.read")
+    const matchedByKey = userPermissions.some(p => `${p.resource}.${p.action}`.toLowerCase() === normalizedInput);
+    if (matchedByKey) return true;
+
+    // 3) Edit/Update synonym support (some resources use both)
+    const dotIndex = normalizedInput.indexOf('.');
+    if (dotIndex > 0) {
+      const resource = normalizedInput.slice(0, dotIndex);
+      const action = normalizedInput.slice(dotIndex + 1);
+      const altAction = action === 'edit' ? 'update' : action === 'update' ? 'edit' : '';
+      if (altAction) {
+        const matchedByAlt = userPermissions.some(p => `${p.resource}.${p.action}`.toLowerCase() === `${resource}.${altAction}`);
+        if (matchedByAlt) return true;
+      }
+    }
+
+    return false;
   };
 
   const hasAnyPermission = (permissions: (PermissionName | string)[]): boolean => {

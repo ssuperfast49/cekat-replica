@@ -15,9 +15,10 @@ import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
 import AIAgents from "@/components/aiagents/AIAgents";
 import Settings from "@/components/settings/Settings";
 import HumanAgents from "@/components/humanagents/HumanAgents";
+import PermissionsPage from "@/components/permissions/PermissionsPage";
 import ProfilePopover from "@/components/auth/ProfileDialog";
 import PermissionNavItem from "@/components/navigation/PermissionNavItem";
-import RoleBadge from "@/components/rbac/RoleBadge";
+import PermissionGate from "@/components/rbac/PermissionGate";
 import { useNavigation } from "@/hooks/useNavigation";
 import { NAVIGATION_ORDER, NavKey } from "@/config/navigation";
 import { cn } from "@/lib/utils";
@@ -132,7 +133,7 @@ const Index = () => {
         <aside 
           className={`shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out ${
             sidebarExpanded ? 'w-64' : 'w-20'
-          } md:flex md:flex-col p-4`}
+          } md:flex md:flex-col p-4 sticky top-0 h-screen overflow-y-auto`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
@@ -143,13 +144,6 @@ const Index = () => {
             }`}>
               Cekat AI
             </span>
-          </div>
-          
-          {/* User Role Display */}
-          <div className={`px-2 py-2 transition-opacity duration-200 ${
-            sidebarExpanded ? 'opacity-100' : 'opacity-0'
-          }`}>
-            <RoleBadge className="text-xs" />
           </div>
           
           <Separator className="my-4" />
@@ -289,6 +283,11 @@ const Index = () => {
                 <h1 className="sr-only">Human Agents</h1>
                 <HumanAgents />
               </>
+            ) : active === "permissions" ? (
+              <PermissionGate permission={'access_rules.configure'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
+                <h1 className="sr-only">Permissions</h1>
+                <PermissionsPage />
+              </PermissionGate>
             ) : (
               <>
                 <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Selamat datang kembali di Cekat AI!</h1>

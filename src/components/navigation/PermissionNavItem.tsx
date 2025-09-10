@@ -1,7 +1,6 @@
 import { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import PermissionGate from '@/components/rbac/PermissionGate';
-import type { PermissionName } from '@/types/rbac';
 
 interface PermissionNavItemProps {
   icon: LucideIcon;
@@ -9,7 +8,7 @@ interface PermissionNavItemProps {
   active?: boolean;
   onClick?: () => void;
   collapsed?: boolean;
-  permissions: PermissionName[];
+  permissions: string[];
   requireAll?: boolean;
 }
 

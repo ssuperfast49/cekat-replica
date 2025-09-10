@@ -1,5 +1,4 @@
-import { LucideIcon, MessageSquare, BarChart2, Users, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon } from 'lucide-react';
-import { PERMISSIONS, PermissionName } from '@/types/rbac';
+import { LucideIcon, MessageSquare, BarChart2, Users, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, Shield } from 'lucide-react';
 
 export type NavKey = 
   | "chat"
@@ -8,13 +7,14 @@ export type NavKey =
   | "platforms"
   | "aiagents"
   | "humanagents"
+  | "permissions"
   | "settings";
 
 export interface NavigationItem {
   key: NavKey;
   label: string;
   icon: LucideIcon;
-  permissions: PermissionName[];
+  permissions: string[];
   requireAll?: boolean;
   description?: string;
 }
@@ -28,7 +28,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "chat",
     label: "Chat",
     icon: MessageSquare,
-    permissions: [PERMISSIONS.MESSAGES_READ, PERMISSIONS.THREADS_READ],
+    permissions: ['messages.read', 'threads.read'],
     requireAll: false, // User needs ANY of these permissions
     description: "View and manage conversations"
   },
@@ -38,9 +38,9 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     label: "Analytics",
     icon: BarChart2,
     permissions: [
-      PERMISSIONS.ANALYTICS_VIEW_KPI, 
-      PERMISSIONS.ANALYTICS_VIEW_CONTAINMENT_RATE, 
-      PERMISSIONS.ANALYTICS_VIEW_HANDOVER_RATE
+      'analytics.view_kpi',
+      'analytics.view_containment_rate', 
+      'analytics.view_handover_rate'
     ],
     requireAll: false, // User needs ANY analytics permission
     description: "View performance metrics and insights"
@@ -50,7 +50,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "contacts",
     label: "Contacts",
     icon: Users,
-    permissions: [PERMISSIONS.CONTACTS_READ, PERMISSIONS.CONTACT_IDENTITIES_READ],
+    permissions: ['contacts.read', 'contact_identities.read'],
     requireAll: false, // User needs ANY contact permission
     description: "Manage customer contacts and identities"
   },
@@ -59,7 +59,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "platforms",
     label: "Connected Platforms",
     icon: PlugZap,
-    permissions: [PERMISSIONS.CHANNELS_MANAGE],
+    permissions: ['channels.manage'],
     requireAll: true, // User needs ALL (just one in this case)
     description: "Manage connected channels and integrations"
   },
@@ -68,7 +68,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "aiagents",
     label: "AI Agents",
     icon: Bot,
-    permissions: [PERMISSIONS.AI_AGENTS_MANAGE],
+    permissions: ['ai_agents.manage'],
     requireAll: true,
     description: "Configure and manage AI agents"
   },
@@ -77,9 +77,18 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "humanagents",
     label: "Human Agents",
     icon: ShieldCheck,
-    permissions: [PERMISSIONS.SUPER_AGENTS_READ],
+    permissions: ['super_agents.read'],
     requireAll: true,
     description: "Manage human agent assignments and roles"
+  },
+
+  permissions: {
+    key: "permissions",
+    label: "Permissions",
+    icon: Shield,
+    permissions: ['access_rules.configure'],
+    requireAll: true,
+    description: "Manage roles and permissions"
   },
   
   settings: {
@@ -87,9 +96,9 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     label: "Settings",
     icon: SettingsIcon,
     permissions: [
-      PERMISSIONS.ACCESS_RULES_CONFIGURE, 
-      PERMISSIONS.USERS_READ_ALL, 
-      PERMISSIONS.SECURITY_MANAGE_2FA
+      'access_rules.configure',
+      'users.read_all', 
+      'security.manage_2fa'
     ],
     requireAll: false, // User needs ANY admin permission
     description: "System configuration and administration"
@@ -106,6 +115,7 @@ export const NAVIGATION_ORDER: NavKey[] = [
   "platforms",
   "aiagents",
   "humanagents",
+  "permissions",
   "settings"
 ];
 
