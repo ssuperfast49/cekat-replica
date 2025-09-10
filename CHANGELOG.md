@@ -1,4 +1,12 @@
 # Change Log
+# [0.0.5] FE WEB CEKAT 2025-09-03
+### Updates
+- Updated PermissionNavItem and NavigationItem interfaces to use string arrays for permissions instead of PermissionName type for better flexibility.
+- Modified NAVIGATION_CONFIG to replace permission constants with string representations for improved readability and consistency.
+- Enhanced RBACProvider's hasPermission function to support various permission formats, including direct matches and synonyms for better user experience.
+- Integrated a new PermissionsPage component into the main Index page, ensuring proper permission checks with PermissionGate.
+
+
 # [0.0.4] FE WEB CEKAT 2025-09-03
 ### Updates
 - Integrate RBAC and enhance agent management features
