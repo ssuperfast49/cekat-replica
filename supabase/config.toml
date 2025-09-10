@@ -1,1 +1,6 @@
 project_id = "tgrmxlbnutxpewfmofdx"
+
+# You can define schedules in the dashboard. Example shown here for reference only:
+# [functions.schedules]
+# cron = "* * * * *" # every minute
+# endpoint = "/openai-usage"

@@ -1,4 +1,13 @@
 # Change Log
+# [0.0.6] FE WEB CEKAT 2025-09-03
+### Updates
+- Implement OpenAI usage tracking and enhance analytics component
+- Added OpenAI API key configuration to .env for usage tracking.
+- Refactored vite.config.ts to include a usage proxy plugin for fetching OpenAI usage data.
+- Enhanced Analytics component to display OpenAI token usage with dynamic date range selection and improved UI elements.
+- Integrated charts to visualize input, output, and total tokens over selected time ranges.
+- Implemented error handling and loading states for better user experience during data fetching.
+
 # [0.0.5] FE WEB CEKAT 2025-09-03
 ### Updates
 - Updated PermissionNavItem and NavigationItem interfaces to use string arrays for permissions instead of PermissionName type for better flexibility.

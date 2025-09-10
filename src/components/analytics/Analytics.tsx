@@ -1,11 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Calendar, ChevronDown, Inbox, Tag, Search, FileText, Info } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
+import { Switch } from "@/components/ui/switch";
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 import { ChartContainer } from "@/components/ui/chart";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useEffect, useMemo, useState } from "react";
+import { parseISO, format } from "date-fns";
+import { useOpenAIUsageSnapshots } from "@/hooks/useOpenAIUsageSnapshots";
 
 const conversationData = [
   { time: "06/08", value: 50, firstTime: 30, returning: 45 },
@@ -102,7 +107,79 @@ const chartConfig = {
   },
 };
 
+const tokensChartConfig = {
+  input_tokens: {
+    label: "Input Tokens",
+    color: "#60a5fa",
+  },
+  output_tokens: {
+    label: "Output Tokens",
+    color: "#2563eb",
+  },
+  total_tokens: {
+    label: "Total Tokens",
+    color: "#1d4ed8",
+  },
+};
+
 export default function Analytics() {
+  const [range, setRange] = useState<"7d" | "30d" | "60d" | "1y">("7d");
+  const [live, setLive] = useState(false);
+  const { data: snapshotData, loading: snapshotLoading, error: snapshotError, refetch } = useOpenAIUsageSnapshots(range, live);
+
+  const [loadingUsage, setLoadingUsage] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const [usageTotals, setUsageTotals] = useState<{ start_date: string; end_date: string; totals: { input_tokens: number; output_tokens: number; total_tokens: number }, daily?: { date: string; input_tokens: number; output_tokens: number; total_tokens: number }[] } | null>(null);
+
+  const fetchUsage = useMemo(() => async (selected: typeof range) => {
+    try {
+      setLoadingUsage(true);
+      setUsageError(null);
+      const res = await fetch(`/api/usage?range=${selected}`);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Request failed with ${res.status}`);
+      }
+      const data = await res.json();
+      setUsageTotals(data);
+    } catch (err: any) {
+      setUsageError(err?.message || String(err));
+    } finally {
+      setLoadingUsage(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsage(range);
+  }, [fetchUsage]);
+
+  // Merge live snapshot (if available) as the displayed source of truth
+  const effective = snapshotData ?? usageTotals;
+
+  const rangeLabel = useMemo(() => {
+    const toLabel = (start: string, end: string) => {
+      try {
+        const s = format(parseISO(start), "MMM dd, yyyy");
+        const e = format(parseISO(end), "MMM dd, yyyy");
+        return `${s} - ${e}`;
+      } catch {
+        return `${start} - ${end}`;
+      }
+    };
+
+    if (effective?.start_date && effective?.end_date) {
+      return toLabel(effective.start_date, effective.end_date);
+    }
+    const daysByRange: Record<typeof range, number> = { "7d": 7, "30d": 30, "60d": 60, "1y": 365 } as const;
+    const end = new Date();
+    const toYMD = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    const endStr = toYMD(end);
+    const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+    start.setUTCDate(start.getUTCDate() - (daysByRange[range] - 1));
+    const startStr = toYMD(start);
+    return toLabel(startStr, endStr);
+  }, [effective, range]);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -131,11 +208,21 @@ export default function Analytics() {
                 </SelectContent>
               </Select>
               
-              <Button variant="outline" className="gap-2">
-                <Calendar className="w-4 h-4" />
-                Aug 05, 2025 - Aug 12, 2025
-                <ChevronDown className="w-4 h-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {rangeLabel}
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); }}>Last 7 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); }}>Last 30 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); }}>Last 60 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); }}>Last 1 year</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               
               <Select defaultValue="label">
                 <SelectTrigger className="w-32">
@@ -317,11 +404,21 @@ export default function Analytics() {
                 </SelectContent>
               </Select>
               
-              <Button variant="outline" className="gap-2">
-                <Calendar className="w-4 h-4" />
-                Aug 05, 2025 - Aug 12, 2025
-                <ChevronDown className="w-4 h-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {rangeLabel}
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); refetch(); }}>Last 7 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); refetch(); }}>Last 30 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); refetch(); }}>Last 60 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); refetch(); }}>Last 1 year</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             
             {/* Customer Satisfaction Score */}
@@ -424,11 +521,26 @@ export default function Analytics() {
                 </SelectContent>
               </Select>
               
-              <Button variant="outline" className="gap-2">
-                <Calendar className="w-4 h-4" />
-                Aug 05, 2025 - Aug 12, 2025
-                <ChevronDown className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Live</span>
+                <Switch checked={live} onCheckedChange={setLive} />
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {rangeLabel}
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); refetch(); }}>Last 7 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); refetch(); }}>Last 30 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); refetch(); }}>Last 60 days</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); refetch(); }}>Last 1 year</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             
             {/* AI Agent Charts */}
@@ -437,43 +549,32 @@ export default function Analytics() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    AI Message Usage
+                    AI Token Usage
                   </CardTitle>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">2.7</span>
-                    <span className="text-sm text-muted-foreground">Average Credit Per Message</span>
+                    <span className="text-3xl font-bold">{effective?.totals?.total_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</span>
+                    <span className="text-sm text-muted-foreground">Total Tokens</span>
                   </div>
                   <div className="flex gap-6 text-sm">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-                      <span>All Credits 6,256</span>
+                      <span>Input Tokens {effective?.totals?.input_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                      <span>All Messages 2,319</span>
+                      <span>Output Tokens {effective?.totals?.output_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</span>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <ChartContainer config={chartConfig} className="h-64">
+                  <ChartContainer config={tokensChartConfig} className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={aiMessageData}>
+                      <LineChart data={(effective?.daily || []).map(d => ({ time: d.date.slice(5), ...d }))}>
                         <XAxis dataKey="time" axisLine={false} tickLine={false} />
                         <YAxis axisLine={false} tickLine={false} />
-                        <Line 
-                          type="monotone" 
-                          dataKey="credits" 
-                          stroke="#60a5fa" 
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="messages" 
-                          stroke="#2563eb" 
-                          strokeWidth={2}
-                          dot={false}
-                        />
+                        <Line type="monotone" dataKey="input_tokens" stroke="#60a5fa" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="output_tokens" stroke="#2563eb" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="total_tokens" stroke="#1d4ed8" strokeWidth={2} dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </ChartContainer>
@@ -603,6 +704,104 @@ export default function Analytics() {
                 </Table>
                 <div className="p-4 text-sm text-muted-foreground border-t">
                   Showing 1 to 2 of 2 results
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="custom" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">OpenAI Token Usage</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-3 mb-4">
+                  <Select value={range} onValueChange={(v) => { const r = v as typeof range; setRange(r); fetchUsage(r); }}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7d">Last 7 days</SelectItem>
+                      <SelectItem value="30d">Last 30 days</SelectItem>
+                      <SelectItem value="60d">Last 60 days</SelectItem>
+                      <SelectItem value="1y">Last 1 year</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="gap-2">
+                        <Calendar className="w-4 h-4" />
+                        {rangeLabel}
+                        <ChevronDown className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-44">
+                      <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); refetch(); }}>Last 7 days</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); refetch(); }}>Last 30 days</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); refetch(); }}>Last 60 days</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); refetch(); }}>Last 1 year</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {usageError && (
+                  <div className="text-sm text-red-600">{usageError}</div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Input Tokens</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{effective?.totals?.input_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Output Tokens</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{effective?.totals?.output_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Tokens</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{effective?.totals?.total_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</div>
+                      {effective?.start_date && effective?.end_date && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Range: {rangeLabel}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Chart */}
+                <div className="mt-6">
+                  <ChartContainer
+                    config={{
+                      input_tokens: { label: "Input Tokens", color: "#60a5fa" },
+                      output_tokens: { label: "Output Tokens", color: "#2563eb" },
+                      total_tokens: { label: "Total Tokens", color: "#1d4ed8" },
+                    }}
+                    className="h-64"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={(usageTotals?.daily || []).map(d => ({ ...d, day: d.date.slice(5) }))}>
+                        <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                        <YAxis axisLine={false} tickLine={false} />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="input_tokens" stroke="#60a5fa" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="output_tokens" stroke="#2563eb" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="total_tokens" stroke="#1d4ed8" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
                 </div>
               </CardContent>
             </Card>
