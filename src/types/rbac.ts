@@ -48,10 +48,6 @@ export const ROLES = {
   AGENT: 'agent',
 } as const;
 
-// Intentionally no navigation permission mapping; use config/navigation.ts.
-
-// Intentionally no feature permission mapping; use string literals close to usage.
-
 // Type helpers
 export type PermissionName = string; // use 'resource.action' literals aligned with DB
 export type RoleName = typeof ROLES[keyof typeof ROLES];

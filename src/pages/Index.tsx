@@ -79,47 +79,6 @@ const Index = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { getDefaultNavItem, getNavItem, canAccessNavItem } = useNavigation();
-
-  const validMenus: NavKey[] = NAVIGATION_ORDER;
-
-  const updateMenuParam = (menu: NavKey, options?: { replace?: boolean }) => {
-    const next = new URLSearchParams(searchParams);
-    next.set("menu", menu);
-    setSearchParams(next, options);
-  };
-
-  // Sync active tab from URL on load and when the query changes, enforcing permission
-  useEffect(() => {
-    const menuParam = searchParams.get("menu");
-    if (menuParam && (validMenus as string[]).includes(menuParam)) {
-      const typedMenu = menuParam as NavKey;
-      if (canAccessNavItem(typedMenu)) {
-        if (typedMenu !== active) setActive(typedMenu);
-      } else {
-        const fallback = getDefaultNavItem();
-        if (fallback && fallback !== active) {
-          setActive(fallback);
-          updateMenuParam(fallback, { replace: true });
-        }
-      }
-    } else {
-      // Ensure the URL always has a valid menu param
-      if (!menuParam) updateMenuParam("chat", { replace: true });
-    }
-  }, [searchParams, canAccessNavItem, getDefaultNavItem]);
-
-  // Auto-redirect to first accessible navigation item if current one is not accessible
-  useEffect(() => {
-    const defaultNav = getDefaultNavItem();
-    if (!validMenus.includes(active) || !canAccessNavItem(active)) {
-      if (defaultNav) {
-        setActive(defaultNav);
-        updateMenuParam(defaultNav, { replace: true });
-      }
-    }
-  }, [getDefaultNavItem, canAccessNavItem, active, validMenus]);
 
   const handleSignOut = async () => {
     try {
