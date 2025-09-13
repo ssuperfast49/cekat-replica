@@ -1,4 +1,12 @@
 # Change Log
+# [0.0.6] FE WEB CEKAT 2025-09-13
+### Updates
+- Removed static permission constants in favor of direct string references for better alignment with database values.
+- Updated components to utilize new permission string format, enhancing consistency across the application.
+- Improved navigation logic to enforce permission checks when syncing active tabs, ensuring users only access permitted items.
+- Streamlined permission-related code in various components, enhancing maintainability and readability.
+
+
 # [0.0.5] FE WEB CEKAT 2025-09-03
 ### Updates
 - Updated PermissionNavItem and NavigationItem interfaces to use string arrays for permissions instead of PermissionName type for better flexibility.

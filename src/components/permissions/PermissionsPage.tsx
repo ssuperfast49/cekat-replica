@@ -71,45 +71,7 @@ const CRUD_RESOURCES = [
   'users_profile'
 ];
 
-// Special permissions that don't follow standard CRUD pattern
-const SPECIAL_PERMISSIONS = [
-  'access_rules.configure',
-  'ai_agents.manage',
-  'alerts.ack',
-  'alerts.configure',
-  'alerts.read',
-  'alerts.rule_high_usage',
-  'analytics.view_containment_rate',
-  'analytics.view_handover_rate', 
-  'analytics.view_kpi',
-  'audit_logs.read',
-  'channels.manage',
-  'contacts.edit',
-  'contacts.export',
-  'csat_responses.read',
-  'messages.edit',
-  'messages.export',
-  'messages.send',
-  'monitoring.view',
-  'n8n_chat_histories.read',
-  'permission_catalog.read',
-  'promotions.manage',
-  'security.manage_2fa',
-  'settings.manage',
-  'super_agents.create',
-  'super_agents.read',
-  'super_agents.edit',
-  'super_agents.delete',
-  'threads.edit',
-  'threads.export',
-  'token_topups.approve',
-  'tokens.topup',
-  'tokens.view_all_super_usage',
-  'tokens.view_total',
-  'users.read_all',
-  'users_profile.manage_2fa',
-  'v_users.read'
-];
+// No static SPECIAL_PERMISSIONS list; ordering for specials is alphabetical by resource/action.
 
 const PermissionsPage = () => {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -221,21 +183,18 @@ const PermissionsPage = () => {
     }
   };
 
-  // Separate CRUD and special permissions
+  // Separate CRUD and special permissions directly from DB actions
   const crudPermissions = allPermissions.filter(p => 
-    CRUD_RESOURCES.includes(p.resource) && CRUD_ACTIONS.includes(normalizeCrudAction(p.action) as any)
+    CRUD_ACTIONS.includes(normalizeCrudAction(p.action) as any)
   );
   
   const specialPermissions = allPermissions
-    .filter(p => !crudPermissions.some(cp => cp.id === p.id))
+    .filter(p => !CRUD_ACTIONS.includes(normalizeCrudAction(p.action) as any))
     .sort((a, b) => {
-      const ai = SPECIAL_PERMISSIONS.indexOf(a.name);
-      const bi = SPECIAL_PERMISSIONS.indexOf(b.name);
-      const aw = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
-      const bw = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
-      if (aw !== bw) return aw - bw;
       if (a.resource !== b.resource) return a.resource.localeCompare(b.resource);
-      return a.action.localeCompare(b.action);
+      const aa = normalizeCrudAction(a.action);
+      const bb = normalizeCrudAction(b.action);
+      return aa.localeCompare(bb);
     });
 
   // Group CRUD permissions by resource for the grid
@@ -271,6 +230,14 @@ const PermissionsPage = () => {
     return resourceName
       .replace(/_/g, ' ')
       .replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const getSpecialPermissionLabel = (permission: Permission) => {
+    const name = permission.name || '';
+    const idx = name.indexOf(': ');
+    if (idx !== -1) {
+      return name.slice(idx + 2);
+    }
   };
 
   if (loading) {
@@ -454,7 +421,12 @@ const PermissionsPage = () => {
                                 />
                               </div>
                             ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
+                              <div className="inline-flex items-center gap-2">
+                                <Checkbox
+                                  disabled={true}
+                                  checked={false}
+                                />
+                              </div>
                             )}
                           </TableCell>
                         );
@@ -492,7 +464,7 @@ const PermissionsPage = () => {
                           disabled={!!saving[`${selectedRole.id}:${permission.id}`]}
                         />
                         <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
-                          <span className="font-mono text-xs">{permission.name}</span>
+                          {getSpecialPermissionLabel(permission)}
                         </Label>
                       </div>
                     ))}

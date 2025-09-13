@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { useRBAC } from "@/contexts/RBACContext";
-import { PERMISSIONS, ROLES } from "@/types/rbac";
+import { ROLES } from "@/types/rbac";
 
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -188,7 +188,7 @@ const HumanAgents = () => {
           <h1 className="text-2xl font-bold tracking-tight">Human Agent Settings</h1>
           <p className="text-muted-foreground">Manage your human agents and teams</p>
         </div>
-        <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_CREATE}>
+        <PermissionGate permission={'super_agents.create'}>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2">
@@ -239,7 +239,7 @@ const HumanAgents = () => {
                   <SelectContent className="bg-background border z-50">
                     <SelectItem value="agent">Agent</SelectItem>
                     <SelectItem value="super_agent">Super Agent</SelectItem>
-                    <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_CREATE}>
+                    <PermissionGate permission={'super_agents.create'}>
                       <SelectItem value="master_agent">Master Agent</SelectItem>
                     </PermissionGate>
                   </SelectContent>
@@ -294,7 +294,7 @@ const HumanAgents = () => {
                     <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-lg font-semibold mb-2">No Agents Yet</h3>
                     <p className="text-muted-foreground mb-4">Create your first agent to get started.</p>
-                    <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_CREATE}>
+                    <PermissionGate permission={'super_agents.create'}>
                       <Button onClick={() => setIsCreateDialogOpen(true)}>
                         <Plus className="h-4 w-4 mr-2" />
                         Create Agent
@@ -315,7 +315,7 @@ const HumanAgents = () => {
                     </div>
                     <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
                     <div>
-                      {hasPermission(PERMISSIONS.SUPER_AGENTS_EDIT) ? (
+                      {hasPermission('super_agents.update') ? (
                         // Editable role dropdown for users with edit permission
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -335,7 +335,7 @@ const HumanAgents = () => {
                             <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
                               <Badge variant="default" className="text-xs">Super Agent</Badge>
                             </DropdownMenuItem>
-                            {hasPermission(PERMISSIONS.SUPER_AGENTS_CREATE) && (
+                            {hasPermission('super_agents.create') && (
                               <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "master_agent")}>
                                 <Badge variant="default" className="text-xs">Master Agent</Badge>
                               </DropdownMenuItem>
@@ -377,12 +377,12 @@ const HumanAgents = () => {
                       </DropdownMenu>
                     </div>
                     <div className="flex items-center gap-1">
-                      <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_EDIT}>
+                      <PermissionGate permission={'super_agents.update'}>
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                           <Edit className="h-4 w-4" />
                         </Button>
                       </PermissionGate>
-                      <PermissionGate permission={PERMISSIONS.SUPER_AGENTS_DELETE}>
+                      <PermissionGate permission={'super_agents.delete'}>
                         <Button 
                           variant="ghost" 
                           size="sm" 

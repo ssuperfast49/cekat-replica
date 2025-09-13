@@ -1,5 +1,5 @@
 import { useRBAC } from '@/contexts/RBACContext';
-import { PERMISSIONS, ROLES } from '@/types/rbac';
+import { ROLES } from '@/types/rbac';
 import PermissionGate from './PermissionGate';
 import AsyncPermissionGate from './AsyncPermissionGate';
 import RoleGate from './RoleGate';
@@ -63,16 +63,16 @@ export default function RBACTest() {
         <h4 className="font-medium">Permission Tests:</h4>
         <div className="space-y-2">
           <div>
-            Can send messages: {hasPermission(PERMISSIONS.MESSAGES_SEND) ? '✅' : '❌'}
+            Can send messages: {hasPermission('messages.send') ? '✅' : '❌'}
           </div>
           <div>
-            Can read messages: {hasPermission(PERMISSIONS.MESSAGES_READ) ? '✅' : '❌'}
+            Can read messages: {hasPermission('messages.read') ? '✅' : '❌'}
           </div>
           <div>
-            Can view analytics: {hasPermission(PERMISSIONS.ANALYTICS_VIEW_KPI) ? '✅' : '❌'}
+            Can view analytics: {hasPermission('analytics.view_kpi') ? '✅' : '❌'}
           </div>
           <div>
-            Can manage users: {hasPermission(PERMISSIONS.USERS_READ_ALL) ? '✅' : '❌'}
+            Can manage users: {hasPermission('users.read_all') ? '✅' : '❌'}
           </div>
         </div>
       </div>
@@ -97,13 +97,13 @@ export default function RBACTest() {
       <div>
         <h4 className="font-medium">Permission Gate Tests:</h4>
         <div className="space-y-2">
-          <PermissionGate permission={PERMISSIONS.MESSAGES_SEND}>
+          <PermissionGate permission={'messages.send'}>
             <div className="p-2 bg-green-100 text-green-800 rounded">
               ✅ You can send messages
             </div>
           </PermissionGate>
           
-          <PermissionGate permission={PERMISSIONS.ANALYTICS_VIEW_KPI}>
+          <PermissionGate permission={'analytics.view_kpi'}>
             <div className="p-2 bg-blue-100 text-blue-800 rounded">
               ✅ You can view analytics
             </div>

@@ -68,8 +68,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "aiagents",
     label: "AI Agents",
     icon: Bot,
-    permissions: ['ai_agents.manage'],
-    requireAll: true,
+    permissions: ['ai_profiles.read'],
+    requireAll: false,
     description: "Configure and manage AI agents"
   },
   
