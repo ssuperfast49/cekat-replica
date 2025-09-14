@@ -1360,7 +1360,7 @@ export type Database = {
           },
         ]
       }
-      thread_participants: {
+      thread_collaborators: {
         Row: {
           thread_id: string
           user_id: string
@@ -1375,7 +1375,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "thread_participants_thread_id_fkey"
+            foreignKeyName: "thread_collaborators_thread_id_fkey"
             columns: ["thread_id"]
             isOneToOne: false
             referencedRelation: "threads"
