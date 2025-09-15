@@ -36,7 +36,6 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRBAC } from "@/contexts/RBACContext";
 import { ROLES } from "@/types/rbac";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";

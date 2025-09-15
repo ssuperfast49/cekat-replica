@@ -1,5 +1,9 @@
 # Change Log
-# [0.0.9] FE WEB CEKAT 2025-09-14
+# [0.0.10] FE WEB CEKAT 2025-09-16
+### Updates
+- fix: remove duplicate import of useRBAC in ConversationPage component
+
+# [0.0.9] FE WEB CEKAT 2025-09-16
 ### Updates
 - Created loggings for every users, and only admin can access.
 - Made Role Management for admins to setting the role.
