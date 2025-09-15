@@ -8,16 +8,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2 } from "lucide-react";
+import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { useRBAC } from "@/contexts/RBACContext";
 import { ROLES } from "@/types/rbac";
+import { Switch } from "@/components/ui/switch";
+import { supabase } from "@/lib/supabase";
 
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreateTeamDialogOpen, setIsCreateTeamDialogOpen] = useState(false);
+  const [isEditLimitOpen, setIsEditLimitOpen] = useState(false);
+  const [isUsageOpen, setIsUsageOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<AgentWithDetails | null>(null);
+  const [savingLimits, setSavingLimits] = useState(false);
+  const [tokenLimitForm, setTokenLimitForm] = useState<{ enabled: boolean; perDay: number; perMonth: number }>({ enabled: false, perDay: 0, perMonth: 0 });
+  const [usageRange, setUsageRange] = useState<"7d" | "30d" | "this_month">("7d");
+  const [usageTotal, setUsageTotal] = useState<number | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
   const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent"; phone?: string }>({ 
     name: "", 
     email: "", 
@@ -28,7 +38,7 @@ const HumanAgents = () => {
     description: "" 
   });
   const { toast } = useToast();
-  const { hasPermission } = useRBAC();
+  const { hasPermission, hasRole } = useRBAC();
 
   const {
     agents,
@@ -118,6 +128,90 @@ const HumanAgents = () => {
         description: error instanceof Error ? error.message : "Failed to delete agent",
         variant: "destructive",
       });
+    }
+  };
+
+  const openEditLimits = async (agent: AgentWithDetails) => {
+    try {
+      setSelectedAgent(agent);
+      // Load current limits from users_profile
+      const { data, error } = await supabase
+        .from('users_profile')
+        .select('token_limit_enabled, max_tokens_per_day, max_tokens_per_month')
+        .eq('user_id', agent.user_id)
+        .maybeSingle();
+      if (error) throw error;
+      setTokenLimitForm({
+        enabled: !!data?.token_limit_enabled,
+        perDay: Number(data?.max_tokens_per_day ?? 0),
+        perMonth: Number(data?.max_tokens_per_month ?? 0)
+      });
+      setIsEditLimitOpen(true);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to load token limits', variant: 'destructive' });
+    }
+  };
+
+  const saveTokenLimits = async () => {
+    if (!selectedAgent) return;
+    try {
+      setSavingLimits(true);
+      const { error } = await supabase
+        .from('users_profile')
+        .update({
+          token_limit_enabled: tokenLimitForm.enabled,
+          max_tokens_per_day: Math.max(0, Math.floor(tokenLimitForm.perDay || 0)),
+          max_tokens_per_month: Math.max(0, Math.floor(tokenLimitForm.perMonth || 0))
+        })
+        .eq('user_id', selectedAgent.user_id);
+      if (error) throw error;
+      toast({ title: 'Saved', description: 'Token limits updated.' });
+      setIsEditLimitOpen(false);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to save token limits', variant: 'destructive' });
+    } finally {
+      setSavingLimits(false);
+    }
+  };
+
+  const computeRange = (range: "7d" | "30d" | "this_month") => {
+    const now = new Date();
+    let start: Date;
+    if (range === 'this_month') {
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+    } else {
+      const days = range === '7d' ? 7 : 30;
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+      start.setUTCDate(start.getUTCDate() - (days - 1));
+    }
+    const end = now;
+    return { start: start.toISOString(), end: end.toISOString() };
+  };
+
+  const openUsageDetails = async (agent: AgentWithDetails) => {
+    setSelectedAgent(agent);
+    setIsUsageOpen(true);
+    await fetchUsage(agent.user_id, usageRange);
+  };
+
+  const fetchUsage = async (userId: string, range: "7d" | "30d" | "this_month") => {
+    try {
+      setLoadingUsage(true);
+      const { start, end } = computeRange(range);
+      const { data, error } = await supabase
+        .from('token_usage_logs')
+        .select('total_tokens')
+        .eq('user_id', userId)
+        .gte('made_at', start)
+        .lte('made_at', end);
+      if (error) throw error;
+      const total = (data || []).reduce((sum: number, row: any) => sum + Number(row.total_tokens || 0), 0);
+      setUsageTotal(total);
+    } catch (e: any) {
+      setUsageTotal(null);
+      toast({ title: 'Error', description: e?.message || 'Failed to load usage', variant: 'destructive' });
+    } finally {
+      setLoadingUsage(false);
     }
   };
 
@@ -377,11 +471,27 @@ const HumanAgents = () => {
                       </DropdownMenu>
                     </div>
                     <div className="flex items-center gap-1">
-                      <PermissionGate permission={'super_agents.update'}>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                      <PermissionGate permission={'users_profile.update_token_limit'}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => openEditLimits(agent)}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
                       </PermissionGate>
+                      {hasRole(ROLES.MASTER_AGENT) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                          onClick={() => openUsageDetails(agent)}
+                          title="View token usage"
+                        >
+                          <BarChart3 className="h-4 w-4" />
+                        </Button>
+                      )}
                       <PermissionGate permission={'super_agents.delete'}>
                         <Button 
                           variant="ghost" 
@@ -506,6 +616,69 @@ const HumanAgents = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Edit Token Limits Dialog */}
+      <Dialog open={isEditLimitOpen} onOpenChange={setIsEditLimitOpen}>
+        <DialogContent className="sm:max-w-md bg-background border">
+          <DialogHeader>
+            <DialogTitle>Token Limits{selectedAgent ? ` — ${selectedAgent.display_name || selectedAgent.email}` : ''}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium">Enable Limits</Label>
+                <p className="text-xs text-muted-foreground">Block token-consuming actions when exceeded.</p>
+              </div>
+              <Switch checked={tokenLimitForm.enabled} onCheckedChange={(v) => setTokenLimitForm({ ...tokenLimitForm, enabled: !!v })} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="limit-day">Max Tokens / Day</Label>
+                <Input id="limit-day" type="number" min={0} value={tokenLimitForm.perDay} onChange={(e) => setTokenLimitForm({ ...tokenLimitForm, perDay: Number(e.target.value) })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="limit-month">Max Tokens / Month</Label>
+                <Input id="limit-month" type="number" min={0} value={tokenLimitForm.perMonth} onChange={(e) => setTokenLimitForm({ ...tokenLimitForm, perMonth: Number(e.target.value) })} />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button onClick={saveTokenLimits} disabled={savingLimits} className="flex-1">Save</Button>
+              <Button variant="outline" onClick={() => setIsEditLimitOpen(false)} className="flex-1">Cancel</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Usage Details Dialog */}
+      <Dialog open={isUsageOpen} onOpenChange={setIsUsageOpen}>
+        <DialogContent className="sm:max-w-md bg-background border">
+          <DialogHeader>
+            <DialogTitle>Token Usage{selectedAgent ? ` — ${selectedAgent.display_name || selectedAgent.email}` : ''}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Timeframe</Label>
+              <Select value={usageRange} onValueChange={async (v) => { const r = v as any; setUsageRange(r); if (selectedAgent) await fetchUsage(selectedAgent.user_id, r); }}>
+                <SelectTrigger className="bg-background border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-background border z-50">
+                  <SelectItem value="7d">Last 7 days</SelectItem>
+                  <SelectItem value="30d">Last 30 days</SelectItem>
+                  <SelectItem value="this_month">This month</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-md border p-4">
+              <div className="text-sm text-muted-foreground">Total Tokens</div>
+              <div className="text-2xl font-bold">{loadingUsage ? '…' : (usageTotal?.toLocaleString() ?? 0)}</div>
+            </div>
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => setIsUsageOpen(false)}>Close</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

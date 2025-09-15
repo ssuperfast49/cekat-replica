@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logAction } from '@/lib/supabase';
 
 export interface Contact {
   id: string;
@@ -104,6 +104,8 @@ export const useContacts = () => {
       // Refresh contacts list
       await fetchContacts();
 
+      try { await logAction({ action: 'contact.create', resource: 'contact', resourceId: (data as any)?.id ?? null, context: contactData as any }); } catch {}
+
       return data;
     } catch (error) {
       console.error('Error creating contact:', error);
@@ -127,6 +129,8 @@ export const useContacts = () => {
       // Refresh contacts list
       await fetchContacts();
 
+      try { await logAction({ action: 'contact.update', resource: 'contact', resourceId: contactId, context: updateData as any }); } catch {}
+
     } catch (error) {
       console.error('Error updating contact:', error);
       setError(error instanceof Error ? error.message : 'Failed to update contact');
@@ -149,6 +153,8 @@ export const useContacts = () => {
       // Refresh contacts list
       await fetchContacts();
 
+      try { await logAction({ action: 'contact.delete', resource: 'contact', resourceId: contactId }); } catch {}
+
     } catch (error) {
       console.error('Error deleting contact:', error);
       setError(error instanceof Error ? error.message : 'Failed to delete contact');
@@ -170,6 +176,8 @@ export const useContacts = () => {
 
       // Refresh contacts list
       await fetchContacts();
+
+      try { await logAction({ action: 'contact.bulk_delete', resource: 'contact', context: { ids: contactIds } }); } catch {}
 
     } catch (error) {
       console.error('Error deleting contacts:', error);

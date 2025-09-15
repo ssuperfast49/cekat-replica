@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logAction } from '@/lib/supabase';
 import WEBHOOK_CONFIG from '@/config/webhook';
 
 export interface Thread {
@@ -70,7 +70,7 @@ export interface MessageWithDetails extends Message {
 export const useConversations = () => {
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [messages, setMessages] = useState<MessageWithDetails[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
@@ -276,6 +276,16 @@ export const useConversations = () => {
       // Refresh messages
       await fetchMessages(threadId);
 
+      // Audit log
+      try {
+        await logAction({
+          action: 'message.send',
+          resource: 'message',
+          resourceId: (data as any)?.id ?? null,
+          context: { thread_id: threadId, role }
+        });
+      } catch {}
+
       return data;
     } catch (error) {
       console.error('Error sending message:', error);
@@ -309,6 +319,11 @@ export const useConversations = () => {
       // Refresh conversations
       await fetchConversations();
 
+      // Audit log
+      try {
+        await logAction({ action: 'thread.create', resource: 'thread', resourceId: (data as any)?.id ?? null, context: { contact_id: contactId, channel_id: channelId } });
+      } catch {}
+
       return data;
     } catch (error) {
       console.error('Error creating conversation:', error);
@@ -331,6 +346,9 @@ export const useConversations = () => {
 
       // Refresh conversations
       await fetchConversations();
+
+      // Audit log
+      try { await logAction({ action: 'thread.update_status', resource: 'thread', resourceId: threadId, context: { status } }); } catch {}
 
     } catch (error) {
       console.error('Error updating thread status:', error);
@@ -381,6 +399,9 @@ export const useConversations = () => {
       await fetchConversations();
       await fetchMessages(threadId);
 
+      // Audit log
+      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: _userId } }); } catch {}
+
     } catch (error) {
       console.error('Error assigning thread:', error);
       setError(error instanceof Error ? error.message : 'Failed to assign thread');
@@ -398,6 +419,8 @@ export const useConversations = () => {
         .insert([{ thread_id: threadId, user_id: userId }]);
 
       if (error) throw error;
+
+      try { await logAction({ action: 'thread.add_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch {}
 
     } catch (error) {
       console.error('Error adding thread participant:', error);
@@ -419,6 +442,8 @@ export const useConversations = () => {
 
       if (error) throw error;
 
+      try { await logAction({ action: 'thread.remove_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch {}
+
     } catch (error) {
       console.error('Error removing thread participant:', error);
       setError(error instanceof Error ? error.message : 'Failed to remove thread participant');
@@ -436,6 +461,8 @@ export const useConversations = () => {
         .insert([{ thread_id: threadId, label_id: labelId }]);
 
       if (error) throw error;
+
+      try { await logAction({ action: 'thread.add_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch {}
 
     } catch (error) {
       console.error('Error adding thread label:', error);
@@ -456,6 +483,8 @@ export const useConversations = () => {
         .eq('label_id', labelId);
 
       if (error) throw error;
+
+      try { await logAction({ action: 'thread.remove_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch {}
 
     } catch (error) {
       console.error('Error removing thread label:', error);

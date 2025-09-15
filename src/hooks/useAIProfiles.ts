@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logAction } from '@/lib/supabase';
 
 export interface AIProfile {
   id: string;
@@ -63,6 +63,7 @@ export const useAIProfiles = (profileId?: string) => {
           .from('ai_profiles')
           .update(updateData)
           .eq('id', profile.id);
+        try { await logAction({ action: 'ai_profile.update', resource: 'ai_profile', resourceId: profile.id, context: updateData as any }); } catch {}
           
         if (error) throw error;
       } else {
@@ -80,6 +81,8 @@ export const useAIProfiles = (profileId?: string) => {
         if (data) {
           setProfile(data);
         }
+
+        try { await logAction({ action: 'ai_profile.create', resource: 'ai_profile', resourceId: (data as any)?.id ?? null, context: updateData as any }); } catch {}
       }
       
       // Refresh profile data
@@ -126,6 +129,7 @@ export const useAIProfiles = (profileId?: string) => {
         .from('ai_profiles')
         .delete()
         .eq('id', profileId);
+      try { await logAction({ action: 'ai_profile.delete', resource: 'ai_profile', resourceId: profileId }); } catch {}
         
       if (error) throw error;
       

@@ -1,8 +1,9 @@
-import { LucideIcon, MessageSquare, BarChart2, Users, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, Shield } from 'lucide-react';
+import { LucideIcon, MessageSquare, BarChart2, Users, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, Shield, ClipboardList } from 'lucide-react';
 
 export type NavKey = 
   | "chat"
   | "analytics"
+  | "logs"
   | "contacts"
   | "platforms"
   | "aiagents"
@@ -44,6 +45,15 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     ],
     requireAll: false, // User needs ANY analytics permission
     description: "View performance metrics and insights"
+  },
+
+  logs: {
+    key: "logs",
+    label: "Logs",
+    icon: ClipboardList,
+    permissions: ['audit_logs.read'],
+    requireAll: true,
+    description: "View user action logs"
   },
   
   contacts: {
@@ -111,6 +121,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
 export const NAVIGATION_ORDER: NavKey[] = [
   "chat",
   "analytics", 
+  "logs",
   "contacts",
   "platforms",
   "aiagents",

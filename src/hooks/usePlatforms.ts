@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logAction } from '@/lib/supabase';
 
 export interface Platform {
   id: string;
@@ -176,6 +176,8 @@ export const usePlatforms = () => {
       // Refresh platforms list
       await fetchPlatforms();
 
+      try { await logAction({ action: 'channel.create', resource: 'channel', resourceId: (newChannel as any)?.id ?? null, context: platformData as any }); } catch {}
+
       return newChannel;
     } catch (error: any) {
       console.error('Error creating platform:', error);
@@ -233,6 +235,8 @@ export const usePlatforms = () => {
 
       // Refresh platforms list
       await fetchPlatforms();
+
+      try { await logAction({ action: 'channel.update', resource: 'channel', resourceId: platformId, context: updates as any }); } catch {}
     } catch (error: any) {
       console.error('Error updating platform:', error);
       setError(error.message || 'Failed to update platform');
@@ -255,6 +259,8 @@ export const usePlatforms = () => {
 
       // Refresh platforms list
       await fetchPlatforms();
+
+      try { await logAction({ action: 'channel.delete', resource: 'channel', resourceId: platformId }); } catch {}
     } catch (error: any) {
       console.error('Error deleting platform:', error);
       setError(error.message || 'Failed to delete platform');

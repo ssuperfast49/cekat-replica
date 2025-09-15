@@ -9,13 +9,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ConversationPage from "@/components/chat/ConversationPage";
-import Analytics from "@/components/analytics/Analytics";
 import Contacts from "@/components/contacts/Contacts";
 import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
+import Analytics from "@/components/analytics/Analytics";
 import AIAgents from "@/components/aiagents/AIAgents";
 import Settings from "@/components/settings/Settings";
 import HumanAgents from "@/components/humanagents/HumanAgents";
 import PermissionsPage from "@/components/permissions/PermissionsPage";
+import Logs from "./Logs";
 import ProfilePopover from "@/components/auth/ProfileDialog";
 import PermissionNavItem from "@/components/navigation/PermissionNavItem";
 import PermissionGate from "@/components/rbac/PermissionGate";
@@ -297,6 +298,11 @@ const Index = () => {
               <PermissionGate permission={'access_rules.configure'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
                 <h1 className="sr-only">Permissions</h1>
                 <PermissionsPage />
+              </PermissionGate>
+            ) : active === "logs" ? (
+              <PermissionGate permission={'audit_logs.read'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Logs.</div>}>
+                <h1 className="sr-only">Logs</h1>
+                <Logs />
               </PermissionGate>
             ) : (
               <>

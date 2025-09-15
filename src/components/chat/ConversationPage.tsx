@@ -34,6 +34,7 @@ import { useContacts } from "@/hooks/useContacts";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
@@ -139,6 +140,7 @@ export default function ConversationPage() {
   const { createContact } = useContacts();
   const { agents: humanAgents } = useHumanAgents();
   const { user } = useAuth();
+  const { hasRole } = useRBAC();
   const [assignOpen, setAssignOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
 
@@ -221,6 +223,45 @@ export default function ConversationPage() {
     if (!text || !selectedThreadId) return;
     
     try {
+      // Enforce token limit before sending AI message
+      if (user?.id) {
+        const { data: profile } = await supabase
+          .from('users_profile')
+          .select('token_limit_enabled, max_tokens_per_day, max_tokens_per_month')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (profile?.token_limit_enabled) {
+          // Calculate consumed for today and this month
+          const now = new Date();
+          const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0)).toISOString();
+          const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0)).toISOString();
+
+          const [{ data: dayRows }, { data: monthRows }] = await Promise.all([
+            supabase
+              .from('token_usage_logs')
+              .select('total_tokens')
+              .eq('user_id', user.id)
+              .gte('made_at', startOfDay),
+            supabase
+              .from('token_usage_logs')
+              .select('total_tokens')
+              .eq('user_id', user.id)
+              .gte('made_at', startOfMonth),
+          ]);
+          const usedToday = (dayRows || []).reduce((s: number, r: any) => s + Number(r.total_tokens || 0), 0);
+          const usedMonth = (monthRows || []).reduce((s: number, r: any) => s + Number(r.total_tokens || 0), 0);
+
+          if (profile.max_tokens_per_day && usedToday >= profile.max_tokens_per_day) {
+            toast.error('Daily token limit reached');
+            return;
+          }
+          if (profile.max_tokens_per_month && usedMonth >= profile.max_tokens_per_month) {
+            toast.error('Monthly token limit reached');
+            return;
+          }
+        }
+      }
+
       await sendMessage(selectedThreadId, text, 'assistant');
       setDraft("");
       toast.success("Message sent successfully");

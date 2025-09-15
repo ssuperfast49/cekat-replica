@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logAction } from '@/lib/supabase';
 
 // New interface for v_users view
 export interface VUser {
@@ -146,6 +146,8 @@ export const useHumanAgents = () => {
       // Refresh the agents list
       await fetchAgents();
 
+      try { await logAction({ action: 'user.create', resource: 'user', resourceId: tempUserId, context: agentData as any }); } catch {}
+
       return profileData;
     } catch (error) {
       console.error('Error creating agent:', error);
@@ -188,6 +190,8 @@ export const useHumanAgents = () => {
 
       // Refresh the agents list to get updated data from v_users
       await fetchAgents();
+
+      try { await logAction({ action: 'user.update_role', resource: 'user', resourceId: agentId, context: { role } }); } catch {}
     } catch (error) {
       console.error('Error updating agent role:', error);
       setError(error instanceof Error ? error.message : 'Failed to update agent role');
@@ -218,6 +222,8 @@ export const useHumanAgents = () => {
 
       // Refresh the agents list
       await fetchAgents();
+
+      try { await logAction({ action: 'user.delete', resource: 'user', resourceId: agentId }); } catch {}
     } catch (error) {
       console.error('Error deleting agent:', error);
       setError(error instanceof Error ? error.message : 'Failed to delete agent');

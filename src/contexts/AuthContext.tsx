@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, logAction } from '@/lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -38,6 +38,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+
+        try {
+          if (event === 'SIGNED_IN') {
+            await logAction({ action: 'auth.login', resource: 'auth', userId: session?.user?.id || null, context: {} });
+          } else if (event === 'SIGNED_OUT') {
+            await logAction({ action: 'auth.logout', resource: 'auth', userId: user?.id || null, context: {} });
+          }
+        } catch {}
       }
     );
 

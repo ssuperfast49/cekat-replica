@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Mail, Lock, Eye, EyeOff, User, ArrowLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import pkg from "../../../package.json";
+import { Link } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
 interface LoginProps {
@@ -226,7 +227,9 @@ export default function Login({ onBack }: LoginProps) {
                     "Sign In"
                   )}
                 </Button>
-                <p className="text-xs text-muted-foreground text-center mt-2">v{(pkg as any)?.version}</p>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  <Link to="/changelog" className="hover:underline">v{(pkg as any)?.version}</Link>
+                </p>
               </form>
             </TabsContent>
 

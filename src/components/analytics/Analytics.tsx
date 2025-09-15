@@ -1,18 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Calendar, ChevronDown, Inbox, Tag, Search, FileText, Info } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
-import { ChartContainer } from "@/components/ui/chart";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ResponsiveContainer, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, LabelList } from "recharts";
 import { useEffect, useMemo, useState } from "react";
-import { parseISO, format } from "date-fns";
-import { useOpenAIUsageSnapshots } from "@/hooks/useOpenAIUsageSnapshots";
+import { supabase } from "@/lib/supabase";
 
-const conversationData = [
+type ConversationPoint = { time: string; value: number; firstTime?: number; returning?: number };
+type AgentMetric = { name: string; value: number };
+
+const conversationData: ConversationPoint[] = [
   { time: "06/08", value: 50, firstTime: 30, returning: 45 },
   { time: "07/08", value: 75, firstTime: 45, returning: 60 },
   { time: "08/08", value: 65, firstTime: 40, returning: 55 },
@@ -23,791 +20,152 @@ const conversationData = [
   { time: "13/08", value: 70, firstTime: 45, returning: 60 },
 ];
 
-const aiMessageData = [
-  { time: "06/08", credits: 120, messages: 45 },
-  { time: "07/08", credits: 150, messages: 55 },
-  { time: "08/08", credits: 110, messages: 40 },
-  { time: "09/08", credits: 90, messages: 35 },
-  { time: "10/08", credits: 180, messages: 65 },
-  { time: "11/08", credits: 200, messages: 75 },
-  { time: "12/08", credits: 160, messages: 60 },
-  { time: "13/08", credits: 140, messages: 50 },
+const aiAgentMetrics: AgentMetric[] = [
+  { name: "Avg Response (s)", value: 2.1 },
+  { name: "Containment (%)", value: 82 },
+  { name: "CSAT", value: 4.3 },
+  { name: "Deflection (%)", value: 37 },
 ];
 
-const handoffData = [
-  { name: "06/08", value: 85 },
-  { name: "07/08", value: 92 },
-  { name: "08/08", value: 78 },
-  { name: "09/08", value: 88 },
-  { name: "10/08", value: 95 },
-  { name: "11/08", value: 90 },
-  { name: "12/08", value: 87 },
-  { name: "13/08", value: 82 },
+const humanResolution: AgentMetric[] = [
+  { name: "Resolved by Human", value: 15 },
+  { name: "Resolved by AI", value: 85 },
 ];
 
-const responseTimeData = [
-  { agent: "Julian", firstResponse: 8, responseTime: 15, resolveTime: 180 },
-  { agent: "Audit 4", firstResponse: 10, responseTime: 20, resolveTime: 0 },
-  { agent: "Agent 01", firstResponse: 12, responseTime: 25, resolveTime: 420 },
-  { agent: "Agent 02", firstResponse: 15, responseTime: 35, resolveTime: 1251 },
-];
-
-const agentChatData = [
-  { agent: "Agent 01", conversations: 168 },
-  { agent: "Julian", conversations: 0 },
-  { agent: "Audit 4", conversations: 213 },
-  { agent: "Agent 02", conversations: 0 },
-  { agent: "Agent 03", conversations: 172 },
-];
-
-const tableData = [
-  {
-    createdAt: "2025-06-17 20:25",
-    agent: "GULTEK TOP LAB CENTER",
-    startDate: "2025-06-02",
-    endDate: "2025-06-16",
-    classifications: "DONE",
-    status: "DONE",
-    estimatedTime: "",
-    actions: "View Export"
-  },
-  {
-    createdAt: "2025-06-17 20:23",
-    agent: "ANTANOTO TOP LAB CENTER",
-    startDate: "2025-06-02",
-    endDate: "2025-06-16",
-    classifications: "DONE",
-    status: "DONE",
-    estimatedTime: "",
-    actions: "View Export"
-  }
-];
-
-const sourceData = [
-  { name: "Live Chat", value: 100, color: "#10b981" }
-];
-
-const resolutionData = [
-  { name: "Resolved by Human", value: 15, color: "#3b82f6" },
-  { name: "Resolved by AI", value: 85, color: "#1d4ed8" }
-];
-
-const chartConfig = {
-  conversations: {
-    label: "Conversations",
-    color: "hsl(var(--primary))",
-  },
-  firstTime: {
-    label: "First Time",
-    color: "hsl(var(--chart-1))",
-  },
-  returning: {
-    label: "Returning",
-    color: "hsl(var(--chart-2))",
-  },
-};
-
-const tokensChartConfig = {
-  input_tokens: {
-    label: "Input Tokens",
-    color: "#60a5fa",
-  },
-  output_tokens: {
-    label: "Output Tokens",
-    color: "#2563eb",
-  },
-  total_tokens: {
-    label: "Total Tokens",
-    color: "#1d4ed8",
-  },
-};
+const COLORS = ["#60a5fa", "#2563eb", "#1d4ed8", "#10b981", "#f59e0b", "#ef4444"]; 
 
 export default function Analytics() {
-  const [range, setRange] = useState<"7d" | "30d" | "60d" | "1y">("7d");
-  const [live, setLive] = useState(false);
-  const { data: snapshotData, loading: snapshotLoading, error: snapshotError, refetch } = useOpenAIUsageSnapshots(range, live);
+  const pieColors = useMemo(() => COLORS.slice(0, humanResolution.length), []);
 
-  const [loadingUsage, setLoadingUsage] = useState(false);
-  const [usageError, setUsageError] = useState<string | null>(null);
-  const [usageTotals, setUsageTotals] = useState<{ start_date: string; end_date: string; totals: { input_tokens: number; output_tokens: number; total_tokens: number }, daily?: { date: string; input_tokens: number; output_tokens: number; total_tokens: number }[] } | null>(null);
+  const [from, setFrom] = useState<string>("");
+  const [to, setTo] = useState<string>("");
+  const [channelCounts, setChannelCounts] = useState<{ provider: string; display_name: string | null; thread_count: number }[]>([]);
+  const [aiAvg, setAiAvg] = useState<number>(0);
+  const [agentAvg, setAgentAvg] = useState<number>(0);
+  const [containment, setContainment] = useState<{ total: number; ai: number; rate: number; handover: number; handover_rate: number }>({ total: 0, ai: 0, rate: 0, handover: 0, handover_rate: 0 });
 
-  const fetchUsage = useMemo(() => async (selected: typeof range) => {
-    try {
-      setLoadingUsage(true);
-      setUsageError(null);
-      const res = await fetch(`/api/usage?range=${selected}`);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Request failed with ${res.status}`);
-      }
-      const data = await res.json();
-      setUsageTotals(data);
-    } catch (err: any) {
-      setUsageError(err?.message || String(err));
-    } finally {
-      setLoadingUsage(false);
+  const getRange = () => {
+    const end = to ? new Date(to) : new Date();
+    const start = from ? new Date(from) : new Date(Date.now() - 7*24*60*60*1000);
+    return { start: start.toISOString(), end: end.toISOString() };
+  };
+
+  const fetchMetrics = async () => {
+    const { start, end } = getRange();
+    // Chats per channel
+    const { data: ch } = await supabase.rpc('get_channel_chat_counts', { p_from: start, p_to: end });
+    setChannelCounts((ch as any || []).map((r: any) => ({ provider: r.provider, display_name: r.display_name, thread_count: Number(r.thread_count||0) })));
+    // Response times
+    const { data: rt } = await supabase.rpc('get_response_times', { p_from: start, p_to: end });
+    if (rt && (rt as any[]).length > 0) {
+      const row = (rt as any[])[0];
+      setAiAvg(Number(row.ai_avg_seconds||0));
+      setAgentAvg(Number(row.agent_avg_seconds||0));
     }
-  }, []);
-
-  useEffect(() => {
-    fetchUsage(range);
-  }, [fetchUsage]);
-
-  // Merge live snapshot (if available) as the displayed source of truth
-  const effective = snapshotData ?? usageTotals;
-
-  const rangeLabel = useMemo(() => {
-    const toLabel = (start: string, end: string) => {
-      try {
-        const s = format(parseISO(start), "MMM dd, yyyy");
-        const e = format(parseISO(end), "MMM dd, yyyy");
-        return `${s} - ${e}`;
-      } catch {
-        return `${start} - ${end}`;
-      }
-    };
-
-    if (effective?.start_date && effective?.end_date) {
-      return toLabel(effective.start_date, effective.end_date);
+    // Containment & handover
+    const { data: ch2 } = await supabase.rpc('get_containment_and_handover', { p_from: start, p_to: end });
+    if (ch2 && (ch2 as any[]).length > 0) {
+      const row = (ch2 as any[])[0];
+      setContainment({ total: Number(row.total_threads||0), ai: Number(row.ai_resolved_count||0), rate: Number(row.containment_rate||0), handover: Number(row.handover_count||0), handover_rate: Number(row.handover_rate||0) });
     }
-    const daysByRange: Record<typeof range, number> = { "7d": 7, "30d": 30, "60d": 60, "1y": 365 } as const;
-    const end = new Date();
-    const toYMD = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-    const endStr = toYMD(end);
-    const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
-    start.setUTCDate(start.getUTCDate() - (daysByRange[range] - 1));
-    const startStr = toYMD(start);
-    return toLabel(startStr, endStr);
-  }, [effective, range]);
+  };
+
+  useEffect(() => { fetchMetrics(); }, []);
+  useEffect(() => { fetchMetrics(); }, [from, to]);
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         <h1 className="text-2xl font-semibold">Analytics</h1>
-        
-        {/* Tabs */}
-        <Tabs defaultValue="conversation" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 max-w-2xl">
-            <TabsTrigger value="conversation">Conversation</TabsTrigger>
-            <TabsTrigger value="ai-agent">AI Agent</TabsTrigger>
-            <TabsTrigger value="human-agent">Human Agent</TabsTrigger>
-            <TabsTrigger value="custom">Custom</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="conversation" className="space-y-6">
-            {/* Filters */}
-            <div className="flex gap-4 items-center">
-              <Select defaultValue="all-inbox">
-                <SelectTrigger className="w-48">
-                  <Inbox className="w-4 h-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all-inbox">All Inbox</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {rangeLabel}
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-44">
-                  <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); }}>Last 7 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); }}>Last 30 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); }}>Last 60 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); }}>Last 1 year</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              
-              <Select defaultValue="label">
-                <SelectTrigger className="w-32">
-                  <Tag className="w-4 h-4 mr-2" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="label">Label</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Main Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Total Conversations */}
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Conversation
-                  </CardTitle>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">991</span>
-                    <span className="text-sm text-muted-foreground">Total Conversations</span>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-                      <span>First Time 405</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                      <span>Returning 586</span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={chartConfig} className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={conversationData}>
-                        <XAxis dataKey="time" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Line 
-                          type="monotone" 
-                          dataKey="firstTime" 
-                          stroke="#60a5fa" 
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="returning" 
-                          stroke="#2563eb" 
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-              
-              {/* Peak Chat Hours */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Peak Chat Hours
-                  </CardTitle>
-                  <div className="text-3xl font-bold">00:00</div>
-                  <div className="text-sm text-muted-foreground">Peak Time</div>
-                </CardHeader>
-                <CardContent className="flex items-center justify-center h-32">
-                  <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                </CardContent>
-              </Card>
-            </div>
-            
-            {/* Bottom Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* First Time Conversation Source */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    First Time Conversation Source
-                  </CardTitle>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">421</span>
-                    <span className="text-sm text-muted-foreground">Total Conversations</span>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex justify-center">
-                  <div className="relative w-48 h-48">
-                    <ChartContainer config={chartConfig} className="w-full h-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={sourceData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={90}
-                            startAngle={90}
-                            endAngle={-270}
-                            dataKey="value"
-                          >
-                            {sourceData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="text-sm text-muted-foreground">Live Chat</div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Resolution Rate */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Resolution Rate
-                  </CardTitle>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">610</span>
-                    <span className="text-sm text-muted-foreground">Total Conversations</span>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                      <span>Resolved by Human</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-700"></div>
-                      <span>Resolved by AI</span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex justify-center">
-                  <div className="w-48 h-48">
-                    <ChartContainer config={chartConfig} className="w-full h-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={resolutionData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={90}
-                            startAngle={90}
-                            endAngle={-270}
-                            dataKey="value"
-                          >
-                            {resolutionData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="human-agent" className="space-y-6">
-            {/* Human Agent Filters */}
-            <div className="flex gap-4 items-center">
-              <Select defaultValue="all-agent">
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all-agent">All Agent</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {rangeLabel}
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-44">
-                  <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); refetch(); }}>Last 7 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); refetch(); }}>Last 30 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); refetch(); }}>Last 60 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); refetch(); }}>Last 1 year</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            
-            {/* Customer Satisfaction Score */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold">Customer Satisfaction Score</CardTitle>
-              </CardHeader>
-              <CardContent className="text-center py-12">
-                <h3 className="text-lg font-medium text-muted-foreground mb-2">CSAT Analytics Unavailable</h3>
-                <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-                  To access CSAT analytics, ensure the CSAT feature is enabled in your settings and that customers have submitted CSAT responses.
-                </p>
-              </CardContent>
-            </Card>
-            
-            {/* Response Time and Chat Count */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Average Response Time */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                    Average Response Time
-                    <Info className="w-4 h-4 text-muted-foreground" />
-                  </CardTitle>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                      <span><strong>11s</strong> First Response</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-                      <span><strong>28s</strong> Response Time</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                      <span><strong>20m 51s</strong> Resolve Time</span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={chartConfig} className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={responseTimeData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <XAxis dataKey="agent" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Bar dataKey="resolveTime" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-              
-              {/* Agent Chat Count */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold">Agent Chat Count</CardTitle>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">612</span>
-                    <span className="text-sm text-muted-foreground">Total Conversation</span>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                      <span>Pending <strong>0</strong></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-                      <span>Assigned <strong>1</strong></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span>Resolved <strong>611</strong></span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={chartConfig} className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={agentChatData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <XAxis dataKey="agent" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Bar dataKey="conversations" fill="#60a5fa" radius={[2, 2, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="ai-agent" className="space-y-6">
-            {/* AI Agent Filters */}
-            <div className="flex gap-4 items-center">
-              <Select defaultValue="all-ai-agents">
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all-ai-agents">All AI Agents</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Live</span>
-                <Switch checked={live} onCheckedChange={setLive} />
-              </div>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {rangeLabel}
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-44">
-                  <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); refetch(); }}>Last 7 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); refetch(); }}>Last 30 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); refetch(); }}>Last 60 days</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); refetch(); }}>Last 1 year</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            
-            {/* AI Agent Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* AI Message Usage */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    AI Token Usage
-                  </CardTitle>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">{effective?.totals?.total_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</span>
-                    <span className="text-sm text-muted-foreground">Total Tokens</span>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-                      <span>Input Tokens {effective?.totals?.input_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                      <span>Output Tokens {effective?.totals?.output_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={tokensChartConfig} className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={(effective?.daily || []).map(d => ({ time: d.date.slice(5), ...d }))}>
-                        <XAxis dataKey="time" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Line type="monotone" dataKey="input_tokens" stroke="#60a5fa" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="output_tokens" stroke="#2563eb" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="total_tokens" stroke="#1d4ed8" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-              
-              {/* Agent Handoff Rate */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Agent Handoff Rate
-                  </CardTitle>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">100%</span>
-                    <span className="text-sm text-muted-foreground">From AI to AI conversations</span>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                      <span>AI Agent 1</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-700"></div>
-                      <span>Human Agent 612</span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={chartConfig} className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={handoffData}>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Bar dataKey="value" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-            </div>
-            
-            {/* Analysis Sections */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* FAQ Analysis */}
-              <Card className="text-center">
-                <CardContent className="pt-12 pb-8">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Search className="w-8 h-8 text-blue-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Frequently Asked Question Analysis</h3>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Let AI analyze your customer conversations to uncover insights.
-                  </p>
-                  <p className="text-xs text-muted-foreground mb-6">
-                    Data: 5 Aug to 12 Aug
-                  </p>
-                  <Button className="bg-blue-600 hover:bg-blue-700">
-                    <Search className="w-4 h-4 mr-2" />
-                    Start Analysis
-                  </Button>
-                </CardContent>
-              </Card>
-              
-              {/* Business Report Analysis */}
-              <Card className="text-center">
-                <CardContent className="pt-12 pb-8">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <FileText className="w-8 h-8 text-blue-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Business Report Analysis</h3>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Generate comprehensive business reports based on your customer conversations and data.
-                  </p>
-                  <p className="text-xs text-muted-foreground mb-6">
-                    Data: 5 Aug to 12 Aug
-                  </p>
-                  <Button className="bg-blue-600 hover:bg-blue-700">
-                    <FileText className="w-4 h-4 mr-2" />
-                    Generate Report
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-            
-            {/* Data Table */}
-            <Card>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>CREATED AT</TableHead>
-                      <TableHead>AGENT</TableHead>
-                      <TableHead>START DATE</TableHead>
-                      <TableHead>END DATE</TableHead>
-                      <TableHead>CLASSIFICATIONS</TableHead>
-                      <TableHead>STATUS</TableHead>
-                      <TableHead>ESTIMATED TIME</TableHead>
-                      <TableHead>ACTIONS</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tableData.map((row, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-mono text-sm">{row.createdAt}</TableCell>
-                        <TableCell>{row.agent}</TableCell>
-                        <TableCell>{row.startDate}</TableCell>
-                        <TableCell>{row.endDate}</TableCell>
-                        <TableCell>
-                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium">
-                            {row.classifications}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium">
-                            {row.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>{row.estimatedTime}</TableCell>
-                        <TableCell>
-                          <Button variant="link" className="text-blue-600 p-0 h-auto">
-                            {row.actions}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <div className="p-4 text-sm text-muted-foreground border-t">
-                  Showing 1 to 2 of 2 results
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="custom" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold">OpenAI Token Usage</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-3 mb-4">
-                  <Select value={range} onValueChange={(v) => { const r = v as typeof range; setRange(r); fetchUsage(r); }}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="7d">Last 7 days</SelectItem>
-                      <SelectItem value="30d">Last 30 days</SelectItem>
-                      <SelectItem value="60d">Last 60 days</SelectItem>
-                      <SelectItem value="1y">Last 1 year</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="gap-2">
-                        <Calendar className="w-4 h-4" />
-                        {rangeLabel}
-                        <ChevronDown className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-44">
-                      <DropdownMenuItem onClick={() => { setRange("7d"); fetchUsage("7d"); refetch(); }}>Last 7 days</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setRange("30d"); fetchUsage("30d"); refetch(); }}>Last 30 days</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setRange("60d"); fetchUsage("60d"); refetch(); }}>Last 60 days</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { setRange("1y"); fetchUsage("1y"); refetch(); }}>Last 1 year</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                {usageError && (
-                  <div className="text-sm text-red-600">{usageError}</div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Input Tokens</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{effective?.totals?.input_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Output Tokens</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{effective?.totals?.output_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Tokens</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{effective?.totals?.total_tokens?.toLocaleString() ?? (loadingUsage ? "…" : 0)}</div>
-                      {effective?.start_date && effective?.end_date && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Range: {rangeLabel}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Chart */}
-                <div className="mt-6">
-                  <ChartContainer
-                    config={{
-                      input_tokens: { label: "Input Tokens", color: "#60a5fa" },
-                      output_tokens: { label: "Output Tokens", color: "#2563eb" },
-                      total_tokens: { label: "Total Tokens", color: "#1d4ed8" },
-                    }}
-                    className="h-64"
-                  >
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={(usageTotals?.daily || []).map(d => ({ ...d, day: d.date.slice(5) }))}>
-                        <XAxis dataKey="day" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="input_tokens" stroke="#60a5fa" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="output_tokens" stroke="#2563eb" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="total_tokens" stroke="#1d4ed8" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        <p className="text-sm text-muted-foreground">High-level KPIs for conversations, AI agents, and human agents.</p>
       </div>
+
+      {/* Range controls */}
+      <div className="flex items-end gap-3">
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">From</div>
+          <Input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} className="h-9 w-[180px]" />
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">To</div>
+          <Input type="date" value={to} onChange={(e)=>setTo(e.target.value)} className="h-9 w-[180px]" />
+        </div>
+        <Button variant="outline" className="h-9" onClick={fetchMetrics}>Refresh</Button>
+      </div>
+
+      <Tabs defaultValue="conversation" className="w-full mt-4">
+        <TabsList className="grid w-full max-w-xl grid-cols-3">
+          <TabsTrigger value="conversation">Conversation</TabsTrigger>
+          <TabsTrigger value="ai-agent">AI Agent</TabsTrigger>
+          <TabsTrigger value="human-agent">Human Agent</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="conversation" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Chats per Channel</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={channelCounts.map(r=>({ name: r.display_name || r.provider, count: r.thread_count }))}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="count" fill={COLORS[2]} radius={[4,4,0,0]}>
+                    <LabelList dataKey="count" position="top" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ai-agent" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Metrics</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[{ name: 'AI Avg Response (s)', value: aiAvg }]}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="value" fill={COLORS[3]} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="value" position="top" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="human-agent" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Agent Metrics & Rates</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64 flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[
+                  { name: 'Agent Avg Resp (s)', value: agentAvg },
+                  { name: 'Containment %', value: Math.round(containment.rate*100) },
+                  { name: 'Handover %', value: Math.round(containment.handover_rate*100) },
+                ]}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="value" fill={COLORS[0]} radius={[4,4,0,0]}>
+                    <LabelList dataKey="value" position="top" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
+
+
