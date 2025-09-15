@@ -36,6 +36,8 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRBAC } from "@/contexts/RBACContext";
+import { ROLES } from "@/types/rbac";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { setSendMessageProvider } from "@/config/webhook";
@@ -143,6 +145,7 @@ export default function ConversationPage() {
   const { hasRole } = useRBAC();
   const [assignOpen, setAssignOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
+  const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
 
   // Filter conversations based on search query
   const [filters, setFilters] = useState<any>({});
@@ -186,6 +189,30 @@ export default function ConversationPage() {
     return filteredConversations.find(c => c.id === selectedThreadId) || null;
   }, [selectedThreadId, filteredConversations]);
 
+  // Check if current user is a collaborator on selected thread
+  useEffect(() => {
+    const checkCollab = async () => {
+      try {
+        if (!selectedConversation?.id || !user?.id) {
+          setIsCollaborator(false);
+          return;
+        }
+        const { data, error } = await supabase
+          .from('thread_collaborators')
+          .select('user_id')
+          .eq('thread_id', selectedConversation.id)
+          .eq('user_id', user.id)
+          .limit(1);
+        if (error) throw error;
+        setIsCollaborator(!!data && data.length > 0);
+      } catch (e) {
+        console.warn('Failed to check collaborator status', e);
+        setIsCollaborator(false);
+      }
+    };
+    checkCollab();
+  }, [selectedConversation?.id, user?.id]);
+
   const handleTakeoverChat = async () => {
     if (!selectedConversation) return;
     if (!user?.id) {
@@ -193,8 +220,36 @@ export default function ConversationPage() {
       return;
     }
     try {
+      const isAdmin = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT);
+      // Ensure collaborator status before takeover
+      if (!isCollaborator) {
+        if (isAdmin) {
+          try {
+            const { data: existing } = await supabase
+              .from('thread_collaborators')
+              .select('user_id')
+              .eq('thread_id', selectedConversation.id)
+              .eq('user_id', user.id)
+              .limit(1);
+            if (!existing || existing.length === 0) {
+              await addThreadParticipant(selectedConversation.id, user.id);
+            }
+            setIsCollaborator(true);
+          } catch (err) {
+            console.warn('Failed to ensure collaborator before takeover', err);
+            toast.error('Please join as collaborator before taking over');
+            return; // Block takeover if collaborator insert/check failed
+          }
+        } else {
+          toast.error('Please join as collaborator before taking over');
+          return;
+        }
+      }
+
       await assignThread(selectedConversation.id, user.id);
       toast.success('You are now assigned to this chat');
+      // Move UI to Assigned tab and enable composer immediately
+      setActiveTab('assigned');
       await fetchConversations();
     } catch (e) {
       toast.error('Failed to take over chat');
@@ -547,7 +602,7 @@ export default function ConversationPage() {
               </div>
             </ScrollArea>
 
-            {/* Message Input or Takeover */}
+            {/* Message Input or Takeover / Join */}
             <div className="border-t p-3">
               {selectedConversation.assigned ? (
                 <div className="flex items-center gap-2">
@@ -563,8 +618,12 @@ export default function ConversationPage() {
                   </Button>
                 </div>
               ) : (
-                <Button className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={handleTakeoverChat} disabled={!user?.id}>
-                  Click to Takeover Chat
+                <Button 
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
+                  onClick={handleTakeoverChat} 
+                  disabled={!user?.id}
+                >
+                  Takeover Chat
                 </Button>
               )}
             </div>

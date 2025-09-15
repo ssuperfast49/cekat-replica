@@ -357,15 +357,47 @@ export const useConversations = () => {
     }
   };
 
-  // Assign thread to current user (uses RPC to also set audit fields)
+  // Assign thread to current user (ensures DB assignment and audit fields)
   const assignThread = async (threadId: string, _userId: string) => {
     try {
       setError(null);
 
-      const { error } = await supabase
+      // Try RPC first (preferred path)
+      const { error: rpcError } = await supabase
         .rpc('takeover_thread', { p_thread_id: threadId });
 
-      if (error) throw error;
+      if (rpcError) {
+        console.warn('takeover_thread RPC failed; will attempt direct update', rpcError);
+      }
+
+      // Ensure the thread is actually assigned to current user
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+
+      try {
+        const { data: threadAfterRpc } = await supabase
+          .from('threads')
+          .select('assignee_user_id')
+          .eq('id', threadId)
+          .single();
+
+        const alreadyAssigned = !!threadAfterRpc?.assignee_user_id;
+        if (!alreadyAssigned && currentUserId) {
+          const { error: updateErr } = await supabase
+            .from('threads')
+            .update({
+              assignee_user_id: currentUserId,
+              assigned_by_user_id: currentUserId,
+              assigned_at: new Date().toISOString(),
+            })
+            .eq('id', threadId);
+          if (updateErr) {
+            console.warn('Fallback assignment update failed', updateErr);
+          }
+        }
+      } catch (verifyErr) {
+        console.warn('Failed verifying assignment state', verifyErr);
+      }
 
       // Create a system event message noting the takeover
       try {
@@ -395,7 +427,7 @@ export const useConversations = () => {
         console.warn('Failed to insert takeover event message', e);
       }
 
-      // Refresh conversations
+      // Refresh conversations/messages to reflect new assignment
       await fetchConversations();
       await fetchMessages(threadId);
 
@@ -409,13 +441,13 @@ export const useConversations = () => {
     }
   };
 
-  // Add participant to thread
+  // Add collaborator to thread
   const addThreadParticipant = async (threadId: string, userId: string) => {
     try {
       setError(null);
 
       const { error } = await supabase
-        .from('thread_participants')
+        .from('thread_collaborators')
         .insert([{ thread_id: threadId, user_id: userId }]);
 
       if (error) throw error;
@@ -429,13 +461,13 @@ export const useConversations = () => {
     }
   };
 
-  // Remove participant from thread
+  // Remove collaborator from thread
   const removeThreadParticipant = async (threadId: string, userId: string) => {
     try {
       setError(null);
 
       const { error } = await supabase
-        .from('thread_participants')
+        .from('thread_collaborators')
         .delete()
         .eq('thread_id', threadId)
         .eq('user_id', userId);

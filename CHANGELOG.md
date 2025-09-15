@@ -1,8 +1,15 @@
 # Change Log
-# [0.0.8] FE WEB CEKAT 2025-09-16
+# [0.0.9] FE WEB CEKAT 2025-09-14
 ### Updates
 - Created loggings for every users, and only admin can access.
 - Made Role Management for admins to setting the role.
+
+# [0.0.8] FE WEB CEKAT 2025-09-14
+### Updates
+- Replaced thread participants with collaborators in the database schema.
+- Implemented checks for user collaboration status on conversations.
+- Enhanced thread assignment logic to ensure proper user assignment and audit fields.
+- Updated UI elements for chat takeover functionality to reflect new collaborator roles.
 
 # [0.0.7] FE WEB CEKAT 2025-09-13
 ### Updates
