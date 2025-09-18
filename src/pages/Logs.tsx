@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { exportToCsv } from '@/lib/utils';
+import { exportToCsv, sanitizeForExport } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -72,21 +72,27 @@ export default function Logs() {
 
   const fetchPage = async () => {
     const fromIdx = (page - 1) * pageSize;
-    const toIdx = fromIdx + pageSize - 1;
 
-    let query = supabase.from('audit_logs').select('*', { count: 'exact' }).order('created_at', { ascending: false });
-    if (qUser !== 'all') query = query.eq('user_id', qUser);
-    if (qAction !== 'all') query = query.eq('action', qAction);
-    if (range.from) query = query.gte('created_at', range.from);
-    if (range.to) query = query.lte('created_at', range.to);
-
-    const { data, error, count } = await query.range(fromIdx, toIdx);
+    const { data, error } = await supabase.rpc('get_audit_logs', {
+      p_user_id: qUser !== 'all' ? qUser : null,
+      p_action: qAction !== 'all' ? qAction : null,
+      p_from: range.from,
+      p_to: range.to,
+      p_limit: pageSize,
+      p_offset: fromIdx,
+    });
     if (!error) {
       const list = (data || []) as LogRow[];
       setRows(list);
+      // compute total via count with same filters respecting RLS
+      let countQuery = supabase.from('audit_logs').select('id', { count: 'exact' });
+      if (qUser !== 'all') countQuery = countQuery.eq('user_id', qUser);
+      if (qAction !== 'all') countQuery = countQuery.eq('action', qAction);
+      if (range.from) countQuery = countQuery.gte('created_at', range.from);
+      if (range.to) countQuery = countQuery.lte('created_at', range.to);
+      const { count } = await countQuery;
       setTotal(count || 0);
 
-      // Fetch missing user details for display
       const ids = Array.from(new Set(list.map(r => r.user_id).filter(Boolean) as string[]));
       const missing = ids.filter(id => !userMap[id]);
       if (missing.length > 0) {
@@ -178,7 +184,18 @@ export default function Logs() {
                 {[10,20,50,100].map(n => <SelectItem key={n} value={String(n)}>{n} / page</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={()=>exportToCsv(`logs_${new Date().toISOString()}.csv`, rows)}>Export CSV</Button>
+            <Button variant="outline" onClick={()=>{
+              const csvRows = rows.map(r => ({
+                time: new Date(r.created_at).toISOString(),
+                user: r.user_id ? (userMap[r.user_id]?.email || r.user_id) : '',
+                action: r.action,
+                resource: r.resource,
+                resource_id: r.resource_id || '',
+                ip: r.ip ? r.ip.replace(/(\d+\.\d+\.\d+)\.\d+/, '$1.*') : '',
+                context: JSON.stringify(sanitizeForExport(r.context || {})),
+              }));
+              exportToCsv(`logs_${new Date().toISOString()}.csv`, csvRows);
+            }}>Export CSV</Button>
           </div>
         </CardContent>
       </Card>

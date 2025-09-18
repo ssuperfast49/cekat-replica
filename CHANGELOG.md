@@ -1,4 +1,24 @@
 # Change Log
+# [0.0.11] FE WEB CEKAT 2025-09-16
+### Updates
+- Audit Logs self-read policy for non-master users.
+- Added `get_audit_logs` RPC with server-side filters, paging, and master-only org-wide access.
+- Analytics foundations: date-range controls and labeled charts; wired to secure RPCs.
+- KPI RPCs: `get_chats_timeseries` and `get_response_time_stats` (avg/median/p90) with Asia/Jakarta bucketing.
+- RBAC and conversation label changes now emit audit log entries.
+- Analytics UI now uses new KPI RPCs with channel filter, time-series, and labeled bars.
+- Containment/Handover groundwork: added `threads.resolution`, `end_reason`, `handover_reason`, AI auto-resolution trigger.
+- Analytics RPCs: `get_containment` (with previous period) and `get_handover_stats` (reason breakdown).
+- Server-side validation: handover reason now required when handover happens; added helpful indexes for analytics.
+- Added `get_non_contained` RPC for drilldown of non-contained conversations.
+- Containment/Handover dashboard cards with drilldown and reason pie chart.
+- RBAC policy engine scaffold: `rbac_policies` table, RPCs (`get_role_policy`, `put_role_policy`, `apply_role_policy`), extended `has_perm` to honor policies.
+- Role Policy editor UI (matrix) to manage per-resource actions; policy changes logged.
+- Added docs/ANALYTICS_AND_LOGS.md covering RPCs, validation, and telemetry.
+- Added PII sanitization tests for log CSV export.
+- Added analytics time-series, containment, handover, and RBAC policy tests; basic E2E seed.
+- TODO roadmap (server-validated) added for Analytics KPIs, Containment/Handover, RBAC policies, indexes, docs, and tests.
+
 # [0.0.10] FE WEB CEKAT 2025-09-16
 ### Updates
 - fix: remove duplicate import of useRBAC in ConversationPage component

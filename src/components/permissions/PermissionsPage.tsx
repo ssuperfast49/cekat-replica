@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Shield, Settings, Edit, Trash2, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabase";
+import { supabase, logAction } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
 
 interface Role {
@@ -83,6 +83,11 @@ const PermissionsPage = () => {
   const { toast } = useToast();
   const { refreshRBAC } = useRBAC();
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const RESOURCES = ['conversations','users','channels','analytics','topup','config'];
+  const ACTIONS = ['view','create','update','delete','export'];
+  const [policy, setPolicy] = useState<Record<string, Set<string>>>({});
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
 
   // Fetch roles and permissions data
   const fetchData = async () => {
@@ -131,6 +136,57 @@ const PermissionsPage = () => {
     fetchData();
   }, []);
 
+  // Load RBAC policy for selected role
+  useEffect(() => {
+    const loadPolicy = async () => {
+      if (!selectedRole) return;
+      try {
+        setPolicyLoading(true);
+        const { data, error } = await supabase.rpc('get_role_policy', { p_role: selectedRole.id });
+        if (error) throw error;
+        const json = (data as any) || {};
+        const res = json.resources || {};
+        const next: Record<string, Set<string>> = {};
+        for (const r of RESOURCES) {
+          next[r] = new Set<string>(Array.isArray(res[r]) ? res[r] : []);
+        }
+        setPolicy(next);
+      } catch (e) {
+        console.warn('Failed to load policy', e);
+        setPolicy({});
+      } finally {
+        setPolicyLoading(false);
+      }
+    };
+    loadPolicy();
+  }, [selectedRole?.id]);
+
+  const togglePolicy = (resource: string, action: string) => {
+    setPolicy(prev => {
+      const cur = new Set(prev[resource] || []);
+      if (cur.has(action)) cur.delete(action); else cur.add(action);
+      return { ...prev, [resource]: cur };
+    });
+  };
+
+  const savePolicy = async () => {
+    if (!selectedRole) return;
+    try {
+      setPolicySaving(true);
+      const payload: any = { resources: {} as Record<string, string[]> };
+      for (const r of RESOURCES) payload.resources[r] = Array.from(policy[r] || []);
+      const { error } = await supabase.rpc('put_role_policy', { p_role: selectedRole.id, p_policy: payload });
+      if (error) throw error;
+      await logAction({ action: 'rbac.policy_update', resource: 'rbac', context: { role_id: selectedRole.id, policy: payload } });
+      toast({ title: 'Saved', description: 'Policy updated' });
+    } catch (e) {
+      console.error(e);
+      toast({ title: 'Error', description: 'Failed to save policy', variant: 'destructive' });
+    } finally {
+      setPolicySaving(false);
+    }
+  };
+
   // Check if role has permission
   const roleHasPermission = (roleId: string, permissionId: string): boolean => {
     return rolePermissions.some(rp => rp.role_id === roleId && rp.permission_id === permissionId);
@@ -152,6 +208,7 @@ const PermissionsPage = () => {
         if (error) throw error;
 
         setRolePermissions(prev => prev.filter(rp => !(rp.role_id === roleId && rp.permission_id === permissionId)));
+        try { await logAction({ action: 'rbac.revoke', resource: 'rbac', context: { role_id: roleId, permission_id: permissionId } }); } catch {}
       } else {
         // Grant via RPC
         const { error } = await supabase.rpc('grant_role_permission', {
@@ -161,6 +218,7 @@ const PermissionsPage = () => {
         if (error) throw error;
 
         setRolePermissions(prev => [...prev, { role_id: roleId, permission_id: permissionId }]);
+        try { await logAction({ action: 'rbac.grant', resource: 'rbac', context: { role_id: roleId, permission_id: permissionId } }); } catch {}
       }
 
       // Refresh RBAC so nav/guards reflect changes immediately
@@ -435,6 +493,52 @@ const PermissionsPage = () => {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Policy Rules (Matrix) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Policy Rules (Matrix)</CardTitle>
+            <CardDescription>Fine-grained allow-list per resource and action</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {policyLoading ? (
+              <div className="text-sm text-muted-foreground">Loading policy…</div>
+            ) : (
+              <div className="w-full overflow-x-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-1/3">Resource</TableHead>
+                      {ACTIONS.map(a => (
+                        <TableHead key={a} className="capitalize text-center">{a}</TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {RESOURCES.map(resource => (
+                      <TableRow key={resource}>
+                        <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
+                        {ACTIONS.map(action => (
+                          <TableCell key={action} className="text-center">
+                            <Checkbox
+                              checked={!!policy[resource]?.has(action)}
+                              onCheckedChange={() => togglePolicy(resource, action)}
+                            />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            <div className="mt-3">
+              <Button onClick={savePolicy} disabled={policySaving}>
+                {policySaving ? 'Saving…' : 'Save Policy'}
+              </Button>
             </div>
           </CardContent>
         </Card>
