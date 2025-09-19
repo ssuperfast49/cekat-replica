@@ -9,7 +9,7 @@ export default function Changelog() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch("/CHANGELOG.md");
+        const res = await fetch("/CHANGELOG.md", { cache: 'no-cache' });
         if (!res.ok) throw new Error(`Failed to load changelog: ${res.status}`);
         const text = await res.text();
         setContent(text);

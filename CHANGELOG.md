@@ -1,4 +1,8 @@
 # Change Log
+# [0.0.14] FE WEB CEKAT 2025-09-19
+### Updates
+- Fix changelog is not accessible in staging
+
 # [0.0.13] FE WEB CEKAT 2025-09-19
 ### Updates
 - Implement OTP flow for login and enhance ProtectedRoute for OTP verification. 
