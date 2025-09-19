@@ -1,4 +1,12 @@
 # Change Log
+# [0.0.12] FE WEB CEKAT 2025-09-16
+### Updates
+- Enhance authentication flow with local storage caching and session restoration
+- Implemented local storage caching for AI agents and conversations to improve performance and reduce flicker on refresh.
+- Added session restoration from local storage to ensure user authentication state is maintained across page reloads.
+- Updated AuthContext to prioritize local storage for session data before reconciling with Supabase.
+- Introduced a loading state management to handle UI updates more smoothly during data fetching.
+
 # [0.0.11] FE WEB CEKAT 2025-09-16
 ### Updates
 - Audit Logs self-read policy for non-master users.

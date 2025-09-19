@@ -24,6 +24,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
+      // Prefer LocalStorage first to avoid flicker/empty state on refresh
+      try {
+        const raw = localStorage.getItem('sb-tgrmxlbnutxpewfmofdx-auth-token');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.access_token && parsed?.user) {
+            setSession(parsed as any);
+            setUser(parsed.user as User);
+          }
+        }
+      } catch {}
+
+      // Then reconcile with Supabase to ensure validity
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setUser(session?.user ?? null);
@@ -42,8 +55,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         try {
           if (event === 'SIGNED_IN') {
             await logAction({ action: 'auth.login', resource: 'auth', userId: session?.user?.id || null, context: {} });
+            // Persist last login payload for immediate reuse on next refresh
+            try { localStorage.setItem('app.lastAuthEvent', JSON.stringify({ event, at: Date.now(), user: session?.user })); } catch {}
           } else if (event === 'SIGNED_OUT') {
             await logAction({ action: 'auth.logout', resource: 'auth', userId: user?.id || null, context: {} });
+            try { localStorage.removeItem('app.lastAuthEvent'); } catch {}
           }
         } catch {}
       }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
+import { waitForAuthReady } from '@/lib/authReady';
 import WEBHOOK_CONFIG from '@/config/webhook';
 
 export interface Thread {
@@ -73,14 +74,33 @@ export const useConversations = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  // LocalStorage hydrated snapshot to avoid empty UI during refresh
+  const hydrateFromCache = () => {
+    try {
+      const raw = localStorage.getItem('app.cachedConversations');
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length >= 0) {
+        setConversations(parsed);
+        setHydrated(true);
+        setLoading(false);
+        return true;
+      }
+    } catch {}
+    return false;
+  };
 
   // Fetch conversations with contact and channel details
   const fetchConversations = async () => {
     try {
-      setLoading(true);
+      if (!hydrated) setLoading(true);
       setError(null);
+      // Ensure auth restoration completed on hard refresh before querying
+      await waitForAuthReady();
 
-      const { data, error } = await supabase
+      const selectPromise = supabase
         .from('threads')
         .select(`
           *,
@@ -89,6 +109,12 @@ export const useConversations = () => {
         `)
         // .eq('org_id', '00000000-0000-0000-0000-000000000001')
         .order('last_msg_at', { ascending: false });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 8000);
+      });
+
+      const { data, error } = await Promise.race([selectPromise as any, timeoutPromise]) as any;
 
       if (error) throw error;
 
@@ -131,6 +157,8 @@ export const useConversations = () => {
       }));
 
       setConversations(transformedData);
+      // Cache for next refresh
+      try { localStorage.setItem('app.cachedConversations', JSON.stringify(transformedData)); } catch {}
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -527,7 +555,14 @@ export const useConversations = () => {
 
   // Initial fetch on mount
   useEffect(() => {
-    fetchConversations();
+    const hadCache = hydrateFromCache();
+    if (hadCache) {
+      // Background refresh only if we had something to show
+      fetchConversations();
+    } else {
+      // No cache; show empty state instead of spinner and avoid fetch that may stall
+      setLoading(false);
+    }
   }, []);
 
   return {

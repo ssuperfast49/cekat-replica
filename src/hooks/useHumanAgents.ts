@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
+import { waitForAuthReady } from '@/lib/authReady';
 
 // New interface for v_users view
 export interface VUser {
@@ -29,6 +30,19 @@ export const useHumanAgents = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const hydrateFromCache = () => {
+    try {
+      const raw = localStorage.getItem('app.cachedAgents');
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setAgents(parsed);
+        return true;
+      }
+    } catch {}
+    return false;
+  };
+
   // Helper function to get primary role from roles array
   const getPrimaryRole = (roles: (string | null)[]): 'master_agent' | 'super_agent' | 'agent' | null => {
     // Filter out null values and get valid roles
@@ -47,6 +61,9 @@ export const useHumanAgents = () => {
       setError(null);
 
       console.log('Fetching human agents from v_users...');
+
+      // Wait for auth session restoration after a hard refresh
+      await waitForAuthReady();
 
       // Use the new v_users view - much simpler!
       const { data: usersData, error: usersError } = await supabase
@@ -89,6 +106,7 @@ export const useHumanAgents = () => {
 
       console.log('Transformed agents:', transformedAgents);
       setAgents(transformedAgents);
+      try { localStorage.setItem('app.cachedAgents', JSON.stringify(transformedAgents)); } catch {}
     } catch (error) {
       console.error('Error fetching human agents:', error);
       setError('Failed to fetch human agents');
@@ -233,6 +251,11 @@ export const useHumanAgents = () => {
 
   // Initialize data on mount
   useEffect(() => {
+    const hadCache = hydrateFromCache();
+    if (hadCache) {
+      setLoading(false);
+      return; // Use cached data; skip network fetch
+    }
     fetchAgents();
   }, []);
 

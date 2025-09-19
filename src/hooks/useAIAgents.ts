@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { waitForAuthReady } from '@/lib/authReady';
 
 export interface AIAgent {
   id: string;
@@ -28,6 +29,7 @@ export const useAIAgents = () => {
       console.log('Fetching AI agents...');
 
       // Fetch all AI profiles for selection
+      await waitForAuthReady();
       const { data: aiAgentsData, error: aiAgentsError } = await supabase
         .from('ai_profiles')
         .select('*')
@@ -45,6 +47,7 @@ export const useAIAgents = () => {
 
       console.log('Successfully fetched AI agents:', aiAgentsData);
       setAIAgents(aiAgentsData || []);
+      try { localStorage.setItem('app.cachedAIAgents', JSON.stringify(aiAgentsData || [])); } catch {}
     } catch (error) {
       console.error('Error fetching AI agents:', error);
       setError('Failed to fetch AI agents');
@@ -54,7 +57,19 @@ export const useAIAgents = () => {
     }
   };
 
+  // Cache-first hydration on mount; background fetch only if no cache
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem('app.cachedAIAgents');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setAIAgents(parsed);
+          setLoading(false);
+          return; // Skip network fetch
+        }
+      }
+    } catch {}
     fetchAIAgents();
   }, []);
 
