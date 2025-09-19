@@ -1,4 +1,8 @@
 # Change Log
+# [0.0.16] FE WEB CEKAT 2025-09-19
+### Updates
+- Enhance real-time synchronization for conversations and messages; always fetch fresh data on mount
+
 # [0.0.15] FE WEB CEKAT 2025-09-19
 ### Updates
 - Auth/OTP: eliminate redirect flicker by gating on `otpEvaluated`; `ProtectedRoute` and `Otp` now wait for evaluation; `ResetPassword` handles magic-link `?code=` with `exchangeCodeForSession`.

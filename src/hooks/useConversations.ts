@@ -555,15 +555,38 @@ export const useConversations = () => {
 
   // Initial fetch on mount
   useEffect(() => {
-    const hadCache = hydrateFromCache();
-    if (hadCache) {
-      // Background refresh only if we had something to show
-      fetchConversations();
-    } else {
-      // No cache; show empty state instead of spinner and avoid fetch that may stall
-      setLoading(false);
-    }
+    // Hydrate from cache for instant UI, but ALWAYS fetch fresh data
+    hydrateFromCache();
+    fetchConversations();
   }, []);
+
+  // Realtime: keep conversations list in sync with DB
+  useEffect(() => {
+    const channel = supabase
+      .channel('threads-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, () => {
+        fetchConversations();
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, []);
+
+  // Realtime: keep messages in sync for the selected thread
+  useEffect(() => {
+    if (!selectedThreadId) return;
+    const channel = supabase
+      .channel(`messages-${selectedThreadId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${selectedThreadId}` }, () => {
+        fetchMessages(selectedThreadId);
+      })
+      .subscribe();
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, [selectedThreadId]);
 
   return {
     conversations,
