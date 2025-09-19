@@ -476,6 +476,7 @@ const PermissionsPage = () => {
                                   checked={roleHasPermission(selectedRole.id, permission.id)}
                                   onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
                                   disabled={!!saving[`${selectedRole.id}:${permission.id}`]}
+                                  className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                                 />
                               </div>
                             ) : (
@@ -483,6 +484,7 @@ const PermissionsPage = () => {
                                 <Checkbox
                                   disabled={true}
                                   checked={false}
+                                  className="border-blue-300 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                                 />
                               </div>
                             )}
@@ -526,6 +528,7 @@ const PermissionsPage = () => {
                             <Checkbox
                               checked={!!policy[resource]?.has(action)}
                               onCheckedChange={() => togglePolicy(resource, action)}
+                              className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                             />
                           </TableCell>
                         ))}
@@ -566,6 +569,7 @@ const PermissionsPage = () => {
                           checked={roleHasPermission(selectedRole.id, permission.id)}
                           onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
                           disabled={!!saving[`${selectedRole.id}:${permission.id}`]}
+                          className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                         />
                         <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
                           {getSpecialPermissionLabel(permission)}

@@ -4,5 +4,9 @@ import './index.css'
 import { restoreSupabaseSessionFromLocalStorage } from '@/lib/session';
 
 // Ensure Supabase session is hydrated before rendering the app on hard refresh
-await restoreSupabaseSessionFromLocalStorage();
-createRoot(document.getElementById("root")!).render(<App />);
+void (async () => {
+  try {
+    await restoreSupabaseSessionFromLocalStorage();
+  } catch {}
+  createRoot(document.getElementById("root")!).render(<App />);
+})();
