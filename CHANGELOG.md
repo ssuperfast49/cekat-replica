@@ -1,5 +1,12 @@
 # Change Log
-# [0.0.12] FE WEB CEKAT 2025-09-16
+# [0.0.13] FE WEB CEKAT 2025-09-19
+### Updates
+- Implement OTP flow for login and enhance ProtectedRoute for OTP verification. 
+- Added new Otp and Logout pages
+- Updated AuthContext to manage OTP state 
+- Modified Login component to handle OTP requirements.
+
+# [0.0.12] FE WEB CEKAT 2025-09-18
 ### Updates
 - Enhance authentication flow with local storage caching and session restoration
 - Implemented local storage caching for AI agents and conversations to improve performance and reduce flicker on refresh.
@@ -7,7 +14,7 @@
 - Updated AuthContext to prioritize local storage for session data before reconciling with Supabase.
 - Introduced a loading state management to handle UI updates more smoothly during data fetching.
 
-# [0.0.11] FE WEB CEKAT 2025-09-16
+# [0.0.11] FE WEB CEKAT 2025-09-17
 ### Updates
 - Audit Logs self-read policy for non-master users.
 - Added `get_audit_logs` RPC with server-side filters, paging, and master-only org-wide access.
@@ -26,6 +33,8 @@
 - Added PII sanitization tests for log CSV export.
 - Added analytics time-series, containment, handover, and RBAC policy tests; basic E2E seed.
 - TODO roadmap (server-validated) added for Analytics KPIs, Containment/Handover, RBAC policies, indexes, docs, and tests.
+- implement OTP flow in login
+- enhance ProtectedRoute for OTP verification
 
 # [0.0.10] FE WEB CEKAT 2025-09-16
 ### Updates

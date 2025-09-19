@@ -51,6 +51,17 @@ export default function Analytics() {
   const [drillOpen, setDrillOpen] = useState(false);
   const [drillRows, setDrillRows] = useState<Array<{ id: string; created_at: string; contact_name: string; handover_reason: string | null; status: string }>>([]);
 
+  const formatHandoverLabel = (reason?: string | null) => {
+    if (!reason || reason.trim().length === 0) return '(unspecified)';
+    if (reason.startsWith('other:')) return reason.replace(/^other:/, 'Other: ');
+    switch (reason) {
+      case 'ambiguous': return 'Ambiguous intent';
+      case 'payment': return 'Payment-related';
+      case 'policy': return 'Policy/compliance';
+      default: return reason;
+    }
+  };
+
   const getRange = () => {
     const end = to ? new Date(to) : new Date();
     const start = from ? new Date(from) : new Date(Date.now() - 7*24*60*60*1000);
@@ -69,18 +80,33 @@ export default function Analytics() {
       setAiAvg(Number(row.ai_avg||0));
       setAgentAvg(Number(row.agent_avg||0));
     }
-    // Containment & handover
-    const { data: ch2 } = await supabase.rpc('get_containment_and_handover', { p_from: start, p_to: end });
-    if (ch2 && (ch2 as any[]).length > 0) {
+    // Containment & handover (fallback if combined RPC missing)
+    const { data: ch2, error: ch2Err } = await supabase.rpc('get_containment_and_handover', { p_from: start, p_to: end });
+    if (!ch2Err && ch2 && (ch2 as any[]).length > 0) {
       const row = (ch2 as any[])[0];
       setContainment({ total: Number(row.total_threads||0), ai: Number(row.ai_resolved_count||0), rate: Number(row.containment_rate||0), handover: Number(row.handover_count||0), handover_rate: Number(row.handover_rate||0) });
+    } else if (ch2Err && ch2Err.code === 'PGRST202') {
+      // Fallback: use get_containment + get_handover_stats
+      const { data: cont } = await supabase.rpc('get_containment', { p_from: start, p_to: end });
+      let total = 0, ai = 0, rate = 0, handover = 0, handover_rate = 0;
+      if (cont && (cont as any[]).length > 0) {
+        const row2 = (cont as any[])[0];
+        total = Number(row2.total_threads || 0);
+        ai = Number(row2.ai_resolved_count || 0);
+        rate = Number(row2.rate || 0);
+      }
+      const { data: hsForFallback } = await supabase.rpc('get_handover_stats', { p_from: start, p_to: end });
+      const sumHandover = ((hsForFallback as any[]) || []).reduce((sum, r) => sum + Number((r as any).count || 0), 0);
+      handover = sumHandover;
+      handover_rate = total > 0 ? (sumHandover / total) : 0;
+      setContainment({ total, ai, rate, handover, handover_rate });
     }
     // Time series
     const { data: ts } = await supabase.rpc('get_chats_timeseries', { p_from: start, p_to: end, p_channel: channelFilter !== 'all' ? channelFilter : null });
     setSeries(((ts as any) || []).map((r: any) => ({ bucket: r.bucket, provider: r.provider, count: Number(r.count||0) })));
     // Handover stats
     const { data: hs } = await supabase.rpc('get_handover_stats', { p_from: start, p_to: end });
-    setHandoverStats(((hs as any) || []).map((r: any) => ({ reason: r.reason || '(unspecified)', count: Number(r.count||0), total: Number(r.total||0), rate: Number(r.rate||0) })));
+    setHandoverStats(((hs as any) || []).map((r: any) => ({ reason: formatHandoverLabel(r.reason) || '(unspecified)', count: Number(r.count||0), total: Number(r.total||0), rate: Number(r.rate||0) })));
   };
 
   useEffect(() => { fetchMetrics(); }, []);

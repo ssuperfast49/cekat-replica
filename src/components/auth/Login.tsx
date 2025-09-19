@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Mail, Lock, Eye, EyeOff, User, ArrowLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import pkg from "../../../package.json";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
 interface LoginProps {
@@ -16,6 +16,7 @@ interface LoginProps {
 }
 
 export default function Login({ onBack }: LoginProps) {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("login");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -41,9 +42,31 @@ export default function Login({ onBack }: LoginProps) {
 
       if (error) throw error;
 
-      toast.success("Login successful!");
-      // You can redirect here or handle successful login
-      console.log("Logged in user:", data.user);
+      // After login, determine if this user requires OTP and redirect immediately
+      const userId = data.user?.id;
+      if (userId) {
+        try {
+          const { data: profile, error: profErr } = await supabase
+            .from('users_profile')
+            .select('is_2fa_email_enabled, is_f2a_email_enabled')
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (profErr) throw profErr;
+          const requiresOtp = (profile as any)?.is_2fa_email_enabled === true || (profile as any)?.is_f2a_email_enabled === true;
+          toast.success("Login successful!");
+          if (requiresOtp) {
+            navigate("/otp", { replace: true });
+            return;
+          }
+        } catch {
+          // If profile fetch fails, fall back to ProtectedRoute guard
+          toast.success("Login successful!");
+        }
+      } else {
+        toast.success("Login successful!");
+      }
+
+      navigate("/", { replace: true });
     } catch (error) {
       console.error("Login error:", error);
       setError(error instanceof Error ? error.message : "Failed to login");
@@ -139,9 +162,7 @@ export default function Login({ onBack }: LoginProps) {
           )}
           <div className="text-center">
             <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-            <CardDescription>
-              Enter your credentials to access your account
-            </CardDescription>
+            <CardDescription>Sign in to continue to Chatflow</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
@@ -173,7 +194,7 @@ export default function Login({ onBack }: LoginProps) {
 
             {/* Login Tab */}
             <TabsContent value="login" className="space-y-4 mt-4">
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleLogin} className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="login-email">Email</Label>
                   <div className="relative">
@@ -188,20 +209,21 @@ export default function Login({ onBack }: LoginProps) {
                       required
                     />
                   </div>
+                  <p className="text-xs text-muted-foreground">We’ll send a one-time code after login.</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="login-password">Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="login-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10"
-                      required
-                    />
+                     <Input
+                       id="login-password"
+                       type={showPassword ? "text" : "password"}
+                       placeholder="Enter your password"
+                       value={password}
+                       onChange={(e) => setPassword(e.target.value)}
+                       className="pl-10 pr-10"
+                       required
+                     />
                     <Button
                       type="button"
                       variant="ghost"
@@ -215,6 +237,9 @@ export default function Login({ onBack }: LoginProps) {
                         <Eye className="h-4 w-4" />
                       )}
                     </Button>
+                  </div>
+                  <div className="flex items-center justify-end text-xs">
+                    <Link to="/reset-password" className="hover:underline">Forgot password?</Link>
                   </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>

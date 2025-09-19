@@ -9,6 +9,8 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
+import Otp from "./pages/Otp";
+import Logout from "./pages/Logout";
 import NotFound from "./pages/NotFound";
 import Changelog from "./pages/Changelog";
 
@@ -34,6 +36,12 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/otp" element={
+              <ProtectedRoute>
+                <Otp />
+              </ProtectedRoute>
+            } />
+            <Route path="/logout" element={<Logout />} />
             <Route path="/changelog" element={<Changelog />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
