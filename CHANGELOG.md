@@ -1,6 +1,11 @@
 # Change Log
 # [0.0.11] FE WEB CEKAT 2025-09-16
 ### Updates
+- implement OTP flow in login
+- enhance ProtectedRoute for OTP verification
+
+# [0.0.11] FE WEB CEKAT 2025-09-16
+### Updates
 - Audit Logs self-read policy for non-master users.
 - Added `get_audit_logs` RPC with server-side filters, paging, and master-only org-wide access.
 - Analytics foundations: date-range controls and labeled charts; wired to secure RPCs.
