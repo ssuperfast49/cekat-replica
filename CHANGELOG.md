@@ -1,4 +1,20 @@
 # Change Log
+# [0.0.15] FE WEB CEKAT 2025-09-19
+### Updates
+- Auth/OTP: eliminate redirect flicker by gating on `otpEvaluated`; `ProtectedRoute` and `Otp` now wait for evaluation; `ResetPassword` handles magic-link `?code=` with `exchangeCodeForSession`.
+- Changelog page: render Markdown (react-markdown + GFM), Tailwind Typography, compact heading sizes; added Netlify `public/_redirects`; added `prebuild`/`predev` to copy root `CHANGELOG.md` to `public/`.
+- Build: remove top-level await in `main.tsx` (wrap in async IIFE).
+- Analytics (global): add graceful fallback when `get_containment_and_handover` is missing; improved handover reason labels; added per-user analytics (Assigned To, Takeovers Initiated, Resolved By, AI→Agent Handovers).
+- Human Agents:
+  - Create Agent dialog with loader; 2FA enable checkbox on create; colored CTAs.
+  - Add confirmation dialog with loader for deletion; wire hard delete.
+  - Status changed to Active/Inactive; add `users_profile.is_active` column and update UI/actions.
+  - Edit dialog shows “Require Email 2FA” switch and token limits; loads/saves `is_2fa_email_enabled`.
+  - Role badges and submenu restyled (blue/green/gray).
+- Edge Functions: `admin-create-user` (invite + profile + role, CORS) and `admin-delete-user` (hard delete auth user and related rows).
+- Logging: `logAction` falls back to default org when `org_id` cannot be resolved (fixes audit log NOT NULL).
+- UI theming: replaced remaining dark/black buttons with blue/green/red where appropriate.
+
 # [0.0.14] FE WEB CEKAT 2025-09-19
 ### Updates
 - Fix changelog is not accessible in staging

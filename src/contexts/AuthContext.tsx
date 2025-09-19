@@ -125,18 +125,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
           return;
         }
         if (initialSession) {
-          // Assume OTP required until proven otherwise to avoid bypass
-          setOtpRequired(true);
-          // Release loading early so UI can navigate to /otp without hanging
+          // Defer OTP decision until profile evaluation completes to avoid flicker
           setLoading(false);
           // Evaluate in background
           updateOtpRequirementFromProfile(initialSession)
             .then((enabled) => {
-              if (enabled) {
-                setOtpVerified(false);
-              } else {
-                setOtpRequired(false);
-              }
+              if (enabled) setOtpVerified(false);
+              setOtpRequired(!!enabled);
             })
             .finally(() => setOtpEvaluated(true));
           return;
@@ -165,8 +160,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             logAction({ action: 'auth.login', resource: 'auth', userId: nextSession?.user?.id || null, context: {} }).catch(() => {});
             // Reset verification at start of session
             setOtpVerified(false);
-            // Assume OTP is required until profile is fetched to prevent first-render bypass
-            setOtpRequired(true);
+            // Defer OTP decision until profile is fetched to prevent flicker
             try {
               const key = nextSession?.user?.id ? `otpRequired:${nextSession.user.id}` : 'otpRequired';
               localStorage.removeItem(key);
@@ -187,9 +181,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
                       console.warn('2FA send function failed', fnErr);
                     });
                   }
-                } else {
-                  setOtpRequired(false);
                 }
+                setOtpRequired(!!enabled);
               })
               .finally(() => setOtpEvaluated(true));
             // Persist last login payload for immediate reuse on next refresh

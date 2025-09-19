@@ -21,6 +21,7 @@ import ProfilePopover from "@/components/auth/ProfileDialog";
 import PermissionNavItem from "@/components/navigation/PermissionNavItem";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { useNavigation } from "@/hooks/useNavigation";
+import { useRBAC } from "@/contexts/RBACContext";
 import { NAVIGATION_ORDER, NavKey } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 
@@ -82,6 +83,7 @@ const Index = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { getDefaultNavItem, getNavItem, canAccessNavItem } = useNavigation();
+  const { loading: rbacLoading } = useRBAC();
 
   const validMenus: NavKey[] = NAVIGATION_ORDER;
 
@@ -93,6 +95,7 @@ const Index = () => {
 
   // Sync active tab from URL on load and when the query changes, enforcing permission
   useEffect(() => {
+    if (rbacLoading) return; // avoid redirects while RBAC is loading
     const menuParam = searchParams.get("menu");
     if (menuParam && (validMenus as string[]).includes(menuParam)) {
       const typedMenu = menuParam as NavKey;
@@ -109,10 +112,11 @@ const Index = () => {
       // Ensure the URL always has a valid menu param
       if (!menuParam) updateMenuParam("chat", { replace: true });
     }
-  }, [searchParams, canAccessNavItem, getDefaultNavItem]);
+  }, [searchParams, canAccessNavItem, getDefaultNavItem, rbacLoading]);
 
   // Auto-redirect to first accessible navigation item if current one is not accessible
   useEffect(() => {
+    if (rbacLoading) return;
     const defaultNav = getDefaultNavItem();
     if (!validMenus.includes(active) || !canAccessNavItem(active)) {
       if (defaultNav) {
@@ -120,7 +124,7 @@ const Index = () => {
         updateMenuParam(defaultNav, { replace: true });
       }
     }
-  }, [getDefaultNavItem, canAccessNavItem, active, validMenus]);
+  }, [getDefaultNavItem, canAccessNavItem, active, validMenus, rbacLoading]);
 
   const handleSignOut = async () => {
     try {

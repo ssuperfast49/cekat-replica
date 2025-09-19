@@ -53,11 +53,10 @@ export default function Login({ onBack }: LoginProps) {
             .maybeSingle();
           if (profErr) throw profErr;
           const requiresOtp = (profile as any)?.is_2fa_email_enabled === true || (profile as any)?.is_f2a_email_enabled === true;
+          // Defer to global guard to prevent double redirects / flicker
           toast.success("Login successful!");
-          if (requiresOtp) {
-            navigate("/otp", { replace: true });
-            return;
-          }
+          navigate("/", { replace: true });
+          return;
         } catch {
           // If profile fetch fails, fall back to ProtectedRoute guard
           toast.success("Login successful!");

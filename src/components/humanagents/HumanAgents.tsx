@@ -16,6 +16,7 @@ import { useRBAC } from "@/contexts/RBACContext";
 import { ROLES } from "@/types/rbac";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/lib/supabase";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -24,19 +25,25 @@ const HumanAgents = () => {
   const [isUsageOpen, setIsUsageOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentWithDetails | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
-  const [tokenLimitForm, setTokenLimitForm] = useState<{ enabled: boolean; perDay: number; perMonth: number }>({ enabled: false, perDay: 0, perMonth: 0 });
+  const [tokenLimitForm, setTokenLimitForm] = useState<{ enabled: boolean; perDay: number; perMonth: number; twoFA: boolean }>({ enabled: false, perDay: 0, perMonth: 0, twoFA: false });
   const [usageRange, setUsageRange] = useState<"7d" | "30d" | "this_month">("7d");
   const [usageTotal, setUsageTotal] = useState<number | null>(null);
   const [loadingUsage, setLoadingUsage] = useState(false);
+  const [agentStats, setAgentStats] = useState<{ assignedTo: number; assignedBy: number; resolvedBy: number; handoverFromAI: number } | null>(null);
   const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent"; phone?: string }>({ 
     name: "", 
     email: "", 
     role: "agent" 
   });
+  const [enable2FA, setEnable2FA] = useState(false);
   const [newTeam, setNewTeam] = useState<{ name: string; description: string }>({ 
     name: "", 
     description: "" 
   });
+  const [creatingAgent, setCreatingAgent] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deletingAgent, setDeletingAgent] = useState(false);
+  const [agentPendingDelete, setAgentPendingDelete] = useState<AgentWithDetails | null>(null);
   const { toast } = useToast();
   const { hasPermission, hasRole } = useRBAC();
 
@@ -45,13 +52,15 @@ const HumanAgents = () => {
     teams,
     loading,
     error,
+    fetchAgents,
     createAgent,
     updateAgentStatus,
     updateAgentRole,
     deleteAgent,
     createTeam,
     addAgentToTeam,
-    removeAgentFromTeam
+    removeAgentFromTeam,
+    setEnable2FAFlagForCreate
   } = useHumanAgents();
 
   const handleCreateAgent = async () => {
@@ -65,6 +74,8 @@ const HumanAgents = () => {
     }
 
     try {
+      setCreatingAgent(true);
+      setEnable2FAFlagForCreate(enable2FA);
       await createAgent({
         full_name: newAgent.name,
         email: newAgent.email,
@@ -72,6 +83,7 @@ const HumanAgents = () => {
       });
 
       setNewAgent({ name: "", email: "", role: "agent" });
+      setEnable2FA(false);
       setIsCreateDialogOpen(false);
       
       toast({
@@ -84,6 +96,8 @@ const HumanAgents = () => {
         description: error instanceof Error ? error.message : "Failed to create agent",
         variant: "destructive",
       });
+    } finally {
+      setCreatingAgent(false);
     }
   };
 
@@ -117,17 +131,19 @@ const HumanAgents = () => {
 
   const handleDeleteAgent = async (id: string) => {
     try {
+      setDeletingAgent(true);
       await deleteAgent(id);
-      toast({
-        title: "Success",
-        description: "Agent deleted successfully",
-      });
+      toast({ title: "Success", description: "Agent deleted successfully" });
+      setConfirmDeleteOpen(false);
+      setAgentPendingDelete(null);
     } catch (error) {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to delete agent",
         variant: "destructive",
       });
+    } finally {
+      setDeletingAgent(false);
     }
   };
 
@@ -137,14 +153,15 @@ const HumanAgents = () => {
       // Load current limits from users_profile
       const { data, error } = await supabase
         .from('users_profile')
-        .select('token_limit_enabled, max_tokens_per_day, max_tokens_per_month')
+        .select('token_limit_enabled, max_tokens_per_day, max_tokens_per_month, is_2fa_email_enabled')
         .eq('user_id', agent.user_id)
         .maybeSingle();
       if (error) throw error;
       setTokenLimitForm({
         enabled: !!data?.token_limit_enabled,
         perDay: Number(data?.max_tokens_per_day ?? 0),
-        perMonth: Number(data?.max_tokens_per_month ?? 0)
+        perMonth: Number(data?.max_tokens_per_month ?? 0),
+        twoFA: !!(data as any)?.is_2fa_email_enabled,
       });
       setIsEditLimitOpen(true);
     } catch (e: any) {
@@ -161,7 +178,8 @@ const HumanAgents = () => {
         .update({
           token_limit_enabled: tokenLimitForm.enabled,
           max_tokens_per_day: Math.max(0, Math.floor(tokenLimitForm.perDay || 0)),
-          max_tokens_per_month: Math.max(0, Math.floor(tokenLimitForm.perMonth || 0))
+          max_tokens_per_month: Math.max(0, Math.floor(tokenLimitForm.perMonth || 0)),
+          is_2fa_email_enabled: tokenLimitForm.twoFA,
         })
         .eq('user_id', selectedAgent.user_id);
       if (error) throw error;
@@ -207,20 +225,41 @@ const HumanAgents = () => {
       if (error) throw error;
       const total = (data || []).reduce((sum: number, row: any) => sum + Number(row.total_tokens || 0), 0);
       setUsageTotal(total);
+
+      // Parallel fetch of agent activity stats in the same range
+      const [qAssignedTo, qAssignedBy, qResolvedBy, qHandoverFromAI] = await Promise.all([
+        supabase.from('threads').select('id', { count: 'exact', head: true }).gte('created_at', start).lt('created_at', end).eq('assignee_user_id', userId),
+        supabase.from('threads').select('id', { count: 'exact', head: true }).gte('created_at', start).lt('created_at', end).eq('assigned_by_user_id', userId),
+        supabase.from('threads').select('id', { count: 'exact', head: true }).gte('created_at', start).lt('created_at', end).eq('resolved_by_user_id', userId),
+        supabase.from('threads').select('id', { count: 'exact', head: true }).gte('created_at', start).lt('created_at', end).eq('assignee_user_id', userId).not('ai_handoff_at', 'is', null),
+      ]);
+      setAgentStats({
+        assignedTo: qAssignedTo.count || 0,
+        assignedBy: qAssignedBy.count || 0,
+        resolvedBy: qResolvedBy.count || 0,
+        handoverFromAI: qHandoverFromAI.count || 0,
+      });
     } catch (e: any) {
       setUsageTotal(null);
+      setAgentStats(null);
       toast({ title: 'Error', description: e?.message || 'Failed to load usage', variant: 'destructive' });
     } finally {
       setLoadingUsage(false);
     }
   };
 
-  const handleStatusChange = async (agentId: string, status: "Online" | "Offline") => {
-    // Since we don't have status functionality, just show a message
-    toast({
-      title: "Info",
-      description: `Status functionality is not available in this version`,
-    });
+  const handleStatusChange = async (agentId: string, status: "Active" | "Inactive") => {
+    try {
+      const { error } = await supabase
+        .from('users_profile')
+        .update({ is_active: status === 'Active' })
+        .eq('user_id', agentId);
+      if (error) throw error;
+      toast({ title: 'Success', description: `Status changed to ${status}` });
+      await fetchAgents();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to change status', variant: 'destructive' });
+    }
   };
 
   const handleRoleChange = async (agentId: string, role: "master_agent" | "super_agent" | "agent") => {
@@ -244,7 +283,14 @@ const HumanAgents = () => {
   };
 
   const getStatusColor = (status: string) => {
-    return status === "Online" ? "bg-green-500" : "bg-gray-400";
+    return status === "Active" ? "bg-green-500" : "bg-gray-400";
+  };
+
+  const roleBadgeClass = (role: "master_agent" | "super_agent" | "agent" | null) => {
+    if (role === "master_agent") return "bg-blue-100 text-blue-700";
+    if (role === "super_agent") return "bg-emerald-100 text-emerald-700";
+    if (role === "agent") return "bg-gray-100 text-gray-700";
+    return "bg-gray-100 text-gray-700";
   };
 
   if (error) {
@@ -285,7 +331,7 @@ const HumanAgents = () => {
         <PermissionGate permission={'super_agents.create'}>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
                 <Plus className="h-4 w-4" />
                 Create Agent
               </Button>
@@ -324,6 +370,10 @@ const HumanAgents = () => {
                   placeholder="Enter phone number"
                 />
               </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox id="agent-2fa" checked={enable2FA} onCheckedChange={(v)=>setEnable2FA(!!v)} />
+                <Label htmlFor="agent-2fa" className="text-sm">Enable email 2FA for this agent</Label>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="agent-role">Role</Label>
                 <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" })}>
@@ -340,10 +390,17 @@ const HumanAgents = () => {
                 </Select>
               </div>
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleCreateAgent} className="flex-1">
-                  Create Agent
+                <Button onClick={handleCreateAgent} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" disabled={creatingAgent}>
+                  {creatingAgent ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating...
+                    </span>
+                  ) : (
+                    "Create Agent"
+                  )}
                 </Button>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="flex-1">
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="flex-1" disabled={creatingAgent}>
                   Cancel
                 </Button>
               </div>
@@ -413,8 +470,8 @@ const HumanAgents = () => {
                         // Editable role dropdown for users with edit permission
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="gap-2 h-8">
-                              <Badge variant={agent.primaryRole === "master_agent" ? "default" : "secondary"} className="text-xs">
+                          <Button variant="ghost" size="sm" className="gap-2 h-8">
+                            <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)}`}>
                                 {agent.primaryRole === "master_agent" ? "Master Agent" : 
                                  agent.primaryRole === "super_agent" ? "Super Agent" : 
                                  agent.primaryRole === "agent" ? "Agent" : "No Role"}
@@ -424,21 +481,21 @@ const HumanAgents = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="bg-background border z-50">
                             <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
-                              <Badge variant="secondary" className="text-xs">Agent</Badge>
+                              <Badge className={`text-xs ${roleBadgeClass("agent")}`}>Agent</Badge>
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
-                              <Badge variant="default" className="text-xs">Super Agent</Badge>
+                              <Badge className={`text-xs ${roleBadgeClass("super_agent")}`}>Super Agent</Badge>
                             </DropdownMenuItem>
                             {hasPermission('super_agents.create') && (
                               <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "master_agent")}>
-                                <Badge variant="default" className="text-xs">Master Agent</Badge>
+                                <Badge className={`text-xs ${roleBadgeClass("master_agent")}`}>Master Agent</Badge>
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : (
                         // Read-only role badge for users without edit permission
-                        <Badge variant={agent.primaryRole === "master_agent" ? "default" : "secondary"} className="text-xs">
+                        <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)}`}>
                           {agent.primaryRole === "master_agent" ? "Master Agent" : 
                            agent.primaryRole === "super_agent" ? "Super Agent" : 
                            agent.primaryRole === "agent" ? "Agent" : "No Role"}
@@ -455,16 +512,16 @@ const HumanAgents = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="bg-background border z-50">
-                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Online")}>
+                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Active")}>
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-green-500" />
-                              Online
+                              Active
                             </div>
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Offline")}>
+                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Inactive")}>
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-gray-400" />
-                              Offline
+                              Inactive
                             </div>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -497,7 +554,7 @@ const HumanAgents = () => {
                           variant="ghost" 
                           size="sm" 
                           className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDeleteAgent(agent.user_id)}
+                          onClick={() => { setAgentPendingDelete(agent); setConfirmDeleteOpen(true); }}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -544,7 +601,7 @@ const HumanAgents = () => {
                     />
                   </div>
                   <div className="flex gap-2 pt-4">
-                    <Button onClick={handleCreateTeam} className="flex-1">
+                    <Button onClick={handleCreateTeam} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
                       Create Team
                     </Button>
                     <Button variant="outline" onClick={() => setIsCreateTeamDialogOpen(false)} className="flex-1">
@@ -568,7 +625,7 @@ const HumanAgents = () => {
               <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No Teams Yet</h3>
               <p className="text-muted-foreground mb-4">Create teams to organize your agents and improve collaboration.</p>
-              <Button onClick={() => setIsCreateTeamDialogOpen(true)}>
+              <Button onClick={() => setIsCreateTeamDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
                 <Plus className="h-4 w-4 mr-2" />
                 Create Team
               </Button>
@@ -617,6 +674,46 @@ const HumanAgents = () => {
         </TabsContent>
       </Tabs>
 
+      {/* Confirm Delete Dialog */}
+      <Dialog open={confirmDeleteOpen} onOpenChange={(v)=>{ if (!deletingAgent) setConfirmDeleteOpen(v); }}>
+        <DialogContent className="sm:max-w-md bg-background border">
+          <DialogHeader>
+            <DialogTitle>Delete Agent</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to permanently delete {agentPendingDelete?.display_name || 'this agent'}?
+              This will remove their profile and role assignments. This action cannot be undone.
+            </p>
+            <div className="rounded-md border p-3 bg-muted/30 text-sm">
+              <div><span className="text-muted-foreground">Name:</span> {agentPendingDelete?.display_name || '—'}</div>
+              <div><span className="text-muted-foreground">Email:</span> {agentPendingDelete?.email || '—'}</div>
+              <div><span className="text-muted-foreground">Role:</span> {agentPendingDelete?.primaryRole || '—'}</div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => agentPendingDelete && handleDeleteAgent(agentPendingDelete.user_id)}
+                disabled={deletingAgent}
+              >
+                {deletingAgent ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Deleting...
+                  </span>
+                ) : (
+                  'Delete'
+                )}
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setConfirmDeleteOpen(false)} disabled={deletingAgent}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Token Limits Dialog */}
       <Dialog open={isEditLimitOpen} onOpenChange={setIsEditLimitOpen}>
         <DialogContent className="sm:max-w-md bg-background border">
@@ -631,6 +728,13 @@ const HumanAgents = () => {
               </div>
               <Switch checked={tokenLimitForm.enabled} onCheckedChange={(v) => setTokenLimitForm({ ...tokenLimitForm, enabled: !!v })} />
             </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium">Require Email 2FA</Label>
+                <p className="text-xs text-muted-foreground">User must enter a one-time code at sign-in.</p>
+              </div>
+              <Switch checked={tokenLimitForm.twoFA} onCheckedChange={(v) => setTokenLimitForm({ ...tokenLimitForm, twoFA: !!v })} />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="limit-day">Max Tokens / Day</Label>
@@ -642,7 +746,7 @@ const HumanAgents = () => {
               </div>
             </div>
             <div className="flex gap-2 pt-2">
-              <Button onClick={saveTokenLimits} disabled={savingLimits} className="flex-1">Save</Button>
+              <Button onClick={saveTokenLimits} disabled={savingLimits} className="flex-1 bg-green-600 hover:bg-green-700 text-white">Save</Button>
               <Button variant="outline" onClick={() => setIsEditLimitOpen(false)} className="flex-1">Cancel</Button>
             </div>
           </div>
@@ -673,6 +777,24 @@ const HumanAgents = () => {
               <div className="text-sm text-muted-foreground">Total Tokens</div>
               <div className="text-2xl font-bold">{loadingUsage ? '…' : (usageTotal?.toLocaleString() ?? 0)}</div>
             </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-md border p-3">
+              <div className="text-sm text-muted-foreground">Assigned To Agent</div>
+              <div className="text-xl font-semibold">{agentStats?.assignedTo ?? 0}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-sm text-muted-foreground">Takeovers Initiated</div>
+              <div className="text-xl font-semibold">{agentStats?.assignedBy ?? 0}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-sm text-muted-foreground">Resolved by Agent</div>
+              <div className="text-xl font-semibold">{agentStats?.resolvedBy ?? 0}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-sm text-muted-foreground">AI→Agent Handovers</div>
+              <div className="text-xl font-semibold">{agentStats?.handoverFromAI ?? 0}</div>
+            </div>
+          </div>
             <div className="flex justify-end">
               <Button variant="outline" onClick={() => setIsUsageOpen(false)}>Close</Button>
             </div>

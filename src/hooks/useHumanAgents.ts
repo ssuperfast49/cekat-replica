@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
+import { generateUuid } from '@/lib/utils';
 import { waitForAuthReady } from '@/lib/authReady';
 
 // New interface for v_users view
@@ -22,13 +23,16 @@ export interface AgentWithDetails {
   created_at: string;
   roles: string[];
   primaryRole: 'master_agent' | 'super_agent' | 'agent' | null;
-  status: 'Online' | 'Offline'; // We'll simulate this for now
+  status: 'Active' | 'Inactive';
 }
 
 export const useHumanAgents = () => {
   const [agents, setAgents] = useState<AgentWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // local flag to enable 2FA on create; setter will be passed from component
+  let enable2FAFlagForCreate = false;
+  const setEnable2FAFlagForCreate = (v: boolean) => { enable2FAFlagForCreate = v; };
 
   const hydrateFromCache = () => {
     try {
@@ -100,7 +104,7 @@ export const useHumanAgents = () => {
           created_at: user.created_at,
           roles: validRoles,
           primaryRole: primaryRole,
-          status: 'Online' as const // We'll simulate this for now
+          status: 'Active' as const
         };
       });
 
@@ -124,49 +128,35 @@ export const useHumanAgents = () => {
   }) => {
     try {
       setError(null);
+      // Call edge function to create auth user + profile + role
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        headers: {
+          // Allow CORS when running from Netlify/localhost
+          'x-client-origin': typeof window !== 'undefined' ? window.location.origin : ''
+        },
+        body: { email: agentData.email, full_name: agentData.full_name, role: agentData.role },
+      });
+      if (error) throw error;
 
-      // For demo purposes, we'll create a temporary user entry
-      // In a real app, this would involve auth.users creation
-      const tempUserId = `temp-${Date.now()}`;
+      // After inviting, send the user a password setup email without affecting current session
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error: otpErr } = await supabase.auth.signInWithOtp({ email: agentData.email, options: { emailRedirectTo: redirectTo } });
+      if (otpErr) console.warn('Could not send password setup email:', otpErr);
 
-      // Create user profile
-      const { data: profileData, error: profileError } = await supabase
-        .from('users_profile')
-        .insert([{
-          user_id: tempUserId,
-          display_name: agentData.full_name,
-          timezone: 'Asia/Jakarta'
-        }])
-        .select()
-        .single();
+      // If 2FA requested, enable it on the profile we just created
+      if (enable2FAFlagForCreate) {
+        try {
+          await supabase
+            .from('users_profile')
+            .update({ is_2fa_email_enabled: true })
+            .eq('user_id', data?.id);
+        } catch {}
+      }
 
-      if (profileError) throw profileError;
-
-      // Get the role ID for the specified role
-      const { data: roleData, error: roleError } = await supabase
-        .from('roles')
-        .select('id')
-        .eq('name', agentData.role)
-        .single();
-
-      if (roleError) throw roleError;
-
-      // Assign the role to the user
-      const { error: userRoleError } = await supabase
-        .from('user_roles')
-        .insert([{
-          user_id: tempUserId,
-          role_id: roleData.id
-        }]);
-
-      if (userRoleError) throw userRoleError;
-
-      // Refresh the agents list
       await fetchAgents();
+      try { await logAction({ action: 'user.create', resource: 'user', resourceId: data?.id || null, context: agentData as any }); } catch {}
 
-      try { await logAction({ action: 'user.create', resource: 'user', resourceId: tempUserId, context: agentData as any }); } catch {}
-
-      return profileData;
+      return { id: data?.id } as any;
     } catch (error) {
       console.error('Error creating agent:', error);
       setError(error instanceof Error ? error.message : 'Failed to create agent');
@@ -222,21 +212,11 @@ export const useHumanAgents = () => {
     try {
       setError(null);
 
-      // Delete user role assignments first
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', agentId);
-
-      if (roleError) throw roleError;
-
-      // Delete user profile
-      const { error: profileError } = await supabase
-        .from('users_profile')
-        .delete()
-        .eq('user_id', agentId);
-
-      if (profileError) throw profileError;
+      // Call admin function to hard delete auth user and related rows
+      const { error: fnErr } = await supabase.functions.invoke('admin-delete-user', {
+        body: { user_id: agentId },
+      });
+      if (fnErr) throw fnErr;
 
       // Refresh the agents list
       await fetchAgents();
@@ -272,7 +252,8 @@ export const useHumanAgents = () => {
     deleteAgent,
     createTeam: () => Promise.resolve(), // No-op since we don't have teams
     addAgentToTeam: () => Promise.resolve(), // No-op since we don't have teams
-    removeAgentFromTeam: () => Promise.resolve() // No-op since we don't have teams
+    removeAgentFromTeam: () => Promise.resolve(), // No-op since we don't have teams
+    setEnable2FAFlagForCreate,
   };
 };
 

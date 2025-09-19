@@ -59,7 +59,7 @@ const AIAgentCard = ({ agent, onSettings, onDelete }: {
 
 const CreateNewCard = ({ onClick }: { onClick: () => void }) => (
   <Card 
-    className="p-6 text-center space-y-4 hover:shadow-md transition-shadow bg-primary text-primary-foreground cursor-pointer group"
+    className="p-6 text-center space-y-4 hover:shadow-md transition-shadow bg-blue-600 text-white cursor-pointer group"
     onClick={onClick}
   >
     <div className="flex flex-col items-center justify-center h-full space-y-4">
@@ -308,7 +308,7 @@ const AIAgents = () => {
 
             <Button 
               onClick={handleCreateAgent}
-              className="w-full bg-primary hover:bg-primary/90"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               disabled={!newAgentName.trim()}
             >
               Create AI Agent

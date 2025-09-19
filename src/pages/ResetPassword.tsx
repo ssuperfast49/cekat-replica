@@ -19,14 +19,23 @@ export default function ResetPassword() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if we have a session (user clicked reset link)
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('Invalid or expired reset link. Please request a new password reset.');
+    const init = async () => {
+      try {
+        // Handle email confirmation PKCE code (?code=...)
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get('code');
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+        }
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setError('Invalid or expired reset link. Please request a new password reset.');
+        }
+      } catch (e) {
+        console.warn('Password setup init failed', e);
       }
     };
-    checkSession();
+    init();
   }, []);
 
   const handlePasswordReset = async (e: React.FormEvent) => {

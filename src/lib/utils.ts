@@ -62,3 +62,19 @@ export function isValidHandoverReason(reason: string | null | undefined): boolea
   const r = String(reason);
   return r === 'ambiguous' || r === 'payment' || r === 'policy' || /^other:.+$/i.test(r);
 }
+
+// Generate a UUID v4 string for client-side identifiers
+export function generateUuid(): string {
+  try {
+    // @ts-ignore randomUUID may not exist on older TS lib targets
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+  } catch {}
+  const tpl = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+  return tpl.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}

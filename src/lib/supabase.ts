@@ -30,6 +30,17 @@ export async function logAction(params: {
         .maybeSingle();
       resolvedOrgId = mem?.org_id ?? null;
     }
+    if (!resolvedOrgId) {
+      // Fallback to default org if available to satisfy NOT NULL
+      try {
+        const { data: org } = await supabase
+          .from('orgs')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+        resolvedOrgId = org?.id ?? null;
+      } catch {}
+    }
     const { error } = await supabase.rpc('log_action', {
       p_action: action,
       p_resource: resource,
