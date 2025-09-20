@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { waitForAuthReady } from '@/lib/authReady';
+import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 export interface AIAgent {
   id: string;
@@ -57,8 +58,9 @@ export const useAIAgents = () => {
     }
   };
 
-  // Cache-first hydration on mount; background fetch only if no cache
+  // Cache-first hydration on mount; network gated on visibility
   useEffect(() => {
+    let had = false;
     try {
       const raw = localStorage.getItem('app.cachedAIAgents');
       if (raw) {
@@ -66,11 +68,14 @@ export const useAIAgents = () => {
         if (Array.isArray(parsed)) {
           setAIAgents(parsed);
           setLoading(false);
-          return; // Skip network fetch
+          had = true;
         }
       }
     } catch {}
-    fetchAIAgents();
+    const run = () => fetchAIAgents();
+    if (!had) {
+      if (isDocumentHidden()) onDocumentVisible(run); else run();
+    }
   }, []);
 
   return {

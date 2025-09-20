@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
 import { waitForAuthReady } from '@/lib/authReady';
 import WEBHOOK_CONFIG from '@/config/webhook';
+import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 export interface Thread {
   id: string;
@@ -553,15 +554,32 @@ export const useConversations = () => {
     }
   };
 
-  // Initial fetch on mount
+  // Initial fetch on mount (gate on visibility to avoid background fetch on tab-restore)
   useEffect(() => {
-    // Hydrate from cache for instant UI, but ALWAYS fetch fresh data
+    // Hydrate from cache for instant UI; fetch fresh data when visible
     hydrateFromCache();
-    fetchConversations();
+    if (isDocumentHidden()) {
+      onDocumentVisible(() => { fetchConversations(); });
+    } else {
+      fetchConversations();
+    }
   }, []);
 
-  // Realtime: keep conversations list in sync with DB
+  // Realtime: keep conversations list in sync with DB (subscribe only when visible)
   useEffect(() => {
+    if (isDocumentHidden()) {
+      let unsub: (() => void) | null = null;
+      onDocumentVisible(() => {
+        const channel = supabase
+          .channel('threads-realtime')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, () => {
+            fetchConversations();
+          })
+          .subscribe();
+        unsub = () => { try { supabase.removeChannel(channel); } catch {} };
+      });
+      return () => { if (unsub) unsub(); };
+    }
     const channel = supabase
       .channel('threads-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, () => {
@@ -574,9 +592,22 @@ export const useConversations = () => {
     };
   }, []);
 
-  // Realtime: keep messages in sync for the selected thread
+  // Realtime: keep messages in sync for the selected thread (subscribe only when visible)
   useEffect(() => {
     if (!selectedThreadId) return;
+    if (isDocumentHidden()) {
+      let unsub: (() => void) | null = null;
+      onDocumentVisible(() => {
+        const channel = supabase
+          .channel(`messages-${selectedThreadId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${selectedThreadId}` }, () => {
+            fetchMessages(selectedThreadId);
+          })
+          .subscribe();
+        unsub = () => { try { supabase.removeChannel(channel); } catch {} };
+      });
+      return () => { if (unsub) unsub(); };
+    }
     const channel = supabase
       .channel(`messages-${selectedThreadId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${selectedThreadId}` }, () => {

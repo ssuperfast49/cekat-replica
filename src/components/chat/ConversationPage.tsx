@@ -40,6 +40,7 @@ import { ROLES } from "@/types/rbac";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { setSendMessageProvider } from "@/config/webhook";
+import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
 
 interface MessageBubbleProps {
   message: MessageWithDetails;

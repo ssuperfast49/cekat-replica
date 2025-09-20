@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
+import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 export interface Platform {
   id: string;
@@ -294,7 +295,8 @@ export const usePlatforms = () => {
   };
 
   useEffect(() => {
-    fetchPlatforms();
+    const run = () => fetchPlatforms();
+    if (isDocumentHidden()) onDocumentVisible(run); else run();
   }, []);
 
   return {

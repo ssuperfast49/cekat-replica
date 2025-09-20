@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
+import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import type { 
   Role, 
   Permission, 
@@ -111,10 +112,11 @@ export function RBACProvider({ children }: RBACProviderProps) {
     }
   };
 
-  // Fetch RBAC data when user changes
+  // Fetch RBAC data when user changes (gate network on visibility)
   useEffect(() => {
     if (user?.id) {
-      fetchUserRBAC(user.id);
+      const run = () => fetchUserRBAC(user.id);
+      if (isDocumentHidden()) onDocumentVisible(run); else run();
     } else {
       setUserRoles([]);
       setUserPermissions([]);

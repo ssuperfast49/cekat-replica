@@ -1,4 +1,17 @@
 # Change Log
+# [0.0.17] FE WEB CEKAT 2025-09-20
+### Updates
+- Scope data fetching and realtime to visible pages and active routes (Conversations, Human Agents, Platforms, Contacts, AI Agents, RBAC, Analytics)
+- Add tab-visibility guards to avoid background fetch on tab-restore; hydrate from cache first where applicable
+- Standardize React Query defaults (staleTime=60s, gc=5m, disable refetch on focus/reconnect)
+- Reduce audit log verbosity: ignore refresh/update events; add 3s debounce in `logAction`; include current route in log context
+- Analytics
+  - Default to last 30 days and align to full-day UTC boundaries
+  - Prevent invalid date ranges (From ≤ To; To ≥ From) with input min/max and clamping
+  - Fetch once per change; removed duplicate initial fetch
+- UI consistency: set Telegram Platform create button to blue
+- Utilities: add `isDocumentHidden` and `onDocumentVisible` helpers
+
 # [0.0.16] FE WEB CEKAT 2025-09-19
 ### Updates
 - Enhance real-time synchronization for conversations and messages; always fetch fresh data on mount

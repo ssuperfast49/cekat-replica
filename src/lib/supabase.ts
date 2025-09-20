@@ -41,11 +41,28 @@ export async function logAction(params: {
         resolvedOrgId = org?.id ?? null;
       } catch {}
     }
+    // Debounce frequent duplicates within a short window (e.g., auth refresh loops)
+    try {
+      const key = `logAction:${action}:${resource}:${resolvedUserId || 'anon'}`;
+      const now = Date.now();
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      if (raw) {
+        const prev = Number(raw) || 0;
+        if (now - prev < 3000) {
+          return; // skip duplicate within 3s window
+        }
+      }
+      if (typeof localStorage !== 'undefined') localStorage.setItem(key, String(now));
+    } catch {}
+
     const { error } = await supabase.rpc('log_action', {
       p_action: action,
       p_resource: resource,
       p_resource_id: resourceId,
-      p_context: context as any,
+      p_context: {
+        ...context,
+        route: (typeof window !== 'undefined' ? window.location.pathname : null),
+      } as any,
       p_ip: ip,
       p_user_agent: userAgent,
       p_org_id: resolvedOrgId,
