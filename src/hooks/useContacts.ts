@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
+import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 export interface Contact {
   id: string;
@@ -286,9 +287,10 @@ export const useContacts = () => {
     }
   };
 
-  // Initial fetch on mount
+  // Initial fetch on mount (gate network on visibility)
   useEffect(() => {
-    fetchContacts();
+    const run = () => fetchContacts();
+    if (isDocumentHidden()) onDocumentVisible(run); else run();
   }, []);
 
   return {

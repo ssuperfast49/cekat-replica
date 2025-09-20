@@ -311,6 +311,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
           <Button 
             onClick={handleSubmit} 
             disabled={isSubmitting || submitting || !isFormValid}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             {isSubmitting || submitting ? (
               <span className="inline-flex items-center gap-2">

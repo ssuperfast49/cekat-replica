@@ -78,3 +78,35 @@ export function generateUuid(): string {
     return v.toString(16);
   });
 }
+
+// Visibility helpers to gate network calls when tab is backgrounded
+export function isDocumentHidden(): boolean {
+  try {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  } catch {
+    return false;
+  }
+}
+
+export function onDocumentVisible(callback: () => void) {
+  try {
+    if (typeof document === 'undefined') {
+      callback();
+      return;
+    }
+    if (document.visibilityState !== 'hidden') {
+      callback();
+      return;
+    }
+    const handler = () => {
+      if (document.visibilityState !== 'hidden') {
+        try { document.removeEventListener('visibilitychange', handler); } catch {}
+        callback();
+      }
+    };
+    document.addEventListener('visibilitychange', handler, { once: true } as any);
+  } catch {
+    // Fallback to immediate call on any unexpected error
+    try { callback(); } catch {}
+  }
+}

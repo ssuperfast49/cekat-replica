@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ResponsiveContainer, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, LabelList, PieChart, Pie, Cell } from "recharts";
 import { useEffect, useMemo, useState } from "react";
 import { supabase, logAction } from "@/lib/supabase";
+import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
 
 type ConversationPoint = { time: string; value: number; firstTime?: number; returning?: number };
 type AgentMetric = { name: string; value: number };
@@ -63,9 +64,13 @@ export default function Analytics() {
   };
 
   const getRange = () => {
-    const end = to ? new Date(to) : new Date();
-    const start = from ? new Date(from) : new Date(Date.now() - 7*24*60*60*1000);
-    return { start: start.toISOString(), end: end.toISOString() };
+    const now = new Date();
+    const endSrc = to ? new Date(to) : now;
+    const startSrc = from ? new Date(from) : new Date(now.getTime() - 29*24*60*60*1000);
+    // Use full-day boundaries in UTC: [start 00:00:00, end next-day 00:00:00)
+    const startUtc = new Date(Date.UTC(startSrc.getUTCFullYear(), startSrc.getUTCMonth(), startSrc.getUTCDate(), 0, 0, 0));
+    const endUtc = new Date(Date.UTC(endSrc.getUTCFullYear(), endSrc.getUTCMonth(), endSrc.getUTCDate() + 1, 0, 0, 0));
+    return { start: startUtc.toISOString(), end: endUtc.toISOString() };
   };
 
   const fetchMetrics = async () => {
@@ -109,8 +114,11 @@ export default function Analytics() {
     setHandoverStats(((hs as any) || []).map((r: any) => ({ reason: formatHandoverLabel(r.reason) || '(unspecified)', count: Number(r.count||0), total: Number(r.total||0), rate: Number(r.rate||0) })));
   };
 
-  useEffect(() => { fetchMetrics(); }, []);
-  useEffect(() => { fetchMetrics(); }, [from, to, channelFilter]);
+  // Single source of truth for fetching; avoids double calls on mount
+  useEffect(() => {
+    const run = () => fetchMetrics();
+    if (isDocumentHidden()) onDocumentVisible(run); else run();
+  }, [from, to, channelFilter]);
 
   return (
     <div className="p-6 space-y-6">
@@ -123,11 +131,32 @@ export default function Analytics() {
       <div className="flex items-end gap-3">
         <div>
           <div className="text-xs text-muted-foreground mb-1">From</div>
-          <Input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} className="h-9 w-[180px]" />
+          <Input
+            type="date"
+            value={from}
+            max={to || new Date().toISOString().slice(0,10)}
+            onChange={(e)=>{
+              const v = e.target.value;
+              setFrom(v);
+              if (to && v && v > to) setTo(v);
+            }}
+            className="h-9 w-[180px]"
+          />
         </div>
         <div>
           <div className="text-xs text-muted-foreground mb-1">To</div>
-          <Input type="date" value={to} onChange={(e)=>setTo(e.target.value)} className="h-9 w-[180px]" />
+          <Input
+            type="date"
+            value={to}
+            min={from || undefined}
+            max={new Date().toISOString().slice(0,10)}
+            onChange={(e)=>{
+              const v = e.target.value;
+              setTo(v);
+              if (from && v && v < from) setFrom(v);
+            }}
+            className="h-9 w-[180px]"
+          />
         </div>
         <div>
           <div className="text-xs text-muted-foreground mb-1">Channel</div>

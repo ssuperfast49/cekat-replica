@@ -14,7 +14,20 @@ import Logout from "./pages/Logout";
 import NotFound from "./pages/NotFound";
 import Changelog from "./pages/Changelog";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000, // 1 minute
+      gcTime: 5 * 60_000, // 5 minutes
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+    mutations: {
+      retry: 0,
+    }
+  }
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

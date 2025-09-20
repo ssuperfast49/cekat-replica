@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
 import { generateUuid } from '@/lib/utils';
 import { waitForAuthReady } from '@/lib/authReady';
+import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 // New interface for v_users view
 export interface VUser {
@@ -229,14 +230,14 @@ export const useHumanAgents = () => {
     }
   };
 
-  // Initialize data on mount
+  // Initialize data on mount (gate network on visibility)
   useEffect(() => {
     const hadCache = hydrateFromCache();
     if (hadCache) {
       setLoading(false);
-      return; // Use cached data; skip network fetch
     }
-    fetchAgents();
+    const run = () => fetchAgents();
+    if (isDocumentHidden()) onDocumentVisible(run); else run();
   }, []);
 
   return {

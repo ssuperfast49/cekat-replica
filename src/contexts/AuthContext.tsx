@@ -30,6 +30,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try { return localStorage.getItem('otpVerified') === 'true'; } catch { return false; }
   });
   const [otpEvaluated, setOtpEvaluated] = useState<boolean>(false);
+  const lastLoginLoggedUserIdRef = useRef<string | null>(null);
 
   const setOtpVerified = useCallback((value: boolean) => {
     setOtpVerifiedState(value);
@@ -156,8 +157,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         try {
           if (event === 'SIGNED_IN') {
-            // Non-blocking log
-            logAction({ action: 'auth.login', resource: 'auth', userId: nextSession?.user?.id || null, context: {} }).catch(() => {});
+            // Non-blocking log once per user per lifecycle
+            const uid = nextSession?.user?.id || null;
+            if (uid && lastLoginLoggedUserIdRef.current !== uid) {
+              logAction({ action: 'auth.login', resource: 'auth', userId: uid, context: {} }).catch(() => {});
+              lastLoginLoggedUserIdRef.current = uid;
+            }
             // Reset verification at start of session
             setOtpVerified(false);
             // Defer OTP decision until profile is fetched to prevent flicker
@@ -188,6 +193,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
             // Persist last login payload for immediate reuse on next refresh
             try { localStorage.setItem('app.lastAuthEvent', JSON.stringify({ event, at: Date.now(), user: nextSession?.user || null })); } catch {}
             return; // early exit; we've already set loading state
+          }
+          // Ignore refresh-related events for logging to reduce noise
+          if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
+            return;
           }
 
           if (event === 'SIGNED_OUT') {
