@@ -1,4 +1,9 @@
 # Change Log
+# [0.0.18] FE WEB CEKAT 2025-09-20
+### Updates
+- Added provider tabs (WhatsApp, Telegram, Live Chat) to filter the list; auto-select first item in active tab
+- Replaced black status dot with green (active) / gray (inactive) indicator
+
 # [0.0.17] FE WEB CEKAT 2025-09-20
 ### Updates
 - Scope data fetching and realtime to visible pages and active routes (Conversations, Human Agents, Platforms, Contacts, AI Agents, RBAC, Analytics)
