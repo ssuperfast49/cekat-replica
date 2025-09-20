@@ -17,10 +17,15 @@ export interface ContactWithDetails extends Contact {
   // Additional fields for display
   labelNames?: string;
   inbox?: string;
-  pipelineStatus?: string;
   chatStatus?: string;
   chatCreatedAt?: string;
   handledBy?: string;
+}
+
+export interface ContactsFilter {
+  chatStatus?: 'open' | 'pending' | 'closed' | '';
+  handledBy?: 'assigned' | 'unassigned' | '';
+  dateRange?: { from?: string; to?: string };
 }
 
 export const useContacts = () => {
@@ -29,16 +34,34 @@ export const useContacts = () => {
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Fetch contacts with pagination and search
-  const fetchContacts = async (page: number = 1, limit: number = 100, searchQuery?: string) => {
+  // Fetch contacts with pagination, search, and filters (server-side as much as possible)
+  const fetchContacts = async (
+    page: number = 1,
+    limit: number = 100,
+    searchQuery?: string,
+    filters?: ContactsFilter
+  ) => {
     try {
       setLoading(true);
       setError(null);
 
+      // Determine whether we need to inner-join threads based on filters
+      const needsThreadInnerJoin = !!(filters?.chatStatus || filters?.handledBy || filters?.dateRange?.from || filters?.dateRange?.to);
+
       let query = supabase
         .from('contacts')
-        .select('*', { count: 'exact' })
-        .eq('org_id', '00000000-0000-0000-0000-000000000001') // Default org ID
+        .select(
+          `
+          id, org_id, name, email, phone, locale, notes, created_at,
+          threads${needsThreadInnerJoin ? '!inner' : ''}(
+            status, created_at, assignee_user_id,
+            channels(display_name, provider, type)
+          )
+          `,
+          { count: 'exact' }
+        )
+        // If your project uses org-based RLS, the org filter may be enforced automatically.
+        .eq('org_id', '00000000-0000-0000-0000-000000000001')
         .order('created_at', { ascending: false });
 
       // Apply search filter if provided
@@ -46,35 +69,112 @@ export const useContacts = () => {
         query = query.or(`name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`);
       }
 
+      // Apply additional filters (server-side) on nested threads when possible
+      if (filters) {
+        if (filters.chatStatus) {
+          query = query.eq('threads.status', filters.chatStatus);
+        }
+        if (filters.handledBy === 'unassigned') {
+          // contacts whose latest thread has no assignee
+          query = query.is('threads.assignee_user_id', null);
+        } else if (filters.handledBy === 'assigned') {
+          query = query.not('threads.assignee_user_id', 'is', null as any);
+        }
+        if (filters.dateRange?.from) {
+          query = query.gte('threads.created_at', filters.dateRange.from);
+        }
+        if (filters.dateRange?.to) {
+          // Add end-of-day to include the entire 'to' date if only a date string is provided
+          const toIso = filters.dateRange.to.length > 10
+            ? filters.dateRange.to
+            : `${filters.dateRange.to}T23:59:59.999Z`;
+          query = query.lte('threads.created_at', toIso);
+        }
+      }
+
       // Apply pagination
       const from = (page - 1) * limit;
       const to = from + limit - 1;
       query = query.range(from, to);
 
-      const { data, error, count } = await query;
+      // Ensure we only fetch the latest thread per contact (order + limit on foreign table)
+      query = query.order('created_at', { foreignTable: 'threads', ascending: false }).limit(1, { foreignTable: 'threads' });
+
+      const { data, error, count } = await query as any;
 
       if (error) throw error;
 
       // Transform data to match the expected format
-      const transformedData: ContactWithDetails[] = (data || []).map((contact: Contact) => ({
-        ...contact,
-        labelNames: '', // Will be populated from contact_labels table if needed
-        inbox: 'OKBANG TOP UP CENTER', // Default value
-        pipelineStatus: '', // Will be populated from crm_stages table if needed
-        chatStatus: 'resolved', // Default value
-        chatCreatedAt: new Date(contact.created_at).toLocaleString('en-US', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        }).replace(',', ''),
-        handledBy: ''
-      }));
+      let transformedData: ContactWithDetails[] = (data || []).map((row: any) => {
+        const lastThread = (row.threads || [])[0] || null;
+        const inboxName = lastThread?.channels?.display_name || '—';
+        const chatCreated = lastThread?.created_at
+          ? new Date(lastThread.created_at).toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false,
+            }).replace(',', '')
+          : '—';
+
+        return {
+          id: row.id,
+          org_id: row.org_id,
+          name: row.name,
+          email: row.email,
+          phone: row.phone,
+          locale: row.locale,
+          notes: row.notes,
+          created_at: row.created_at,
+          labelNames: '',
+          inbox: inboxName,
+          chatStatus: lastThread?.status || '—',
+          chatCreatedAt: chatCreated,
+          handledBy: lastThread?.assignee_user_id ? 'Assigned' : '—',
+        } as ContactWithDetails;
+      });
+
+      // Apply client-side filtering
+      if (filters) {
+        transformedData = transformedData.filter(contact => {
+          // Chat Status filter
+          if (filters.chatStatus && contact.chatStatus !== filters.chatStatus) {
+            return false;
+          }
+
+          // Handled By filter
+          if (filters.handledBy) {
+            if (filters.handledBy === 'unassigned' && contact.handledBy !== '') {
+              return false;
+            }
+            if (filters.handledBy !== 'unassigned' && contact.handledBy !== filters.handledBy) {
+              return false;
+            }
+          }
+
+          // Date Range filter
+          if (filters.dateRange?.from || filters.dateRange?.to) {
+            const contactDate = new Date(contact.created_at);
+            const fromDate = filters.dateRange.from ? new Date(filters.dateRange.from) : null;
+            const toDate = filters.dateRange.to ? new Date(filters.dateRange.to) : null;
+
+            if (fromDate && contactDate < fromDate) {
+              return false;
+            }
+            if (toDate && contactDate > toDate) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+      }
 
       setContacts(transformedData);
+      // Use server count which accounts for applied filters
       setTotalCount(count || 0);
 
     } catch (error) {

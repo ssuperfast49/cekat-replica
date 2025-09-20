@@ -20,7 +20,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isCreateTeamDialogOpen, setIsCreateTeamDialogOpen] = useState(false);
+  // Teams UI disabled for now
+  // const [isCreateTeamDialogOpen, setIsCreateTeamDialogOpen] = useState(false);
   const [isEditLimitOpen, setIsEditLimitOpen] = useState(false);
   const [isUsageOpen, setIsUsageOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentWithDetails | null>(null);
@@ -36,10 +37,10 @@ const HumanAgents = () => {
     role: "agent" 
   });
   const [enable2FA, setEnable2FA] = useState(false);
-  const [newTeam, setNewTeam] = useState<{ name: string; description: string }>({ 
-    name: "", 
-    description: "" 
-  });
+  // const [newTeam, setNewTeam] = useState<{ name: string; description: string }>({ 
+  //   name: "", 
+  //   description: "" 
+  // });
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deletingAgent, setDeletingAgent] = useState(false);
@@ -49,7 +50,7 @@ const HumanAgents = () => {
 
   const {
     agents,
-    teams,
+    // teams,
     loading,
     error,
     fetchAgents,
@@ -57,9 +58,9 @@ const HumanAgents = () => {
     updateAgentStatus,
     updateAgentRole,
     deleteAgent,
-    createTeam,
-    addAgentToTeam,
-    removeAgentFromTeam,
+    // createTeam,
+    // addAgentToTeam,
+    // removeAgentFromTeam,
     setEnable2FAFlagForCreate
   } = useHumanAgents();
 
@@ -101,33 +102,19 @@ const HumanAgents = () => {
     }
   };
 
-  const handleCreateTeam = async () => {
-    if (!newTeam.name) {
-      toast({
-        title: "Error",
-        description: "Please enter a team name",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      // Since we don't have teams functionality, just show a message
-      toast({
-        title: "Info",
-        description: "Teams functionality is not available in this version",
-      });
-
-      setNewTeam({ name: "", description: "" });
-      setIsCreateTeamDialogOpen(false);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create team",
-        variant: "destructive",
-      });
-    }
-  };
+  // const handleCreateTeam = async () => {
+  //   if (!newTeam.name) {
+  //     toast({ title: "Error", description: "Please enter a team name", variant: "destructive" });
+  //     return;
+  //   }
+  //   try {
+  //     toast({ title: "Info", description: "Teams functionality is not available in this version" });
+  //     setNewTeam({ name: "", description: "" });
+  //     setIsCreateTeamDialogOpen(false);
+  //   } catch (error) {
+  //     toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to create team", variant: "destructive" });
+  //   }
+  // };
 
   const handleDeleteAgent = async (id: string) => {
     try {
@@ -326,7 +313,7 @@ const HumanAgents = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Human Agent Settings</h1>
-          <p className="text-muted-foreground">Manage your human agents and teams</p>
+          <p className="text-muted-foreground">Manage your human agents</p>
         </div>
         <PermissionGate permission={'super_agents.create'}>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -410,19 +397,17 @@ const HumanAgents = () => {
         </PermissionGate>
       </div>
 
-      <Tabs defaultValue="agents" className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+      {/* Tabs commented out for now */}
+      {/* <Tabs defaultValue="agents" className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-1">
           <TabsTrigger value="agents" className="gap-2">
             <UserCheck className="h-4 w-4" />
             Human Agent
           </TabsTrigger>
-          <TabsTrigger value="teams" className="gap-2">
-            <Users className="h-4 w-4" />
-            Teams
-          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="agents" className="space-y-4">
+        <TabsContent value="agents" className="space-y-4"> */}
+        <div className="space-y-4">
           <div className="rounded-lg border bg-card">
             <div className="grid grid-cols-[200px,1fr,120px,120px,100px] gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
               <div>Agent Name</div>
@@ -565,114 +550,11 @@ const HumanAgents = () => {
               )}
             </div>
           </div>
-        </TabsContent>
+        </div>
+        {/* </TabsContent>
 
-        <TabsContent value="teams" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Teams</h3>
-            <Dialog open={isCreateTeamDialogOpen} onOpenChange={setIsCreateTeamDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Create Team
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md bg-background border">
-                <DialogHeader>
-                  <DialogTitle>Create New Team</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="team-name">Team Name</Label>
-                    <Input
-                      id="team-name"
-                      value={newTeam.name}
-                      onChange={(e) => setNewTeam({ ...newTeam, name: e.target.value })}
-                      placeholder="Enter team name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="team-description">Description (Optional)</Label>
-                    <Input
-                      id="team-description"
-                      value={newTeam.description}
-                      onChange={(e) => setNewTeam({ ...newTeam, description: e.target.value })}
-                      placeholder="Enter team description"
-                    />
-                  </div>
-                  <div className="flex gap-2 pt-4">
-                    <Button onClick={handleCreateTeam} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">
-                      Create Team
-                    </Button>
-                    <Button variant="outline" onClick={() => setIsCreateTeamDialogOpen(false)} className="flex-1">
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Loading teams...</span>
-              </div>
-            </div>
-          ) : teams.length === 0 ? (
-            <div className="rounded-lg border bg-card p-8 text-center">
-              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Teams Yet</h3>
-              <p className="text-muted-foreground mb-4">Create teams to organize your agents and improve collaboration.</p>
-              <Button onClick={() => setIsCreateTeamDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Team
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {teams.map((team) => (
-                <div key={team.id} className="rounded-lg border bg-card p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h4 className="text-lg font-semibold">{team.name}</h4>
-                      {team.description && (
-                        <p className="text-sm text-muted-foreground">{team.description}</p>
-                      )}
-                    </div>
-                    <Badge variant="secondary">{teams.length} members</Badge>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <h5 className="text-sm font-medium text-muted-foreground">Team Members</h5>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {agents.map(agent => (
-                        <div key={agent.user_id} className="flex items-center gap-2 p-2 rounded border">
-                          <Avatar className="h-6 w-6">
-                            <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                              {getInitials(agent.display_name || 'Unknown')}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{agent.display_name || 'Unknown User'}</p>
-                            <p className="text-xs text-muted-foreground truncate">{agent.email || 'No email'}</p>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {agent.primaryRole === "master_agent" ? "Master Agent" : 
-                             agent.primaryRole === "super_agent" ? "Super Agent" : 
-                             agent.primaryRole === "agent" ? "Agent" : "No Role"}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+        {/** Teams tab removed temporarily */}
+      {/* </Tabs> */}
 
       {/* Confirm Delete Dialog */}
       <Dialog open={confirmDeleteOpen} onOpenChange={(v)=>{ if (!deletingAgent) setConfirmDeleteOpen(v); }}>

@@ -322,6 +322,72 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   const [model, setModel] = useState(profile?.model || "gpt-4o-mini");
   const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
   
+  // Knowledge: Files
+  type KnowledgeFileStatus = 'ready' | 'processing' | 'failed';
+  interface KnowledgeFile {
+    id: number;
+    name: string;
+    size: number; // bytes
+    uploadedAt: string; // ISO
+    status: KnowledgeFileStatus;
+  }
+  const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const now = new Date().toISOString();
+    const newItems: KnowledgeFile[] = files.map((f) => ({
+      id: Date.now() + Math.random(),
+      name: f.name,
+      size: f.size,
+      uploadedAt: now,
+      status: 'ready',
+    }));
+    setKnowledgeFiles((prev) => [...newItems, ...prev]);
+    // reset input so same files can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const dtFiles = Array.from(e.dataTransfer.files || []);
+    if (dtFiles.length === 0) return;
+    const now = new Date().toISOString();
+    const newItems: KnowledgeFile[] = dtFiles.map((f) => ({
+      id: Date.now() + Math.random(),
+      name: f.name,
+      size: f.size,
+      uploadedAt: now,
+      status: 'ready',
+    }));
+    setKnowledgeFiles((prev) => [...newItems, ...prev]);
+  };
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  };
+  const removeKnowledgeFile = (id: number) => {
+    setKnowledgeFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+  const processKnowledgeFile = (id: number) => {
+    setKnowledgeFiles((prev) => prev.map((f) => (f.id === id ? { ...f, status: 'processing' } : f)));
+    setTimeout(() => {
+      setKnowledgeFiles((prev) => prev.map((f) => (f.id === id ? { ...f, status: 'ready' } : f)));
+      toast.success('File processed');
+    }, 900);
+  };
+  const clearKnowledgeFiles = () => setKnowledgeFiles([]);
+
+  // Knowledge: Q&A
+  interface QAPair { id: number; question: string; answer: string; }
+  const [qaPairs, setQaPairs] = useState<QAPair[]>([
+    { id: Date.now(), question: '', answer: '' },
+  ]);
+  const addQaPair = () => setQaPairs((prev) => [{ id: Date.now() + Math.random(), question: '', answer: '' }, ...prev]);
+  const removeQaPair = (id: number) => setQaPairs((prev) => prev.filter((p) => p.id !== id));
+  const updateQaPair = (id: number, field: 'question' | 'answer', value: string) => {
+    setQaPairs((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } as QAPair : p)));
+  };
+  
   // Followups state
   const [followups, setFollowups] = useState([
     { id: 1, prompt: "Hai! Ada yang bisa saya bantu lagi?", delay: 60, expanded: false },
@@ -425,7 +491,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="general" className="gap-2">
             <Settings className="w-4 h-4" />
             General
@@ -434,18 +500,18 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
             <BookOpen className="w-4 h-4" />
             Knowledge Sources
           </TabsTrigger>
-          <TabsTrigger value="integrations" className="gap-2">
+          {/* <TabsTrigger value="integrations" className="gap-2">
             <Zap className="w-4 h-4" />
             Integrations
-          </TabsTrigger>
-          <TabsTrigger value="followups" className="gap-2">
+          </TabsTrigger> */}
+          {/* <TabsTrigger value="followups" className="gap-2">
             <Users className="w-4 h-4" />
             Followups
           </TabsTrigger>
           <TabsTrigger value="evaluation" className="gap-2">
             <BarChart3 className="w-4 h-4" />
             Evaluation
-          </TabsTrigger>
+          </TabsTrigger> */}
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
@@ -628,15 +694,15 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
           <Card className="p-6">
             {/* Knowledge Source Type Tabs */}
             <Tabs defaultValue="text" className="w-full">
-              <TabsList className="grid w-full grid-cols-5 mb-6">
+              <TabsList className="grid w-full grid-cols-3 mb-6">
                 <TabsTrigger value="text" className="gap-2">
                       <FileText className="w-4 h-4" />
                   Text
                 </TabsTrigger>
-                <TabsTrigger value="website" className="gap-2">
+                {/* <TabsTrigger value="website" className="gap-2">
                       <Globe className="w-4 h-4" />
                   Website
-                </TabsTrigger>
+                </TabsTrigger> */}
                 <TabsTrigger value="file" className="gap-2">
                   <FileIcon className="w-4 h-4" />
                   File
@@ -645,10 +711,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                       <HelpCircle className="w-4 h-4" />
                   Q&A
                 </TabsTrigger>
-                <TabsTrigger value="product" className="gap-2">
+                {/* <TabsTrigger value="product" className="gap-2">
                       <Package className="w-4 h-4" />
                   Product
-                </TabsTrigger>
+                </TabsTrigger> */}
               </TabsList>
 
               <TabsContent value="text" className="space-y-4">
@@ -840,18 +906,94 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                 </div>
               </TabsContent>
 
-              <TabsContent value="file">
-                <div className="text-center py-12 text-muted-foreground">
-                  <FileIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>File uploads and document management</p>
+              <TabsContent value="file" className="space-y-6">
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  className="border border-dashed rounded-lg p-6 text-center bg-muted/30"
+                >
+                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} />
+                  <FileIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground mb-3">Drag & drop documents here, or</p>
+                  <Button size="sm" onClick={() => fileInputRef.current?.click()}>Browse Files</Button>
+                  <p className="text-xs text-muted-foreground mt-2">Supported: PDF, DOCX, TXT, CSV, MD</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium">Uploaded Files ({knowledgeFiles.length})</h3>
+                    {knowledgeFiles.length > 0 && (
+                      <Button variant="ghost" size="sm" onClick={clearKnowledgeFiles} className="text-red-600 hover:text-red-700">Clear All</Button>
+                    )}
+                  </div>
+
+                  {knowledgeFiles.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No files uploaded yet.</div>
+                  ) : (
+                    <div className="border rounded-md divide-y">
+                      {knowledgeFiles.map((f) => (
+                        <div key={f.id} className="flex items-center justify-between p-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center"><FileIcon className="w-4 h-4" /></div>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium">{f.name}</div>
+                              <div className="text-xs text-muted-foreground">{(f.size/1024).toFixed(1)} KB • {new Date(f.uploadedAt).toLocaleString()}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded ${f.status==='ready'?'bg-green-100 text-green-700':f.status==='processing'?'bg-amber-100 text-amber-700':'bg-red-100 text-red-700'}`}>{f.status}</span>
+                            <Button size="sm" variant="outline" onClick={() => processKnowledgeFile(f.id)} disabled={f.status==='processing'}>Process</Button>
+                            <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => removeKnowledgeFile(f.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
-              <TabsContent value="qa">
-                <div className="text-center py-12 text-muted-foreground">
-                  <HelpCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Question & Answer pairs configuration</p>
+              <TabsContent value="qa" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Q&A Knowledge</h3>
+                    <p className="text-sm text-muted-foreground">Add question–answer pairs the AI can reference.</p>
+                  </div>
+                  <Button size="sm" onClick={addQaPair} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
                 </div>
+
+                {qaPairs.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No Q&A pairs. Click Add Pair to create one.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {qaPairs.map((pair) => (
+                      <Card key={pair.id} className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 space-y-2">
+                            <Input
+                              placeholder="Question"
+                              value={pair.question}
+                              onChange={(e)=>updateQaPair(pair.id,'question', e.target.value)}
+                            />
+                            <Textarea
+                              placeholder="Answer"
+                              className="min-h-[80px]"
+                              value={pair.answer}
+                              onChange={(e)=>updateQaPair(pair.id,'answer', e.target.value)}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Button variant="outline" size="sm" onClick={()=>toast.success('Saved')}>Save</Button>
+                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={()=>removeQaPair(pair.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="product">

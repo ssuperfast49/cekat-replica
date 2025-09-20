@@ -14,8 +14,9 @@ export function useNavigation() {
   const canAccessNavItem = (navKey: NavKey): boolean => {
     const navItem = NAVIGATION_CONFIG[navKey];
     if (!navItem) return false;
-    
-    return navItem.requireAll 
+
+    // Strict check: only explicit permissions are considered
+    return navItem.requireAll
       ? hasAllPermissions(navItem.permissions)
       : hasAnyPermission(navItem.permissions);
   };

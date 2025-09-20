@@ -8,8 +8,8 @@ export type NavKey =
   | "platforms"
   | "aiagents"
   | "humanagents"
-  | "permissions"
-  | "settings";
+  | "permissions";
+  // | "settings"; // Temporarily hidden
 
 export interface NavigationItem {
   key: NavKey;
@@ -18,6 +18,12 @@ export interface NavigationItem {
   permissions: string[];
   requireAll?: boolean;
   description?: string;
+  /**
+   * Optional: if provided, the nav item will be considered accessible when
+   * the user has ANY permission whose resource matches one of these.
+   * Example: ['channels', 'channel_agents']
+   */
+  resourceAny?: string[];
 }
 
 /**
@@ -69,8 +75,10 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "platforms",
     label: "Connected Platforms",
     icon: PlugZap,
-    permissions: ['channels.manage'],
-    requireAll: true, // User needs ALL (just one in this case)
+    // Show menu only if user has channels.read
+    permissions: ['channels.read'],
+    requireAll: true,
+    // resourceAny removed to strictly require channels.read
     description: "Manage connected channels and integrations"
   },
   
@@ -101,18 +109,19 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     description: "Manage roles and permissions"
   },
   
-  settings: {
-    key: "settings",
-    label: "Settings",
-    icon: SettingsIcon,
-    permissions: [
-      'access_rules.configure',
-      'users.read_all', 
-      'security.manage_2fa'
-    ],
-    requireAll: false, // User needs ANY admin permission
-    description: "System configuration and administration"
-  }
+  // Settings menu temporarily hidden
+  // settings: {
+  //   key: "settings",
+  //   label: "Settings",
+  //   icon: SettingsIcon,
+  //   permissions: [
+  //     'access_rules.configure',
+  //     'users.read_all', 
+  //     'security.manage_2fa'
+  //   ],
+  //   requireAll: false, // User needs ANY admin permission
+  //   description: "System configuration and administration"
+  // }
 };
 
 /**
@@ -127,7 +136,7 @@ export const NAVIGATION_ORDER: NavKey[] = [
   "aiagents",
   "humanagents",
   "permissions",
-  "settings"
+  // "settings" // Temporarily hidden
 ];
 
 /**

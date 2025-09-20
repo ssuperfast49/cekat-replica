@@ -179,6 +179,7 @@ const Index = () => {
                   collapsed={!sidebarExpanded}
                   permissions={navItem.permissions}
                   requireAll={navItem.requireAll}
+                  resourceAny={navItem.resourceAny}
                 />
               );
             })}
@@ -288,11 +289,8 @@ const Index = () => {
                 <h1 className="sr-only">AI Agents</h1>
                 <AIAgents />
               </>
-            ) : active === "settings" ? (
-              <>
-                <h1 className="text-2xl font-bold tracking-tight md:text-3xl mb-6">Settings</h1>
-                <Settings />
-              </>
+            ) : /* settings hidden */ false ? (
+              <></>
             ) : active === "humanagents" ? (
               <>
                 <h1 className="sr-only">Human Agents</h1>

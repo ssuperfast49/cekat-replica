@@ -423,9 +423,6 @@ export default function ConversationPage() {
           <h2 className="text-sm font-medium">Conversations</h2>
           <div className="flex items-center gap-1">
             <ChatFilter onFilterChange={setFilters} />
-            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-              <Plus className="h-4 w-4" />
-            </Button>
           </div>
         </div>
         <div className="relative mb-3">
@@ -661,13 +658,13 @@ export default function ConversationPage() {
             </div>
 
             {/* Labels */}
-            <div className="flex items-center justify-between">
+            {/* <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">Labels</h3>
               <Button variant="outline" size="sm" className="h-8">
                 <Tag className="h-4 w-4 mr-2" /> Add Label
               </Button>
             </div>
-            <div className="text-sm text-muted-foreground">No labels yet</div>
+            <div className="text-sm text-muted-foreground">No labels yet</div> */}
 
             {/* Handled By */}
             <div className="flex items-center justify-between">
@@ -724,23 +721,20 @@ export default function ConversationPage() {
               <h3 className="text-sm font-medium mb-2">Notes</h3>
               <div className="flex items-center gap-2">
                 <Input placeholder="Add a note..." />
-                <Button variant="outline" size="icon" className="h-9 w-9"> 
-                  <Plus className="h-4 w-4" />
-                </Button>
               </div>
             </div>
 
             {/* AI Summary */}
-            <div>
+            {/* <div>
               <h3 className="text-sm font-medium mb-2">AI Summary</h3>
               <Button variant="outline" className="w-full h-10" onClick={()=>toast.message('AI summary generation coming soon')}>Generate AI Summary</Button>
-            </div>
+            </div> */}
 
             {/* Additional Data */}
-            <div>
+            {/* <div>
               <h3 className="text-sm font-medium mb-2">Additional Data</h3>
               <Button variant="outline" className="w-full h-10">Add New Additional Info</Button>
-            </div>
+            </div> */}
 
             {/* Conversation Details */}
             <div>
