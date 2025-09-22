@@ -181,6 +181,15 @@ export default function ConversationPage() {
     return list;
   }, [conversations, query, filters]);
 
+  // If there are only resolved (closed) conversations, switch to the Resolved tab automatically
+  useEffect(() => {
+    const hasNonClosed = filteredConversations.some(c => c.status !== 'closed');
+    const hasClosed = filteredConversations.some(c => c.status === 'closed');
+    if (!hasNonClosed && hasClosed && activeTab !== 'resolved') {
+      setActiveTab('resolved');
+    }
+  }, [filteredConversations, activeTab]);
+
   // Get selected conversation
   const selectedConversation = useMemo(() => {
     if (!selectedThreadId) {
@@ -448,10 +457,15 @@ export default function ConversationPage() {
             </TabsTrigger>
             <TabsTrigger
               value="resolved"
-              className="justify-self-end w-8 h-8 p-0 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
+              className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
               aria-label="Resolved"
             >
-              <CheckCircle className="h-4 w-4" />
+              <div className="flex items-center gap-1">
+                <CheckCircle className="h-4 w-4" />
+                <Badge variant="secondary" className="h-5 text-xs">
+                  {filteredConversations.filter(c=>c.status === 'closed').length}
+                </Badge>
+              </div>
             </TabsTrigger>
           </TabsList>
           <TabsContent value="assigned" className="mt-0">

@@ -1,4 +1,9 @@
 # Change Log
+# [0.0.19] FE WEB CEKAT 2025-09-23
+### Updates
+- Automatically switch to the Resolved tab when only closed conversations are present
+- Updated Resolved tab UI to display the count of closed conversations.
+
 # [0.0.18] FE WEB CEKAT 2025-09-20
 ### Updates
 - Added provider tabs (WhatsApp, Telegram, Live Chat) to filter the list; auto-select first item in active tab
