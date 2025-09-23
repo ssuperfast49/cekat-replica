@@ -430,6 +430,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setStopAfterHandoff(profile.stop_ai_after_handoff);
       setModel(profile.model || "gpt-4o-mini");
       setTemperature(profile.temperature || 0.3);
+      const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
+      if (qna && Array.isArray(qna)) {
+        setQaPairs(qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' })));
+      }
     }
   }, [profile, isNewAgent]);
 
@@ -443,6 +447,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       model: model,
       temperature: temperature,
       name: agentName,
+      // Persist Q&A pairs into ai_profiles.qna JSONB
+      // Store compact q/a pairs for space efficiency
+      qna: qaPairs
+        .filter((p) => (p.question?.trim() || p.answer?.trim()))
+        .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
     };
 
     try {
@@ -984,7 +993,24 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                             />
                           </div>
                           <div className="flex flex-col gap-2">
-                            <Button variant="outline" size="sm" onClick={()=>toast.success('Saved')}>Save</Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async ()=>{
+                                try {
+                                  await saveProfile({
+                                    qna: qaPairs
+                                      .filter((p) => (p.question?.trim() || p.answer?.trim()))
+                                      .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
+                                  });
+                                  toast.success('Q&A saved');
+                                } catch (e:any) {
+                                  toast.error(e?.message || 'Failed to save Q&A');
+                                }
+                              }}
+                            >
+                              Save
+                            </Button>
                             <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={()=>removeQaPair(pair.id)}>
                               <Trash2 className="w-4 h-4" />
                             </Button>
