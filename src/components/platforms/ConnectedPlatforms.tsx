@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader as DangerHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 // Removed tabs; rendering is based on provider
 import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
@@ -31,6 +32,7 @@ const ConnectedPlatforms = () => {
   const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
   
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [providerTab, setProviderTab] = useState<'whatsapp' | 'telegram' | 'web'>('whatsapp');
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [selectedHumanAgent, setSelectedHumanAgent] = useState<string>("");
 
@@ -88,6 +90,14 @@ const ConnectedPlatforms = () => {
     if (provider === 'telegram') return 'telegram';
     return 'web';
   };
+
+  // Auto-select first platform within current tab
+  useEffect(() => {
+    const firstInTab = platforms.find(p => getPlatformType(p) === providerTab);
+    if (!selectedPlatform || (selectedPlatform && platforms.find(p=>p.id===selectedPlatform && getPlatformType(p)!==providerTab))) {
+      setSelectedPlatform(firstInTab?.id || null);
+    }
+  }, [platforms, providerTab]);
 
   // Get the selected platform data
   const selectedPlatformData = platforms.find(platform => platform.id === selectedPlatform);
@@ -616,11 +626,11 @@ window.mychat.position = "bottom-right";
 
   return (
     <div className="flex h-[calc(100vh-120px)]">
-      {/* Left Sidebar - Inboxes List */}
+      {/* Left Sidebar - Platforms List */}
       <div className="w-80 border-r border-border bg-card">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Inboxes</h2>
+            <h2 className="text-lg font-semibold">Platforms</h2>
             <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
               <Plus className="h-4 w-4" />
             </Button>
@@ -628,6 +638,13 @@ window.mychat.position = "bottom-right";
           <p className="text-sm text-muted-foreground mb-6">
             This is where you can connect all your platforms
           </p>
+          <Tabs value={providerTab} onValueChange={(v)=>setProviderTab(v as any)} className="mb-3">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+              <TabsTrigger value="telegram">Telegram</TabsTrigger>
+              <TabsTrigger value="web">Live Chat</TabsTrigger>
+            </TabsList>
+          </Tabs>
           
           {platformsLoading ? (
             <div className="space-y-2">
@@ -649,12 +666,12 @@ window.mychat.position = "bottom-right";
             <div className="text-sm text-red-600 p-4">{platformsError}</div>
           ) : (
             <div className="space-y-2">
-              {platforms.length === 0 ? (
+              {platforms.filter(p=>getPlatformType(p)===providerTab).length === 0 ? (
                 <div className="text-sm text-muted-foreground p-4 text-center">
                   No platforms found. Create your first platform to get started.
                 </div>
               ) : (
-                platforms.map((platform) => (
+                platforms.filter(p=>getPlatformType(p)===providerTab).map((platform) => (
                   <Card 
                     key={platform.id}
                     className={`cursor-pointer transition-colors hover:bg-accent ${
@@ -682,12 +699,11 @@ window.mychat.position = "bottom-right";
                           <p className="text-[11px] text-muted-foreground capitalize">{getPlatformType(platform)}</p>
                           <p className="text-xs text-muted-foreground">{platform.description || platform.website_url || ''}</p>
                         </div>
-                        <Badge 
-                          variant={platform.status === 'active' ? 'default' : 'secondary'}
-                          className="text-xs"
-                        >
-                          {platform.status === 'active' ? '●' : '○'}
-                        </Badge>
+                        <div
+                          className={`h-2.5 w-2.5 rounded-full ${platform.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`}
+                          aria-label={platform.status === 'active' ? 'Active' : 'Inactive'}
+                          title={platform.status === 'active' ? 'Active' : 'Inactive'}
+                        />
                       </div>
                     </CardContent>
                   </Card>
