@@ -27,6 +27,11 @@ export const WEBHOOK_CONFIG = {
     AI_AGENT: {
       CHAT_SETTINGS: "/chat-ai-agent-settings",
     },
+    // Knowledgebase endpoints
+    KNOWLEDGE: {
+      FILE_UPLOAD: "/knowledge/file-upload",
+      FILE_DELETE: "/knowledge/file-delete",
+    },
     
     // Message endpoints
     MESSAGE: {
