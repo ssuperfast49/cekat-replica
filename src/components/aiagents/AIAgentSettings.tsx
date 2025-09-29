@@ -388,12 +388,25 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
 
-      // 1) Send to webhook for hashing, extraction, and knowledgebase indexing
+      // Pre-compute content hash on the client to generate stable key and share with webhook
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const contentHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+      // Build storage key using content hash and original base name
+      const originalSafe = (file?.name || 'file.pdf').replace(/[^a-zA-Z0-9_.-]/g, '');
+      const baseNoExt = originalSafe.replace(/\.pdf$/i, '');
+      const generatedName = `${contentHash}_${baseNoExt}.pdf`;
+      const fileKey = `org_${orgId}/profile_${resolvedProfileId}/${generatedName}`;
+
+      // 1) Send to webhook for hashing, extraction, and knowledgebase indexing (include hash)
       const form = new FormData();
       form.append('file', file);
       form.append('file_name', file.name || 'file.pdf');
       form.append('org_id', orgId);
       form.append('profile_id', resolvedProfileId);
+      form.append('hashFile', contentHash);
 
       const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD), {
         method: 'POST',
@@ -417,17 +430,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       if (status !== 'success') {
         throw new Error(`Upload webhook returned unexpected status: ${status || 'unknown'}`);
       }
-      // 2) Build storage key/path using hash provided by webhook (hashFile)
-      let remoteHash = String((data as any)?.fileHash).toLowerCase();
-      remoteHash = remoteHash.replace(/\.pdf$/i, '').replace(/[^a-z0-9]/g, '');
-      if (!remoteHash) {
-        throw new Error('Upload webhook did not include hashFile');
-      }
-      // Bucket policies expect the path to start with org_<uuid>/profile_<id>/...
-      const originalSafe = (file?.name || 'file.pdf').replace(/[^a-zA-Z0-9_.-]/g, '');
-      const baseNoExt = originalSafe.replace(/\.pdf$/i, '');
-      const generatedName = `${remoteHash}_${baseNoExt}.pdf`;
-      const fileKey = `org_${orgId}/profile_${resolvedProfileId}/${generatedName}`;
+      // 2) Proceed to upload using our precomputed key
 
       // 3) Upload original PDF to private bucket 'ai-agent-files'
       let uploadedUrl: string | null = null;
@@ -491,8 +494,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
       const items: KnowledgeFile[] = [];
       for (const obj of objects) {
-        // Skip invalid entries or folder placeholders
-        if (!obj || !obj.name || String(obj.name).endsWith('/')) continue;
+        // Skip invalid entries, folder placeholders, and storage placeholders
+        if (!obj || !obj.name) continue;
+        const nameStr = String(obj.name);
+        if (nameStr.endsWith('/')) continue;
+        if (nameStr === '.emptyFolderPlaceholder' || nameStr === '.emptyfolderplaceholder') continue;
         const fileKey = `${obj.__prefix}/${obj.name}`;
         const sizeVal = (obj.metadata && (typeof obj.metadata.size !== 'undefined')) ? obj.metadata.size : 0;
         const sizeBytes = typeof sizeVal === 'number' ? sizeVal : Number(sizeVal || 0);
