@@ -14,15 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_models: {
+        Row: {
+          capabilities: Json
+          created_at: string
+          display_name: string | null
+          id: string
+          is_active: boolean
+          max_output_tokens: number | null
+          model_name: string
+          provider: string
+        }
+        Insert: {
+          capabilities?: Json
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_active?: boolean
+          max_output_tokens?: number | null
+          model_name: string
+          provider: string
+        }
+        Update: {
+          capabilities?: Json
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_active?: boolean
+          max_output_tokens?: number | null
+          model_name?: string
+          provider?: string
+        }
+        Relationships: []
+      }
       ai_profiles: {
         Row: {
           created_at: string
           description: string | null
           id: string
-          model: string | null
+          model: string
           name: string
           org_id: string
+          qna: Json
           stop_ai_after_handoff: boolean | null
+          super_agent_id: string
           system_prompt: string | null
           temperature: number | null
           transfer_conditions: string | null
@@ -32,23 +67,27 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
-          model?: string | null
+          model?: string
           name: string
           org_id: string
+          qna?: Json
           stop_ai_after_handoff?: boolean | null
+          super_agent_id: string
           system_prompt?: string | null
           temperature?: number | null
           transfer_conditions?: string | null
           welcome_message?: string | null
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           description?: string | null
           id?: string
-          model?: string | null
+          model?: string
           name?: string
           org_id?: string
+          qna?: Json
           stop_ai_after_handoff?: boolean | null
+          super_agent_id?: string
           system_prompt?: string | null
           temperature?: number | null
           transfer_conditions?: string | null
@@ -56,10 +95,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "ai_profiles_model_fkey"
+            columns: ["model"]
+            isOneToOne: false
+            referencedRelation: "ai_models"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ai_profiles_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_profiles_super_agent_fk"
+            columns: ["super_agent_id"]
+            isOneToOne: false
+            referencedRelation: "v_users"
             referencedColumns: ["id"]
           },
         ]
@@ -176,6 +229,53 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "alert_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          context: Json
+          created_at: string
+          id: string
+          ip: string | null
+          org_id: string
+          resource: string
+          resource_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          context?: Json
+          created_at?: string
+          id?: string
+          ip?: string | null
+          org_id: string
+          resource: string
+          resource_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          context?: Json
+          created_at?: string
+          id?: string
+          ip?: string | null
+          org_id?: string
+          resource?: string
+          resource_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_org_fk"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
         ]
@@ -357,7 +457,6 @@ export type Database = {
           notes: string | null
           org_id: string
           phone: string | null
-          stage_id: string | null
         }
         Insert: {
           created_at?: string
@@ -369,7 +468,6 @@ export type Database = {
           notes?: string | null
           org_id: string
           phone?: string | null
-          stage_id?: string | null
         }
         Update: {
           created_at?: string
@@ -381,7 +479,6 @@ export type Database = {
           notes?: string | null
           org_id?: string
           phone?: string | null
-          stage_id?: string | null
         }
         Relationships: [
           {
@@ -427,6 +524,91 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          content: string | null
+          embedding: string | null
+          id: number
+          metadata: Json | null
+        }
+        Insert: {
+          content?: string | null
+          embedding?: string | null
+          id?: number
+          metadata?: Json | null
+        }
+        Update: {
+          content?: string | null
+          embedding?: string | null
+          id?: number
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
+      files: {
+        Row: {
+          ai_profile_id: string | null
+          bucket: string
+          byte_size: number | null
+          checksum: string | null
+          created_at: string
+          filename: string
+          id: string
+          mime_type: string | null
+          org_id: string
+          path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          ai_profile_id?: string | null
+          bucket: string
+          byte_size?: number | null
+          checksum?: string | null
+          created_at?: string
+          filename: string
+          id?: string
+          mime_type?: string | null
+          org_id: string
+          path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          ai_profile_id?: string | null
+          bucket?: string
+          byte_size?: number | null
+          checksum?: string | null
+          created_at?: string
+          filename?: string
+          id?: string
+          mime_type?: string | null
+          org_id?: string
+          path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "files_ai_profile_id_fkey"
+            columns: ["ai_profile_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "files_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "files_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "v_users"
             referencedColumns: ["id"]
           },
         ]
@@ -757,6 +939,52 @@ export type Database = {
         }
         Relationships: []
       }
+      super_agent_members: {
+        Row: {
+          agent_user_id: string
+          created_at: string
+          id: string
+          org_id: string
+          super_agent_id: string
+        }
+        Insert: {
+          agent_user_id: string
+          created_at?: string
+          id?: string
+          org_id: string
+          super_agent_id: string
+        }
+        Update: {
+          agent_user_id?: string
+          created_at?: string
+          id?: string
+          org_id?: string
+          super_agent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "super_agent_members_agent_user_id_fkey"
+            columns: ["agent_user_id"]
+            isOneToOne: false
+            referencedRelation: "v_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "super_agent_members_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "super_agent_members_super_agent_id_fkey"
+            columns: ["super_agent_id"]
+            isOneToOne: false
+            referencedRelation: "v_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       thread_collaborators: {
         Row: {
           added_at: string
@@ -773,15 +1001,7 @@ export type Database = {
           thread_id?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "thread_participants_thread_id_fkey"
-            columns: ["thread_id"]
-            isOneToOne: false
-            referencedRelation: "threads"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       threads: {
         Row: {
@@ -794,11 +1014,14 @@ export type Database = {
           channel_id: string
           contact_id: string
           created_at: string
+          end_reason: string | null
+          handover_reason: string | null
           id: string
           is_blocked: boolean
           last_msg_at: string
           notes: string | null
           org_id: string
+          resolution: string | null
           resolved_at: string | null
           resolved_by_user_id: string | null
           status: Database["public"]["Enums"]["thread_status"]
@@ -813,11 +1036,14 @@ export type Database = {
           channel_id: string
           contact_id: string
           created_at?: string
+          end_reason?: string | null
+          handover_reason?: string | null
           id?: string
           is_blocked?: boolean
           last_msg_at?: string
           notes?: string | null
           org_id: string
+          resolution?: string | null
           resolved_at?: string | null
           resolved_by_user_id?: string | null
           status?: Database["public"]["Enums"]["thread_status"]
@@ -832,11 +1058,14 @@ export type Database = {
           channel_id?: string
           contact_id?: string
           created_at?: string
+          end_reason?: string | null
+          handover_reason?: string | null
           id?: string
           is_blocked?: boolean
           last_msg_at?: string
           notes?: string | null
           org_id?: string
+          resolution?: string | null
           resolved_at?: string | null
           resolved_by_user_id?: string | null
           status?: Database["public"]["Enums"]["thread_status"]
@@ -1010,6 +1239,73 @@ export type Database = {
           },
         ]
       }
+      twofa_challenges: {
+        Row: {
+          channel: string
+          code_hash: string
+          consumed_at: string | null
+          expires_at: string
+          id: string
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          code_hash: string
+          consumed_at?: string | null
+          expires_at: string
+          id?: string
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          code_hash?: string
+          consumed_at?: string | null
+          expires_at?: string
+          id?: string
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "twofa_challenges_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      twofa_sessions: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "twofa_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -1048,6 +1344,8 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           display_name: string | null
+          is_2fa_email_enabled: boolean | null
+          is_active: boolean
           max_tokens_per_day: number
           max_tokens_per_month: number
           timezone: string | null
@@ -1058,6 +1356,8 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          is_2fa_email_enabled?: boolean | null
+          is_active?: boolean
           max_tokens_per_day?: number
           max_tokens_per_month?: number
           timezone?: string | null
@@ -1068,6 +1368,8 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          is_2fa_email_enabled?: boolean | null
+          is_active?: boolean
           max_tokens_per_day?: number
           max_tokens_per_month?: number
           timezone?: string | null
@@ -1114,6 +1416,115 @@ export type Database = {
         Args: { "": string } | { "": unknown }
         Returns: unknown
       }
+      create_email_2fa_challenge: {
+        Args: { p_ttl_seconds?: number; p_user: string }
+        Returns: {
+          challenge_id: string
+          code_plain: string
+        }[]
+      }
+      get_audit_logs: {
+        Args: {
+          p_action?: string
+          p_from?: string
+          p_limit?: number
+          p_offset?: number
+          p_to?: string
+          p_user_id?: string
+        }
+        Returns: {
+          action: string
+          context: Json
+          created_at: string
+          id: string
+          ip: string | null
+          org_id: string
+          resource: string
+          resource_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }[]
+      }
+      get_channel_chat_counts: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          channel_id: string
+          display_name: string
+          provider: string
+          thread_count: number
+        }[]
+      }
+      get_chats_timeseries: {
+        Args: { p_channel?: string; p_from: string; p_to: string }
+        Returns: {
+          bucket: string
+          count: number
+          provider: string
+        }[]
+      }
+      get_containment: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          ai_resolved_count: number
+          prev_ai_resolved_count: number
+          prev_rate: number
+          prev_total_threads: number
+          rate: number
+          total_threads: number
+        }[]
+      }
+      get_containment_and_handover: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          ai_resolved_count: number
+          containment_rate: number
+          handover_count: number
+          handover_rate: number
+          total_threads: number
+        }[]
+      }
+      get_handover_stats: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          count: number
+          rate: number
+          reason: string
+          total: number
+        }[]
+      }
+      get_non_contained: {
+        Args: {
+          p_from: string
+          p_limit?: number
+          p_offset?: number
+          p_to: string
+        }
+        Returns: {
+          contact_name: string
+          created_at: string
+          handover_reason: string
+          id: string
+          status: string
+        }[]
+      }
+      get_response_time_stats: {
+        Args: { p_channel?: string; p_from: string; p_to: string }
+        Returns: {
+          agent_avg: number
+          agent_median: number
+          agent_p90: number
+          ai_avg: number
+          ai_median: number
+          ai_p90: number
+        }[]
+      }
+      get_response_times: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          agent_avg_seconds: number
+          ai_avg_seconds: number
+        }[]
+      }
       grant_role_permission: {
         Args: { p_perm: string; p_role: string }
         Returns: undefined
@@ -1133,6 +1544,10 @@ export type Database = {
       halfvec_typmod_in: {
         Args: { "": unknown[] }
         Returns: number
+      }
+      has_active_2fa: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
       }
       has_perm: {
         Args: { p_action: string; p_resource: string }
@@ -1172,7 +1587,29 @@ export type Database = {
       }
       l2_normalize: {
         Args: { "": string } | { "": unknown } | { "": unknown }
-        Returns: string
+        Returns: unknown
+      }
+      log_action: {
+        Args: {
+          p_action: string
+          p_context?: Json
+          p_ip?: string
+          p_org_id?: string
+          p_resource: string
+          p_resource_id?: string
+          p_user_agent?: string
+          p_user_id?: string
+        }
+        Returns: undefined
+      }
+      match_documents: {
+        Args: { filter?: Json; match_count?: number; query_embedding: string }
+        Returns: {
+          content: string
+          id: number
+          metadata: Json
+          similarity: number
+        }[]
       }
       revoke_role_permission: {
         Args: { p_perm: string; p_role: string }
@@ -1193,6 +1630,10 @@ export type Database = {
       takeover_thread: {
         Args: { p_thread_id: string }
         Returns: undefined
+      }
+      validate_handover_reason: {
+        Args: { new_handover: boolean; reason: string }
+        Returns: boolean
       }
       vector_avg: {
         Args: { "": number[] }
@@ -1217,6 +1658,10 @@ export type Database = {
       vector_typmod_in: {
         Args: { "": unknown[] }
         Returns: number
+      }
+      verify_email_2fa: {
+        Args: { p_code: string; p_session_minutes?: number; p_user: string }
+        Returns: string
       }
     }
     Enums: {

@@ -40,9 +40,12 @@ export function RBACProvider({ children }: RBACProviderProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUserRBAC = async (userId: string) => {
+  const fetchUserRBAC = async (userId: string, opts?: { background?: boolean }) => {
     try {
-      setLoading(true);
+      // During background refreshes, avoid flipping the global loading flag
+      if (!opts?.background) {
+        setLoading(true);
+      }
       setError(null);
 
       // Use the v_current_user_permissions view for efficient permission fetching
@@ -102,13 +105,16 @@ export function RBACProvider({ children }: RBACProviderProps) {
       console.error('Error fetching user RBAC:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch user permissions');
     } finally {
-      setLoading(false);
+      if (!opts?.background) {
+        setLoading(false);
+      }
     }
   };
 
   const refreshRBAC = async () => {
     if (user?.id) {
-      await fetchUserRBAC(user.id);
+      // Refresh in the background so UI (e.g., PermissionGate) doesn't unmount
+      await fetchUserRBAC(user.id, { background: true });
     }
   };
 
