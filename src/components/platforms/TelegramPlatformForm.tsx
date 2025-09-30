@@ -130,21 +130,9 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       }
       console.log('Telegram webhook response:', webhookResult);
 
-      // Save platform and link selected agents (handled in usePlatforms.createPlatform)
-      try {
-        const submitData = {
-          display_name: formData.displayName,
-          description: formData.description,
-          profile_photo_url: null as any,
-          ai_profile_id: formData.selectedAIAgent,
-          provider: 'telegram' as const,
-          human_agent_ids: formData.selectedHumanAgents,
-        };
-        // If parent provided onSubmit, let it persist to channels
-        await onSubmit(submitData);
-      } catch (e) {
-        console.warn('Failed to persist channel record:', e);
-      }
+      // Do not create a channel client-side for Telegram.
+      // The webhook above is responsible for creating the platform/channel.
+      // We only refresh the platform list after webhook success.
 
       toast({ title: "Success", description: "Telegram channel created successfully" });
       try {

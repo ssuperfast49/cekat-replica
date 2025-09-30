@@ -1,10 +1,4 @@
 # Change Log
-# [0.0.21] FE WEB CEKAT 2025-09-30
-### Updates
-- Update CHANGELOG and enhance Analytics and HumanAgents components. 
-- Added token usage tracking in Analytics with visualizations for daily usage and top models. 
-- Improved token aggregation logic in HumanAgents to account for super-agent clusters.
-
 # [0.0.20] FE WEB CEKAT 2025-09-30
 ### Updates
 - Platform agent assignment
