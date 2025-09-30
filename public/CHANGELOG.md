@@ -1,4 +1,12 @@
 # Change Log
+# [0.0.21] FE WEB CEKAT 2025-09-29
+### Updates
+Enhance file upload process in AIAgentSettings: pre-compute content hash for stable key, include additional metadata (storageName, storageSize, storageUpdatedAt) in upload response, and improve file validation checks.
+
+# [0.0.20] FE WEB CEKAT 2025-09-29
+### Updates
+Enhance AI Agent Settings: Implement file upload functionality with Supabase integration, including upload progress tracking and error handling. Update UI to reflect file statuses and permissions. Add new knowledgebase endpoints for file management.
+
 # [0.0.19] FE WEB CEKAT 2025-09-23
 ### Updates
 - Automatically switch to the Resolved tab when only closed conversations are present

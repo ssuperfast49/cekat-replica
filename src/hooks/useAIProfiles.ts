@@ -13,6 +13,7 @@ export interface AIProfile {
   model: string;
   temperature: number;
   created_at: string;
+  qna?: ({ q: string; a: string } | { question: string; answer: string })[] | null;
 }
 
 export const useAIProfiles = (profileId?: string) => {

@@ -11,6 +11,8 @@ import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { supabase } from "@/integrations/supabase/client";
+import { useRBAC } from "@/contexts/RBACContext";
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -297,7 +299,11 @@ const ChatPreview = ({
 
 const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps) => {
   const [activeTab, setActiveTab] = useState("general");
+  const [knowledgeTab, setKnowledgeTab] = useState("text");
   const isNewAgent = !profileId;
+  const { hasPermission } = useRBAC();
+  const UPLOAD_PERMISSION = "ai_agent_files.manage";
+  const canUploadAgentFiles = hasPermission(UPLOAD_PERMISSION);
   
   // Use the custom hook for AI profile management
   const { profile, loading, saving, error, saveProfile } = useAIProfiles(profileId);
@@ -323,50 +329,370 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
   
   // Knowledge: Files
-  type KnowledgeFileStatus = 'ready' | 'processing' | 'failed';
+  type KnowledgeFileStatus = 'uploading' | 'ready' | 'processing' | 'failed';
   interface KnowledgeFile {
     id: number;
     name: string;
     size: number; // bytes
     uploadedAt: string; // ISO
     status: KnowledgeFileStatus;
+    url?: string; // Supabase storage URL
+    filePath?: string; // Storage path for deletion
   }
   const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
+  
+  // Resolve org and profile IDs for storage pathing
+  const getUploadContext = async (): Promise<{ orgId: string; profileId: string }> => {
+    // Require an existing profile to ensure profile-scoped path
+    const resolvedProfileId = profile?.id ?? profileId;
+    if (!resolvedProfileId) {
+      throw new Error('Please save the AI Agent first before uploading files.');
+    }
+
+    // Prefer org_id from loaded profile; fallback to first org membership of current user
+    let resolvedOrgId: string | null = profile?.org_id ?? null;
+    if (!resolvedOrgId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: membership } = await supabase
+          .from('org_members')
+          .select('org_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle();
+        resolvedOrgId = membership?.org_id ?? null;
+      }
+    }
+
+    if (!resolvedOrgId) {
+      throw new Error('Could not determine your organization. Please re-login or contact support.');
+    }
+
+    return { orgId: resolvedOrgId, profileId: resolvedProfileId };
+  };
+  
+  // Upload PDF to Supabase Storage after webhook processes/returns fileHash
+  const uploadFileToSupabase = async (file: File, fileId: number): Promise<{ url: string; filePath: string; documentId?: string }> => {
+    try {
+      if (!canUploadAgentFiles) {
+        throw new Error('You do not have permission to upload agent files.');
+      }
+      // Enforce PDF-only uploads
+      const isPdfMime = (file?.type || '').toLowerCase() === 'application/pdf';
+      const isPdfExt = (file?.name || '').toLowerCase().endsWith('.pdf');
+      if (!isPdfMime && !isPdfExt) {
+        throw new Error('Only PDF files are supported');
+      }
+
+      const { orgId, profileId: resolvedProfileId } = await getUploadContext();
+
+      // Pre-compute content hash on the client to generate stable key and share with webhook
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const contentHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+      // Build storage key using content hash and original base name
+      const originalSafe = (file?.name || 'file.pdf').replace(/[^a-zA-Z0-9_.-]/g, '');
+      const baseNoExt = originalSafe.replace(/\.pdf$/i, '');
+      const generatedName = `${contentHash}_${baseNoExt}.pdf`;
+      const fileKey = `org_${orgId}/profile_${resolvedProfileId}/${generatedName}`;
+
+      // 1) Send to webhook for hashing, extraction, and knowledgebase indexing (include hash)
+      const form = new FormData();
+      form.append('file', file);
+      form.append('file_name', file.name || 'file.pdf');
+      form.append('org_id', orgId);
+      form.append('profile_id', resolvedProfileId);
+      form.append('hashFile', contentHash);
+
+      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD), {
+        method: 'POST',
+        body: form,
+      });
+      if (!resp.ok) {
+        let message = `Upload failed (${resp.status})`;
+        try { const j = await resp.json(); message = j?.message || message; } catch {}
+        throw new Error(message);
+      }
+      const data = await resp.json().catch(() => ({} as any));
+
+      const documentId = (data?.document_id || data?.documentId || undefined) as string | undefined;
+      const status = String(data?.status || '').toLowerCase();
+      if (status === 'duplicate') {
+        // Don't upload; file already exists. Signal caller to skip
+        const err: any = new Error('duplicate');
+        err.code = 'DUPLICATE_CONTENT';
+        throw err;
+      }
+      if (status !== 'success') {
+        throw new Error(`Upload webhook returned unexpected status: ${status || 'unknown'}`);
+      }
+      // 2) Proceed to upload using our precomputed key
+
+      // 3) Upload original PDF to private bucket 'ai-agent-files'
+      let uploadedUrl: string | null = null;
+      const { error: uploadErr } = await supabase.storage
+        .from('ai-agent-files')
+        .upload(fileKey, file, {
+          cacheControl: '31536000',
+          contentType: 'application/pdf',
+          upsert: false,
+        });
+
+      if (uploadErr) {
+        // If object exists (duplicate via dedup hash), treat as success
+        const alreadyExists = typeof uploadErr?.message === 'string' && /exists|duplicate|409/i.test(uploadErr.message);
+        if (!alreadyExists) {
+          throw uploadErr;
+        }
+      }
+
+      // 4) Create a signed URL for UI preview/download
+      const { data: signedData, error: signedErr } = await supabase.storage
+        .from('ai-agent-files')
+        .createSignedUrl(fileKey, 60 * 60 * 24 * 7);
+      if (!signedErr && signedData?.signedUrl) {
+        uploadedUrl = signedData.signedUrl;
+      }
+
+      return { url: uploadedUrl || '', filePath: fileKey, documentId };
+    } catch (error: any) {
+      console.error('Error uploading file to Supabase:', error);
+      throw new Error(`Failed to upload ${file.name}: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Load existing files from storage for this agent
+  const loadExistingKnowledgeFiles = async () => {
+    try {
+      setLoadingFiles(true);
+      const { orgId, profileId: resolvedProfileId } = await getUploadContext();
+      const primaryPrefix = `org_${orgId}/profile_${resolvedProfileId}`;
+      const fallbackPrefix = `profile_${resolvedProfileId}`; // legacy path fallback
+
+      const listPrefix = async (prefix: string) => {
+        const { data, error } = await supabase.storage
+          .from('ai-agent-files')
+          .list(prefix, { limit: 100 });
+        if (error) return [] as any[];
+        return (data || []).map((f: any) => ({ ...f, __prefix: prefix }));
+      };
+
+      const [primary, fallback] = await Promise.all([
+        listPrefix(primaryPrefix),
+        listPrefix(fallbackPrefix),
+      ]);
+
+      const objects = [...primary, ...fallback];
+      if (objects.length === 0) {
+        setKnowledgeFiles([]);
+        return;
+      }
+
+      const items: KnowledgeFile[] = [];
+      for (const obj of objects) {
+        // Skip invalid entries, folder placeholders, and storage placeholders
+        if (!obj || !obj.name) continue;
+        const nameStr = String(obj.name);
+        if (nameStr.endsWith('/')) continue;
+        if (nameStr === '.emptyFolderPlaceholder' || nameStr === '.emptyfolderplaceholder') continue;
+        const fileKey = `${obj.__prefix}/${obj.name}`;
+        const sizeVal = (obj.metadata && (typeof obj.metadata.size !== 'undefined')) ? obj.metadata.size : 0;
+        const sizeBytes = typeof sizeVal === 'number' ? sizeVal : Number(sizeVal || 0);
+        let signedUrl = '';
+        const { data: signedData } = await supabase.storage
+          .from('ai-agent-files')
+          .createSignedUrl(fileKey, 60 * 60 * 24 * 7);
+        signedUrl = signedData?.signedUrl || '';
+
+        items.push({
+          id: Date.now() + Math.random(),
+          name: obj.name,
+          size: sizeBytes,
+          uploadedAt: (obj.updated_at || obj.created_at || new Date().toISOString()),
+          status: 'ready',
+          url: signedUrl,
+          filePath: fileKey,
+        });
+      }
+
+      // Sort latest first
+      items.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      setKnowledgeFiles(items);
+    } catch (e: any) {
+      console.error('Failed to load knowledge files:', e);
+      // Do not toast here to avoid noise on tab switch without access
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  // Load files whenever the File tab is active (and when profile context changes)
+  useEffect(() => {
+    if (knowledgeTab === 'file') {
+      loadExistingKnowledgeFiles();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [knowledgeTab, profile?.id, profileId]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+    
+    // Ensure IDs are available for pathing
+    try {
+      await getUploadContext();
+    } catch (err: any) {
+      toast.error(err?.message || 'Unable to upload at this time');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    
     const now = new Date().toISOString();
+    
+    // Add files with uploading status first
     const newItems: KnowledgeFile[] = files.map((f) => ({
       id: Date.now() + Math.random(),
       name: f.name,
       size: f.size,
       uploadedAt: now,
-      status: 'ready',
+      status: 'uploading' as KnowledgeFileStatus,
     }));
+    
     setKnowledgeFiles((prev) => [...newItems, ...prev]);
+    
+    // Upload each file
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileItem = newItems[i];
+      
+      try {
+        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
+
+        // Update file status to ready with URL
+        setKnowledgeFiles((prev) => prev.map((f) => 
+          f.id === fileItem.id 
+            ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath }
+            : f
+        ));
+
+        toast.success(`${file.name} uploaded successfully!`);
+      } catch (error: any) {
+        // Special-case duplicate: mark as ready and refresh listing without creating new object
+        if (String(error?.message || '').toLowerCase().includes('duplicate') || error?.code === 'DUPLICATE_CONTENT') {
+          setKnowledgeFiles((prev) => prev.map((f) => 
+            f.id === fileItem.id 
+              ? { ...f, status: 'ready' as KnowledgeFileStatus }
+              : f
+          ));
+          setTimeout(() => { (loadExistingKnowledgeFiles() as any)?.catch?.(() => {}); }, 0);
+          toast.info(`${file.name} already exists. Skipped re-upload.`);
+          continue;
+        }
+        // Update file status to failed
+        setKnowledgeFiles((prev) => prev.map((f) => 
+          f.id === fileItem.id 
+            ? { ...f, status: 'failed' as KnowledgeFileStatus }
+            : f
+        ));
+        
+        toast.error(error.message || `Failed to upload ${file.name}`);
+      }
+    }
+    
     // reset input so same files can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const dtFiles = Array.from(e.dataTransfer.files || []);
     if (dtFiles.length === 0) return;
+    
+    // Ensure IDs are available for pathing
+    try {
+      await getUploadContext();
+    } catch (err: any) {
+      toast.error(err?.message || 'Unable to upload at this time');
+      return;
+    }
+    
     const now = new Date().toISOString();
+    
+    // Add files with uploading status first
     const newItems: KnowledgeFile[] = dtFiles.map((f) => ({
       id: Date.now() + Math.random(),
       name: f.name,
       size: f.size,
       uploadedAt: now,
-      status: 'ready',
+      status: 'uploading' as KnowledgeFileStatus,
     }));
+    
     setKnowledgeFiles((prev) => [...newItems, ...prev]);
+    
+    // Upload each file
+    for (let i = 0; i < dtFiles.length; i++) {
+      const file = dtFiles[i];
+      const fileItem = newItems[i];
+      
+      try {
+        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
+        
+        // Update file status to ready with URL
+        setKnowledgeFiles((prev) => prev.map((f) => 
+          f.id === fileItem.id 
+            ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath }
+            : f
+        ));
+        
+        toast.success(`${file.name} uploaded successfully!`);
+      } catch (error: any) {
+        // Update file status to failed
+        setKnowledgeFiles((prev) => prev.map((f) => 
+          f.id === fileItem.id 
+            ? { ...f, status: 'failed' as KnowledgeFileStatus }
+            : f
+        ));
+        
+        toast.error(error.message || `Failed to upload ${file.name}`);
+      }
+    }
   };
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   };
-  const removeKnowledgeFile = (id: number) => {
-    setKnowledgeFiles((prev) => prev.filter((f) => f.id !== id));
+  const removeKnowledgeFile = async (id: number) => {
+    const file = knowledgeFiles.find(f => f.id === id);
+    try {
+      const { orgId, profileId: resolvedProfileId } = await getUploadContext();
+      // Call delete webhook if we have a filePath (storage key)
+      if (file?.filePath) {
+        const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: file.filePath, document_id: (file as any)?.documentId || undefined }),
+        });
+        if (!resp.ok) {
+          let message = `Delete failed (${resp.status})`;
+          try { const j = await resp.json(); message = j?.message || message; } catch {}
+          throw new Error(message);
+        }
+        // Require explicit confirmation from webhook
+        let payload: any = {};
+        try { payload = await resp.json(); } catch {}
+        const st = String(payload?.status || '').toLowerCase();
+        if (st !== 'deleted') {
+          throw new Error(payload?.message || 'Delete not confirmed by webhook');
+        }
+      }
+      setKnowledgeFiles((prev) => prev.filter((f) => f.id !== id));
+      toast.info(`${file?.name || 'File'} removed`);
+    } catch (err: any) {
+      console.error('Error deleting file via webhook:', err);
+      toast.error(err?.message || 'Failed to delete file');
+    }
   };
   const processKnowledgeFile = (id: number) => {
     setKnowledgeFiles((prev) => prev.map((f) => (f.id === id ? { ...f, status: 'processing' } : f)));
@@ -375,17 +701,96 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       toast.success('File processed');
     }, 900);
   };
-  const clearKnowledgeFiles = () => setKnowledgeFiles([]);
+
+  const downloadKnowledgeFile = async (file: KnowledgeFile) => {
+    try {
+      const path = file.filePath;
+      if (!path) throw new Error('Missing file path');
+      const { data, error } = await supabase.storage
+        .from('ai-agent-files')
+        .createSignedUrl(path, 60 * 60, { download: file.name || 'file.pdf' });
+      if (error) throw error;
+      const href = data?.signedUrl || file.url || '';
+      if (!href) throw new Error('Unable to generate download link');
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = file.name || '';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to download file');
+    }
+  };
+  const clearKnowledgeFiles = async () => {
+    const files = knowledgeFiles.filter(f => f.filePath);
+    if (files.length > 0) {
+      try {
+        const { orgId, profileId: resolvedProfileId } = await getUploadContext();
+        await Promise.all(files.map(async (f) => {
+          try {
+            const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: f.filePath, document_id: (f as any)?.documentId || undefined })
+            });
+            if (!resp.ok) {
+              let message = `Delete failed (${resp.status})`;
+              try { const j = await resp.json(); message = j?.message || message; } catch {}
+              console.warn('Delete webhook failed for', f.filePath, message);
+            } else {
+              // Confirm webhook success status
+              let payload: any = {};
+              try { payload = await resp.json(); } catch {}
+              const st = String(payload?.status || '').toLowerCase();
+              if (st !== 'deleted') {
+                console.warn('Delete webhook did not confirm deletion for', f.filePath, st);
+              }
+            }
+          } catch (e) {
+            console.warn('Delete webhook error for', f.filePath, e);
+          }
+        }));
+      } catch (e) {
+        console.error('Error clearing files via webhook:', e);
+      }
+    }
+    setKnowledgeFiles([]);
+    toast.info('All files cleared');
+  };
 
   // Knowledge: Q&A
   interface QAPair { id: number; question: string; answer: string; }
   const [qaPairs, setQaPairs] = useState<QAPair[]>([
     { id: Date.now(), question: '', answer: '' },
   ]);
-  const addQaPair = () => setQaPairs((prev) => [{ id: Date.now() + Math.random(), question: '', answer: '' }, ...prev]);
-  const removeQaPair = (id: number) => setQaPairs((prev) => prev.filter((p) => p.id !== id));
+  // Keep a baseline copy to detect changes per pair
+  const [initialQaPairs, setInitialQaPairs] = useState<QAPair[]>([
+    { id: Date.now(), question: '', answer: '' },
+  ]);
+  const addQaPair = () => {
+    const newPair: QAPair = { id: Date.now() + Math.random(), question: '', answer: '' };
+    setQaPairs((prev) => [newPair, ...prev]);
+    // Add the same baseline so Save stays hidden until user types
+    setInitialQaPairs((prev) => [JSON.parse(JSON.stringify(newPair)), ...prev]);
+  };
+  const removeQaPair = (id: number) => {
+    setQaPairs((prev) => prev.filter((p) => p.id !== id));
+    setInitialQaPairs((prev) => prev.filter((p) => p.id !== id));
+  };
   const updateQaPair = (id: number, field: 'question' | 'answer', value: string) => {
     setQaPairs((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } as QAPair : p)));
+  };
+  const isPairDirty = (pair: QAPair) => {
+    const base = initialQaPairs.find((p) => p.id === pair.id);
+    const q = (pair.question || '').trim();
+    const a = (pair.answer || '').trim();
+    if (!base) {
+      return q !== '' || a !== '';
+    }
+    return q !== (base.question || '').trim() || a !== (base.answer || '').trim();
   };
   
   // Followups state
@@ -430,8 +835,22 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setStopAfterHandoff(profile.stop_ai_after_handoff);
       setModel(profile.model || "gpt-4o-mini");
       setTemperature(profile.temperature || 0.3);
+      const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
+      if (qna && Array.isArray(qna)) {
+        const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
+        setQaPairs(pairs);
+        setInitialQaPairs(JSON.parse(JSON.stringify(pairs)));
+      }
     }
   }, [profile, isNewAgent]);
+
+  // For new agents, set initial baseline equal to the starter pair once at mount
+  useEffect(() => {
+    if (isNewAgent) {
+      setInitialQaPairs(JSON.parse(JSON.stringify(qaPairs)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Save AI profile
   const handleSave = async () => {
@@ -443,6 +862,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       model: model,
       temperature: temperature,
       name: agentName,
+      // Persist Q&A pairs into ai_profiles.qna JSONB
+      // Store compact q/a pairs for space efficiency
+      qna: qaPairs
+        .filter((p) => (p.question?.trim() || p.answer?.trim()))
+        .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
     };
 
     try {
@@ -693,7 +1117,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
         <TabsContent value="knowledge" className="space-y-6">
           <Card className="p-6">
             {/* Knowledge Source Type Tabs */}
-            <Tabs defaultValue="text" className="w-full">
+            <Tabs value={knowledgeTab} onValueChange={setKnowledgeTab} className="w-full">
               <TabsList className="grid w-full grid-cols-3 mb-6">
                 <TabsTrigger value="text" className="gap-2">
                       <FileText className="w-4 h-4" />
@@ -908,15 +1332,24 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
               <TabsContent value="file" className="space-y-6">
                 <div
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  className="border border-dashed rounded-lg p-6 text-center bg-muted/30"
+                  onDrop={canUploadAgentFiles ? handleDrop : undefined}
+                  onDragOver={canUploadAgentFiles ? handleDragOver : undefined}
+                  className={`border border-dashed rounded-lg p-6 text-center ${canUploadAgentFiles ? 'bg-muted/30' : 'bg-muted/50 opacity-70'}`}
                 >
-                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} />
+                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} disabled={!canUploadAgentFiles} />
                   <FileIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mb-3">Drag & drop documents here, or</p>
-                  <Button size="sm" onClick={() => fileInputRef.current?.click()}>Browse Files</Button>
-                  <p className="text-xs text-muted-foreground mt-2">Supported: PDF, DOCX, TXT, CSV, MD</p>
+                  {canUploadAgentFiles ? (
+                    <>
+                      <p className="text-sm text-muted-foreground mb-3">Drag & drop documents here, or</p>
+                      <Button size="sm" onClick={() => fileInputRef.current?.click()}>Browse Files</Button>
+                      <p className="text-xs text-muted-foreground mt-2">Supported: PDF</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground">You don't have permission to upload files.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Requires permission: {UPLOAD_PERMISSION}</p>
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -927,7 +1360,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                     )}
                   </div>
 
-                  {knowledgeFiles.length === 0 ? (
+                  {loadingFiles ? (
+                    <div className="text-sm text-muted-foreground">Loading files...</div>
+                  ) : knowledgeFiles.length === 0 ? (
                     <div className="text-sm text-muted-foreground">No files uploaded yet.</div>
                   ) : (
                     <div className="border rounded-md divide-y">
@@ -941,9 +1376,34 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`text-xs px-2 py-0.5 rounded ${f.status==='ready'?'bg-green-100 text-green-700':f.status==='processing'?'bg-amber-100 text-amber-700':'bg-red-100 text-red-700'}`}>{f.status}</span>
-                            <Button size="sm" variant="outline" onClick={() => processKnowledgeFile(f.id)} disabled={f.status==='processing'}>Process</Button>
-                            <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => removeKnowledgeFile(f.id)}>
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              f.status==='ready'?'bg-green-100 text-green-700':
+                              f.status==='uploading'?'bg-blue-100 text-blue-700':
+                              f.status==='processing'?'bg-amber-100 text-amber-700':
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {f.status === 'uploading' ? (
+                                <div className="flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  uploading
+                                </div>
+                              ) : f.status}
+                            </span>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => downloadKnowledgeFile(f)}
+                              disabled={f.status==='uploading'}
+                            >
+                              Download
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="text-red-600 hover:text-red-700" 
+                              onClick={() => removeKnowledgeFile(f.id)}
+                              disabled={f.status==='uploading'}
+                            >
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
@@ -960,7 +1420,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                     <h3 className="text-lg font-semibold">Q&A Knowledge</h3>
                     <p className="text-sm text-muted-foreground">Add question–answer pairs the AI can reference.</p>
                   </div>
-                  <Button size="sm" onClick={addQaPair} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
+                  <Button size="sm" onClick={()=>{ setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
                 </div>
 
                 {qaPairs.length === 0 ? (
@@ -984,7 +1444,32 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                             />
                           </div>
                           <div className="flex flex-col gap-2">
-                            <Button variant="outline" size="sm" onClick={()=>toast.success('Saved')}>Save</Button>
+                            {isPairDirty(pair) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async (e)=>{
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  // Ensure we stay on the QA tab after saving
+                                  setKnowledgeTab('qa');
+                                  try {
+                                    await saveProfile({
+                                      qna: qaPairs
+                                        .filter((p) => (p.question?.trim() || p.answer?.trim()))
+                                        .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
+                                    });
+                                    // Sync baseline to latest saved values
+                                    setInitialQaPairs(JSON.parse(JSON.stringify(qaPairs)));
+                                    toast.success('Q&A saved');
+                                  } catch (e:any) {
+                                    toast.error(e?.message || 'Failed to save Q&A');
+                                  }
+                                }}
+                              >
+                                Save
+                              </Button>
+                            )}
                             <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={()=>removeQaPair(pair.id)}>
                               <Trash2 className="w-4 h-4" />
                             </Button>
