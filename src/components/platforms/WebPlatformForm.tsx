@@ -36,6 +36,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
     selectedHumanAgents: [] as string[]
   });
   const [submitting, setSubmitting] = useState(false);
+  const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
 
   const businessCategories = [
     "E-commerce",
@@ -66,9 +67,15 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
     }));
   };
 
+  const handleSuperAgentSelect = (userId: string) => {
+    setSelectedSuperAgentId(userId);
+    setFormData(prev => ({ ...prev, selectedHumanAgents: [] }));
+  };
+
   const isFormValid = formData.displayName && 
     formData.selectedAIAgent &&
-    formData.websiteUrl;
+    formData.websiteUrl &&
+    selectedSuperAgentId;
 
   const handleSubmit = async () => {
     try {
@@ -218,28 +225,49 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
             )}
           </div>
 
-          {/* Select Human Agents */}
-          <div className="space-y-2">
-            <Label>Select Human Agents (optional)</Label>
+          {/* Assign Agents with role clustering */}
+          <div className="space-y-4">
+            <Label>Assign Agents</Label>
             {humanAgentsLoading ? (
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {humanAgents.map((agent) => (
-                  <div key={agent.user_id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={agent.user_id}
-                      checked={formData.selectedHumanAgents.includes(agent.user_id)}
-                      onChange={() => handleHumanAgentToggle(agent.user_id)}
-                      className="rounded border-gray-300"
-                    />
-                    <Label htmlFor={agent.user_id} className="text-sm cursor-pointer">
-                      {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}
-                    </Label>
+              <>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {humanAgents.filter(a => a.primaryRole === 'super_agent').map(sa => (
+                      <label key={sa.user_id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="radio" name="super-agent" checked={selectedSuperAgentId===sa.user_id} onChange={()=>handleSuperAgentSelect(sa.user_id)} className="accent-emerald-600" />
+                        <span>{sa.display_name || sa.email || sa.user_id.slice(0,8)}</span>
+                      </label>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-blue-700">Master Agents</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {humanAgents.filter(a => a.primaryRole === 'master_agent').map(ma => (
+                      <div key={ma.user_id} className="text-xs text-muted-foreground">{ma.display_name || ma.email || ma.user_id.slice(0,8)}</div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-xs font-medium">Agents {selectedSuperAgentId? '' : '(select a Super Agent first)'}</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {humanAgents.filter(a => a.primaryRole === 'agent').map(ag => {
+                      const blocked = Boolean(ag.super_agent_id && ag.super_agent_id !== selectedSuperAgentId);
+                      return (
+                        <label key={ag.user_id} className={`flex items-center gap-2 text-sm ${(!selectedSuperAgentId || blocked) ? 'opacity-50' : ''}`} title={blocked ? 'Agent attached to another Super Agent' : ''}>
+                          <input type="checkbox" disabled={!selectedSuperAgentId || blocked} checked={formData.selectedHumanAgents.includes(ag.user_id)} onChange={()=>handleHumanAgentToggle(ag.user_id)} className="rounded border-gray-300" />
+                          <span>{ag.display_name || ag.email || `Agent ${ag.user_id.slice(0,8)}`}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>

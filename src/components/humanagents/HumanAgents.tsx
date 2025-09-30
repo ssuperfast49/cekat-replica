@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
+import { useAIAgents } from "@/hooks/useAIAgents";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { useRBAC } from "@/contexts/RBACContext";
 import { ROLES } from "@/types/rbac";
@@ -42,11 +43,14 @@ const HumanAgents = () => {
   //   description: "" 
   // });
   const [creatingAgent, setCreatingAgent] = useState(false);
+  const [selectedSuperForNewAgent, setSelectedSuperForNewAgent] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deletingAgent, setDeletingAgent] = useState(false);
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentWithDetails | null>(null);
   const { toast } = useToast();
   const { hasPermission, hasRole } = useRBAC();
+  const [selectedSuperForCluster, setSelectedSuperForCluster] = useState<string | null>(null);
+  const { aiAgents, setFilterBySuper, fetchAIAgents } = useAIAgents();
 
   const {
     agents,
@@ -77,13 +81,33 @@ const HumanAgents = () => {
     try {
       setCreatingAgent(true);
       setEnable2FAFlagForCreate(enable2FA);
-      await createAgent({
+      const res = await createAgent({
         full_name: newAgent.name,
         email: newAgent.email,
         role: newAgent.role
       });
 
+      // Auto-assign super_agent membership when role is agent and a super is chosen
+      try {
+        if (newAgent.role === 'agent') {
+          // If creator is master_agent, they must select a super agent to attach
+          const targetSuper = selectedSuperForNewAgent;
+          if (!targetSuper) {
+            toast({ title: 'Assignment needed', description: 'Select a Super Agent to attach this agent to.', variant: 'destructive' });
+          } else if (res?.id) {
+            // Resolve org of current user
+            const { data: me } = await supabase.auth.getUser();
+            const { data: mem } = await supabase.from('org_members').select('org_id').eq('user_id', me?.user?.id || '').limit(1);
+            const orgId = mem?.[0]?.org_id || null;
+            if (orgId) {
+              await supabase.from('super_agent_members').insert({ org_id: orgId, super_agent_id: targetSuper, agent_user_id: res.id });
+            }
+          }
+        }
+      } catch {}
+
       setNewAgent({ name: "", email: "", role: "agent" });
+      setSelectedSuperForNewAgent(null);
       setEnable2FA(false);
       setIsCreateDialogOpen(false);
       
@@ -376,6 +400,21 @@ const HumanAgents = () => {
                   </SelectContent>
                 </Select>
               </div>
+              {newAgent.role === 'agent' && (
+                <div className="space-y-2">
+                  <Label>Attach to Super Agent</Label>
+                  <Select value={selectedSuperForNewAgent || ''} onValueChange={(v)=>setSelectedSuperForNewAgent(v)}>
+                    <SelectTrigger className="bg-background border">
+                      <SelectValue placeholder="Select Super Agent" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border z-50">
+                      {agents.filter(a=>a.primaryRole==='super_agent').map(sa=> (
+                        <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="flex gap-2 pt-4">
                 <Button onClick={handleCreateAgent} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" disabled={creatingAgent}>
                   {creatingAgent ? (
@@ -555,6 +594,99 @@ const HumanAgents = () => {
 
         {/** Teams tab removed temporarily */}
       {/* </Tabs> */}
+
+      {/* Clustering UI: Super Agent → Agents & AI Agents */}
+      <div className="rounded-lg border bg-card">
+        <div className="p-4 border-b bg-muted/50 font-medium text-sm">Clustering: Super Agents → Agents & AI Agents</div>
+        <div className="p-4 space-y-4">
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Select Super Agent</Label>
+              <Select value={selectedSuperForCluster || ''} onValueChange={(v)=>{ setSelectedSuperForCluster(v); setFilterBySuper(v); }}>
+                <SelectTrigger className="bg-background border">
+                  <SelectValue placeholder="Choose a super agent" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border z-50">
+                  {agents.filter(a=>a.primaryRole==='super_agent').map(sa => (
+                    <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Agents</Label>
+              <div className="rounded-md border p-2 max-h-64 overflow-auto">
+                {!selectedSuperForCluster ? (
+                  <div className="text-sm text-muted-foreground">Select a Super Agent.</div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">Assigned to this Super</div>
+                    {(agents.filter(a=>a.primaryRole==='agent' && a.super_agent_id===selectedSuperForCluster)).map(a => (
+                      <div key={a.user_id} className="flex items-center justify-between text-sm">
+                        <span>{a.display_name || a.email}</span>
+                        <Button size="sm" variant="outline" onClick={async()=>{
+                          try{
+                            const { data: me } = await supabase.auth.getUser();
+                            const { data: mem } = await supabase.from('org_members').select('org_id').eq('user_id', me?.user?.id||'').limit(1);
+                            const orgId = mem?.[0]?.org_id || null;
+                            if (orgId) await supabase.from('super_agent_members').delete().eq('org_id', orgId).eq('agent_user_id', a.user_id);
+                            toast({ title: 'Unassigned', description: 'Agent removed from Super Agent' });
+                            await fetchAgents({ force: true });
+                          }catch(e:any){ toast({ title:'Error', description:e?.message||'Failed', variant:'destructive' }); }
+                        }}>Remove</Button>
+                      </div>
+                    ))}
+                    <div className="h-px bg-border my-2"></div>
+                    <div className="text-xs text-muted-foreground">Available (Unassigned)</div>
+                    {(agents.filter(a=>a.primaryRole==='agent' && !a.super_agent_id)).map(a => (
+                      <div key={a.user_id} className="flex items-center justify-between text-sm">
+                        <span>{a.display_name || a.email}</span>
+                        <Button size="sm" onClick={async()=>{
+                          try{
+                            const { data: me } = await supabase.auth.getUser();
+                            const { data: mem } = await supabase.from('org_members').select('org_id').eq('user_id', me?.user?.id||'').limit(1);
+                            const orgId = mem?.[0]?.org_id || null;
+                            if (orgId && selectedSuperForCluster) await supabase.from('super_agent_members').insert({ org_id: orgId, super_agent_id: selectedSuperForCluster, agent_user_id: a.user_id });
+                            toast({ title: 'Assigned', description: 'Agent assigned to Super Agent' });
+                            await fetchAgents({ force: true });
+                          }catch(e:any){ toast({ title:'Error', description:e?.message||'Failed', variant:'destructive' }); }
+                        }}>Assign</Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>AI Agents</Label>
+              <div className="rounded-md border p-2 max-h-64 overflow-auto">
+                {!selectedSuperForCluster ? (
+                  <div className="text-sm text-muted-foreground">Select a Super Agent.</div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">Reassign / Attach</div>
+                    {aiAgents.map(a => (
+                      <div key={a.id} className="flex items-center justify-between text-sm">
+                        <span>{a.name || a.id}</span>
+                        <Button size="sm" onClick={async()=>{
+                          try{
+                            if (!selectedSuperForCluster) return;
+                            await supabase.from('ai_profiles').update({ super_agent_id: selectedSuperForCluster }).eq('id', a.id);
+                            toast({ title:'Updated', description:'AI Agent assigned.' });
+                            await fetchAIAgents();
+                          }catch(e:any){ toast({ title:'Error', description:e?.message||'Failed', variant:'destructive' }); }
+                        }}>{a.super_agent_id===selectedSuperForCluster? 'Assigned' : 'Assign here'}</Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Confirm Delete Dialog */}
       <Dialog open={confirmDeleteOpen} onOpenChange={(v)=>{ if (!deletingAgent) setConfirmDeleteOpen(v); }}>

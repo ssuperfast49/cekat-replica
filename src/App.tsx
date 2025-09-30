@@ -13,6 +13,7 @@ import Otp from "./pages/Otp";
 import Logout from "./pages/Logout";
 import NotFound from "./pages/NotFound";
 import Changelog from "./pages/Changelog";
+import LiveChat from "./pages/LiveChat";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +57,9 @@ const App = () => (
             } />
             <Route path="/logout" element={<Logout />} />
             <Route path="/changelog" element={<Changelog />} />
+            {/* Public, chat-only embed route */}
+            <Route path="/livechat/:platform_id" element={<LiveChat />} />
+            <Route path="/livechat/:platformId" element={<LiveChat />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
             </Routes>

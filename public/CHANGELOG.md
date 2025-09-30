@@ -1,33 +1,4 @@
 # Change Log
-# [0.0.20] FE WEB CEKAT 2025-09-30
-### Updates
-- Platform agent assignment
-  - Persist selected agents on create to `channel_agents`; updates replace assignments.
-  - Agents now only see platforms they’re assigned to; master/super see all.
-  - Platforms list shows only attached human agents (no more org-wide members).
-
-- Platform details UI
-  - New Super Agent section: shows assigned super agent; single-select; editable by master agents only; stored in `channels.credentials.super_agent_id`.
-  - Human Agent manager: chips with remove (X) + searchable multi-select to add; lists only regular agents (excludes super/master).
-  - Removed unused “Teams” card; unified details behavior across providers.
-
-- Telegram platform creation
-  - Hits `POST /telegram/create-platform` (CREATE_PLATFORM) before channel insert.
-  - Sends `brand_name, display_name, description, telegram_bot_token, ai_profile_id, human_agent_ids, org_id`.
-  - Robust response handling for empty/non-JSON bodies; emits refresh after success.
-
-- Data fetching and names
-  - Human agent names prefer `users_profile.display_name` with fallback to `v_users.display_name`; email sourced from `v_users`.
-  - Fixed error when `users_profile.email` was selected (column doesn’t exist).
-
-- Components
-  - Added `ui/multi-select` (popover + search + checkbox) for multi-add of agents.
-
-- Fixes
-  - Agent chips now display the correct agent name (not internal IDs).
-  - Only the agents selected during platform creation are attached (no more “all agents” issue).
-  - Resolved Telegram JSON parse errors and `42703 users_profile.email` error.
-
 # [0.0.19] FE WEB CEKAT 2025-09-23
 ### Updates
 - Automatically switch to the Resolved tab when only closed conversations are present

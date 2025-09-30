@@ -23,13 +23,16 @@ import WhatsAppPlatformForm from "./WhatsAppPlatformForm";
 import TelegramPlatformForm from "./TelegramPlatformForm";
 import WebPlatformForm from "./WebPlatformForm";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { useRBAC } from "@/contexts/RBACContext";
+import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
-  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, uploadProfilePhoto, fetchPlatforms } = usePlatforms();
+  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, uploadProfilePhoto, fetchPlatforms, updatePlatform } = usePlatforms();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
+  const { hasRole } = useRBAC();
   
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [providerTab, setProviderTab] = useState<'whatsapp' | 'telegram' | 'web'>('whatsapp');
@@ -40,6 +43,8 @@ const ConnectedPlatforms = () => {
   const [isPlatformSelectionOpen, setIsPlatformSelectionOpen] = useState(false);
   const [selectedPlatformType, setSelectedPlatformType] = useState<'whatsapp' | 'web' | 'telegram' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [updatingAgents, setUpdatingAgents] = useState(false);
+  const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
 
 
 
@@ -102,10 +107,14 @@ const ConnectedPlatforms = () => {
   // Get the selected platform data
   const selectedPlatformData = platforms.find(platform => platform.id === selectedPlatform);
   useEffect(() => {
-    // Preload channels for each org
+    // Preload channels for each org once per change-set
     const uniqueOrgIds = Array.from(new Set(platforms.map(p => p.org_id)));
-    uniqueOrgIds.forEach(orgId => { fetchChannelsByOrg(orgId); });
-  }, [platforms, fetchChannelsByOrg]);
+    if (uniqueOrgIds.length === 0) return;
+    // Fire-and-forget but avoid tight loops by batching with a microtask
+    Promise.resolve().then(() => {
+      uniqueOrgIds.forEach(orgId => { fetchChannelsByOrg(orgId); });
+    });
+  }, [platforms]);
 
   // Listen for refresh-platforms event to refetch channels/platforms
   useEffect(() => {
@@ -114,6 +123,11 @@ const ConnectedPlatforms = () => {
     return () => window.removeEventListener('refresh-platforms' as any, handler);
   }, [fetchPlatforms]);
   const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
+  const assignedHumanAgents = selectedPlatformData?.human_agents || [];
+  const canEditAgents = hasRole('master_agent') || hasRole('super_agent');
+  const canEditSuperAgent = hasRole('master_agent');
+  const availableAgentsToAdd = humanAgents.filter(a => a.primaryRole === 'agent' && !assignedHumanAgents.some(x => x.user_id === a.user_id));
+  const multiSelectOptions: MultiSelectOption[] = availableAgentsToAdd.map(a => ({ value: a.user_id, label: a.display_name || a.email || a.user_id.slice(0,8) }));
 
   const renderPlatformDetails = (includeWebExtras: boolean) => (
     <>
@@ -147,19 +161,52 @@ const ConnectedPlatforms = () => {
         </CardContent>
       </Card>
 
-      {/* Teams */}
+      {/* Super Agent */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Teams</CardTitle>
+          <CardTitle className="text-base">Super Agent</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-3">
-            You don't have any divisions yet. Create it now.
-          </p>
-          <Button variant="outline" className="text-blue-600">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Division
-          </Button>
+          {(() => {
+            const superAgentId = (selectedPlatformData as any)?.super_agent_id || (selectedPlatformData as any)?.credentials?.super_agent_id || null;
+            const allAgents = humanAgents || [];
+            const superAgent = allAgents.find(a => a.user_id === superAgentId && a.primaryRole === 'super_agent') || null;
+            const superAgentsOnly = allAgents.filter(a => a.primaryRole === 'super_agent');
+            if (!canEditSuperAgent) {
+              return (
+                <div className="text-sm">
+                  {superAgent ? (
+                    <div className="inline-flex items-center gap-2 bg-muted px-3 py-1 rounded-md">👤 {superAgent.display_name || superAgent.email}</div>
+                  ) : (
+                    <span className="text-muted-foreground">No super agent assigned</span>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <div className="flex items-center gap-2">
+                <Select
+                  value={superAgentId || ""}
+                  onValueChange={async (val) => {
+                    if (!selectedPlatformData) return;
+                    await updatePlatform(selectedPlatformData.id, { super_agent_id: val || undefined });
+                  }}
+                >
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Assign super agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {superAgentsOnly.map(sa => (
+                      <SelectItem key={sa.user_id} value={sa.user_id}>
+                        👤 {sa.display_name || sa.email || sa.user_id.slice(0,8)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">(master agent only)</span>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -171,19 +218,62 @@ const ConnectedPlatforms = () => {
         <CardContent>
           {humanAgentsLoading ? (
             <div className="text-sm text-muted-foreground">Loading human agents...</div>
-          ) : humanAgents.length > 0 ? (
+          ) : assignedHumanAgents.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {humanAgents.map((agent) => (
+              {assignedHumanAgents.map((agent) => (
                 <div key={agent.user_id} className="flex items-center gap-2 bg-muted px-3 py-1 rounded-md">
-                  <span className="text-sm">👤 {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}</span>
-                  <Button variant="ghost" size="sm" className="h-4 w-4 p-0">
-                    <X className="h-3 w-3" />
-                  </Button>
+                  <span className="text-sm">👤 {agent.display_name || agent.email || agent.user_id}</span>
+                  {canEditAgents && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-4 w-4 p-0"
+                      disabled={updatingAgents || !selectedPlatformData}
+                      onClick={async () => {
+                        if (!selectedPlatformData) return;
+                        try {
+                          setUpdatingAgents(true);
+                          const nextIds = assignedHumanAgents
+                            .filter((a: any) => a.user_id !== agent.user_id)
+                            .map((a: any) => a.user_id);
+                          await updatePlatform(selectedPlatformData.id, { human_agent_ids: nextIds });
+                        } finally {
+                          setUpdatingAgents(false);
+                        }
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No human agents available</p>
+            <p className="text-sm text-muted-foreground">No agents connected</p>
+          )}
+
+          {canEditAgents && selectedPlatformData && (
+            <div className="mt-3 flex items-center gap-2">
+              <MultiSelect options={multiSelectOptions} value={pendingAgentIds} onChange={setPendingAgentIds} placeholder="Select human agents to add" />
+              <Button
+                variant="outline"
+                disabled={updatingAgents || pendingAgentIds.length === 0}
+                onClick={async () => {
+                  if (!selectedPlatformData) return;
+                  try {
+                    setUpdatingAgents(true);
+                    const currentIds = assignedHumanAgents.map((a: any) => a.user_id);
+                    const nextIds = Array.from(new Set([...currentIds, ...pendingAgentIds]));
+                    await updatePlatform(selectedPlatformData.id, { human_agent_ids: nextIds });
+                    setPendingAgentIds([]);
+                  } finally {
+                    setUpdatingAgents(false);
+                  }
+                }}
+              >
+                Add selected
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -257,7 +347,7 @@ const ConnectedPlatforms = () => {
 
       {includeWebExtras && (
         <>
-          {/* Link LiveChat */}
+          {/* Link LiveChat (project-hosted) */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -268,7 +358,7 @@ const ConnectedPlatforms = () => {
             <CardContent>
               <div className="bg-muted p-3 rounded-md">
                 <Input 
-                  value="https://live.cekat.ai/livechat?IP_3Xb83e94"
+                  value={`https://classy-frangollo-337599.netlify.app/livechat/${selectedPlatformData?.id || '{platform_id}'}`}
                   readOnly
                   className="bg-background"
                 />
@@ -286,21 +376,21 @@ const ConnectedPlatforms = () => {
             </CardHeader>
             <CardContent>
               <Textarea
-                value={`<script type="text/javascript">
-window.mychat = window.mychat || [];
-window.mychat.storage = "https://live.cekat.ai/socket.io";
-window.mychat.key = "3Xb83e94";
-window.mychat.frameWidth = "768px";
-window.mychat.frameHeight = "500px";
-window.mychat.accessibility = "GULTIK-3Xb83e94";
-window.mychat.position = "bottom-right";
-(function() {
-  var script = document.createElement('script');
-  script.type = 'text/javascript';
-  script.async = true;
-  script.src = window.mychat.storage;
-  var s = document.getElementsByTagName('script')[0];
-  s.parentNode.insertBefore(script, s);
+                value={`<script>
+(function(){
+  // Lightweight chat embed - uses YOUR project's origin
+  var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
+  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'https://classy-frangollo-337599.netlify.app'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
+  cfg.position=cfg.position||'bottom-right'; cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
+  var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+
+           '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+
+           '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';
+  var s=d.createElement('style'); s.type='text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);
+  var bubble=d.createElement('button'); bubble.id='chat-bubble'; bubble.setAttribute('aria-label','Open chat'); bubble.innerHTML='💬';
+  var panel=d.createElement('div'); panel.id='chat-panel';
+  var iframe=d.createElement('iframe'); iframe.src=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);
+  bubble.addEventListener('click',function(){ panel.classList.toggle('open'); });
+  d.body.appendChild(bubble); d.body.appendChild(panel);
 })();
 </script>`}
                 readOnly
@@ -920,198 +1010,8 @@ window.mychat.position = "bottom-right";
             )}
             {currentPlatformType === 'web' && (
               <div className="grid gap-6">
-                  {/* AI Agent */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">AI Agent</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {aiAgentsLoading ? (
-                        <div className="text-sm text-muted-foreground">Loading AI agents...</div>
-                      ) : (
-                        <Select 
-                          value={selectedPlatformData?.ai_profile_id || ""} 
-                          onValueChange={(value) => {
-                            // Here you would typically update the platform's AI agent
-                            // For now, we'll just update the local state
-                            setSelectedAgent(value);
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choose an AI agent" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {aiAgents.map((agent) => (
-                              <SelectItem key={agent.id} value={agent.id}>
-                                🤖 {agent.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Teams */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Teams</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        You don't have any divisions yet. Create it now.
-                      </p>
-                      <Button variant="outline" className="text-blue-600">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create Division
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Human Agent */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Human Agent</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {humanAgentsLoading ? (
-                        <div className="text-sm text-muted-foreground">Loading human agents...</div>
-                      ) : humanAgents.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {humanAgents.map((agent) => (
-                            <div key={agent.user_id} className="flex items-center gap-2 bg-muted px-3 py-1 rounded-md">
-                              <span className="text-sm">👤 {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}</span>
-                              <Button variant="ghost" size="sm" className="h-4 w-4 p-0">
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No human agents available</p>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Chat Distribution Method */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Chat Distribution Method</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Select defaultValue="least-assigned">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="least-assigned">Least Assigned First</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </CardContent>
-                  </Card>
-
-                  {/* Customer Satisfaction Feature */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        Customer Satisfaction Feature (CSAT) 
-                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Tingkatkan review kualitas live chat Anda melalui fitur agent
-                      </p>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <Label className="text-sm font-medium">Frequently Asked Questions (FAQ)</Label>
-                          <div className="mt-2 flex gap-2">
-                            <Input placeholder="0 Question" className="flex-1" />
-                            <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                              ADD FAQ →
-                            </Button>
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium">Social Link</Label>
-                          <div className="mt-2 flex gap-2">
-                            <Input placeholder="0 Social Link" className="flex-1" />
-                            <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                              ADD LINK →
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* User Info Requirement */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">User Info Requirement</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center space-x-2">
-                        <Switch id="user-info" />
-                        <Label htmlFor="user-info" className="text-sm">
-                          Disable
-                        </Label>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Link LiveChat */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        Link LiveChat 
-                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="bg-muted p-3 rounded-md">
-                        <Input 
-                          value="https://live.cekat.ai/livechat?IP_3Xb83e94"
-                          readOnly
-                          className="bg-background"
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Embed Code */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        Embed Code 
-                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Textarea
-                        value={`<script type="text/javascript">
-window.mychat = window.mychat || [];
-window.mychat.storage = "https://live.cekat.ai/socket.io";
-window.mychat.key = "3Xb83e94";
-window.mychat.frameWidth = "768px";
-window.mychat.frameHeight = "500px";
-window.mychat.accessibility = "GULTIK-3Xb83e94";
-window.mychat.position = "bottom-right";
-(function() {
-  var script = document.createElement('script');
-  script.type = 'text/javascript';
-  script.async = true;
-  script.src = window.mychat.storage;
-  var s = document.getElementsByTagName('script')[0];
-  s.parentNode.insertBefore(script, s);
-})();
-</script>`}
-                        readOnly
-                        className="font-mono text-xs h-48 bg-muted"
-                      />
-                    </CardContent>
-                  </Card>
-                </div>
+                {renderPlatformDetails(true)}
+              </div>
             )}
 
             {currentPlatformType === 'whatsapp' && (

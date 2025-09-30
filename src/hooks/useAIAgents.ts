@@ -15,12 +15,14 @@ export interface AIAgent {
   model: string;
   temperature?: number;
   created_at: string;
+  super_agent_id?: string;
 }
 
 export const useAIAgents = () => {
   const [aiAgents, setAIAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filterBySuper, setFilterBySuper] = useState<string | null>(null);
 
   const fetchAIAgents = async () => {
     try {
@@ -31,10 +33,12 @@ export const useAIAgents = () => {
 
       // Fetch all AI profiles for selection
       await waitForAuthReady();
-      const { data: aiAgentsData, error: aiAgentsError } = await supabase
+      let query = supabase
         .from('ai_profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, model, temperature, created_at, super_agent_id')
+        .order('created_at', { ascending: false }) as any;
+      if (filterBySuper) query = query.eq('super_agent_id', filterBySuper);
+      const { data: aiAgentsData, error: aiAgentsError } = await query;
 
       console.log('AI agents data:', aiAgentsData);
       console.log('AI agents error:', aiAgentsError);
@@ -76,12 +80,13 @@ export const useAIAgents = () => {
     if (!had) {
       if (isDocumentHidden()) onDocumentVisible(run); else run();
     }
-  }, []);
+  }, [filterBySuper]);
 
   return {
     aiAgents,
     loading,
     error,
-    fetchAIAgents
+    fetchAIAgents,
+    setFilterBySuper
   };
 };

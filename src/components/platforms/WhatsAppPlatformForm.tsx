@@ -24,7 +24,7 @@ interface WhatsAppPlatformFormProps {
 const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: WhatsAppPlatformFormProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
+  const { aiAgents, loading: aiAgentsLoading, setFilterBySuper } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
   const [formData, setFormData] = useState({
@@ -45,6 +45,10 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const isFetchingRef = useRef(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
+
+  // WAHA base URL
+  const WAHA_BASE = 'https://waha-plus-production-97c1.up.railway.app';
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -61,6 +65,17 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         : [...prev.selectedHumanAgents, agentId]
     }));
   };
+
+  const handleSuperAgentSelect = (userId: string) => {
+    setSelectedSuperAgentId((prev) => (prev === userId ? userId : userId));
+    // Reset human agents when changing super agent to avoid cross-super selections
+    setFormData((prev) => ({ ...prev, selectedHumanAgents: [] }));
+  };
+
+  // Filter AI Agents by selected super agent
+  useEffect(() => {
+    try { setFilterBySuper(selectedSuperAgentId || null as any); } catch {}
+  }, [selectedSuperAgentId]);
 
   const getUserOrgId = async () => {
     if (!user) return null;
@@ -216,7 +231,30 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   // Check WhatsApp session status via polling
   const checkSessionStatus = async () => {
     try {
-      const response = await fetch('https://waha-production-c0b8.up.railway.app/api/sessions/default', {
+      // Determine session name from Supabase channels table or from current state
+      const resolveSessionName = async (): Promise<string> => {
+        if (sessionName && sessionName.trim().length > 0) return sessionName;
+        try {
+          const orgId = await getUserOrgId();
+          if (!orgId) return 'default';
+          const { data: ch } = await supabase
+            .from('channels')
+            .select('display_name, provider')
+            .eq('org_id', orgId)
+            .eq('provider', 'whatsapp')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const name = (ch?.display_name || '').replace(/\s/g, '') || 'default';
+          return name;
+        } catch {
+          return 'default';
+        }
+      };
+
+      const resolved = await resolveSessionName();
+      const url = `${WAHA_BASE}/session/${encodeURIComponent(resolved)}`;
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -261,7 +299,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     return () => clearInterval(pollInterval);
   }, [qrImageUrl, isWhatsAppConnected]);
 
-  const hasRequiredFields = Boolean(formData.platformName && formData.selectedAIAgent);
+  const hasRequiredFields = Boolean(formData.platformName && formData.selectedAIAgent && selectedSuperAgentId);
 
   const handleCancel = async () => {
     try {
@@ -426,27 +464,65 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
           </div>
 
           {/* Select Human Agents */}
-          <div className="space-y-2">
-            <Label>Select Human Agents (optional)</Label>
+          <div className="space-y-4">
+            <Label>Assign Agents</Label>
             {humanAgentsLoading ? (
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {humanAgents.map((agent) => (
-                  <div key={agent.user_id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={agent.user_id}
-                      checked={formData.selectedHumanAgents.includes(agent.user_id)}
-                      onChange={() => handleHumanAgentToggle(agent.user_id)}
-                      className="rounded border-gray-300"
-                    />
-                    <Label htmlFor={agent.user_id} className="text-sm cursor-pointer">
-                      {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}
-                    </Label>
+              <>
+                {/* Super Agent (single-select) */}
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {humanAgents.filter(a => a.primaryRole === 'super_agent').map(sa => (
+                      <label key={sa.user_id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="radio"
+                          name="super-agent"
+                          checked={selectedSuperAgentId === sa.user_id}
+                          onChange={() => handleSuperAgentSelect(sa.user_id)}
+                          className="accent-emerald-600"
+                        />
+                        <span>{sa.display_name || sa.email || sa.user_id.slice(0,8)}</span>
+                      </label>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+
+                {/* Master Agents (display only for awareness) */}
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-blue-700">Master Agents</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {humanAgents.filter(a => a.primaryRole === 'master_agent').map(ma => (
+                      <div key={ma.user_id} className="text-xs text-muted-foreground">
+                        {ma.display_name || ma.email || ma.user_id.slice(0,8)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Regular Agents under selected super agent */}
+                <div className="space-y-1">
+                  <div className="text-xs font-medium">Agents {selectedSuperAgentId ? '' : '(select a Super Agent first)'}</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {humanAgents.filter(a => a.primaryRole === 'agent').map(ag => {
+                      const blocked = Boolean(ag.super_agent_id && ag.super_agent_id !== selectedSuperAgentId);
+                      return (
+                        <label key={ag.user_id} className={`flex items-center gap-2 text-sm ${(!selectedSuperAgentId || blocked) ? 'opacity-50' : ''}`} title={blocked ? 'Agent attached to another Super Agent' : ''}>
+                          <input
+                            type="checkbox"
+                            disabled={!selectedSuperAgentId || blocked}
+                            checked={formData.selectedHumanAgents.includes(ag.user_id)}
+                            onChange={() => handleHumanAgentToggle(ag.user_id)}
+                            className="rounded border-gray-300"
+                          />
+                          <span>{ag.display_name || ag.email || `Agent ${ag.user_id.slice(0,8)}`}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>

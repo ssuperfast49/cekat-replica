@@ -23,6 +23,8 @@ export interface PlatformWithAgents extends Platform {
     display_name?: string;
     email?: string;
   }>;
+  super_agent_id?: string | null;
+  credentials?: any;
 }
 
 export interface CreatePlatformData {
@@ -65,6 +67,34 @@ export const usePlatforms = () => {
 
       const orgIds = userOrgs.map(org => org.org_id);
 
+      // Determine current user's role profile
+      const { data: userRoleRows } = await supabase
+        .from('user_roles')
+        .select('role_id')
+        .eq('user_id', user.id);
+      let isMaster = false, isSuper = false, isAgentOnly = false;
+      if (userRoleRows && userRoleRows.length > 0) {
+        const roleIds = userRoleRows.map(r => r.role_id);
+        const { data: roleDefs } = await supabase
+          .from('roles')
+          .select('id, name')
+          .in('id', roleIds);
+        const names = (roleDefs || []).map(r => (r.name || '').toLowerCase());
+        isMaster = names.includes('master_agent');
+        isSuper = names.includes('super_agent');
+        isAgentOnly = names.includes('agent') && !isMaster && !isSuper;
+      }
+
+      // If the user is a regular agent, prefetch allowed channel_ids
+      let allowedChannelIds: Set<string> | null = null;
+      if (isAgentOnly) {
+        const { data: caMine } = await supabase
+          .from('channel_agents')
+          .select('channel_id')
+          .eq('user_id', user.id);
+        allowedChannelIds = new Set((caMine || []).map(r => r.channel_id));
+      }
+
       // Fetch channels for all user's organizations (platforms merged into channels)
       const { data: channelsData, error: channelsError } = await supabase
         .from('channels')
@@ -80,44 +110,88 @@ export const usePlatforms = () => {
         return;
       }
 
-      // Map channels to platform-like objects and attach human agents (org members)
-      const platformsWithAgents = await Promise.all(
-        (channelsData || []).map(async (ch: any) => {
-          const { data: orgMembers, error: orgMembersError } = await supabase
-            .from('org_members')
-            .select(`
-              user_id,
-              role,
-              users_profile!inner (
-                display_name,
-                email
-              )
-            `)
-            .eq('org_id', ch.org_id);
+      // Batch-fetch all org members once for these orgs, then map per org_id
+      const { data: allMembers, error: allMembersError } = await supabase
+        .from('org_members')
+        .select(`
+          org_id,
+          user_id,
+          role,
+          v_users!inner (
+            display_name,
+            email
+          )
+        `)
+        .in('org_id', orgIds);
 
-          if (orgMembersError) {
-            console.error('Error fetching org members for platform:', orgMembersError);
-            return {
-              ...ch,
-              provider: ch.provider,
-              status: ch.is_active ? 'active' : 'inactive',
-              human_agents: []
-            };
+      if (allMembersError) {
+        console.error('Error fetching org members for platforms:', allMembersError);
+      }
+
+      const membersByOrg: Record<string, any[]> = {};
+      for (const m of allMembers || []) {
+        const key = m.org_id as string;
+        if (!membersByOrg[key]) membersByOrg[key] = [];
+        membersByOrg[key].push(m);
+      }
+
+      // Optionally restrict to assigned channels for agents
+      const filteredChannels = (channelsData || []).filter((ch: any) => {
+        if (!allowedChannelIds) return true; // master/super see all
+        return allowedChannelIds.has(ch.id);
+      });
+
+      // Map channels and attach human agents based on channel_agents
+      const platformsWithAgents = await Promise.all(filteredChannels.map(async (ch: any) => {
+        try {
+          const { data: ca } = await supabase
+            .from('channel_agents')
+            .select('user_id')
+            .eq('channel_id', ch.id);
+          const ids = (ca || []).map((r: any) => r.user_id);
+          let profiles: any[] = [];
+          if (ids.length > 0) {
+            // Prefer users_profile.display_name; fall back to v_users
+            const [profRes, vuserRes] = await Promise.all([
+              supabase
+                .from('users_profile')
+                .select('user_id, display_name')
+                .in('user_id', ids),
+              supabase
+                .from('v_users')
+                .select('id, display_name, email')
+                .in('id', ids)
+            ]);
+            const profs = profRes.data || [];
+            const vus = vuserRes.data || [];
+            const byId: Record<string, { display_name?: string | null; email?: string | null }> = {};
+            vus.forEach((v: any) => { byId[v.id] = { display_name: v.display_name, email: v.email }; });
+            profs.forEach((p: any) => { byId[p.user_id] = { display_name: p.display_name ?? byId[p.user_id]?.display_name, email: byId[p.user_id]?.email }; });
+            profiles = Object.entries(byId).map(([user_id, val]) => ({ user_id, ...val }));
           }
-
+          const humanAgents = ids.map((uid: string) => {
+            const prof = profiles.find((x: any) => x.user_id === uid || x.id === uid) || {} as any;
+            return { user_id: uid, display_name: prof.display_name || prof?.display_name, email: prof.email };
+          });
           return {
             ...ch,
             provider: ch.provider,
             status: ch.is_active ? 'active' : 'inactive',
-            human_agents: (orgMembers || []).map((member: any) => ({
-              user_id: member.user_id,
-              display_name: member.users_profile?.display_name,
-              email: member.users_profile?.email,
-              role: member.role
-            }))
-          };
-        })
-      );
+            human_agents: humanAgents,
+            super_agent_id: (ch?.credentials as any)?.super_agent_id ?? null,
+            credentials: ch?.credentials ?? null,
+          } as PlatformWithAgents;
+        } catch {
+          return {
+            ...ch,
+            provider: ch.provider,
+            status: ch.is_active ? 'active' : 'inactive',
+            human_agents: [],
+            super_agent_id: (ch?.credentials as any)?.super_agent_id ?? null,
+            credentials: ch?.credentials ?? null,
+          } as PlatformWithAgents;
+        }
+      }));
 
       setPlatforms(platformsWithAgents);
     } catch (error) {
@@ -172,7 +246,12 @@ export const usePlatforms = () => {
         throw platformError;
       }
 
-      // Do not modify org_members on platform creation
+      // Attach selected human agents to the channel
+      if (platformData.human_agent_ids && platformData.human_agent_ids.length > 0) {
+        const rows = platformData.human_agent_ids.map(uid => ({ channel_id: (newChannel as any).id, user_id: uid }));
+        const { error: caErr } = await supabase.from('channel_agents').insert(rows);
+        if (caErr) console.warn('Failed to attach channel agents on create:', caErr);
+      }
 
       // Refresh platforms list
       await fetchPlatforms();
@@ -187,22 +266,40 @@ export const usePlatforms = () => {
     }
   };
 
-  const updatePlatform = async (platformId: string, updates: Partial<CreatePlatformData>) => {
+  const updatePlatform = async (platformId: string, updates: Partial<CreatePlatformData & { super_agent_id?: string }>) => {
     try {
       setError(null);
 
-      const { error: platformError } = await supabase
-        .from('channels')
-        .update({
-          display_name: updates.display_name,
-          profile_photo_url: updates.profile_photo_url,
-          ai_profile_id: updates.ai_profile_id,
-          provider: updates.provider,
-        })
-        .eq('id', platformId);
+      // Only send defined fields to avoid unintentionally nulling columns
+      const channelUpdates: Record<string, any> = {};
+      if (typeof updates.display_name !== 'undefined') channelUpdates.display_name = updates.display_name;
+      if (typeof updates.profile_photo_url !== 'undefined') channelUpdates.profile_photo_url = updates.profile_photo_url;
+      if (typeof updates.ai_profile_id !== 'undefined') channelUpdates.ai_profile_id = updates.ai_profile_id;
+      if (typeof updates.provider !== 'undefined') channelUpdates.provider = updates.provider;
 
-      if (platformError) {
-        throw platformError;
+      if (Object.keys(channelUpdates).length > 0) {
+        const { error: platformError } = await supabase
+          .from('channels')
+          .update(channelUpdates)
+          .eq('id', platformId);
+        if (platformError) {
+          throw platformError;
+        }
+      }
+
+      // Update credentials.super_agent_id if provided
+      if (typeof updates.super_agent_id !== 'undefined') {
+        const { data: current } = await supabase
+          .from('channels')
+          .select('credentials')
+          .eq('id', platformId)
+          .single();
+        const nextCreds = { ...(current?.credentials || {}), super_agent_id: updates.super_agent_id };
+        const { error: credErr } = await supabase
+          .from('channels')
+          .update({ credentials: nextCreds })
+          .eq('id', platformId);
+        if (credErr) console.warn('Failed to update super_agent_id credentials', credErr);
       }
 
       // Update human agents if provided

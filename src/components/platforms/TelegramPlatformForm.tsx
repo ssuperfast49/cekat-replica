@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,7 @@ interface TelegramPlatformFormProps {
 const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: TelegramPlatformFormProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
+  const { aiAgents, loading: aiAgentsLoading, setFilterBySuper } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
   const [formData, setFormData] = useState({
@@ -35,6 +35,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     selectedHumanAgents: [] as string[]
   });
   const [submitting, setSubmitting] = useState(false);
+  const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -52,9 +53,18 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     }));
   };
 
+  const handleSuperAgentSelect = (userId: string) => {
+    setSelectedSuperAgentId(userId);
+    setFormData(prev => ({ ...prev, selectedHumanAgents: [] }));
+  };
+
+  // Filter AI Agents by selected super agent
+  useEffect(() => { try { setFilterBySuper(selectedSuperAgentId || null as any); } catch {} }, [selectedSuperAgentId]);
+
   const isFormValid = formData.displayName && 
     formData.selectedAIAgent &&
-    formData.telegramBotToken;
+    formData.telegramBotToken &&
+    selectedSuperAgentId;
 
   const getUserOrgId = async () => {
     if (!user) return null;
@@ -104,13 +114,39 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         throw new Error(`Telegram webhook failed with status ${webhookResponse.status}`);
       }
 
-      const webhookResult = await webhookResponse.json();
+      // Safely read response body (webhook may return empty or non-JSON)
+      let webhookResult: any = null;
+      try {
+        const ct = webhookResponse.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          webhookResult = await webhookResponse.json();
+        } else {
+          const text = await webhookResponse.text();
+          try { webhookResult = text ? JSON.parse(text) : null; } catch { webhookResult = { raw: text || null }; }
+        }
+      } catch {
+        // ignore body parsing errors
+        webhookResult = null;
+      }
       console.log('Telegram webhook response:', webhookResult);
 
-      toast({
-        title: "Success",
-        description: "Telegram channel created and webhook sent successfully!",
-      });
+      // Save platform and link selected agents (handled in usePlatforms.createPlatform)
+      try {
+        const submitData = {
+          display_name: formData.displayName,
+          description: formData.description,
+          profile_photo_url: null as any,
+          ai_profile_id: formData.selectedAIAgent,
+          provider: 'telegram' as const,
+          human_agent_ids: formData.selectedHumanAgents,
+        };
+        // If parent provided onSubmit, let it persist to channels
+        await onSubmit(submitData);
+      } catch (e) {
+        console.warn('Failed to persist channel record:', e);
+      }
+
+      toast({ title: "Success", description: "Telegram channel created successfully" });
       try {
         window.dispatchEvent(new CustomEvent('refresh-platforms'));
       } catch {}
@@ -161,23 +197,6 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             />
           </div>
 
-
-
-          {/* Telegram Bot Token */}
-          <div className="space-y-2">
-            <Label htmlFor="telegramBotToken">Telegram Bot Token *</Label>
-            <Input
-              id="telegramBotToken"
-              type="password"
-              placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-              value={formData.telegramBotToken}
-              onChange={(e) => setFormData(prev => ({ ...prev, telegramBotToken: e.target.value }))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Get this token from @BotFather on Telegram. Format: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-            </p>
-          </div>
-
           {/* Telegram Bot Setup Instructions */}
           <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
             <div className="flex items-center justify-between">
@@ -219,6 +238,21 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             </div>
           </div>
 
+          {/* Telegram Bot Token */}
+          <div className="space-y-2">
+            <Label htmlFor="telegramBotToken">Telegram Bot Token *</Label>
+            <Input
+              id="telegramBotToken"
+              type="password"
+              placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+              value={formData.telegramBotToken}
+              onChange={(e) => setFormData(prev => ({ ...prev, telegramBotToken: e.target.value }))}
+            />
+            <p className="text-xs text-muted-foreground">
+              Get this token from @BotFather on Telegram. Format: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+            </p>
+          </div>
+
           {/* Profile Photo / Logo */}
           <div className="space-y-2">
             <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
@@ -256,6 +290,25 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             </div>
           </div>
 
+          {/* Select Super Agent */}
+          <div className="space-y-2">
+            <Label>Super Agent *</Label>
+            {humanAgentsLoading ? (
+              <div className="text-sm text-muted-foreground">Loading...</div>
+            ) : (
+              <Select value={selectedSuperAgentId || ''} onValueChange={(v)=>handleSuperAgentSelect(v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a Super Agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  {humanAgents.filter(a=>a.primaryRole==='super_agent').map(sa => (
+                    <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
           {/* Select AI Agent */}
           <div className="space-y-2">
             <Label htmlFor="aiAgent">Select AI Agent *</Label>
@@ -285,20 +338,24 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {humanAgents.map((agent) => (
-                  <div key={agent.user_id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={agent.user_id}
-                      checked={formData.selectedHumanAgents.includes(agent.user_id)}
-                      onChange={() => handleHumanAgentToggle(agent.user_id)}
-                      className="rounded border-gray-300"
-                    />
-                    <Label htmlFor={agent.user_id} className="text-sm cursor-pointer">
-                      {agent.display_name || agent.email || `Agent ${agent.user_id.slice(0, 8)}`}
-                    </Label>
-                  </div>
-                ))}
+                {humanAgents.filter(a=>a.primaryRole==='agent').map((ag) => {
+                  const blocked = Boolean(ag.super_agent_id && ag.super_agent_id !== selectedSuperAgentId);
+                  return (
+                    <div key={ag.user_id} className={`flex items-center space-x-2 ${(!selectedSuperAgentId || blocked) ? 'opacity-50' : ''}`} title={blocked ? 'Agent attached to another Super Agent' : ''}>
+                      <input
+                        type="checkbox"
+                        id={ag.user_id}
+                        disabled={!selectedSuperAgentId || blocked}
+                        checked={formData.selectedHumanAgents.includes(ag.user_id)}
+                        onChange={() => handleHumanAgentToggle(ag.user_id)}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor={ag.user_id} className="text-sm cursor-pointer">
+                        {ag.display_name || ag.email || `Agent ${ag.user_id.slice(0, 8)}`}
+                      </Label>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

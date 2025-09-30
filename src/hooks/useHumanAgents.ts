@@ -25,6 +25,7 @@ export interface AgentWithDetails {
   roles: string[];
   primaryRole: 'master_agent' | 'super_agent' | 'agent' | null;
   status: 'Active' | 'Inactive';
+  super_agent_id?: string | null;
 }
 
 export const useHumanAgents = () => {
@@ -59,63 +60,85 @@ export const useHumanAgents = () => {
     return null;
   };
 
-  // Fetch all agents using the v_users view
-  const fetchAgents = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Module-scoped cache and in-flight promise to dedupe concurrent calls across components
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Using module-level state ensures only one network call even if multiple hook instances mount.
+  // TTL keeps data reasonably fresh without spamming the server on route transitions.
+  const AGENTS_CACHE_TTL_MS = 60_000;
+  // @ts-ignore - hoisted singletons shared by module
+  if (!(globalThis as any).__agentsCache) {
+    (globalThis as any).__agentsCache = { data: null as AgentWithDetails[] | null, ts: 0, inFlight: null as Promise<AgentWithDetails[]> | null };
+  }
+  // @ts-ignore - read shared cache
+  const shared = (globalThis as any).__agentsCache as { data: AgentWithDetails[] | null; ts: number; inFlight: Promise<AgentWithDetails[]> | null };
 
-      console.log('Fetching human agents from v_users...');
+  const transformVUsers = (usersData: any[]): AgentWithDetails[] => {
+    return (usersData || []).map((user: any) => {
+      const validRoles = user.roles?.filter((role: unknown): role is string => role !== null && role !== undefined) || [];
+      const primaryRole = getPrimaryRole(user.roles || []);
+      return {
+        user_id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+        timezone: user.timezone,
+        created_at: user.created_at,
+        roles: validRoles,
+        primaryRole: primaryRole,
+        status: 'Active' as const,
+        super_agent_id: null
+      };
+    });
+  };
 
-      // Wait for auth session restoration after a hard refresh
+  const fetchAgentsOnce = async (): Promise<AgentWithDetails[]> => {
+    if (shared.inFlight) return shared.inFlight;
+    shared.inFlight = (async () => {
       await waitForAuthReady();
-
-      // Use the new v_users view - much simpler!
       const { data: usersData, error: usersError } = await supabase
         .from('v_users')
         .select('*')
         .order('created_at', { ascending: false });
+      if (usersError) throw usersError;
+      let transformed = transformVUsers(usersData || []);
+      // Attach super_agent mapping for agents
+      try {
+        const { data: mappings } = await supabase
+          .from('super_agent_members')
+          .select('agent_user_id, super_agent_id');
+        if (mappings && Array.isArray(mappings)) {
+          const byId: Record<string, string> = {};
+          mappings.forEach((m: any) => { byId[m.agent_user_id] = m.super_agent_id; });
+          transformed = transformed.map(a => a.primaryRole === 'agent' ? { ...a, super_agent_id: byId[a.user_id] || null } : a);
+        }
+      } catch {}
+      shared.data = transformed;
+      shared.ts = Date.now();
+      shared.inFlight = null;
+      try { localStorage.setItem('app.cachedAgents', JSON.stringify(transformed)); } catch {}
+      return transformed;
+    })().catch((e) => { shared.inFlight = null; throw e; });
+    return shared.inFlight;
+  };
 
-      console.log('v_users data:', usersData);
-      console.log('v_users error:', usersError);
+  const getAgentsCachedOrLoad = async (): Promise<AgentWithDetails[]> => {
+    const fresh = shared.data && (Date.now() - shared.ts) < AGENTS_CACHE_TTL_MS;
+    if (fresh) return shared.data as AgentWithDetails[];
+    return await fetchAgentsOnce();
+  };
 
-      if (usersError) {
-        console.error('Error fetching from v_users:', usersError);
-        setError('Failed to fetch user data');
-        return;
-      }
-
-      // Transform v_users data to AgentWithDetails
-      const transformedAgents: AgentWithDetails[] = (usersData || []).map(user => {
-        const validRoles = user.roles?.filter((role): role is string => role !== null && role !== undefined) || [];
-        const primaryRole = getPrimaryRole(user.roles || []);
-        
-        console.log(`User ${user.display_name}:`, {
-          originalRoles: user.roles,
-          validRoles: validRoles,
-          primaryRole: primaryRole
-        });
-        
-        return {
-          user_id: user.id,
-          email: user.email,
-          display_name: user.display_name,
-          avatar_url: user.avatar_url,
-          timezone: user.timezone,
-          created_at: user.created_at,
-          roles: validRoles,
-          primaryRole: primaryRole,
-          status: 'Active' as const
-        };
-      });
-
-      console.log('Transformed agents:', transformedAgents);
-      setAgents(transformedAgents);
-      try { localStorage.setItem('app.cachedAgents', JSON.stringify(transformedAgents)); } catch {}
+  // Fetch all agents using the v_users view with de-duplication and caching
+  const fetchAgents = async (opts?: { force?: boolean }) => {
+    try {
+      setLoading(true);
+      setError(null);
+      if (opts?.force) { shared.ts = 0; }
+      const data = await getAgentsCachedOrLoad();
+      setAgents(data);
     } catch (error) {
       console.error('Error fetching human agents:', error);
       setError('Failed to fetch human agents');
-      setAgents([]); // Clear agents on error
+      setAgents([]);
     } finally {
       setLoading(false);
     }
@@ -154,7 +177,7 @@ export const useHumanAgents = () => {
         } catch {}
       }
 
-      await fetchAgents();
+      await fetchAgents({ force: true });
       try { await logAction({ action: 'user.create', resource: 'user', resourceId: data?.id || null, context: agentData as any }); } catch {}
 
       return { id: data?.id } as any;
@@ -198,7 +221,7 @@ export const useHumanAgents = () => {
       if (insertError) throw insertError;
 
       // Refresh the agents list to get updated data from v_users
-      await fetchAgents();
+      await fetchAgents({ force: true });
 
       try { await logAction({ action: 'user.update_role', resource: 'user', resourceId: agentId, context: { role } }); } catch {}
     } catch (error) {
@@ -220,7 +243,7 @@ export const useHumanAgents = () => {
       if (fnErr) throw fnErr;
 
       // Refresh the agents list
-      await fetchAgents();
+      await fetchAgents({ force: true });
 
       try { await logAction({ action: 'user.delete', resource: 'user', resourceId: agentId }); } catch {}
     } catch (error) {
