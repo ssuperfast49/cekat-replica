@@ -227,14 +227,47 @@ const HumanAgents = () => {
     try {
       setLoadingUsage(true);
       const { start, end } = computeRange(range);
-      const { data, error } = await supabase
-        .from('token_usage_logs')
-        .select('total_tokens')
-        .eq('user_id', userId)
-        .gte('made_at', start)
-        .lte('made_at', end);
-      if (error) throw error;
-      const total = (data || []).reduce((sum: number, row: any) => sum + Number(row.total_tokens || 0), 0);
+      // Aggregate per super-agent cluster. If the selected user is attached to a super agent,
+      // count tokens for ALL agents in that cluster. Otherwise, count by this user only.
+      const superId = agents.find(a => a.user_id === userId)?.super_agent_id || null;
+      const clusterIds = superId
+        ? agents.filter(a => a.primaryRole === 'agent' && a.super_agent_id === superId).map(a => a.user_id)
+        : [userId];
+
+      // Gather threads assigned to any agent in the cluster within timeframe
+      const { data: th } = await supabase
+        .from('threads')
+        .select('id')
+        .in('assignee_user_id', clusterIds)
+        .gte('created_at', start)
+        .lt('created_at', end);
+      const threadIds = (th || []).map((t: any) => t.id);
+
+      // Sum token logs by thread match and by explicit user match, dedup by log id
+      const [byThread, byUser] = await Promise.all([
+        threadIds.length > 0
+          ? supabase
+              .from('token_usage_logs')
+              .select('id,total_tokens')
+              .in('thread_id', threadIds)
+              .gte('made_at', start)
+              .lt('made_at', end)
+          : Promise.resolve({ data: [] as any[] } as any),
+        supabase
+          .from('token_usage_logs')
+          .select('id,total_tokens')
+          .in('user_id', clusterIds)
+          .gte('made_at', start)
+          .lt('made_at', end)
+      ]);
+      const seen = new Set<string>();
+      let total = 0;
+      for (const row of ([...(byThread.data as any[]) || [], ...(byUser.data as any[]) || []])) {
+        const id = String(row.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        total += Number(row.total_tokens || 0);
+      }
       setUsageTotal(total);
 
       // Parallel fetch of agent activity stats in the same range

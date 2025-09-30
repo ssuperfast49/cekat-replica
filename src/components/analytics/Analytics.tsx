@@ -51,6 +51,10 @@ export default function Analytics() {
   const [handoverStats, setHandoverStats] = useState<Array<{ reason: string; count: number; total: number; rate: number }>>([]);
   const [drillOpen, setDrillOpen] = useState(false);
   const [drillRows, setDrillRows] = useState<Array<{ id: string; created_at: string; contact_name: string; handover_reason: string | null; status: string }>>([]);
+  // Token usage (from token_usage_logs)
+  const [tokenSeries, setTokenSeries] = useState<Array<{ day: string; input: number; output: number; total: number }>>([]);
+  const [modelUsage, setModelUsage] = useState<Array<{ model: string; tokens: number }>>([]);
+  const [tokenTotals, setTokenTotals] = useState<{ input: number; output: number; total: number }>({ input: 0, output: 0, total: 0 });
 
   const formatHandoverLabel = (reason?: string | null) => {
     if (!reason || reason.trim().length === 0) return '(unspecified)';
@@ -112,6 +116,40 @@ export default function Analytics() {
     // Handover stats
     const { data: hs } = await supabase.rpc('get_handover_stats', { p_from: start, p_to: end });
     setHandoverStats(((hs as any) || []).map((r: any) => ({ reason: formatHandoverLabel(r.reason) || '(unspecified)', count: Number(r.count||0), total: Number(r.total||0), rate: Number(r.rate||0) })));
+
+    // Token usage (client-side aggregation from token_usage_logs)
+    try {
+      const { data: logs } = await supabase
+        .from('token_usage_logs')
+        .select('made_at, prompt_tokens, completion_tokens, total_tokens, model')
+        .gte('made_at', start)
+        .lt('made_at', end)
+        .order('made_at', { ascending: true });
+      const byDay: Record<string, { input: number; output: number; total: number }> = {};
+      const byModel: Record<string, number> = {};
+      let sumIn = 0, sumOut = 0, sumTotal = 0;
+      for (const row of (logs as any[]) || []) {
+        const day = new Date(row.made_at).toISOString().slice(0,10);
+        const input = Number(row.prompt_tokens || 0);
+        const output = Number(row.completion_tokens || 0);
+        const total = Number(row.total_tokens || (input + output));
+        if (!byDay[day]) byDay[day] = { input: 0, output: 0, total: 0 };
+        byDay[day].input += input;
+        byDay[day].output += output;
+        byDay[day].total += total;
+        const model = String(row.model || 'unknown');
+        byModel[model] = (byModel[model] || 0) + total;
+        sumIn += input; sumOut += output; sumTotal += total;
+      }
+      const series = Object.keys(byDay).sort().map(d => ({ day: d, ...byDay[d] }));
+      const models = Object.entries(byModel)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0, 8)
+        .map(([model, tokens]) => ({ model, tokens }));
+      setTokenSeries(series);
+      setModelUsage(models);
+      setTokenTotals({ input: sumIn, output: sumOut, total: sumTotal });
+    } catch {}
   };
 
   // Single source of truth for fetching; avoids double calls on mount
@@ -276,6 +314,43 @@ export default function Analytics() {
                   <Tooltip />
                   <Bar dataKey="value" fill={COLORS[3]} radius={[4, 4, 0, 0]}>
                     <LabelList dataKey="value" position="top" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Token Usage (by day)</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={tokenSeries.map(r=>({ day: new Date(r.day).toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' }), input: r.input, output: r.output }))}>
+                  <XAxis dataKey="day" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="input" stackId="tokens" fill={COLORS[1]} name="Prompt tokens" />
+                  <Bar dataKey="output" stackId="tokens" fill={COLORS[2]} name="Completion tokens" />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="text-xs text-muted-foreground mt-2">Total tokens: {tokenTotals.total.toLocaleString()} (input {tokenTotals.input.toLocaleString()}, output {tokenTotals.output.toLocaleString()})</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Models by Tokens</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={modelUsage.map(m=>({ name: m.model, tokens: m.tokens }))} layout="vertical">
+                  <XAxis type="number" />
+                  <YAxis type="category" dataKey="name" width={160} />
+                  <Tooltip />
+                  <Bar dataKey="tokens" fill={COLORS[4]} radius={[0,4,4,0]}>
+                    <LabelList dataKey="tokens" position="right" />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
