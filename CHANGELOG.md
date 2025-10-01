@@ -1,4 +1,16 @@
 # Change Log
+# [0.0.22] FE WEB CEKAT 2025-09-30
+- Fix platform creating for telegram
+- Add saving functionality for selected AI agent in ConnectedPlatforms and prevent duplicate Telegram bot tokens in TelegramPlatform Form
+- Enhance AI Agent Settings: Implement file upload functionality with Supabase integration, including upload progress tracking and error handling. Update UI to reflect file statuses and permissions. Add new knowledgebase endpoints for file management.
+- Enhance file upload process in AIAgentSettings: pre-compute content hash for stable key, include additional metadata (storageName, storageSize, storageUpdatedAt) in upload response, and improve file validation checks.
+
+# [0.0.21] FE WEB CEKAT 2025-09-30
+### Updates
+- Update CHANGELOG and enhance Analytics and HumanAgents components. 
+- Added token usage tracking in Analytics with visualizations for daily usage and top models. 
+- Improved token aggregation logic in HumanAgents to account for super-agent clusters.
+
 # [0.0.20] FE WEB CEKAT 2025-09-30
 ### Updates
 - Platform agent assignment
