@@ -88,6 +88,31 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         throw new Error('User not found in any organization');
       }
 
+      // Pre-check: prevent duplicate Telegram bot token across existing channels
+      const normalizedToken = (formData.telegramBotToken || '').trim();
+      if (!normalizedToken) {
+        throw new Error('Telegram bot token is required');
+      }
+      try {
+        const { data: existing } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('provider', 'telegram')
+          .eq('external_id', normalizedToken)
+          .limit(1);
+        if (Array.isArray(existing) && existing.length > 0) {
+          toast({
+            title: "Duplicate token",
+            description: "A Telegram bot with this BotFather token already exists.",
+            variant: "destructive",
+          });
+          setSubmitting(false);
+          return;
+        }
+      } catch (_) {
+        // If the check fails due to RLS/permissions, proceed; server/webhook should still validate.
+      }
+
       // First, send to Telegram webhook
       const telegramWebhookData = {
         brand_name: formData.displayName,

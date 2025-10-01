@@ -45,6 +45,7 @@ const ConnectedPlatforms = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingAgents, setUpdatingAgents] = useState(false);
   const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
+  const [savingPlatform, setSavingPlatform] = useState(false);
 
 
 
@@ -106,6 +107,14 @@ const ConnectedPlatforms = () => {
 
   // Get the selected platform data
   const selectedPlatformData = platforms.find(platform => platform.id === selectedPlatform);
+  // Keep local AI agent selection in sync with the selected platform
+  useEffect(() => {
+    if (selectedPlatformData) {
+      setSelectedAgent((selectedPlatformData as any)?.ai_profile_id || "");
+    } else {
+      setSelectedAgent("");
+    }
+  }, [selectedPlatformData?.id, (selectedPlatformData as any)?.ai_profile_id]);
   useEffect(() => {
     // Preload channels for each org once per change-set
     const uniqueOrgIds = Array.from(new Set(platforms.map(p => p.org_id)));
@@ -141,7 +150,7 @@ const ConnectedPlatforms = () => {
             <div className="text-sm text-muted-foreground">Loading AI agents...</div>
           ) : (
             <Select 
-              value={selectedPlatformData?.ai_profile_id || ""} 
+              value={selectedAgent || ""} 
               onValueChange={(value) => {
                 setSelectedAgent(value);
               }}
@@ -919,8 +928,34 @@ const ConnectedPlatforms = () => {
             <div className="flex gap-2">
               {selectedPlatformData && (
                 <>
-                  <Button variant="outline" size="sm">
-                    Save
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    disabled={savingPlatform || !selectedAgent || selectedAgent === (selectedPlatformData as any)?.ai_profile_id}
+                    onClick={async () => {
+                      if (!selectedPlatformData) return;
+                      try {
+                        setSavingPlatform(true);
+                        const updates: Record<string, any> = {};
+                        if (selectedAgent && selectedAgent !== (selectedPlatformData as any)?.ai_profile_id) {
+                          updates.ai_profile_id = selectedAgent;
+                        }
+                        if (Object.keys(updates).length === 0) {
+                          toast({ title: 'No changes', description: 'There are no changes to save.' });
+                          return;
+                        }
+                        await updatePlatform(selectedPlatformData.id, updates);
+                        toast({ title: 'Saved', description: 'Platform settings updated.' });
+                        try { window.dispatchEvent(new CustomEvent('refresh-platforms')); } catch {}
+                        await fetchPlatforms();
+                      } catch (e: any) {
+                        toast({ title: 'Error', description: e?.message || 'Failed to save platform', variant: 'destructive' });
+                      } finally {
+                        setSavingPlatform(false);
+                      }
+                    }}
+                  >
+                    {savingPlatform ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
                   </Button>
                   <Button 
                     variant="outline" 
