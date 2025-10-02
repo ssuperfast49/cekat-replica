@@ -4,9 +4,9 @@
   "version": "0.0.23",
   "type": "module",
   "scripts": {
-    "predev": "node ./scripts/copy-changelog.mjs",
+    "predev": "echo skip changelog copy",
     "dev": "vite",
-    "prebuild": "node ./scripts/copy-changelog.mjs",
+    "prebuild": "echo skip changelog copy",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
