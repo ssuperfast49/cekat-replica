@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Trash2, Plus, Loader2, X } from "lucide-react";
+import { Settings, Trash2, Plus, Loader2 } from "lucide-react";
 import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
@@ -261,16 +261,8 @@ const AIAgents = () => {
       {/* Create New Agent Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader className="flex flex-row items-center justify-between">
+          <DialogHeader>
             <DialogTitle className="text-xl font-semibold">Create New AI Agent</DialogTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowCreateDialog(false)}
-              className="h-6 w-6 p-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
           </DialogHeader>
           
           <div className="space-y-6 pt-4">

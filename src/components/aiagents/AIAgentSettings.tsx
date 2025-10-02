@@ -30,13 +30,15 @@ interface ChatMessage {
 const ChatPreview = ({ 
   welcomeMessage, 
   systemPrompt, 
-  model, 
+  modelDisplay,
+  modelName,
   temperature,
   transfer_conditions
 }: { 
   welcomeMessage: string;
   systemPrompt: string;
-  model: string;
+  modelDisplay: string;
+  modelName: string;
   temperature: number;
   transfer_conditions: string;
 }) => {
@@ -106,7 +108,7 @@ const ChatPreview = ({
       const requestBody = {
         message: inputMessage,
         system_prompt: systemPrompt + welcomeMessage + transfer_conditions,
-        model: model,
+        model: modelName,
         temperature: temperature,
         session_id: sessionId,
         timestamp: new Date().toISOString()
@@ -205,7 +207,7 @@ const ChatPreview = ({
         <div className="flex-1">
           <span className="font-medium">AI Agent Chat</span>
           <div className="text-xs text-muted-foreground">
-            Model: {model} • Temp: {temperature}
+            Model: {modelDisplay} • Temp: {temperature}
             <span className={`ml-2 px-1 rounded text-xs ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
               {isConnected ? 'Connected' : 'Disconnected'}
             </span>
@@ -325,9 +327,33 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       : profile?.transfer_conditions || ""
   );
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
-  const [model, setModel] = useState(profile?.model || "gpt-4o-mini");
+  // Model handling now uses ai_models (UUID) foreign key
+  const [availableModels, setAvailableModels] = useState<{ id: string; model_name: string; display_name: string | null; provider: string }[]>([]);
+  const [modelId, setModelId] = useState(profile?.model || "");
   const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
   
+  // Load available AI models
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('ai_models')
+          .select('id, provider, model_name, display_name, is_active')
+          .eq('is_active', true)
+          .order('display_name', { ascending: true });
+        if (error) throw error;
+        const models = (data || []) as any[];
+        setAvailableModels(models as any);
+        setModelId((prev) => prev || (models[0]?.id || ""));
+      } catch (e) {
+        console.error('Failed to load ai_models', e);
+      }
+    };
+    loadModels();
+  }, []);
+
+  const selectedModel = availableModels.find(m => m.id === modelId) || null;
+
   // Knowledge: Files
   type KnowledgeFileStatus = 'uploading' | 'ready' | 'processing' | 'failed';
   interface KnowledgeFile {
@@ -833,7 +859,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setWelcomeMessage(profile.welcome_message || "");
       setTransferConditions(profile.transfer_conditions || "");
       setStopAfterHandoff(profile.stop_ai_after_handoff);
-      setModel(profile.model || "gpt-4o-mini");
+      setModelId(profile.model || "");
       setTemperature(profile.temperature || 0.3);
       const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
       if (qna && Array.isArray(qna)) {
@@ -859,7 +885,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       welcome_message: welcomeMessage,
       transfer_conditions: transferConditions,
       stop_ai_after_handoff: stopAfterHandoff,
-      model: model,
+      model: modelId,
       temperature: temperature,
       name: agentName,
       // Persist Q&A pairs into ai_profiles.qna JSONB
@@ -1049,14 +1075,21 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Model</label>
-                    <select 
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
+                    <select
+                      value={modelId}
+                      onChange={(e) => setModelId(e.target.value)}
                       className="w-full p-2 border rounded-lg mt-1"
+                      disabled={availableModels.length === 0}
                     >
-                      <option value="gpt-4o-mini">GPT-4o Mini</option>
-                      <option value="gpt-4o">GPT-4o</option>
-                      <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                      {availableModels.length === 0 ? (
+                        <option value="">Loading models...</option>
+                      ) : (
+                        availableModels.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {(m.display_name || m.model_name) + (m.provider ? ` (${m.provider})` : '')}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <div>
@@ -1106,7 +1139,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               <ChatPreview 
                 welcomeMessage={welcomeMessage} 
                 systemPrompt={systemPrompt} 
-                model={model} 
+                modelDisplay={selectedModel?.display_name || selectedModel?.model_name || 'Not selected'} 
+                modelName={selectedModel?.model_name || ''} 
                 temperature={temperature} 
                 transfer_conditions={transferConditions}
               />
