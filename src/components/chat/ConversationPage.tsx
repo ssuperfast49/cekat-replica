@@ -51,6 +51,8 @@ interface MessageBubbleProps {
 const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageBubbleProps) => {
   const isAgent = message.role === 'assistant' || message.role === 'agent' || message.direction === 'out';
   const isSystem = message.role === 'system' || message.type === 'event' || message.type === 'note';
+  const isHumanAgent = message.role === 'assistant';
+  const isAiAgent = message.role === 'agent';
   
   if (isSystem) {
     return (
@@ -84,22 +86,28 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
         
         <div
           className={`rounded-lg px-3 py-2 text-sm shadow-sm ${
-            isAgent
-              ? "bg-blue-100 text-blue-900"
-              : "bg-muted text-foreground"
+            isAiAgent
+              ? "bg-blue-600 text-white"
+              : isHumanAgent
+                ? "bg-blue-100 text-blue-900"
+                : "bg-muted text-foreground"
           } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
         >
           <p className="whitespace-pre-wrap">{message.body}</p>
           <div className={`mt-1 flex items-center gap-1 text-[10px] ${
-            isAgent ? "text-blue-700" : "text-muted-foreground"
+            isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
           }`}>
             <Clock className="h-3 w-3" />
             <span>{new Date(message.created_at).toLocaleTimeString([], { 
               hour: "2-digit", 
               minute: "2-digit" 
             })}</span>
-            {isAgent && isLastMessage && (
-              <CheckCheck className="h-3 w-3" aria-label="delivered" />
+            {isAgent && (
+              message._status === 'pending' ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-label="pending" />
+              ) : isLastMessage ? (
+                <CheckCheck className="h-3 w-3" aria-label="sent" />
+              ) : null
             )}
           </div>
         </div>
@@ -326,8 +334,9 @@ export default function ConversationPage() {
         }
       }
 
-      await sendMessage(selectedThreadId, text, 'assistant');
+      // Clear input immediately and fire send without blocking UI
       setDraft("");
+      void sendMessage(selectedThreadId, text, 'assistant');
       toast.success("Message sent successfully");
     } catch (error) {
       toast.error("Failed to send message");

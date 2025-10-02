@@ -67,6 +67,8 @@ export interface MessageWithDetails extends Message {
   // Additional fields for display
   contact_name: string;
   contact_avatar: string;
+  // UI-only status flag for optimistic updates
+  _status?: 'pending' | 'sent' | 'error';
 }
 
 export const useConversations = () => {
@@ -253,7 +255,30 @@ export const useConversations = () => {
         actor_id: null
       };
 
-      // Insert message into database
+      // Optimistically push a pending message to UI
+      const optimisticId = `tmp_${Math.random().toString(36).slice(2)}`;
+      const optimistic: MessageWithDetails = {
+        id: optimisticId,
+        thread_id: threadId,
+        direction: 'out',
+        role,
+        type: 'text',
+        body: messageText,
+        payload: {},
+        actor_kind: 'agent',
+        actor_id: null,
+        seq: 0,
+        in_reply_to: null,
+        edited_at: null,
+        edit_reason: null,
+        created_at: new Date().toISOString(),
+        contact_name: '',
+        contact_avatar: 'A',
+        _status: 'pending'
+      };
+      setMessages(prev => [...prev, optimistic]);
+
+      // Insert message into database (authoritative)
       const { data, error } = await supabase
         .from('messages')
         .insert([newMessage])
@@ -302,7 +327,7 @@ export const useConversations = () => {
         // Don't throw here - we still want to save the message locally even if webhook fails
       }
 
-      // Refresh messages
+      // Replace optimistic pending with fresh list including the inserted message
       await fetchMessages(threadId);
 
       // Audit log
@@ -319,6 +344,17 @@ export const useConversations = () => {
     } catch (error) {
       console.error('Error sending message:', error);
       setError(error instanceof Error ? error.message : 'Failed to send message');
+      // Mark last optimistic message as error if present
+      setMessages(prev => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          if ((next[i] as any)._status === 'pending') {
+            (next[i] as any)._status = 'error';
+            break;
+          }
+        }
+        return next;
+      });
       throw error;
     }
   };
@@ -418,6 +454,7 @@ export const useConversations = () => {
               assignee_user_id: currentUserId,
               assigned_by_user_id: currentUserId,
               assigned_at: new Date().toISOString(),
+              handover_reason: 'other:manual_takeover'
             })
             .eq('id', threadId);
           if (updateErr) {

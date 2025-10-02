@@ -1,5 +1,11 @@
 # Change Log
+# [0.0.23] FE WEB CEKAT 2025-09-30
+### Updates
+- Enhance message handling in ConversationPage and useConversations hooks.
+- Optimistic UI updates for message status
+
 # [0.0.22] FE WEB CEKAT 2025-09-30
+### Updates
 - Fix platform creating for telegram
 - Add saving functionality for selected AI agent in ConnectedPlatforms and prevent duplicate Telegram bot tokens in TelegramPlatform Form
 - Enhance AI Agent Settings: Implement file upload functionality with Supabase integration, including upload progress tracking and error handling. Update UI to reflect file statuses and permissions. Add new knowledgebase endpoints for file management.
