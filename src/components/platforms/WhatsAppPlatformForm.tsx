@@ -253,7 +253,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       };
 
       const resolved = await resolveSessionName();
-      const url = `${WAHA_BASE}/session/${encodeURIComponent(resolved)}`;
+      const url = `${WAHA_BASE}/api/sessions/${encodeURIComponent(resolved)}`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {

@@ -1,4 +1,24 @@
 # Change Log
+# [0.0.24] FE WEB CEKAT 2025-10-02
+Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Platforms loop fix, UI polish
+### Updates
+- Analytics (Human Agent)
+  - Handover rate redefined as Human/(Human+AI) across all conversations (not only resolved).
+  - Added breakdowns: by Super Agent and by Agent, with Super Agent filter.
+- Database (Supabase)
+  - New/updated RPCs: `get_handover_by_super_agent`, `get_handover_by_agent`, `get_agent_kpis`.
+  - Enabled realtime by adding `public.threads` and `public.messages` to `supabase_realtime`.
+- Platforms (WhatsApp)
+  - Fetch sessions from WAHA (`/api/sessions` and `/api/sessions/{name}`); removed dependency on webhook `/get_sessions` calls in UI.
+  - Filter sessions to selected channel; debounced refresh; fixed infinite refresh loop on Platforms page.
+  - QR polling uses WAHA session endpoint; Disconnect/Delete refresh safely.
+- Conversations
+  - Live-updating conversation list and counts via realtime subscriptions to `threads` and `messages` (debounced).
+- UI
+  - Delete Channel button shows spinner + “Deleting…” and subtle pulse while processing.
+- Changelog
+  - Source from root `CHANGELOG.md` only; removed `public/CHANGELOG.md`; scripts updated to skip copy.
+
 # [0.0.23] FE WEB CEKAT 2025-10-02
 ### Updates
 - Live Chat

@@ -446,14 +446,18 @@ export default function ConversationPage() {
               className="text-xs border-b-2 border-transparent data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:border-blue-500"
             >
               Assigned
-              <Badge variant="secondary" className="ml-2 h-5 text-xs">{filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).length}</Badge>
+              <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
+                {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).length}
+              </Badge>
             </TabsTrigger>
             <TabsTrigger
               value="unassigned"
               className="text-xs border-b-2 border-transparent data-[state=active]:bg-red-50 data-[state=active]:text-red-600 data-[state=active]:border-red-500"
             >
               Unassigned
-              <Badge variant="secondary" className="ml-2 h-5 text-xs">{filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).length}</Badge>
+              <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
+                {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).length}
+              </Badge>
             </TabsTrigger>
             <TabsTrigger
               value="resolved"
@@ -462,7 +466,7 @@ export default function ConversationPage() {
             >
               <div className="flex items-center gap-1">
                 <CheckCircle className="h-4 w-4" />
-                <Badge variant="secondary" className="h-5 text-xs">
+                <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
                   {filteredConversations.filter(c=>c.status === 'closed').length}
                 </Badge>
               </div>

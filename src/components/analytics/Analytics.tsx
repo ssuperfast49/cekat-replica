@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ResponsiveContainer, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, LabelList, PieChart, Pie, Cell } from "recharts";
+import { ResponsiveContainer, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, LabelList, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 import { useEffect, useMemo, useState } from "react";
 import { supabase, logAction } from "@/lib/supabase";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
@@ -55,6 +55,11 @@ export default function Analytics() {
   const [tokenSeries, setTokenSeries] = useState<Array<{ day: string; input: number; output: number; total: number }>>([]);
   const [modelUsage, setModelUsage] = useState<Array<{ model: string; tokens: number }>>([]);
   const [tokenTotals, setTokenTotals] = useState<{ input: number; output: number; total: number }>({ input: 0, output: 0, total: 0 });
+  // Human Agent analytics
+  const [handoverBySuper, setHandoverBySuper] = useState<Array<{ super_agent_id: string | null; super_agent_name: string | null; human_resolved: number; ai_resolved: number; handover_rate: number }>>([]);
+  const [handoverByAgent, setHandoverByAgent] = useState<Array<{ agent_user_id: string; agent_name: string | null; super_agent_id: string | null; human_resolved: number; ai_resolved: number; handover_rate: number }>>([]);
+  const [agentKpis, setAgentKpis] = useState<Array<{ agent_user_id: string; agent_name: string | null; resolved_count: number; avg_resolution_minutes: number | null }>>([]);
+  const [selectedSuperForAgents, setSelectedSuperForAgents] = useState<string | 'all'>('all');
 
   const formatHandoverLabel = (reason?: string | null) => {
     if (!reason || reason.trim().length === 0) return '(unspecified)';
@@ -149,6 +154,38 @@ export default function Analytics() {
       setTokenSeries(series);
       setModelUsage(models);
       setTokenTotals({ input: sumIn, output: sumOut, total: sumTotal });
+    } catch {}
+
+    // Human Agent analytics
+    try {
+      const { data: bySuper } = await supabase.rpc('get_handover_by_super_agent', { p_from: start, p_to: end });
+      setHandoverBySuper(((bySuper as any) || []).map((r: any) => ({
+        super_agent_id: r.super_agent_id,
+        super_agent_name: r.super_agent_name,
+        human_resolved: Number(r.human_resolved || 0),
+        ai_resolved: Number(r.ai_resolved || 0),
+        handover_rate: Number(r.handover_rate || 0),
+      })));
+
+      const superFilter = selectedSuperForAgents !== 'all' ? selectedSuperForAgents : null;
+      const [{ data: byAgent }, { data: kpis }] = await Promise.all([
+        supabase.rpc('get_handover_by_agent', { p_from: start, p_to: end, p_super_agent_id: superFilter }),
+        supabase.rpc('get_agent_kpis', { p_from: start, p_to: end, p_super_agent_id: superFilter })
+      ]);
+      setHandoverByAgent(((byAgent as any) || []).map((r: any) => ({
+        agent_user_id: r.agent_user_id,
+        agent_name: r.agent_name,
+        super_agent_id: r.super_agent_id,
+        human_resolved: Number(r.human_resolved || 0),
+        ai_resolved: Number(r.ai_resolved || 0),
+        handover_rate: Number(r.handover_rate || 0),
+      })));
+      setAgentKpis(((kpis as any) || []).map((r: any) => ({
+        agent_user_id: r.agent_user_id,
+        agent_name: r.agent_name,
+        resolved_count: Number(r.resolved_count || 0),
+        avg_resolution_minutes: r.avg_resolution_minutes != null ? Number(r.avg_resolution_minutes) : null,
+      })));
     } catch {}
   };
 
@@ -359,21 +396,75 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="human-agent" className="space-y-6">
+          {/* Handover rate per super agent */}
           <Card>
             <CardHeader>
-              <CardTitle>Agent Metrics & Rates</CardTitle>
+              <CardTitle>Handover Rate by Super Agent (Human vs AI)</CardTitle>
             </CardHeader>
-            <CardContent className="h-64 flex items-center justify-center">
+            <CardContent className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={handoverStats.map(h=>({ name: h.reason, value: h.count }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
-                    {handoverStats.map((_, i)=> (
-                      <Cell key={i} fill={COLORS[(i % (COLORS.length-1))+1]} />
-                    ))}
-                  </Pie>
+                <BarChart data={handoverBySuper.map(r=>({ name: r.super_agent_name || '—', ratePct: Math.round((r.handover_rate||0)*100), human: r.human_resolved, ai: r.ai_resolved }))}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
                   <Tooltip />
                   <Legend />
-                </PieChart>
+                  <Bar dataKey="ratePct" name="Handover % (Human/(Human+AI))" fill={COLORS[1]} radius={[4,4,0,0]}>
+                    <LabelList dataKey="ratePct" position="top" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Filter and handover per agent within selected super agent */}
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-muted-foreground">Super Agent</div>
+            <Select value={selectedSuperForAgents} onValueChange={(v)=>setSelectedSuperForAgents(v as any)}>
+              <SelectTrigger className="w-[220px] h-9"><SelectValue placeholder="All" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {handoverBySuper.map(s=> (
+                  <SelectItem key={s.super_agent_id || 'none'} value={String(s.super_agent_id || 'none')}>{s.super_agent_name || '—'}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" className="h-9" onClick={fetchMetrics}>Apply</Button>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Handover Rate by Agent (Human vs AI)</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={handoverByAgent.map(r=>({ name: r.agent_name || '—', ratePct: Math.round((r.handover_rate||0)*100), human: r.human_resolved, ai: r.ai_resolved }))}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="ratePct" name="Handover % (Human/(Human+AI))" fill={COLORS[2]} radius={[4,4,0,0]}>
+                    <LabelList dataKey="ratePct" position="top" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Agent KPIs */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Agent KPIs</CardTitle>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={agentKpis.map(k=>({ name: k.agent_name || '—', resolved: k.resolved_count, avgMin: Math.round((k.avg_resolution_minutes||0)) }))}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="resolved" name="Resolved" fill={COLORS[3]} radius={[4,4,0,0]} />
+                  <Bar dataKey="avgMin" name="Avg Resolution (min)" fill={COLORS[5]} radius={[4,4,0,0]} />
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>

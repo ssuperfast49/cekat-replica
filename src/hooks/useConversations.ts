@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
 import { waitForAuthReady } from '@/lib/authReady';
 import WEBHOOK_CONFIG from '@/config/webhook';
@@ -76,6 +76,14 @@ export const useConversations = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const conversationsRefreshTimer = useRef<number | null>(null);
+
+  const scheduleConversationsRefresh = (delayMs: number = 400) => {
+    try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch {}
+    conversationsRefreshTimer.current = window.setTimeout(() => {
+      fetchConversations();
+    }, delayMs) as unknown as number;
+  };
 
   // LocalStorage hydrated snapshot to avoid empty UI during refresh
   const hydrateFromCache = () => {
@@ -583,12 +591,27 @@ export const useConversations = () => {
     const channel = supabase
       .channel('threads-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, () => {
-        fetchConversations();
+        scheduleConversationsRefresh(200);
       })
       .subscribe();
 
     return () => {
       try { supabase.removeChannel(channel); } catch {}
+    };
+  }, []);
+
+  // Realtime: refresh conversation list when any message changes (affects ordering/preview)
+  useEffect(() => {
+    const channel = supabase
+      .channel('messages-realtime-for-convlist')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => scheduleConversationsRefresh(300))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => scheduleConversationsRefresh(300))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, () => scheduleConversationsRefresh(300))
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+      try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch {}
     };
   }, []);
 

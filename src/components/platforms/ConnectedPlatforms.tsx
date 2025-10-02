@@ -74,6 +74,10 @@ const ConnectedPlatforms = () => {
   const [isDeletingChannel, setIsDeletingChannel] = useState(false);
 
   const n8nBaseUrl = WEBHOOK_CONFIG.BASE_URL;
+  const WAHA_BASE = 'https://waha-plus-production-97c1.up.railway.app';
+  const lastFetchedProviderRef = useRef<string | null>(null);
+  const isFetchingSessionsRef = useRef<boolean>(false);
+  const nextPlatformsRefreshAtRef = useRef<number>(0);
 
   // Get the first platform as default selected if available
   useEffect(() => {
@@ -287,60 +291,8 @@ const ConnectedPlatforms = () => {
         </CardContent>
       </Card>
 
-      {/* Chat Distribution Method */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Chat Distribution Method</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Select defaultValue="least-assigned">
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="least-assigned">Least Assigned First</SelectItem>
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-
-      {/* Customer Satisfaction Feature */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            Customer Satisfaction Feature (CSAT) 
-            <HelpCircle className="h-4 w-4 text-muted-foreground" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            Tingkatkan review kualitas live chat Anda melalui fitur agent
-          </p>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-sm font-medium">Frequently Asked Questions (FAQ)</Label>
-              <div className="mt-2 flex gap-2">
-                <Input placeholder="0 Question" className="flex-1" />
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                  ADD FAQ →
-                </Button>
-              </div>
-            </div>
-            <div>
-              <Label className="text-sm font-medium">Social Link</Label>
-              <div className="mt-2 flex gap-2">
-                <Input placeholder="0 Social Link" className="flex-1" />
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                  ADD LINK →
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* User Info Requirement */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle className="text-base">User Info Requirement</CardTitle>
         </CardHeader>
@@ -352,7 +304,7 @@ const ConnectedPlatforms = () => {
             </Label>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {includeWebExtras && (
         <>
@@ -475,33 +427,30 @@ const ConnectedPlatforms = () => {
 
 
 
-  // Fetch existing WhatsApp sessions
+  // Fetch existing WhatsApp sessions from WAHA API
   const fetchWhatsAppSessions = async () => {
+    if (isFetchingSessionsRef.current) return;
+    isFetchingSessionsRef.current = true;
     setIsSessionsLoading(true);
     setSessionsError(null);
     try {
-      let response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), { method: "POST" });
-      if (!response.ok) {
-        // Fallback to POST if GET is not supported
-        response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-      }
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
+      const url = `${WAHA_BASE}/api/sessions`;
+      const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+      if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
       const json = await response.json();
       const list: WahaSession[] = Array.isArray(json) ? json : [json];
       setSessions(list);
-      // Sync sessions to channels table
       await syncSessionsToChannels(list);
-      await fetchPlatforms();
+      // Avoid tight refresh loops: only refresh platforms at most once every 2s
+      if (Date.now() >= nextPlatformsRefreshAtRef.current) {
+        nextPlatformsRefreshAtRef.current = Date.now() + 2000;
+        await fetchPlatforms();
+      }
     } catch (error: any) {
-      setSessionsError(error?.message || "Failed to load sessions");
+      setSessionsError(error?.message || 'Failed to load sessions');
     } finally {
       setIsSessionsLoading(false);
+      isFetchingSessionsRef.current = false;
     }
   };
 
@@ -552,8 +501,12 @@ const ConnectedPlatforms = () => {
 
   // Load sessions for WhatsApp provider
   useEffect(() => {
-    if (currentPlatformType === 'whatsapp') {
+    if (currentPlatformType === 'whatsapp' && lastFetchedProviderRef.current !== 'whatsapp') {
+      lastFetchedProviderRef.current = 'whatsapp';
       fetchWhatsAppSessions();
+    }
+    if (currentPlatformType !== 'whatsapp') {
+      lastFetchedProviderRef.current = currentPlatformType || null;
     }
   }, [currentPlatformType]);
 
@@ -575,22 +528,14 @@ const ConnectedPlatforms = () => {
       if (!lastConnectSessionName || !isConnectDialogOpen) return;
       const check = async () => {
         try {
-          let response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), { method: "POST" });
-          if (!response.ok) {
-            response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_SESSIONS), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({}),
-            });
-          }
+          if (!lastConnectSessionName) return;
+          const url = `${WAHA_BASE}/api/sessions/${encodeURIComponent(lastConnectSessionName)}`;
+          const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
           if (!response.ok) return;
-          const json = await response.json();
-          const list: WahaSession[] = Array.isArray(json) ? json : [json];
-          const s = (list || []).find((x: any) => (x?.name || '') === lastConnectSessionName);
+          const s = await response.json();
           const status = String(s?.status || '').toUpperCase();
           const connected = Boolean(s?.me?.id) && status === 'WORKING';
           if (connected) {
-            // Close QR modal and mark active
             setIsConnectDialogOpen(false);
             setConnectQR(null);
             await fetchWhatsAppSessions();
@@ -1065,10 +1010,13 @@ const ConnectedPlatforms = () => {
                     )}
                     {!isSessionsLoading && !sessionsError && (
                       <div className="space-y-3">
-                        {sessions.length === 0 && (
-                          <div className="text-sm text-muted-foreground">No sessions found.</div>
-                        )}
-                        {sessions.map((s, idx) => {
+                        {(() => {
+                          const normalized = (selectedPlatformData?.display_name || '').toLowerCase().replace(/\s/g, '');
+                          const filtered = sessions.filter(ss => ((ss?.name || '').toLowerCase().replace(/\s/g, '')) === normalized);
+                          if (filtered.length === 0) {
+                            return <div className="text-sm text-muted-foreground">No session found for this channel.</div>;
+                          }
+                          return filtered.map((s, idx) => {
                           const rawId = s?.me?.id || "";
                           const phone = rawId ? rawId.replace(/@c\.us$/, "") : "";
                           const name = s?.me?.pushName || "-";
@@ -1111,7 +1059,8 @@ const ConnectedPlatforms = () => {
                               </div>
                             </div>
                           );
-                        })}
+                          });
+                        })()}
                       </div>
                     )}
                   </CardContent>
@@ -1183,7 +1132,8 @@ const ConnectedPlatforms = () => {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700 text-white"
+                            className={`bg-red-600 hover:bg-red-700 text-white ${isDeletingChannel ? 'animate-pulse cursor-wait' : ''}`}
+                            aria-busy={isDeletingChannel}
                             disabled={isDeletingChannel}
                             onClick={async () => {
                               if (!selectedPlatformData) return;
@@ -1216,7 +1166,12 @@ const ConnectedPlatforms = () => {
                               }
                             }}
                           >
-                            {isDeletingChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+                            {isDeletingChannel ? (
+                              <span className="inline-flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span>Deleting…</span>
+                              </span>
+                            ) : 'Delete'}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
