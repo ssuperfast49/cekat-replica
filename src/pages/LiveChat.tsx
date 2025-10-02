@@ -137,7 +137,7 @@ export default function LiveChat() {
         if (!profId) { setBooting(false); return; }
         const { data: prof } = await supabase
           .from('ai_profiles')
-          .select('system_prompt, welcome_message, transfer_conditions, model, temperature')
+          .select('system_prompt, welcome_message, transfer_conditions, temperature')
           .eq('id', profId)
           .maybeSingle();
         if (prof) {
@@ -145,7 +145,7 @@ export default function LiveChat() {
             system_prompt: prof.system_prompt || "",
             welcome_message: prof.welcome_message || "",
             transfer_conditions: prof.transfer_conditions || "",
-            model: prof.model || 'gpt-4o-mini',
+            model: 'gpt-4o-mini',
             temperature: typeof prof.temperature === 'number' ? prof.temperature : 0.3,
           });
         }
