@@ -346,7 +346,8 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       const submitData = {
         ...formData,
         phoneNumber: undefined,
-        platformType: 'whatsapp' as const
+        platformType: 'whatsapp' as const,
+        selectedSuperAgentId
       };
 
       await onSubmit(submitData);
@@ -488,9 +489,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                   <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {aiAgents
-                    .filter(a => !selectedSuperAgentId || a.super_agent_id === selectedSuperAgentId)
-                    .map((agent) => (
+                  {aiAgents.map((agent) => (
                     <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -505,20 +504,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
               <>
-                {/* Super Agent (single-select dropdown) */}
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
-                  <Select value={selectedSuperAgentId || ''} onValueChange={(v)=>handleSuperAgentSelect(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a Super Agent" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {humanAgents.filter(a => a.primaryRole === 'super_agent').map(sa => (
-                        <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email || sa.user_id.slice(0,8)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
 
                 {/* Master Agents (display only for awareness) */}
                 {/* <div className="space-y-1">

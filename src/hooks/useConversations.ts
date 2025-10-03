@@ -4,6 +4,49 @@ import { waitForAuthReady } from '@/lib/authReady';
 import WEBHOOK_CONFIG from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
+// Audio notification system with debouncing
+let lastNotificationTime = 0;
+const NOTIFICATION_DEBOUNCE_MS = 1000; // Prevent duplicate sounds within 1 second
+
+const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
+  try {
+    // Check if audio is enabled
+    const audioEnabled = localStorage.getItem('audioNotifications') !== 'false';
+    if (!audioEnabled) return;
+
+    // Only play sounds when the tab is visible
+    if (document.visibilityState !== 'visible') {
+      console.log('Skipping audio notification - tab not visible');
+      return;
+    }
+
+    // Debounce notifications to prevent duplicate sounds
+    const now = Date.now();
+    if (now - lastNotificationTime < NOTIFICATION_DEBOUNCE_MS) {
+      console.log('Skipping duplicate audio notification');
+      return;
+    }
+    lastNotificationTime = now;
+
+    const audio = new Audio();
+    
+    if (type === 'incoming') {
+      // Use the message pop alert for incoming messages
+      audio.src = '/tones/mixkit-message-pop-alert-2354.mp3';
+    } else {
+      // Use the long pop for outgoing messages (optional)
+      audio.src = '/tones/mixkit-long-pop-2358.wav';
+    }
+    
+    audio.volume = 0.7; // Set a reasonable volume
+    audio.play().catch(error => {
+      console.log('Audio notification failed:', error);
+    });
+  } catch (error) {
+    console.log('Audio notification error:', error);
+  }
+};
+
 export interface Thread {
   id: string;
   org_id: string;
@@ -86,8 +129,45 @@ export const useConversations = () => {
   const scheduleConversationsRefresh = (delayMs: number = 400) => {
     try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch {}
     conversationsRefreshTimer.current = window.setTimeout(() => {
-      fetchConversations();
+      // Only refresh if the document is visible to prevent unnecessary fetches when tab is hidden
+      if (document.visibilityState === 'visible') {
+        fetchConversations();
+      }
     }, delayMs) as unknown as number;
+  };
+
+  // More targeted refresh for specific thread updates
+  const updateConversationPreview = (threadId: string, lastMessage: any) => {
+    setConversations(prev => {
+      const updated = prev.map(conv => {
+        if (conv.id === threadId) {
+          return {
+            ...conv,
+            last_message_preview: (lastMessage?.body || '').toString().replace(/\s+/g, ' ').trim() || '—',
+            last_message_direction: lastMessage?.direction ?? null,
+            last_message_role: lastMessage?.role ?? null,
+            last_msg_at: lastMessage?.created_at || conv.last_msg_at,
+            unreplied: lastMessage?.direction === 'in' || lastMessage?.role === 'user'
+          };
+        }
+        return conv;
+      });
+      
+      // Re-sort conversations after update (like WhatsApp)
+      const sorted = updated.sort((a, b) => {
+        // First, prioritize unreplied threads
+        if (a.unreplied && !b.unreplied) return -1;
+        if (!a.unreplied && b.unreplied) return 1;
+        
+        // Then sort by last_msg_at (most recent first)
+        const aTime = new Date(a.last_msg_at).getTime();
+        const bTime = new Date(b.last_msg_at).getTime();
+        return bTime - aTime;
+      });
+      
+      console.log('Re-sorted conversations after message update');
+      return sorted;
+    });
   };
 
   // LocalStorage hydrated snapshot to avoid empty UI during refresh
@@ -156,6 +236,11 @@ export const useConversations = () => {
         const lastDir = last?.direction ?? null;
         const lastRole = last?.role ?? null;
         const unreplied = lastDir === 'in' || lastRole === 'user';
+        
+        // Log to verify we're getting the latest message timestamp
+        if (last) {
+          console.log(`Thread ${thread.id}: Latest message at ${last.created_at}, DB last_msg_at: ${thread.last_msg_at}`);
+        }
         return {
           ...thread,
           contact_name: thread.contacts?.name || 'Unknown Contact',
@@ -173,6 +258,8 @@ export const useConversations = () => {
           last_message_preview: lastPreview || '—',
           last_message_direction: lastDir,
           last_message_role: lastRole as any,
+          // Use the timestamp from the latest message instead of the database's last_msg_at
+          last_msg_at: last?.created_at || thread.last_msg_at,
           message_count: 0,
           assigned: !!thread.assignee_user_id,
           assigned_by_name: thread.assigned_by_user_id ? (userIdToName[thread.assigned_by_user_id] || '—') : '—',
@@ -182,9 +269,23 @@ export const useConversations = () => {
         } as ConversationWithDetails;
       });
 
-      setConversations(transformedData);
+      // Sort conversations by most recent activity (like WhatsApp)
+      // Priority: 1) Unreplied threads first, 2) Then by last_msg_at (most recent first)
+      const sortedData = transformedData.sort((a, b) => {
+        // First, prioritize unreplied threads
+        if (a.unreplied && !b.unreplied) return -1;
+        if (!a.unreplied && b.unreplied) return 1;
+        
+        // Then sort by last_msg_at (most recent first)
+        const aTime = new Date(a.last_msg_at).getTime();
+        const bTime = new Date(b.last_msg_at).getTime();
+        return bTime - aTime;
+      });
+
+      console.log('Sorted conversations:', sortedData.length, 'conversations');
+      setConversations(sortedData);
       // Cache for next refresh
-      try { localStorage.setItem('app.cachedConversations', JSON.stringify(transformedData)); } catch {}
+      try { localStorage.setItem('app.cachedConversations', JSON.stringify(sortedData)); } catch {}
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -197,6 +298,7 @@ export const useConversations = () => {
   // Fetch messages for a specific thread
   const fetchMessages = async (threadId: string) => {
     try {
+      console.log('Fetching messages for thread:', threadId);
       setError(null);
 
       const { data, error } = await supabase
@@ -240,6 +342,7 @@ export const useConversations = () => {
         contact_avatar: contactName[0]?.toUpperCase() || 'U'
       }));
 
+      console.log('Setting messages:', transformedData.length, 'messages for thread:', threadId);
       setMessages(transformedData);
       setSelectedThreadId(threadId);
 
@@ -352,6 +455,14 @@ export const useConversations = () => {
 
       // Replace optimistic pending with fresh list including the inserted message
       await fetchMessages(threadId);
+      
+      // Update conversation preview locally to avoid unnecessary refresh
+      updateConversationPreview(threadId, {
+        body: messageText,
+        direction: 'out',
+        role: role,
+        created_at: new Date().toISOString()
+      });
 
       // Audit log
       try {
@@ -477,7 +588,8 @@ export const useConversations = () => {
               assignee_user_id: currentUserId,
               assigned_by_user_id: currentUserId,
               assigned_at: new Date().toISOString(),
-              handover_reason: 'other:manual_takeover'
+              handover_reason: 'other:manual_takeover',
+              ai_access_enabled: false
             })
             .eq('id', threadId);
           if (updateErr) {
@@ -487,6 +599,9 @@ export const useConversations = () => {
       } catch (verifyErr) {
         console.warn('Failed verifying assignment state', verifyErr);
       }
+
+      // Ensure AI access is disabled even if already assigned
+      try { await supabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch {}
 
       // Create a system event message noting the takeover
       try {
@@ -614,36 +729,52 @@ export const useConversations = () => {
     }
   };
 
-  // Initial fetch on mount (gate on visibility to avoid background fetch on tab-restore)
+  // Initial fetch on mount - always fetch fresh data on mount
   useEffect(() => {
-    // Hydrate from cache for instant UI; fetch fresh data when visible
+    // Hydrate from cache for instant UI
     hydrateFromCache();
-    if (isDocumentHidden()) {
-      onDocumentVisible(() => { fetchConversations(); });
-    } else {
-      fetchConversations();
-    }
+    // Always fetch fresh data on mount, regardless of visibility
+    fetchConversations();
   }, []);
 
-  // Realtime: keep conversations list in sync with DB (subscribe only when visible)
-  useEffect(() => {
-    if (isDocumentHidden()) {
-      let unsub: (() => void) | null = null;
-      onDocumentVisible(() => {
-        const channel = supabase
-          .channel('threads-realtime')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, () => {
-            fetchConversations();
-          })
-          .subscribe();
-        unsub = () => { try { supabase.removeChannel(channel); } catch {} };
-      });
-      return () => { if (unsub) unsub(); };
+  // Auto-resolve check function
+  const checkAutoResolve = async () => {
+    try {
+      const { data, error } = await supabase.rpc('check_and_auto_resolve_threads');
+      if (error) {
+        console.error('Auto-resolve check failed:', error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        console.log('Auto-resolved threads:', data);
+        // Refresh conversations to show updated status
+        fetchConversations();
+      }
+    } catch (error) {
+      console.error('Auto-resolve check error:', error);
     }
+  };
+
+  // Set up periodic auto-resolve check (every 30 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        checkAutoResolve();
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Realtime: keep conversations list in sync with DB
+  useEffect(() => {
     const channel = supabase
       .channel('threads-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, () => {
-        scheduleConversationsRefresh(200);
+        if (document.visibilityState === 'visible') {
+          scheduleConversationsRefresh(200);
+        }
       })
       .subscribe();
 
@@ -653,13 +784,68 @@ export const useConversations = () => {
   }, []);
 
   // Realtime: refresh conversation list when any message changes (affects ordering/preview)
+  // But only for incoming messages, not outgoing ones to avoid refresh when sending
   useEffect(() => {
     const channel = supabase
       .channel('messages-realtime-for-convlist')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => scheduleConversationsRefresh(300))
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => scheduleConversationsRefresh(300))
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, () => scheduleConversationsRefresh(300))
-      .subscribe();
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'messages' 
+      }, (payload) => {
+        // Only refresh for incoming messages or system messages
+        // Skip outgoing messages (direction: 'out') to avoid refresh when sending
+        const message = payload.new;
+        console.log('New message for conversation list:', payload);
+        if (message && message.direction === 'in' && document.visibilityState === 'visible') {
+          console.log('Refreshing conversations for incoming message');
+          // Play notification sound for incoming messages
+          console.log('Playing notification sound for incoming message in conversation list');
+          playNotificationSound('incoming');
+          // Immediately update the conversation preview and re-sort
+          updateConversationPreview(message.thread_id, message);
+          scheduleConversationsRefresh(100); // Also do a full refresh for consistency
+          // Check auto-resolve after user message (cancels auto-resolve)
+          checkAutoResolve();
+        } else if (message && (message.role === 'system' || message.type === 'event') && document.visibilityState === 'visible') {
+          console.log('Refreshing conversations for system/event message');
+          // Play notification sound for system messages
+          console.log('Playing notification sound for system/event message');
+          playNotificationSound('incoming');
+          // Immediately update the conversation preview and re-sort
+          updateConversationPreview(message.thread_id, message);
+          scheduleConversationsRefresh(200); // Also do a full refresh for consistency
+        } else if (message && message.role === 'agent' && message.direction === 'out' && document.visibilityState === 'visible') {
+          console.log('AI agent responded - checking auto-resolve');
+          // AI responded, auto-resolve timer will be set by database trigger
+          // Check for any threads that might be ready for auto-resolve
+          checkAutoResolve();
+        }
+        // Skip outgoing messages (direction: 'out') - these are handled by the sendMessage function
+      })
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'messages' 
+      }, () => {
+        // Only refresh on message updates that might affect conversation preview
+        if (document.visibilityState === 'visible') {
+          scheduleConversationsRefresh(500);
+        }
+      })
+      .on('postgres_changes', { 
+        event: 'DELETE', 
+        schema: 'public', 
+        table: 'messages' 
+      }, () => {
+        // Refresh on message deletion as it affects conversation state
+        if (document.visibilityState === 'visible') {
+          scheduleConversationsRefresh(300);
+        }
+      })
+      .subscribe((status) => {
+        console.log('Conversations subscription status:', status);
+      });
 
     return () => {
       try { supabase.removeChannel(channel); } catch {}
@@ -667,29 +853,75 @@ export const useConversations = () => {
     };
   }, []);
 
-  // Realtime: keep messages in sync for the selected thread (subscribe only when visible)
+  // Realtime: keep messages in sync for the selected thread
   useEffect(() => {
     if (!selectedThreadId) return;
-    if (isDocumentHidden()) {
-      let unsub: (() => void) | null = null;
-      onDocumentVisible(() => {
-        const channel = supabase
-          .channel(`messages-${selectedThreadId}`)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${selectedThreadId}` }, () => {
-            fetchMessages(selectedThreadId);
-          })
-          .subscribe();
-        unsub = () => { try { supabase.removeChannel(channel); } catch {} };
-      });
-      return () => { if (unsub) unsub(); };
-    }
+    
+    console.log('Setting up realtime subscription for thread:', selectedThreadId);
+    
+    // Set up a periodic refresh as a fallback (every 30 seconds)
+    const refreshInterval = setInterval(() => {
+      console.log('Periodic refresh of messages for thread:', selectedThreadId);
+      fetchMessages(selectedThreadId);
+    }, 30000);
+    
     const channel = supabase
       .channel(`messages-${selectedThreadId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${selectedThreadId}` }, () => {
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'messages', 
+        filter: `thread_id=eq.${selectedThreadId}` 
+      }, (payload) => {
+        console.log('New message received:', payload);
+        
+        // Play notification sound for incoming messages
+        const message = payload.new;
+        if (message && message.direction === 'in') {
+          console.log('Playing notification sound for incoming message');
+          playNotificationSound('incoming');
+        }
+        
+        // Immediately fetch fresh messages
         fetchMessages(selectedThreadId);
       })
-      .subscribe();
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'messages', 
+        filter: `thread_id=eq.${selectedThreadId}` 
+      }, (payload) => {
+        console.log('Message updated:', payload);
+        // Fetch fresh messages for updates
+        fetchMessages(selectedThreadId);
+      })
+      .on('postgres_changes', { 
+        event: 'DELETE', 
+        schema: 'public', 
+        table: 'messages', 
+        filter: `thread_id=eq.${selectedThreadId}` 
+      }, (payload) => {
+        console.log('Message deleted:', payload);
+        // Fetch fresh messages for deletions
+        fetchMessages(selectedThreadId);
+      })
+      .subscribe((status) => {
+        console.log('Messages subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to messages for thread:', selectedThreadId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Error subscribing to messages for thread:', selectedThreadId);
+          // Retry subscription after a delay
+          setTimeout(() => {
+            console.log('Retrying messages subscription...');
+            fetchMessages(selectedThreadId);
+          }, 1000);
+        }
+      });
+      
     return () => {
+      console.log('Cleaning up messages subscription for thread:', selectedThreadId);
+      clearInterval(refreshInterval);
       try { supabase.removeChannel(channel); } catch {}
     };
   }, [selectedThreadId]);
@@ -703,6 +935,25 @@ export const useConversations = () => {
     fetchConversations,
     fetchMessages,
     sendMessage,
+    refreshMessages: () => {
+      if (selectedThreadId) {
+        console.log('Manual refresh of messages for thread:', selectedThreadId);
+        fetchMessages(selectedThreadId);
+      }
+    },
+    // Audio notification controls
+    enableAudioNotifications: () => {
+      localStorage.setItem('audioNotifications', 'true');
+      console.log('Audio notifications enabled');
+    },
+    disableAudioNotifications: () => {
+      localStorage.setItem('audioNotifications', 'false');
+      console.log('Audio notifications disabled');
+    },
+    testAudioNotification: () => {
+      console.log('Testing audio notification');
+      playNotificationSound('incoming');
+    },
     createConversation,
     updateThreadStatus,
     assignThread,
@@ -710,5 +961,7 @@ export const useConversations = () => {
     removeThreadParticipant,
     addThreadLabel,
     removeThreadLabel,
+    // Auto-resolve functionality
+    checkAutoResolve,
   };
 };

@@ -523,7 +523,7 @@ const HumanAgents = () => {
                     </div>
                     <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
                     <div>
-                      {hasPermission('super_agents.update') ? (
+                      {hasPermission('super_agents.update') && agent.primaryRole !== 'master_agent' ? (
                         // Editable role dropdown for users with edit permission
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -537,17 +537,18 @@ const HumanAgents = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="bg-background border z-50">
-                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
+                            {/* Never allow changing a Master Agent's role */}
+                            {agent.primaryRole !== 'master_agent' && (
+                              <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
                               <Badge className={`text-xs ${roleBadgeClass("agent")}`}>Agent</Badge>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
-                              <Badge className={`text-xs ${roleBadgeClass("super_agent")}`}>Super Agent</Badge>
-                            </DropdownMenuItem>
-                            {hasPermission('super_agents.create') && (
-                              <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "master_agent")}>
-                                <Badge className={`text-xs ${roleBadgeClass("master_agent")}`}>Master Agent</Badge>
                               </DropdownMenuItem>
                             )}
+                            {agent.primaryRole !== 'master_agent' && (
+                              <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
+                              <Badge className={`text-xs ${roleBadgeClass("super_agent")}`}>Super Agent</Badge>
+                              </DropdownMenuItem>
+                            )}
+                            {/* Creating/promoting to Master Agent disabled in UI */}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : (
@@ -695,26 +696,10 @@ const HumanAgents = () => {
             <div className="space-y-2">
               <Label>AI Agents</Label>
               <div className="rounded-md border p-2 max-h-64 overflow-auto">
-                {!selectedSuperForCluster ? (
-                  <div className="text-sm text-muted-foreground">Select a Super Agent.</div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="text-xs text-muted-foreground">Reassign / Attach</div>
-                    {aiAgents.map(a => (
-                      <div key={a.id} className="flex items-center justify-between text-sm">
-                        <span>{a.name || a.id}</span>
-                        <Button size="sm" onClick={async()=>{
-                          try{
-                            if (!selectedSuperForCluster) return;
-                            await supabase.from('ai_profiles').update({ super_agent_id: selectedSuperForCluster }).eq('id', a.id);
-                            toast({ title:'Updated', description:'AI Agent assigned.' });
-                            await fetchAIAgents();
-                          }catch(e:any){ toast({ title:'Error', description:e?.message||'Failed', variant:'destructive' }); }
-                        }}>{a.super_agent_id===selectedSuperForCluster? 'Assigned' : 'Assign here'}</Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="text-sm text-muted-foreground">
+                  AI Agents are now independent and can be assigned to channels directly in the Platforms section.
+                  Super Agents are assigned to channels, not to AI Agents.
+                </div>
               </div>
             </div>
           </div>

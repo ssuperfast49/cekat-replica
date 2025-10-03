@@ -155,7 +155,9 @@ const ConnectedPlatforms = () => {
           ) : (
             <Select 
               value={selectedAgent || ""} 
-              onValueChange={(value) => {
+              onValueChange={async (value) => {
+                if (!selectedPlatformData) return;
+                await updatePlatform(selectedPlatformData.id, { ai_profile_id: value || undefined });
                 setSelectedAgent(value);
               }}
             >
@@ -164,10 +166,10 @@ const ConnectedPlatforms = () => {
               </SelectTrigger>
               <SelectContent>
                 {aiAgents.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    🤖 {agent.name}
-                  </SelectItem>
-                ))}
+                    <SelectItem key={agent.id} value={agent.id}>
+                      🤖 {agent.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           )}
@@ -181,7 +183,7 @@ const ConnectedPlatforms = () => {
         </CardHeader>
         <CardContent>
           {(() => {
-            const superAgentId = (selectedPlatformData as any)?.super_agent_id || (selectedPlatformData as any)?.credentials?.super_agent_id || null;
+            const superAgentId = (selectedPlatformData as any)?.super_agent_id || null;
             const allAgents = humanAgents || [];
             const superAgent = allAgents.find(a => a.user_id === superAgentId && a.primaryRole === 'super_agent') || null;
             const superAgentsOnly = allAgents.filter(a => a.primaryRole === 'super_agent');
@@ -403,7 +405,8 @@ const ConnectedPlatforms = () => {
         profile_photo_url: profilePhotoUrl || undefined,
         ai_profile_id: formData.selectedAIAgent || undefined,
         provider: selectedPlatformType || 'web',
-        human_agent_ids: formData.selectedHumanAgents
+        human_agent_ids: formData.selectedHumanAgents,
+        super_agent_id: formData.selectedSuperAgentId || undefined
       };
 
       await createPlatform(platformData);

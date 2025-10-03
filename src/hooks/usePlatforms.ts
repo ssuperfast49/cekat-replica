@@ -36,6 +36,7 @@ export interface CreatePlatformData {
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   provider: 'whatsapp' | 'web' | 'telegram';
   human_agent_ids?: string[];
+  super_agent_id?: string;
 }
 
 export const usePlatforms = () => {
@@ -178,7 +179,7 @@ export const usePlatforms = () => {
             provider: ch.provider,
             status: ch.is_active ? 'active' : 'inactive',
             human_agents: humanAgents,
-            super_agent_id: (ch?.credentials as any)?.super_agent_id ?? null,
+            super_agent_id: ch.super_agent_id ?? null,
             credentials: ch?.credentials ?? null,
           } as PlatformWithAgents;
         } catch {
@@ -187,7 +188,7 @@ export const usePlatforms = () => {
             provider: ch.provider,
             status: ch.is_active ? 'active' : 'inactive',
             human_agents: [],
-            super_agent_id: (ch?.credentials as any)?.super_agent_id ?? null,
+            super_agent_id: ch.super_agent_id ?? null,
             credentials: ch?.credentials ?? null,
           } as PlatformWithAgents;
         }
@@ -237,6 +238,7 @@ export const usePlatforms = () => {
           type: 'inbox',
           profile_photo_url: platformData.profile_photo_url,
           ai_profile_id: platformData.ai_profile_id,
+          super_agent_id: platformData.super_agent_id,
           is_active: true,
         })
         .select()
@@ -276,6 +278,7 @@ export const usePlatforms = () => {
       if (typeof updates.profile_photo_url !== 'undefined') channelUpdates.profile_photo_url = updates.profile_photo_url;
       if (typeof updates.ai_profile_id !== 'undefined') channelUpdates.ai_profile_id = updates.ai_profile_id;
       if (typeof updates.provider !== 'undefined') channelUpdates.provider = updates.provider;
+      if (typeof updates.super_agent_id !== 'undefined') channelUpdates.super_agent_id = updates.super_agent_id;
 
       if (Object.keys(channelUpdates).length > 0) {
         const { error: platformError } = await supabase
@@ -287,20 +290,6 @@ export const usePlatforms = () => {
         }
       }
 
-      // Update credentials.super_agent_id if provided
-      if (typeof updates.super_agent_id !== 'undefined') {
-        const { data: current } = await supabase
-          .from('channels')
-          .select('credentials')
-          .eq('id', platformId)
-          .single();
-        const nextCreds = { ...(current?.credentials || {}), super_agent_id: updates.super_agent_id };
-        const { error: credErr } = await supabase
-          .from('channels')
-          .update({ credentials: nextCreds })
-          .eq('id', platformId);
-        if (credErr) console.warn('Failed to update super_agent_id credentials', credErr);
-      }
 
       // Update human agents if provided
       if (updates.human_agent_ids !== undefined) {
@@ -393,7 +382,7 @@ export const usePlatforms = () => {
 
   useEffect(() => {
     const run = () => fetchPlatforms();
-    if (isDocumentHidden()) onDocumentVisible(run); else run();
+    run();
   }, []);
 
   return {

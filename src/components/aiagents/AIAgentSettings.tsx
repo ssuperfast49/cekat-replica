@@ -1125,11 +1125,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               </Card>
 
               {/* Additional Settings */}
-              <Card className="p-6">
+              {/* <Card className="p-6">
                 <Button variant="ghost" className="text-primary p-0 h-auto font-semibold">
                   Additional Settings ↓
                 </Button>
-              </Card>
+              </Card> */}
 
               {/* Save Button */}
               <Button 

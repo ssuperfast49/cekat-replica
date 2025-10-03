@@ -153,7 +153,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // Evaluate in background
           updateOtpRequirementFromProfile(initialSession)
             .then((enabled) => {
-              if (enabled) setOtpVerified(false);
+              // On hard refresh, preserve any existing OTP verification state.
+              // Only set whether OTP is required; do not reset verification here.
               setOtpRequired(!!enabled);
             })
             .finally(() => setOtpEvaluated(true));
@@ -185,8 +186,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
               logAction({ action: 'auth.login', resource: 'auth', userId: uid, context: {} }).catch(() => {});
               lastLoginLoggedUserIdRef.current = uid;
             }
-            // Reset verification at start of session
-            setOtpVerified(false);
+            // Preserve OTP verification if it was already satisfied for this user
+            let persistedVerified = false;
+            try {
+              const key = uid ? `otpVerified:${uid}` : 'otpVerified';
+              persistedVerified = localStorage.getItem(key) === 'true' || localStorage.getItem('otpVerified') === 'true';
+            } catch {}
+            setOtpVerified(!!persistedVerified);
             // Defer OTP decision until profile is fetched to prevent flicker
             try {
               const key = nextSession?.user?.id ? `otpRequired:${nextSession.user.id}` : 'otpRequired';
@@ -197,7 +203,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setLoading(false);
             updateOtpRequirementFromProfile(nextSession)
               .then((enabled) => {
-                if (enabled) {
+                if (enabled && !persistedVerified) {
                   const currentUserId = nextSession?.user?.id || null;
                   if (currentUserId && sent2faForUserIdRef.current !== currentUserId) {
                     supabase.functions.invoke('send-2fa-email', {
@@ -216,8 +222,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
             try { localStorage.setItem('app.lastAuthEvent', JSON.stringify({ event, at: Date.now(), user: nextSession?.user || null })); } catch {}
             return; // early exit; we've already set loading state
           }
+          // If user is in password recovery, only require OTP if enabled in profile
+          if (event === 'PASSWORD_RECOVERY') {
+            try { localStorage.setItem('auth.intent', 'recovery'); } catch {}
+            setOtpEvaluated(false);
+            try {
+              const enabled = await updateOtpRequirementFromProfile(nextSession);
+              setOtpRequired(!!enabled);
+              if (enabled) setOtpVerified(false);
+            } catch {
+              // On errors during recovery, prefer not to block with OTP
+              setOtpRequired(false);
+            } finally {
+              setOtpEvaluated(true);
+            }
+            return;
+          }
           // Ignore refresh-related events for logging to reduce noise
-          if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
+          if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             return;
           }
 

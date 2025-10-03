@@ -12,7 +12,6 @@ import {
   MessageSquare, 
   Phone, 
   Mail, 
-  Clock, 
   CheckCheck, 
   Loader2, 
   RefreshCw, 
@@ -97,7 +96,6 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
           <div className={`mt-1 flex items-center gap-1 text-[10px] ${
             isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
           }`}>
-            <Clock className="h-3 w-3" />
             <span>{new Date(message.created_at).toLocaleTimeString([], { 
               hour: "2-digit", 
               minute: "2-digit" 

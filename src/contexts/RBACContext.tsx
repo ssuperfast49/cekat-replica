@@ -122,7 +122,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
   useEffect(() => {
     if (user?.id) {
       const run = () => fetchUserRBAC(user.id);
-      if (isDocumentHidden()) onDocumentVisible(run); else run();
+      run();
     } else {
       setUserRoles([]);
       setUserPermissions([]);

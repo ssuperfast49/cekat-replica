@@ -8,21 +8,32 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading, otpRequired, otpVerified } = useAuth();
+  const { user, loading, otpRequired, otpVerified, otpEvaluated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && otpEvaluated && user) {
       const isOnOtpPage = location.pathname === '/otp';
       if (otpRequired && !otpVerified && !isOnOtpPage) {
+        // Determine intent (normal 2FA vs recovery)
+        let intent: '2fa' | 'recovery' = '2fa';
+        try {
+          const url = new URL(window.location.href);
+          const type = url.searchParams.get('type');
+          if (type === 'recovery') intent = 'recovery';
+          // Supabase recovery may also arrive via hash tokens
+          if (window.location.hash?.includes('access_token=')) intent = 'recovery';
+          // Or via explicit flag stored by auth listener
+          if (localStorage.getItem('auth.intent') === 'recovery') intent = 'recovery';
+        } catch {}
         // Defer navigation to avoid rendering null during the same commit
-        setTimeout(() => navigate('/otp', { replace: true }), 0);
+        setTimeout(() => navigate('/otp', { replace: true, state: { from: location.pathname, intent } }), 0);
       }
     }
-  }, [user, loading, otpRequired, otpVerified, location.pathname, navigate]);
+  }, [user, loading, otpEvaluated, otpRequired, otpVerified, location.pathname, navigate]);
 
-  if (loading) {
+  if (loading || !otpEvaluated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex items-center space-x-2">

@@ -91,7 +91,8 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
       setSubmitting(true);
       const submitData = {
         ...formData,
-        platformType: 'web' as const
+        platformType: 'web' as const,
+        selectedSuperAgentId
       };
 
       await onSubmit(submitData);
@@ -272,11 +273,9 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
                   <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {aiAgents
-                    .filter(a => !selectedSuperAgentId || a.super_agent_id === selectedSuperAgentId)
-                    .map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
-                    ))}
+                  {aiAgents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             )}

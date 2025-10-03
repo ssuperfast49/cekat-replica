@@ -27,6 +27,7 @@ export default function ResetPassword() {
         if (code) {
           await supabase.auth.exchangeCodeForSession(code);
         }
+        // If we hit this page without a valid recovery context, redirect home
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           setError('Invalid or expired reset link. Please request a new password reset.');
@@ -65,10 +66,21 @@ export default function ResetPassword() {
       setSuccess(true);
       toast.success('Password updated successfully!');
       
+      // Ensure the recovery session is fully cleared so refresh does not auto-login
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      try {
+        localStorage.removeItem('otpVerified');
+        localStorage.removeItem('otpRequired');
+        localStorage.removeItem('app.lastAuthEvent');
+        localStorage.removeItem('auth.intent');
+      } catch {}
+
       // Redirect to login after a short delay
       setTimeout(() => {
         navigate('/');
-      }, 2000);
+      }, 1500);
     } catch (error) {
       console.error('Password reset error:', error);
       setError(error instanceof Error ? error.message : 'Failed to update password');

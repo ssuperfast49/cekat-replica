@@ -162,10 +162,7 @@ export const useHumanAgents = () => {
       });
       if (error) throw error;
 
-      // After inviting, send the user a password setup email without affecting current session
-      const redirectTo = `${window.location.origin}/reset-password`;
-      const { error: otpErr } = await supabase.auth.signInWithOtp({ email: agentData.email, options: { emailRedirectTo: redirectTo } });
-      if (otpErr) console.warn('Could not send password setup email:', otpErr);
+      // Do not send a separate reset email here; the admin invite email is enough
 
       // If 2FA requested, enable it on the profile we just created
       if (enable2FAFlagForCreate) {
@@ -260,7 +257,7 @@ export const useHumanAgents = () => {
       setLoading(false);
     }
     const run = () => fetchAgents();
-    if (isDocumentHidden()) onDocumentVisible(run); else run();
+    run();
   }, []);
 
   return {

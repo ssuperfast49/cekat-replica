@@ -10,20 +10,26 @@ export type MultiSelectOption = { value: string; label: string };
 interface MultiSelectProps {
   options: MultiSelectOption[];
   value: string[];
-  onChange: (values: string[]) => void;
+  onChange?: (values: string[]) => void;
+  onValueChange?: (values: string[]) => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
 }
 
-export function MultiSelect({ options, value, onChange, placeholder = "Select...", disabled, className }: MultiSelectProps) {
+export function MultiSelect({ options, value, onChange, onValueChange, placeholder = "Select...", disabled, className }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const selected = new Set(value);
+
+  const emit = (vals: string[]) => {
+    if (onChange) onChange(vals);
+    if (onValueChange) onValueChange(vals);
+  };
 
   const toggle = (val: string) => {
     const next = new Set(selected);
     if (next.has(val)) next.delete(val); else next.add(val);
-    onChange(Array.from(next));
+    emit(Array.from(next));
   };
 
   const selectedLabels = options.filter(o => selected.has(o.value)).map(o => o.label);
@@ -44,16 +50,16 @@ export function MultiSelect({ options, value, onChange, placeholder = "Select...
           <span className="ml-2 text-muted-foreground">▾</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="p-0 w-80" align="start">
+      <PopoverContent className="p-0 w-80" align="start" onOpenAutoFocus={(e)=>e.preventDefault()}>
         <Command>
           <CommandInput placeholder="Search..." />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup>
               {options.map(opt => (
-                <CommandItem key={opt.value} onSelect={() => toggle(opt.value)} className="cursor-pointer">
-                  <div className="mr-2 flex h-4 w-4 items-center justify-center">
-                    <Checkbox checked={selected.has(opt.value)} onCheckedChange={() => toggle(opt.value)} />
+                <CommandItem key={opt.value} onSelect={(v)=>{ toggle(opt.value); }} className="cursor-pointer">
+                  <div className="mr-2 flex h-4 w-4 items-center justify-center" onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); toggle(opt.value); }}>
+                    <Checkbox checked={selected.has(opt.value)} onCheckedChange={()=> toggle(opt.value)} />
                   </div>
                   <span>{opt.label}</span>
                 </CommandItem>

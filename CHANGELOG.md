@@ -1,4 +1,39 @@
 # Change Log
+# [0.0.28] FE WEB CEKAT 2025-10-04
+Commit: Auto-resolve functionality, thread timestamp fixes, audio notifications, UI improvements
+### Updates
+- Auto-Resolve System
+  - Fixed auto-resolve functionality to work correctly with AI agents
+  - Database triggers now properly set `auto_resolve_at` timestamp when AI responds
+  - Auto-resolve function uses correct enum value `'closed'` instead of `'resolved'`
+  - Periodic checking every 30 seconds for threads ready to auto-resolve
+  - Real-time auto-resolve checks on message events
+  - Threads auto-resolve after specified minutes of inactivity without user response
+- Thread List Improvements
+  - Fixed thread list to show latest message timestamp instead of first message timestamp
+  - WhatsApp-style conversation sorting with unreplied threads at top
+  - Real-time conversation preview updates without full list refresh
+- Audio Notifications
+  - Added audio notification system for new messages in opened threads
+  - Two notification sounds: incoming (`mixkit-message-pop-alert-2354.mp3`) and outgoing (`mixkit-long-pop-2358.wav`)
+  - Debounced notifications to prevent duplicate sounds
+  - Tab visibility checks to only play sounds when tab is active
+  - User controls: enable/disable audio notifications, test notification
+- UI Improvements
+  - Removed clock icon from chat message bubbles for cleaner appearance
+  - Enhanced message streaming with better real-time updates
+  - Improved conversation list performance with optimized refresh logic
+- Database Schema Updates
+  - Added `channel_id` to `token_usage_logs` table for better analytics
+  - Added `super_agent_id` to `channels` table (moved from `ai_profiles`)
+  - Updated RLS policies to use `channels.super_agent_id` for proper clustering
+  - Fixed foreign key constraints and relationships
+- Bug Fixes
+  - Fixed page reload issues when alt+tabbing between browser tabs
+  - Resolved conversation data leakage between different super agents
+  - Fixed AI Agent dropdown filtering logic
+  - Corrected thread timestamp display in conversation list
+
 # [0.0.27] FE WEB CEKAT 2025-10-03
 - Enabling AI Profiles fetch instead of using cache 
 

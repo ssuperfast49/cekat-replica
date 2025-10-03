@@ -57,7 +57,6 @@ export type Database = {
           org_id: string
           qna: Json
           stop_ai_after_handoff: boolean | null
-          super_agent_id: string
           system_prompt: string | null
           temperature: number | null
           transfer_conditions: string | null
@@ -72,7 +71,6 @@ export type Database = {
           org_id: string
           qna?: Json
           stop_ai_after_handoff?: boolean | null
-          super_agent_id: string
           system_prompt?: string | null
           temperature?: number | null
           transfer_conditions?: string | null
@@ -87,7 +85,6 @@ export type Database = {
           org_id?: string
           qna?: Json
           stop_ai_after_handoff?: boolean | null
-          super_agent_id?: string
           system_prompt?: string | null
           temperature?: number | null
           transfer_conditions?: string | null
@@ -106,13 +103,6 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_profiles_super_agent_fk"
-            columns: ["super_agent_id"]
-            isOneToOne: false
-            referencedRelation: "v_users"
             referencedColumns: ["id"]
           },
         ]
@@ -323,6 +313,7 @@ export type Database = {
           profile_photo_url: string | null
           provider: Database["public"]["Enums"]["channel_type"]
           secret_token: string | null
+          super_agent_id: string | null
           type: string
         }
         Insert: {
@@ -337,6 +328,7 @@ export type Database = {
           profile_photo_url?: string | null
           provider: Database["public"]["Enums"]["channel_type"]
           secret_token?: string | null
+          super_agent_id?: string | null
           type: string
         }
         Update: {
@@ -351,6 +343,7 @@ export type Database = {
           profile_photo_url?: string | null
           provider?: Database["public"]["Enums"]["channel_type"]
           secret_token?: string | null
+          super_agent_id?: string | null
           type?: string
         }
         Relationships: [
@@ -367,6 +360,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orgs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channels_super_agent_id_fkey"
+            columns: ["super_agent_id"]
+            isOneToOne: false
+            referencedRelation: "users_profile"
+            referencedColumns: ["user_id"]
           },
         ]
       }

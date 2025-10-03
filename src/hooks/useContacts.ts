@@ -290,7 +290,7 @@ export const useContacts = () => {
   // Initial fetch on mount (gate network on visibility)
   useEffect(() => {
     const run = () => fetchContacts();
-    if (isDocumentHidden()) onDocumentVisible(run); else run();
+    run();
   }, []);
 
   return {

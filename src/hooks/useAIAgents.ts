@@ -15,7 +15,6 @@ export interface AIAgent {
   model?: string;
   temperature?: number;
   created_at: string;
-  super_agent_id?: string;
   auto_resolve_after_minutes?: number;
   enable_resolve?: boolean;
 }
@@ -41,9 +40,8 @@ export const useAIAgents = () => {
       await waitForAuthReady();
       let query = supabase
         .from('ai_profiles')
-        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, temperature, created_at, super_agent_id, auto_resolve_after_minutes, enable_resolve')
+        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, temperature, created_at, auto_resolve_after_minutes, enable_resolve')
         .order('created_at', { ascending: false }) as any;
-      if (filterBySuper) query = query.eq('super_agent_id', filterBySuper);
       const { data: aiAgentsData, error: aiAgentsError } = await query;
 
       console.log('AI agents data:', aiAgentsData);
@@ -83,9 +81,7 @@ export const useAIAgents = () => {
     } catch {}
     const run = () => fetchAIAgents();
     // Slight debounce to coalesce StrictMode double-invocation
-    const t = setTimeout(() => {
-      if (isDocumentHidden()) onDocumentVisible(run); else run();
-    }, 50);
+    const t = setTimeout(run, 50);
     return () => clearTimeout(t);
   }, [filterBySuper]);
 

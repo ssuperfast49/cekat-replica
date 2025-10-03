@@ -126,7 +126,7 @@ export default function Analytics() {
     try {
       const { data: logs } = await supabase
         .from('token_usage_logs')
-        .select('made_at, prompt_tokens, completion_tokens, total_tokens, model')
+        .select('made_at, prompt_tokens, completion_tokens, total_tokens, model, channel_id')
         .gte('made_at', start)
         .lt('made_at', end)
         .order('made_at', { ascending: true });
@@ -192,7 +192,7 @@ export default function Analytics() {
   // Single source of truth for fetching; avoids double calls on mount
   useEffect(() => {
     const run = () => fetchMetrics();
-    if (isDocumentHidden()) onDocumentVisible(run); else run();
+    run();
   }, [from, to, channelFilter]);
 
   return (
@@ -339,7 +339,7 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="ai-agent" className="space-y-6">
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle>AI Metrics</CardTitle>
             </CardHeader>
@@ -355,7 +355,7 @@ export default function Analytics() {
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
-          </Card>
+          </Card> */}
 
           <Card>
             <CardHeader>
@@ -396,25 +396,6 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="human-agent" className="space-y-6">
-          {/* Handover rate per super agent */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Handover Rate by Super Agent (Human vs AI)</CardTitle>
-            </CardHeader>
-            <CardContent className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={handoverBySuper.map(r=>({ name: r.super_agent_name || '—', ratePct: Math.round((r.handover_rate||0)*100), human: r.human_resolved, ai: r.ai_resolved }))}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="ratePct" name="Handover % (Human/(Human+AI))" fill={COLORS[1]} radius={[4,4,0,0]}>
-                    <LabelList dataKey="ratePct" position="top" />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
 
           {/* Filter and handover per agent within selected super agent */}
           <div className="flex items-center gap-3">

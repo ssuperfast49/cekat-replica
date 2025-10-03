@@ -127,6 +127,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         telegram_bot_token: formData.telegramBotToken,
         ai_profile_id: formData.selectedAIAgent,
         human_agent_ids: formData.selectedHumanAgents,
+        super_agent_id: selectedSuperAgentId,
         org_id: orgId,
         platform_type: 'telegram'
       };
@@ -372,9 +373,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                   <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {aiAgents
-                    .filter(a => !selectedSuperAgentId || a.super_agent_id === selectedSuperAgentId)
-                    .map((agent) => (
+                  {aiAgents.map((agent) => (
                     <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
                   ))}
                 </SelectContent>
