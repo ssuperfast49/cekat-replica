@@ -56,17 +56,22 @@ export interface ConversationWithDetails extends Thread {
     external_id?: string;
   };
   last_message_preview: string;
+  last_message_direction?: 'in' | 'out' | null;
+  last_message_role?: 'user' | 'assistant' | 'agent' | 'system' | null;
   message_count: number;
   assigned: boolean;
   assigned_by_name?: string;
   assignee_name?: string;
   resolved_by_name?: string;
+  unreplied?: boolean;
 }
 
 export interface MessageWithDetails extends Message {
   // Additional fields for display
   contact_name: string;
   contact_avatar: string;
+  // UI-only status flag for optimistic updates
+  _status?: 'pending' | 'sent' | 'error';
 }
 
 export const useConversations = () => {
@@ -114,10 +119,12 @@ export const useConversations = () => {
         .select(`
           *,
           contacts(name, phone, email),
-          channels(display_name, type, provider, external_id)
+          channels(display_name, type, provider, external_id),
+          messages(id, body, role, direction, created_at, seq)
         `)
-        // .eq('org_id', '00000000-0000-0000-0000-000000000001')
-        .order('last_msg_at', { ascending: false });
+        .order('last_msg_at', { ascending: false })
+        .order('created_at', { foreignTable: 'messages', ascending: false })
+        .limit(1, { foreignTable: 'messages' });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 8000);
@@ -143,27 +150,37 @@ export const useConversations = () => {
       }
 
       // Transform data to match the expected format
-      const transformedData: ConversationWithDetails[] = (data || []).map((thread: any) => ({
-        ...thread,
-        contact_name: thread.contacts?.name || 'Unknown Contact',
-        contact_phone: thread.contacts?.phone || '',
-        contact_email: thread.contacts?.email || '',
-        channel_name: thread.channels?.display_name || 'Unknown Channel',
-        channel_type: thread.channels?.type || 'web',
-        channel_provider: thread.channels?.provider || undefined,
-        channel: {
-          provider: thread.channels?.provider,
-          type: thread.channels?.type,
-          display_name: thread.channels?.display_name,
-          external_id: thread.channels?.external_id,
-        },
-        last_message_preview: 'Last message preview...', // This would come from messages table
-        message_count: 0, // This would be calculated from messages table
-        assigned: !!thread.assignee_user_id,
-        assigned_by_name: thread.assigned_by_user_id ? (userIdToName[thread.assigned_by_user_id] || '—') : '—',
-        assignee_name: thread.assignee_user_id ? (userIdToName[thread.assignee_user_id] || '—') : '—',
-        resolved_by_name: thread.resolved_by_user_id ? (userIdToName[thread.resolved_by_user_id] || '—') : '—',
-      }));
+      const transformedData: ConversationWithDetails[] = (data || []).map((thread: any) => {
+        const last = Array.isArray(thread.messages) && thread.messages.length > 0 ? thread.messages[0] : null;
+        const lastPreview = (last?.body || '').toString().replace(/\s+/g, ' ').trim();
+        const lastDir = last?.direction ?? null;
+        const lastRole = last?.role ?? null;
+        const unreplied = lastDir === 'in' || lastRole === 'user';
+        return {
+          ...thread,
+          contact_name: thread.contacts?.name || 'Unknown Contact',
+          contact_phone: thread.contacts?.phone || '',
+          contact_email: thread.contacts?.email || '',
+          channel_name: thread.channels?.display_name || 'Unknown Channel',
+          channel_type: thread.channels?.type || 'web',
+          channel_provider: thread.channels?.provider || undefined,
+          channel: {
+            provider: thread.channels?.provider,
+            type: thread.channels?.type,
+            display_name: thread.channels?.display_name,
+            external_id: thread.channels?.external_id,
+          },
+          last_message_preview: lastPreview || '—',
+          last_message_direction: lastDir,
+          last_message_role: lastRole as any,
+          message_count: 0,
+          assigned: !!thread.assignee_user_id,
+          assigned_by_name: thread.assigned_by_user_id ? (userIdToName[thread.assigned_by_user_id] || '—') : '—',
+          assignee_name: thread.assignee_user_id ? (userIdToName[thread.assignee_user_id] || '—') : '—',
+          resolved_by_name: thread.resolved_by_user_id ? (userIdToName[thread.resolved_by_user_id] || '—') : '—',
+          unreplied,
+        } as ConversationWithDetails;
+      });
 
       setConversations(transformedData);
       // Cache for next refresh
@@ -209,12 +226,12 @@ export const useConversations = () => {
       const { data: threadData } = await supabase
         .from('threads')
         .select(`
-          contacts!inner(name, phone, email)
+          contacts(name, phone, email)
         `)
         .eq('id', threadId)
-        .single();
+        .maybeSingle();
 
-      const contactName = (threadData?.contacts as any)?.name || 'Unknown Contact';
+      const contactName = (threadData as any)?.contacts?.name || 'Unknown Contact';
 
       // Transform data to match the expected format
       const transformedData: MessageWithDetails[] = (data || []).map((message: any) => ({
@@ -261,7 +278,30 @@ export const useConversations = () => {
         actor_id: null
       };
 
-      // Insert message into database
+      // Optimistically push a pending message to UI
+      const optimisticId = `tmp_${Math.random().toString(36).slice(2)}`;
+      const optimistic: MessageWithDetails = {
+        id: optimisticId,
+        thread_id: threadId,
+        direction: 'out',
+        role,
+        type: 'text',
+        body: messageText,
+        payload: {},
+        actor_kind: 'agent',
+        actor_id: null,
+        seq: 0,
+        in_reply_to: null,
+        edited_at: null,
+        edit_reason: null,
+        created_at: new Date().toISOString(),
+        contact_name: '',
+        contact_avatar: 'A',
+        _status: 'pending'
+      };
+      setMessages(prev => [...prev, optimistic]);
+
+      // Insert message into database (authoritative)
       const { data, error } = await supabase
         .from('messages')
         .insert([newMessage])
@@ -310,7 +350,7 @@ export const useConversations = () => {
         // Don't throw here - we still want to save the message locally even if webhook fails
       }
 
-      // Refresh messages
+      // Replace optimistic pending with fresh list including the inserted message
       await fetchMessages(threadId);
 
       // Audit log
@@ -327,6 +367,17 @@ export const useConversations = () => {
     } catch (error) {
       console.error('Error sending message:', error);
       setError(error instanceof Error ? error.message : 'Failed to send message');
+      // Mark last optimistic message as error if present
+      setMessages(prev => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          if ((next[i] as any)._status === 'pending') {
+            (next[i] as any)._status = 'error';
+            break;
+          }
+        }
+        return next;
+      });
       throw error;
     }
   };
@@ -426,6 +477,7 @@ export const useConversations = () => {
               assignee_user_id: currentUserId,
               assigned_by_user_id: currentUserId,
               assigned_at: new Date().toISOString(),
+              handover_reason: 'other:manual_takeover'
             })
             .eq('id', threadId);
           if (updateErr) {

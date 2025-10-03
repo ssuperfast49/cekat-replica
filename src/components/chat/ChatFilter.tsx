@@ -33,6 +33,7 @@ interface FilterState {
   resolvedBy: string;
   aiAgent: string;
   pipelineStatus: string;
+  channelType?: 'whatsapp' | 'telegram' | 'web' | 'all';
 }
 
 interface ChatFilterProps {
@@ -54,6 +55,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
     resolvedBy: '',
     aiAgent: '',
     pipelineStatus: '',
+    channelType: 'all',
   });
 
   const { aiAgents } = useAIAgents();
@@ -218,7 +220,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
           </div>
 
           {/* Agent and AI Agent */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Agent</label>
               <Popover open={agentOpen} onOpenChange={setAgentOpen}>
@@ -256,6 +258,21 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
                       {agent.name}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Channel Type</label>
+              <Select value={filters.channelType} onValueChange={(value:any) => handleFilterChange('channelType', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Channels" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Channels</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="telegram">Telegram</SelectItem>
+                  <SelectItem value="web">Live Chat</SelectItem>
                 </SelectContent>
               </Select>
             </div>

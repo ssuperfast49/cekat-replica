@@ -27,7 +27,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const sent2faForUserIdRef = useRef<string | null>(null);
   const [otpRequired, setOtpRequired] = useState<boolean>(false);
   const [otpVerified, setOtpVerifiedState] = useState<boolean>(() => {
-    try { return localStorage.getItem('otpVerified') === 'true'; } catch { return false; }
+    try {
+      // Global flag
+      const global = localStorage.getItem('otpVerified') === 'true';
+      if (global) return true;
+      // Try user-scoped flag using last auth event snapshot
+      const lastRaw = localStorage.getItem('app.lastAuthEvent');
+      if (lastRaw) {
+        try {
+          const last = JSON.parse(lastRaw);
+          const uid = last?.user?.id;
+          if (uid) {
+            return localStorage.getItem(`otpVerified:${uid}`) === 'true';
+          }
+        } catch {}
+      }
+      return false;
+    } catch { return false; }
   });
   const [otpEvaluated, setOtpEvaluated] = useState<boolean>(false);
   const lastLoginLoggedUserIdRef = useRef<string | null>(null);
@@ -36,8 +52,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setOtpVerifiedState(value);
     try {
       const key = session?.user?.id ? `otpVerified:${session.user.id}` : 'otpVerified';
-      if (value) localStorage.setItem(key, 'true');
-      else localStorage.removeItem(key);
+      if (value) {
+        localStorage.setItem(key, 'true');
+        // Also set a global flag so refresh before session hydration still honors verification
+        localStorage.setItem('otpVerified', 'true');
+      } else {
+        localStorage.removeItem(key);
+        localStorage.removeItem('otpVerified');
+      }
     } catch {}
   }, [session?.user?.id]);
 

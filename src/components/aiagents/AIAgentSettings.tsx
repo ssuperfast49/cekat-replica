@@ -87,12 +87,6 @@ const ChatPreview = ({
   const sendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
-    // Validate required fields
-    if (!systemPrompt.trim()) {
-      toast.error('Please configure the AI Agent Behavior first');
-      return;
-    }
-
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       content: inputMessage,
@@ -107,7 +101,6 @@ const ChatPreview = ({
     try {
       const requestBody = {
         message: inputMessage,
-        system_prompt: systemPrompt + welcomeMessage + transfer_conditions,
         model: modelName,
         temperature: temperature,
         session_id: sessionId,
@@ -329,8 +322,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
   // Model handling now uses ai_models (UUID) foreign key
   const [availableModels, setAvailableModels] = useState<{ id: string; model_name: string; display_name: string | null; provider: string }[]>([]);
-  const [modelId, setModelId] = useState(profile?.model || "");
+  const [modelId, setModelId] = useState("");
   const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
+  const [autoResolveMinutes, setAutoResolveMinutes] = useState<number>((profile as any)?.auto_resolve_after_minutes ?? 0);
+  const [enableResolve, setEnableResolve] = useState<boolean>(Boolean((profile as any)?.enable_resolve ?? false));
   
   // Load available AI models
   useEffect(() => {
@@ -859,8 +854,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setWelcomeMessage(profile.welcome_message || "");
       setTransferConditions(profile.transfer_conditions || "");
       setStopAfterHandoff(profile.stop_ai_after_handoff);
-      setModelId(profile.model || "");
+      // model is no longer stored on ai_profiles
       setTemperature(profile.temperature || 0.3);
+      setAutoResolveMinutes((profile as any)?.auto_resolve_after_minutes ?? 0);
+      setEnableResolve(Boolean((profile as any)?.enable_resolve ?? false));
       const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
       if (qna && Array.isArray(qna)) {
         const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
@@ -885,9 +882,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       welcome_message: welcomeMessage,
       transfer_conditions: transferConditions,
       stop_ai_after_handoff: stopAfterHandoff,
-      model: modelId,
       temperature: temperature,
       name: agentName,
+      auto_resolve_after_minutes: autoResolveMinutes,
+      enable_resolve: enableResolve,
       // Persist Q&A pairs into ai_profiles.qna JSONB
       // Store compact q/a pairs for space efficiency
       qna: qaPairs
@@ -1073,7 +1071,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4 text-primary">Model Settings</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  {/* <div>
                     <label className="text-sm font-medium">Model</label>
                     <select
                       value={modelId}
@@ -1091,7 +1089,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                         ))
                       )}
                     </select>
-                  </div>
+                  </div> */}
                   <div>
                     <label className="text-sm font-medium">Temperature</label>
                     <input 
@@ -1103,6 +1101,25 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                       onChange={(e) => setTemperature(parseFloat(e.target.value))}
                       className="w-full p-2 border rounded-lg mt-1"
                     />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Enable Auto-resolve</label>
+                    <div className="mt-2">
+                      <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium">Auto-resolve after (minutes)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={autoResolveMinutes}
+                      onChange={(e) => setAutoResolveMinutes(Math.max(0, parseInt(e.target.value || '0', 10)))}
+                      disabled={!enableResolve}
+                      className={`w-full p-2 border rounded-lg mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">{enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}</p>
                   </div>
                 </div>
               </Card>

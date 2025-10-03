@@ -1,5 +1,30 @@
 # Change Log
-# [0.0.24] FE WEB CEKAT 2025-10-02
+# [0.0.26] FE WEB CEKAT 2025-10-03
+Commit: Live Chat realtime + anon policies, auto-resolve with enable flag, reopen on user reply, UI polish
+### Updates
+- Live Chat (Embed)
+  - Messages now stream from Supabase realtime (`public.messages`); webhook response is ignored for content.
+  - Sends `channel_id`, `session_id`, and a persistent friendly `username` (stored per host in localStorage). Removed `platform_id` from payload.
+  - Ringtones wired to `public/tones` assets; low = `mixkit-message-pop-alert-2354.mp3`, high = `mixkit-long-pop-2358.wav`.
+  - Thread lookup uses `contacts(name)` with `maybeSingle()` (fixes PGRST116 when 0 rows).
+- Database (Supabase)
+  - Added anon SELECT RLS for web embed:
+    - `channels`: `allow_public_select_web_channels` (provider='web' and active only).
+    - `threads`: `public_read_web_threads` (via web channels).
+    - `messages`: `public_read_web_messages` (via web channels).
+    - Fixes 401/42501 when opening standalone live chat.
+  - Auto-resolve framework:
+    - `ai_profiles.auto_resolve_after_minutes` (int) and `enable_resolve` (bool).
+    - `threads.auto_resolve_at` scheduled by trigger `set_thread_auto_resolve_after_message` on agent/assistant replies; cleared on user replies.
+    - Function `auto_close_due_threads()` (cron-friendly) and helper `schedule_auto_resolve_for_open_threads()` for backfill.
+  - Auto-reopen: trigger `reopen_thread_on_user_message` reopens closed threads and unassigns when a new user message arrives.
+- AI Agent Settings
+  - “Enable Auto-resolve” switch added; “Auto-resolve after (minutes)” is disabled when switch is off.
+  - Removed sending `system_prompt` to webhook; UI still saves prompt to profile.
+- Conversations UI
+  - “Unreplied” badge restyled (soft red background, darker red text) to match “Assigned” styling.
+
+# [0.0.25] FE WEB CEKAT 2025-10-02
 Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Platforms loop fix, UI polish
 ### Updates
 - Analytics (Human Agent)
@@ -18,6 +43,11 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
   - Delete Channel button shows spinner + “Deleting…” and subtle pulse while processing.
 - Changelog
   - Source from root `CHANGELOG.md` only; removed `public/CHANGELOG.md`; scripts updated to skip copy.
+
+# [0.0.24] FE WEB CEKAT 2025-09-30
+### Updates
+- Enhance message handling in ConversationPage and useConversations hooks.
+- Optimistic UI updates for message status
 
 # [0.0.23] FE WEB CEKAT 2025-10-02
 ### Updates
@@ -55,6 +85,7 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
   - Ensured agent removal updates `channel_agents` and access.
 
 # [0.0.22] FE WEB CEKAT 2025-09-30
+### Updates
 - Fix platform creating for telegram
 - Add saving functionality for selected AI agent in ConnectedPlatforms and prevent duplicate Telegram bot tokens in TelegramPlatform Form
 - Enhance AI Agent Settings: Implement file upload functionality with Supabase integration, including upload progress tracking and error handling. Update UI to reflect file statuses and permissions. Add new knowledgebase endpoints for file management.

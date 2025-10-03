@@ -39,8 +39,9 @@ export default function Otp() {
       if (error) throw error;
       if (!data) throw new Error('Invalid code');
       setOtpVerified(true);
+      try { localStorage.setItem('otpVerified', 'true'); } catch {}
       toast.success("Verification successful");
-      navigate("/", { replace: true });
+      navigate("/reset-password", { replace: true });
     } catch (err: any) {
       setError(err?.message || "Verification failed");
       toast.error("Verification failed");

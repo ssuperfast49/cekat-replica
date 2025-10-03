@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Send } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { supabase } from "@/lib/supabase";
 
 declare global {
   interface Window {
@@ -29,19 +29,16 @@ export default function LiveChat() {
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
   const [sessionId, setSessionId] = useState<string>("session_" + Date.now());
-  const [profile, setProfile] = useState<null | {
-    system_prompt: string;
-    welcome_message: string;
-    transfer_conditions: string;
-    model: string;
-    temperature: number;
-  }>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [username, setUsername] = useState<string>("");
+  // Profile settings are resolved server-side by the webhook; no client DB calls.
   const endRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioLowRef = useRef<HTMLAudioElement | null>(null);
   const audioHighRef = useRef<HTMLAudioElement | null>(null);
-  const LOW_TONE_URL = '/tones/send.mp3';
-  const HIGH_TONE_URL = '/tones/reply.mp3';
+  // Use provided ringtones from public/tones (can be overridden via window.chatConfig)
+  const LOW_TONE_URL = '/tones/mixkit-message-pop-alert-2354.mp3';
+  const HIGH_TONE_URL = '/tones/mixkit-long-pop-2358.wav';
 
   // Audio helpers: schedule richer "ring" tones (melodic/chordal), not monotone
   const ensureCtx = () => {
@@ -119,67 +116,141 @@ export default function LiveChat() {
     if (!ok) playSequence([1046.5, 1318.5, 1568.0, [1046.5, 1318.5, 1568.0, 2093.0]], 120, 0.06);
   };
 
+  // Ensure we have a persistent, friendly username per platform/host
+  useEffect(() => {
+    try {
+      const host = (typeof window !== 'undefined' ? window.location.host : 'unknown');
+      const key = `livechat_username_${pid}_${host}`;
+      let value = '';
+      try { value = localStorage.getItem(key) || ''; } catch {}
+      if (!value) {
+        const adjectives = ['Happy', 'Bright', 'Calm', 'Brave', 'Kind', 'Sunny', 'Lucky', 'Cheerful', 'Swift', 'Clever'];
+        const nouns = ['User', 'Visitor', 'Friend', 'Guest', 'Buddy', 'Pal', 'Explorer', 'Champion', 'Star', 'Hero'];
+        const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+        const noun = nouns[Math.floor(Math.random() * nouns.length)];
+        const num = Math.floor(100 + Math.random() * 900);
+        value = `${adj} ${noun} ${num}`;
+        try { localStorage.setItem(key, value); } catch {}
+      }
+      setUsername(value);
+    } catch {}
+  }, [pid]);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // Load AI profile settings from the platform/channel
+  // Attach to existing thread for this platform and current username, and subscribe to realtime
   useEffect(() => {
-    const load = async () => {
-      try {
-        if (!pid) return;
-        const { data: ch } = await supabase
-          .from('channels')
-          .select('ai_profile_id')
-          .eq('id', pid)
-          .maybeSingle();
-        const profId = (ch as any)?.ai_profile_id as string | undefined;
-        if (!profId) { setBooting(false); return; }
-        const { data: prof } = await supabase
-          .from('ai_profiles')
-          .select('system_prompt, welcome_message, transfer_conditions, temperature')
-          .eq('id', profId)
-          .maybeSingle();
-        if (prof) {
-          setProfile({
-            system_prompt: prof.system_prompt || "",
-            welcome_message: prof.welcome_message || "",
-            transfer_conditions: prof.transfer_conditions || "",
-            model: 'gpt-4o-mini',
-            temperature: typeof prof.temperature === 'number' ? prof.temperature : 0.3,
-          });
+    let sub: any = null;
+    let threadsSub: any = null;
+    
+    const upsertFromRows = (rows: any[]) => {
+      if (!rows || rows.length === 0) return;
+      setMessages((prev) => {
+        const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string }>();
+        prev.forEach((m) => map.set(m.id, m));
+        for (const r of rows) {
+          if (!r?.id) continue;
+          const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+          const item = { id: r.id, role, body: r.body || '', at: r.created_at || new Date().toISOString() };
+          map.set(item.id, item);
         }
-      } finally {
-        setBooting(false);
-      }
+        const arr = Array.from(map.values());
+        arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
+        return arr;
+      });
     };
-    load();
-  }, [pid]);
+
+    const attachToThread = async (tid: string) => {
+      setThreadId(tid);
+      try {
+        const { data } = await supabase
+          .from('messages')
+          .select('id, role, body, created_at')
+          .eq('thread_id', tid)
+          .order('created_at', { ascending: true });
+        if (Array.isArray(data)) upsertFromRows(data);
+      } catch {}
+      sub = supabase
+        .channel(`livechat-msgs-${tid}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${tid}` }, (payload: any) => {
+          const ev = payload?.eventType;
+          const row = payload?.new || payload?.old;
+          if (!row) return;
+          // If INSERT of user's own message arrives, dedupe temporary local copy by body
+          if (ev === 'INSERT' && row?.body) {
+            setMessages((prev) => {
+              const tempIdx = prev.findIndex((m) => m.id.startsWith('temp-') && m.role === 'user' && m.body === row.body);
+              if (tempIdx >= 0) {
+                const next = prev.slice();
+                next.splice(tempIdx, 1);
+                return next;
+              }
+              return prev;
+            });
+          }
+          upsertFromRows([row]);
+        })
+        .subscribe();
+      setBooting(false);
+    };
+
+    const init = async () => {
+      try {
+        // Try to find recent thread for this platform and contact name === username
+        const { data } = await supabase
+          .from('threads')
+          .select('id, contact_id, contacts(name)')
+          .eq('channel_id', pid)
+          .eq('contacts.name', username)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (data?.id) { await attachToThread(data.id); return; }
+      } catch {}
+      // If not found or access denied, watch for new threads for this platform and match by contact name
+      threadsSub = supabase
+        .channel(`livechat-threads-${pid}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, async (payload: any) => {
+          const tid = payload?.new?.id;
+          const contactId = payload?.new?.contact_id;
+          if (!tid || !contactId) return;
+          try {
+            const { data: c } = await supabase.from('contacts').select('id, name').eq('id', contactId).maybeSingle();
+            if (c?.name && username && c.name === username) {
+              await attachToThread(tid);
+            }
+          } catch {}
+        })
+        .subscribe(() => setBooting(false));
+    };
+
+    init();
+
+    return () => {
+      try { if (sub) supabase.removeChannel(sub); } catch {}
+      try { if (threadsSub) supabase.removeChannel(threadsSub); } catch {}
+    };
+  }, [pid, username]);
 
   const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
     setDraft("");
-    const now = new Date().toISOString();
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", body: text, at: now }]);
+    // Optimistic preview while waiting for DB insert (will be replaced by realtime row)
+    const tempId = `temp-${Date.now()}`;
+    setMessages((prev) => [...prev, { id: tempId, role: "user", body: text, at: new Date().toISOString() }]);
     playLow();
     setLoading(true);
 
     try {
-      if (!profile) {
-        // Fallback echo if no profile configured for this platform
-        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", body: "Thanks! We received: " + text, at: new Date().toISOString() }]);
-        return;
-      }
-
       const body = {
         message: text,
-        system_prompt: `${profile.system_prompt}${profile.welcome_message}${profile.transfer_conditions}`,
-        model: profile.model,
-        temperature: profile.temperature,
         session_id: sessionId,
         timestamp: new Date().toISOString(),
-        platform_id: pid,
+        channel_id: pid,
+        username: username || undefined,
       } as const;
 
       const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS), {
@@ -188,12 +259,11 @@ export default function LiveChat() {
         body: JSON.stringify(body),
       });
       if (!resp.ok) throw new Error(`Webhook failed ${resp.status}`);
-      const data = await resp.json().catch(() => ({}));
-      const out = data?.output || data?.message || data?.reply || 'Okay.';
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", body: String(out), at: new Date().toISOString() }]);
+      // Do not use webhook response for chat content; realtime will deliver rows.
       playHigh();
     } catch (e) {
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", body: "Sorry, I'm having trouble right now. Please try again later.", at: new Date().toISOString() }]);
+      // Replace temp with an error note
+      setMessages((prev) => prev.filter((m) => m.id !== tempId).concat({ id: crypto.randomUUID(), role: "assistant", body: "Sorry, I'm having trouble right now. Please try again later.", at: new Date().toISOString() }));
       playHigh();
     } finally {
       setLoading(false);

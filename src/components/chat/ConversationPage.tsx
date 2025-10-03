@@ -51,6 +51,8 @@ interface MessageBubbleProps {
 const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageBubbleProps) => {
   const isAgent = message.role === 'assistant' || message.role === 'agent' || message.direction === 'out';
   const isSystem = message.role === 'system' || message.type === 'event' || message.type === 'note';
+  const isHumanAgent = message.role === 'assistant';
+  const isAiAgent = message.role === 'agent';
   
   if (isSystem) {
     return (
@@ -84,22 +86,28 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
         
         <div
           className={`rounded-lg px-3 py-2 text-sm shadow-sm ${
-            isAgent
-              ? "bg-blue-100 text-blue-900"
-              : "bg-muted text-foreground"
+            isAiAgent
+              ? "bg-blue-600 text-white"
+              : isHumanAgent
+                ? "bg-blue-100 text-blue-900"
+                : "bg-muted text-foreground"
           } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
         >
           <p className="whitespace-pre-wrap">{message.body}</p>
           <div className={`mt-1 flex items-center gap-1 text-[10px] ${
-            isAgent ? "text-blue-700" : "text-muted-foreground"
+            isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
           }`}>
             <Clock className="h-3 w-3" />
             <span>{new Date(message.created_at).toLocaleTimeString([], { 
               hour: "2-digit", 
               minute: "2-digit" 
             })}</span>
-            {isAgent && isLastMessage && (
-              <CheckCheck className="h-3 w-3" aria-label="delivered" />
+            {isAgent && (
+              message._status === 'pending' ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-label="pending" />
+              ) : isLastMessage ? (
+                <CheckCheck className="h-3 w-3" aria-label="sent" />
+              ) : null
             )}
           </div>
         </div>
@@ -169,6 +177,11 @@ export default function ConversationPage() {
     if (filters.inbox && filters.inbox !== 'all') {
       list = list.filter(c => c.channel_type === filters.inbox);
     }
+    if ((filters as any).channelType && (filters as any).channelType !== 'all') {
+      const m: any = { whatsapp: 'whatsapp', telegram: 'telegram', web: 'web' };
+      const wanted = m[(filters as any).channelType];
+      if (wanted) list = list.filter(c => (c.channel?.provider || c.channel_type) === wanted);
+    }
     // Date range filter
     if (filters.dateRange?.from || filters.dateRange?.to) {
       const from = filters.dateRange.from ? new Date(filters.dateRange.from).getTime() : -Infinity;
@@ -178,6 +191,13 @@ export default function ConversationPage() {
         return ts >= from && ts <= to;
       });
     }
+    // Sort: unreplied first, then by last_msg_at desc
+    list = [...list].sort((a, b) => {
+      const aUn = (a as any).unreplied ? 1 : 0;
+      const bUn = (b as any).unreplied ? 1 : 0;
+      if (aUn !== bUn) return bUn - aUn; // true first
+      return new Date(b.last_msg_at).getTime() - new Date(a.last_msg_at).getTime();
+    });
     return list;
   }, [conversations, query, filters]);
 
@@ -326,8 +346,9 @@ export default function ConversationPage() {
         }
       }
 
-      await sendMessage(selectedThreadId, text, 'assistant');
+      // Clear input immediately and fire send without blocking UI
       setDraft("");
+      void sendMessage(selectedThreadId, text, 'assistant');
       toast.success("Message sent successfully");
     } catch (error) {
       toast.error("Failed to send message");
@@ -483,9 +504,12 @@ export default function ConversationPage() {
                           <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
                           <span className="text-xs text-gray-500 ml-2">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview}</p>
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview || '—'}</p>
                         <div className="flex items-center gap-2 mt-2">
                           <Badge className="bg-blue-100 text-blue-600 text-xs">Assigned</Badge>
+                          {(conv as any).unreplied && (
+                            <Badge className="bg-red-100 text-red-600 text-xs">Unreplied</Badge>
+                          )}
                           <Badge variant="outline" className="text-xs">
                             {conv.channel?.provider}
                           </Badge>
@@ -511,6 +535,9 @@ export default function ConversationPage() {
                         <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview}</p>
                         <div className="flex items-center gap-2 mt-2">
                           <Badge variant="secondary" className="text-xs">Unassigned</Badge>
+                          {(conv as any).unreplied && (
+                            <Badge className="bg-red-100 text-red-600 text-xs">Unreplied</Badge>
+                          )}
                           <Badge variant="outline" className="text-xs">
                             {conv.channel?.provider}
                           </Badge>
@@ -625,15 +652,16 @@ export default function ConversationPage() {
                     placeholder={`Message ${selectedConversation.contact_name}...`}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    onKeyPress={handleKeyPress}
+                    onKeyDown={handleKeyPress}
                     className="flex-1"
                   />
-                  <Button onClick={handleSendMessage} disabled={!draft.trim()}>
+                  <Button type="button" onClick={handleSendMessage} disabled={!draft.trim()}>
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
                 <Button 
+                  type="button"
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
                   onClick={handleTakeoverChat} 
                   disabled={!user?.id}

@@ -10,10 +10,11 @@ export interface AIProfile {
   welcome_message: string;
   transfer_conditions: string;
   stop_ai_after_handoff: boolean;
-  model: string;
   temperature: number;
   created_at: string;
   qna?: ({ q: string; a: string } | { question: string; answer: string })[] | null;
+  auto_resolve_after_minutes?: number | null;
+  enable_resolve?: boolean | null;
 }
 
 export const useAIProfiles = (profileId?: string) => {

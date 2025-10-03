@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
+import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -72,14 +73,21 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
     setFormData(prev => ({ ...prev, selectedHumanAgents: [] }));
   };
 
-  const isFormValid = formData.displayName && 
+  const isFormValid = Boolean(
+    formData.displayName &&
+    selectedSuperAgentId &&
     formData.selectedAIAgent &&
-    formData.websiteUrl &&
-    selectedSuperAgentId;
+    // websiteUrl optional for now
+    true
+  );
 
   const handleSubmit = async () => {
     try {
       if (submitting) return;
+      if (!selectedSuperAgentId || !formData.selectedAIAgent) {
+        toast({ title: 'Missing required fields', description: 'Please select a Super Agent and an AI Agent.', variant: 'destructive' });
+        return;
+      }
       setSubmitting(true);
       const submitData = {
         ...formData,
@@ -90,11 +98,38 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
       try {
         window.dispatchEvent(new CustomEvent('refresh-platforms'));
       } catch {}
+      // Clear form after successful submit
+      setFormData({
+        description: "",
+        displayName: "",
+        profilePhoto: null,
+        websiteUrl: "",
+        businessCategory: "",
+        selectedAIAgent: "",
+        selectedHumanAgents: []
+      });
+      setSelectedSuperAgentId(null);
+      onClose();
     } catch (error) {
       console.error('Error submitting form:', error);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCancel = () => {
+    if (submitting) return;
+    setFormData({
+      description: "",
+      displayName: "",
+      profilePhoto: null,
+      websiteUrl: "",
+      businessCategory: "",
+      selectedAIAgent: "",
+      selectedHumanAgents: []
+    });
+    setSelectedSuperAgentId(null);
+    onClose();
   };
 
   return (
@@ -134,7 +169,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
           </div>
 
           {/* Website URL */}
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label htmlFor="websiteUrl">Website URL *</Label>
             <Input
               id="websiteUrl"
@@ -146,10 +181,10 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
             <p className="text-xs text-muted-foreground">
               The website where you want to embed the live chat
             </p>
-          </div>
+          </div> */}
 
           {/* Business Category */}
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label htmlFor="businessCategory">Business Category</Label>
             <Select 
               value={formData.businessCategory} 
@@ -164,7 +199,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </div> */}
 
           {/* Profile Photo / Logo */}
           <div className="space-y-2">
@@ -203,7 +238,26 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
             </div>
           </div>
 
-          {/* Select AI Agent */}
+          {/* Select Super Agent (required, above AI Agent) */}
+          <div className="space-y-2">
+            <Label>Super Agent *</Label>
+            {humanAgentsLoading ? (
+              <div className="text-sm text-muted-foreground">Loading super agents...</div>
+            ) : (
+              <Select value={selectedSuperAgentId || ''} onValueChange={(v)=>handleSuperAgentSelect(v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a Super Agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  {humanAgents.filter(a => a.primaryRole === 'super_agent').map(sa => (
+                    <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email || sa.user_id.slice(0,8)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Select AI Agent (filtered by selected super agent) */}
           <div className="space-y-2">
             <Label htmlFor="aiAgent">Select AI Agent *</Label>
             {aiAgentsLoading ? (
@@ -212,14 +266,17 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
               <Select 
                 value={formData.selectedAIAgent} 
                 onValueChange={(value) => setFormData(prev => ({ ...prev, selectedAIAgent: value }))}
+                disabled={!selectedSuperAgentId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose an AI agent" />
+                  <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {aiAgents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
-                  ))}
+                  {aiAgents
+                    .filter(a => !selectedSuperAgentId || a.super_agent_id === selectedSuperAgentId)
+                    .map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             )}
@@ -232,40 +289,40 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
               <>
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {humanAgents.filter(a => a.primaryRole === 'super_agent').map(sa => (
-                      <label key={sa.user_id} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" name="super-agent" checked={selectedSuperAgentId===sa.user_id} onChange={()=>handleSuperAgentSelect(sa.user_id)} className="accent-emerald-600" />
-                        <span>{sa.display_name || sa.email || sa.user_id.slice(0,8)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                {/* Super Agent moved above AI Agent */}
 
-                <div className="space-y-1">
+                {/* <div className="space-y-1">
                   <div className="text-xs font-medium text-blue-700">Master Agents</div>
                   <div className="grid grid-cols-2 gap-2">
                     {humanAgents.filter(a => a.primaryRole === 'master_agent').map(ma => (
                       <div key={ma.user_id} className="text-xs text-muted-foreground">{ma.display_name || ma.email || ma.user_id.slice(0,8)}</div>
                     ))}
                   </div>
-                </div>
+                </div> */}
 
-                <div className="space-y-1">
-                  <div className="text-xs font-medium">Agents {selectedSuperAgentId? '' : '(select a Super Agent first)'}</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {humanAgents.filter(a => a.primaryRole === 'agent').map(ag => {
-                      const blocked = Boolean(ag.super_agent_id && ag.super_agent_id !== selectedSuperAgentId);
-                      return (
-                        <label key={ag.user_id} className={`flex items-center gap-2 text-sm ${(!selectedSuperAgentId || blocked) ? 'opacity-50' : ''}`} title={blocked ? 'Agent attached to another Super Agent' : ''}>
-                          <input type="checkbox" disabled={!selectedSuperAgentId || blocked} checked={formData.selectedHumanAgents.includes(ag.user_id)} onChange={()=>handleHumanAgentToggle(ag.user_id)} className="rounded border-gray-300" />
-                          <span>{ag.display_name || ag.email || `Agent ${ag.user_id.slice(0,8)}`}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">Agents {selectedSuperAgentId ? '' : '(select a Super Agent first)'}</div>
+                  {(() => {
+                    const available = humanAgents
+                      .filter(a => a.primaryRole === 'agent')
+                      .filter(a => !!selectedSuperAgentId && (!a.super_agent_id || a.super_agent_id === selectedSuperAgentId));
+                    const options: MultiSelectOption[] = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0,8)}` }));
+                    return (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <MultiSelect
+                            options={options}
+                            value={formData.selectedHumanAgents}
+                            onValueChange={(vals)=>setFormData(prev=>({ ...prev, selectedHumanAgents: vals }))}
+                            disabled={!selectedSuperAgentId}
+                            placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select a Super Agent first'}
+                          />
+                          <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: options.map(o=>o.value) }))}>Select All</Button>
+                          <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </>
             )}
@@ -273,7 +330,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting || submitting}>
+          <Button variant="outline" onClick={handleCancel} disabled={isSubmitting || submitting}>
             Cancel
           </Button>
           <Button 
