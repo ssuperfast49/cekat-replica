@@ -1,4 +1,7 @@
 # Change Log
+# [0.0.30] FE WEB CEKAT 2025-10-04
+- Fix invite
+
 # [0.0.29] FE WEB CEKAT 2025-10-04
 Commit: Invite flow fixes, required field validation, form improvements
 ### Updates

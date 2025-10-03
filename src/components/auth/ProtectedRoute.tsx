@@ -33,27 +33,6 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
                       hash.includes('type=invite') ||
                       window.location.pathname === '/invite';
         
-        // Also check if user was invited but hasn't set password yet
-        // This is a fallback for cases where URL parameters might not be present
-        if (!isInviteFlow && user) {
-          // Check if user was invited and doesn't have password set
-          supabase
-            .from('users_profile')
-            .select('password_set')
-            .eq('user_id', user.id)
-            .single()
-            .then(({ data: profile }) => {
-              if (profile && profile.password_set === false) {
-                console.log('Detected invite flow from database - user needs to set password');
-                // Redirect to password creation page
-                setTimeout(() => navigate('/reset-password', { replace: true }), 0);
-              }
-            })
-            .catch(() => {
-              // Ignore errors, continue with normal flow
-            });
-        }
-        
         // Debug logging
         console.log('Invite flow detection:', {
           type,
@@ -64,6 +43,27 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
           userId: user?.id
         });
       } catch {}
+      
+      // Always check if user needs to set password (regardless of URL parameters)
+      if (user) {
+        supabase
+          .from('users_profile')
+          .select('password_set')
+          .eq('user_id', user.id)
+          .single()
+          .then(({ data: profile }) => {
+            console.log('Password set check:', { userId: user.id, password_set: profile?.password_set });
+            if (profile && profile.password_set === false) {
+              console.log('User needs to set password - redirecting to password creation page');
+              // Redirect to password creation page
+              setTimeout(() => navigate('/reset-password', { replace: true }), 0);
+              return; // Exit early to prevent 2FA check
+            }
+          })
+          .catch((error) => {
+            console.log('Error checking password_set:', error);
+          });
+      }
       
       // If this is an invite flow and user is not on password creation page, redirect them
       if (isInviteFlow && !isOnResetPasswordPage && !isOnInvitePage) {
