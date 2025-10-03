@@ -1,4 +1,7 @@
 # Change Log
+# [0.0.27] FE WEB CEKAT 2025-10-03
+- Enabling AI Profiles fetch instead of using cache 
+
 # [0.0.26] FE WEB CEKAT 2025-10-03
 Commit: Live Chat realtime + anon policies, auto-resolve with enable flag, reopen on user reply, UI polish
 ### Updates

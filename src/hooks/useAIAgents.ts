@@ -25,9 +25,13 @@ export const useAIAgents = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterBySuper, setFilterBySuper] = useState<string | null>(null);
+  const inFlightKeyRef = useState<{ current: string | null }>({ current: null })[0];
 
   const fetchAIAgents = async () => {
     try {
+      const key = String(filterBySuper || '__ALL__');
+      if (inFlightKeyRef.current === key) return; // de-dupe concurrent/strict-mode fetches
+      inFlightKeyRef.current = key;
       setLoading(true);
       setError(null);
 
@@ -60,28 +64,29 @@ export const useAIAgents = () => {
       setError('Failed to fetch AI agents');
       setAIAgents([]);
     } finally {
+      inFlightKeyRef.current = null;
       setLoading(false);
     }
   };
 
-  // Cache-first hydration on mount; network gated on visibility
+  // Hydrate from cache, then always fetch from network
   useEffect(() => {
-    let had = false;
     try {
       const raw = localStorage.getItem('app.cachedAIAgents');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           setAIAgents(parsed);
-          setLoading(false);
-          had = true;
+          // do not early-return; continue to fetch fresh below
         }
       }
     } catch {}
     const run = () => fetchAIAgents();
-    if (!had) {
+    // Slight debounce to coalesce StrictMode double-invocation
+    const t = setTimeout(() => {
       if (isDocumentHidden()) onDocumentVisible(run); else run();
-    }
+    }, 50);
+    return () => clearTimeout(t);
   }, [filterBySuper]);
 
   return {
