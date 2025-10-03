@@ -164,15 +164,13 @@ export const useHumanAgents = () => {
 
       // Do not send a separate reset email here; the admin invite email is enough
 
-      // If 2FA requested, enable it on the profile we just created
-      if (enable2FAFlagForCreate) {
-        try {
-          await supabase
-            .from('users_profile')
-            .update({ is_2fa_email_enabled: true })
-            .eq('user_id', data?.id);
-        } catch {}
-      }
+      // Set 2FA status based on the flag
+      try {
+        await supabase
+          .from('users_profile')
+          .update({ is_2fa_email_enabled: enable2FAFlagForCreate })
+          .eq('user_id', data?.id);
+      } catch {}
 
       await fetchAgents({ force: true });
       try { await logAction({ action: 'user.create', resource: 'user', resourceId: data?.id || null, context: agentData as any }); } catch {}
