@@ -15,6 +15,30 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   useEffect(() => {
     if (!loading && otpEvaluated && user) {
       const isOnOtpPage = location.pathname === '/otp';
+      const isOnResetPasswordPage = location.pathname === '/reset-password';
+      const isOnInvitePage = location.pathname === '/invite';
+      
+      // Check if this is an invite flow by looking at URL parameters and user status
+      let isInviteFlow = false;
+      try {
+        const url = new URL(window.location.href);
+        const type = url.searchParams.get('type');
+        const code = url.searchParams.get('code');
+        const hash = window.location.hash || '';
+        
+        // Check for invite-specific indicators
+        isInviteFlow = type === 'invite' || 
+                      (code && !hash.includes('access_token=')) ||
+                      hash.includes('type=invite') ||
+                      window.location.pathname === '/invite';
+      } catch {}
+      
+      // If this is an invite flow and user is not on password creation page, redirect them
+      if (isInviteFlow && !isOnResetPasswordPage && !isOnInvitePage) {
+        setTimeout(() => navigate('/reset-password', { replace: true }), 0);
+        return;
+      }
+      
       if (otpRequired && !otpVerified && !isOnOtpPage) {
         // Determine intent (normal 2FA vs recovery)
         let intent: '2fa' | 'recovery' = '2fa';

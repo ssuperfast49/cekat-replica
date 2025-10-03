@@ -186,6 +186,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
               logAction({ action: 'auth.login', resource: 'auth', userId: uid, context: {} }).catch(() => {});
               lastLoginLoggedUserIdRef.current = uid;
             }
+            
             // Preserve OTP verification if it was already satisfied for this user
             let persistedVerified = false;
             try {
@@ -193,14 +194,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
               persistedVerified = localStorage.getItem(key) === 'true' || localStorage.getItem('otpVerified') === 'true';
             } catch {}
             setOtpVerified(!!persistedVerified);
+            
             // Defer OTP decision until profile is fetched to prevent flicker
             try {
               const key = nextSession?.user?.id ? `otpRequired:${nextSession.user.id}` : 'otpRequired';
               localStorage.removeItem(key);
             } catch {}
+            
             // Do NOT block UI on profile fetch or 2FA send when tab visibility changes
             setOtpEvaluated(false);
             setLoading(false);
+            
             updateOtpRequirementFromProfile(nextSession)
               .then((enabled) => {
                 if (enabled && !persistedVerified) {

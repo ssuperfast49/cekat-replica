@@ -1,4 +1,30 @@
 # Change Log
+# [0.0.29] FE WEB CEKAT 2025-10-04
+Commit: Invite flow fixes, required field validation, form improvements
+### Updates
+- Invite Flow Fixes
+  - Fixed invite flow to redirect users directly to password creation page instead of 2FA page
+  - Added invite flow detection to skip 2FA requirements for invited users
+  - Prevented duplicate 2FA emails for invited users
+  - Added `/invite` route for proper invite handling
+  - Enhanced ProtectedRoute to detect and redirect invite flows appropriately
+- Form Validation Improvements
+  - Made "Attach to Super Agent" field required for regular agents
+  - Added visual indicators (red asterisks) for all required fields
+  - Implemented real-time form validation with disabled submit button
+  - Added contextual help text explaining field requirements
+  - Enhanced error messages with specific validation feedback
+- User Experience Enhancements
+  - Submit button now disabled until all required fields are filled
+  - Clear visual hierarchy distinguishing required vs optional fields
+  - Real-time validation feedback as users type/select
+  - Improved form accessibility with proper labeling
+- Bug Fixes
+  - Fixed invite users being incorrectly redirected to 2FA page
+  - Resolved duplicate 2FA email sending for invited users
+  - Corrected form submission logic for agent creation
+  - Enhanced error handling for missing required fields
+
 # [0.0.28] FE WEB CEKAT 2025-10-04
 Commit: Auto-resolve functionality, thread timestamp fixes, audio notifications, UI improvements
 ### Updates

@@ -50,6 +50,7 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/invite" element={<ResetPassword />} />
             <Route path="/otp" element={
               <ProtectedRoute>
                 <Otp />

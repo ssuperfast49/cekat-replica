@@ -63,6 +63,19 @@ export default function ResetPassword() {
 
       if (error) throw error;
 
+      // Update the password_set flag in users_profile
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from('users_profile')
+            .update({ password_set: true })
+            .eq('user_id', user.id);
+        }
+      } catch (profileError) {
+        console.warn('Failed to update password_set flag:', profileError);
+      }
+
       setSuccess(true);
       toast.success('Password updated successfully!');
       

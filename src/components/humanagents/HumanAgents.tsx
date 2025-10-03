@@ -49,6 +49,11 @@ const HumanAgents = () => {
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentWithDetails | null>(null);
   const { toast } = useToast();
   const { hasPermission, hasRole } = useRBAC();
+
+  // Form validation
+  const isFormValid = newAgent.name.trim() && 
+    newAgent.email.trim() && 
+    (newAgent.role !== 'agent' || selectedSuperForNewAgent);
   const [selectedSuperForCluster, setSelectedSuperForCluster] = useState<string | null>(null);
   const { aiAgents, setFilterBySuper, fetchAIAgents } = useAIAgents();
 
@@ -73,6 +78,16 @@ const HumanAgents = () => {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate Super Agent selection for regular agents
+    if (newAgent.role === 'agent' && !selectedSuperForNewAgent) {
+      toast({
+        title: "Error",
+        description: "Please select a Super Agent for this agent",
         variant: "destructive",
       });
       return;
@@ -386,7 +401,7 @@ const HumanAgents = () => {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="agent-name">Agent Name</Label>
+                <Label htmlFor="agent-name">Agent Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="agent-name"
                   value={newAgent.name}
@@ -395,7 +410,7 @@ const HumanAgents = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="agent-email">Email</Label>
+                <Label htmlFor="agent-email">Email <span className="text-red-500">*</span></Label>
                 <Input
                   id="agent-email"
                   type="email"
@@ -435,7 +450,7 @@ const HumanAgents = () => {
               </div>
               {newAgent.role === 'agent' && (
                 <div className="space-y-2">
-                  <Label>Attach to Super Agent</Label>
+                  <Label>Attach to Super Agent <span className="text-red-500">*</span></Label>
                   <Select value={selectedSuperForNewAgent || ''} onValueChange={(v)=>setSelectedSuperForNewAgent(v)}>
                     <SelectTrigger className="bg-background border">
                       <SelectValue placeholder="Select Super Agent" />
@@ -448,8 +463,21 @@ const HumanAgents = () => {
                   </Select>
                 </div>
               )}
+              
+              {/* Help text for required fields */}
+              <div className="text-sm text-muted-foreground">
+                <p>Fields marked with <span className="text-red-500">*</span> are required.</p>
+                {newAgent.role === 'agent' && (
+                  <p className="mt-1">Agents must be attached to a Super Agent.</p>
+                )}
+              </div>
+              
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleCreateAgent} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" disabled={creatingAgent}>
+                <Button 
+                  onClick={handleCreateAgent} 
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" 
+                  disabled={creatingAgent || !isFormValid}
+                >
                   {creatingAgent ? (
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
