@@ -66,6 +66,7 @@ const ChatPreview = ({
   const [isConnected, setIsConnected] = useState(true);
   const [sessionId, setSessionId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Generate session ID on component mount
   useEffect(() => {
@@ -81,7 +82,10 @@ const ChatPreview = ({
   }, []);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollContainerRef.current) {
+      // Scroll the container to the bottom instead of the entire page
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -237,7 +241,7 @@ const ChatPreview = ({
         </div>
       </div>
       
-      <div className="flex-1 p-4 space-y-4 overflow-auto">
+      <div ref={scrollContainerRef} className="flex-1 p-4 space-y-4 overflow-auto max-h-[400px]">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -250,7 +254,7 @@ const ChatPreview = ({
                   : 'bg-muted'
               }`}
             >
-              <p className="text-sm">{message.content}</p>
+              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               <p className="text-xs opacity-70 mt-1">
                 {message.timestamp.toLocaleTimeString()}
               </p>

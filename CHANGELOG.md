@@ -1,4 +1,8 @@
 # Change Log
+# [0.0.32] FE WEB CEKAT 2025-10-04
+### Updates
+- Fixed Live chat error and detail chat
+
 # [0.0.31] FE WEB CEKAT 2025-10-04
 ### Updates
 - Introduced a new endpoint `CHAT_TEST` for testing AI agent chat settings.
