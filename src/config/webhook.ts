@@ -26,6 +26,7 @@ export const WEBHOOK_CONFIG = {
     // AI Agent endpoints
     AI_AGENT: {
       CHAT_SETTINGS: "/chat-ai-agent-settings",
+      CHAT_TEST: "/chat-ai-agent-test",
     },
     // Knowledgebase endpoints
     KNOWLEDGE: {

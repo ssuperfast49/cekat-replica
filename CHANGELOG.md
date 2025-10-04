@@ -1,5 +1,13 @@
 # Change Log
+# [0.0.31] FE WEB CEKAT 2025-10-04
+### Updates
+- Introduced a new endpoint `CHAT_TEST` for testing AI agent chat settings.
+- Updated `AIAgentSettings` component to include profile handling and improved UI with collapsible sections for behavior, welcome message, and transfer conditions.
+- Enhanced `ChatPreview` to support profile ID and adjusted styling for better user experience.
+- Refactored platform forms to remove profile photo upload functionality.
+
 # [0.0.30] FE WEB CEKAT 2025-10-04
+### Updates
 - Fix invite
 
 # [0.0.29] FE WEB CEKAT 2025-10-04

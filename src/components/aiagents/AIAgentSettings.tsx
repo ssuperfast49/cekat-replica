@@ -31,6 +31,8 @@ const ChatPreview = ({
   welcomeMessage, 
   systemPrompt, 
   modelDisplay,
+  profile,
+  profileId,
   modelName,
   temperature,
   transfer_conditions
@@ -41,6 +43,8 @@ const ChatPreview = ({
   modelName: string;
   temperature: number;
   transfer_conditions: string;
+  profile: any;
+  profileId?: string;
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
@@ -104,12 +108,13 @@ const ChatPreview = ({
         model: modelName,
         temperature: temperature,
         session_id: sessionId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        ai_profile_id: profile?.id || profileId
       };
 
       console.log('Sending request to API:', requestBody);
 
-      const response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS), {
+      const response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_TEST), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -192,8 +197,8 @@ const ChatPreview = ({
   };
 
   return (
-    <Card className="flex flex-col h-full">
-      <div className="flex items-center gap-3 p-4 border-b">
+    <Card className="flex flex-col h-[600px] border-2 border-primary/20">
+      <div className="flex items-center gap-3 p-4 border-b bg-primary/5">
         <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
           <Bot className="w-4 h-4" />
         </div>
@@ -232,7 +237,7 @@ const ChatPreview = ({
         </div>
       </div>
       
-      <div className="flex-1 p-4 space-y-4 overflow-auto max-h-96">
+      <div className="flex-1 p-4 space-y-4 overflow-auto">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -265,14 +270,14 @@ const ChatPreview = ({
         <div ref={messagesEndRef} />
       </div>
       
-      <div className="p-4 border-t">
+      <div className="p-4 border-t bg-muted/30">
         <div className="flex gap-2">
           <textarea
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Type your message..."
-            className="flex-1 p-2 border rounded-lg text-sm resize-none"
+            className="flex-1 p-3 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20"
             rows={2}
             disabled={isLoading}
           />
@@ -280,11 +285,12 @@ const ChatPreview = ({
             size="sm" 
             onClick={sendMessage}
             disabled={!inputMessage.trim() || isLoading}
+            className="px-4"
           >
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">
+        <p className="text-xs text-muted-foreground mt-2 text-center">
           Press Enter to send, Shift+Enter for new line
         </p>
       </div>
@@ -295,6 +301,19 @@ const ChatPreview = ({
 const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps) => {
   const [activeTab, setActiveTab] = useState("general");
   const [knowledgeTab, setKnowledgeTab] = useState("text");
+  const [expandedSections, setExpandedSections] = useState({
+    behavior: true,
+    welcome: true,
+    transfer: false
+  });
+  
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+  
   const isNewAgent = !profileId;
   const { hasPermission } = useRBAC();
   const UPLOAD_PERMISSION = "ai_agent_files.manage";
@@ -963,9 +982,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
             {/* Main Settings */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="xl:col-span-3 space-y-4">
               {/* Agent Info */}
               <Card className="p-6">
                 <div className="flex items-center gap-4 mb-4">
@@ -985,82 +1004,113 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               </Card>
 
               {/* AI Agent Behavior */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4 text-primary">AI Agent Behavior</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Ini adalah Prompt AI yang akan mengatur gaya bicara dan identitas AI nya.
-                </p>
-                
-                <Textarea 
-                  className="min-h-[200px] mb-4" 
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder={isNewAgent ? 
-                    "Define your AI's personality, behavior, and capabilities here. For example:\n\nYou are a helpful customer service AI assistant. Be friendly, professional, and always respond in Indonesian unless the customer speaks in another language. Help customers with their inquiries about products, services, and support." : 
-                    "Enter system prompt..."
-                  }
-                />
-                
-                <div className="text-right text-xs text-muted-foreground">
-                  {systemPrompt.length}/15000
+              <Card className="p-4">
+                <div 
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => toggleSection('behavior')}
+                >
+                  <div>
+                    <h3 className="text-lg font-semibold text-primary">AI Agent Behavior</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Configure AI personality and behavior
+                    </p>
+                  </div>
+                  <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.behavior ? 'rotate-180' : ''}`} />
                 </div>
+                
+                {expandedSections.behavior && (
+                  <div className="mt-4 space-y-4">
+                    <Textarea 
+                      className="min-h-[120px]" 
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
+                      placeholder={isNewAgent ? 
+                        "Define your AI's personality, behavior, and capabilities here..." : 
+                        "Enter system prompt..."
+                      }
+                    />
+                    
+                    <div className="text-right text-xs text-muted-foreground">
+                      {systemPrompt.length}/15000
+                    </div>
+                  </div>
+                )}
               </Card>
 
               {/* Welcome Message */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-2 text-primary">Welcome Message</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Pesan pertama yang akan dikirim AI kepada user.
-                </p>
-                <Button variant="outline" size="sm" className="mb-4">
-                  Upload gambar untuk Welcome Message
-                </Button>
-                
-                <Textarea 
-                  className="min-h-[100px] mb-4" 
-                  value={welcomeMessage}
-                  onChange={(e) => setWelcomeMessage(e.target.value)}
-                  placeholder={isNewAgent ? 
-                    "This is the first message your AI will send to customers when they start a conversation. Make it welcoming and helpful!" : 
-                    "Enter welcome message..."
-                  }
-                />
-                
-                <div className="text-right text-xs text-muted-foreground">
-                  {welcomeMessage.length}/5000
+              <Card className="p-4">
+                <div 
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => toggleSection('welcome')}
+                >
+                  <div>
+                    <h3 className="text-lg font-semibold text-primary">Welcome Message</h3>
+                    <p className="text-sm text-muted-foreground">
+                      First message sent to users
+                    </p>
+                  </div>
+                  <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.welcome ? 'rotate-180' : ''}`} />
                 </div>
+                
+                {expandedSections.welcome && (
+                  <div className="mt-4 space-y-4">
+                    <Textarea 
+                      className="min-h-[80px]" 
+                      value={welcomeMessage}
+                      onChange={(e) => setWelcomeMessage(e.target.value)}
+                      placeholder={isNewAgent ? 
+                        "This is the first message your AI will send to customers..." : 
+                        "Enter welcome message..."
+                      }
+                    />
+                    
+                    <div className="text-right text-xs text-muted-foreground">
+                      {welcomeMessage.length}/5000
+                    </div>
+                  </div>
+                )}
               </Card>
 
               {/* Agent Transfer Conditions */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4 text-primary">Agent Transfer Conditions</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Tentukan kondisi yang akan memicu AI untuk mentransfer chat ke agen manusia. Status chat akan menjadi Pending dan akan muncul di tab Chat Assigned.
-                </p>
-                
-                <div className="space-y-4">
-                  <Textarea 
-                    className="min-h-[80px]" 
-                    value={transferConditions}
-                    onChange={(e) => setTransferConditions(e.target.value)}
-                    placeholder={isNewAgent ? 
-                      "Define when your AI should transfer the conversation to a human agent. For example:\n- Customer requests to speak with a human\n- Complex technical issues\n- Payment or billing problems\n- Customer is angry or dissatisfied" : 
-                      "Enter transfer conditions..."
-                    }
-                  />
-                  <div className="text-right text-xs text-muted-foreground">
-                    {transferConditions.length}/750
+              <Card className="p-4">
+                <div 
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => toggleSection('transfer')}
+                >
+                  <div>
+                    <h3 className="text-lg font-semibold text-primary">Agent Transfer Conditions</h3>
+                    <p className="text-sm text-muted-foreground">
+                      When to transfer to human agents
+                    </p>
                   </div>
+                  <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.transfer ? 'rotate-180' : ''}`} />
                 </div>
+                
+                {expandedSections.transfer && (
+                  <div className="mt-4 space-y-4">
+                    <Textarea 
+                      className="min-h-[80px]" 
+                      value={transferConditions}
+                      onChange={(e) => setTransferConditions(e.target.value)}
+                      placeholder={isNewAgent ? 
+                        "Define when your AI should transfer the conversation to a human agent..." : 
+                        "Enter transfer conditions..."
+                      }
+                    />
+                    <div className="text-right text-xs text-muted-foreground">
+                      {transferConditions.length}/750
+                    </div>
+                  </div>
+                )}
               </Card>
 
               {/* Stop AI after Handoff */}
-              <Card className="p-6">
+              <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold">Stop AI after Handoff</h3>
                     <p className="text-sm text-muted-foreground">
-                      Hentikan AI mengirim pesan setelah status chat berubah menjadi Pending.
+                      Stop AI from sending messages after handoff
                     </p>
                   </div>
                   <Switch checked={stopAfterHandoff} onCheckedChange={setStopAfterHandoff} />
@@ -1068,7 +1118,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               </Card>
 
               {/* Model Settings */}
-              <Card className="p-6">
+              <Card className="p-4">
                 <h3 className="text-lg font-semibold mb-4 text-primary">Model Settings</h3>
                 <div className="grid grid-cols-2 gap-4">
                   {/* <div>
@@ -1152,11 +1202,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
             </div>
 
             {/* Chat Preview */}
-            <div className="lg:col-span-1">
+            <div className="xl:col-span-2">
               <ChatPreview 
                 welcomeMessage={welcomeMessage} 
                 systemPrompt={systemPrompt} 
-                modelDisplay={selectedModel?.display_name || selectedModel?.model_name || 'Not selected'} 
+                modelDisplay={selectedModel?.display_name || selectedModel?.model_name || 'Not selected'}
+                profile={profile}
+                profileId={profileId} 
                 modelName={selectedModel?.model_name || ''} 
                 temperature={temperature} 
                 transfer_conditions={transferConditions}

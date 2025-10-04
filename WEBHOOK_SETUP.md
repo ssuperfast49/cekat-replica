@@ -36,6 +36,7 @@ The application uses a centralized webhook configuration located at `src/config/
 
 ### AI Agent Endpoints
 - `CHAT_SETTINGS`: `/chat-ai-agent-settings` - Configure AI agent chat settings
+- `CHAT_TEST`: `/chat-ai-agent-test` - Test AI agent chat settings
 
 ### Message Endpoints
 - `SEND_MESSAGE`: `/send-message` - Send messages via webhook

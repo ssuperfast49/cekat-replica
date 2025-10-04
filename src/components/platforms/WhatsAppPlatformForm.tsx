@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -31,7 +31,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [formData, setFormData] = useState({
     platformName: "",
     description: "",
-    profilePhoto: null as File | null,
     phoneNumber: "",
     selectedAIAgent: "",
     selectedHumanAgents: [] as string[]
@@ -51,12 +50,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   // WAHA base URL
   const WAHA_BASE = 'https://waha-plus-production-97c1.up.railway.app';
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setFormData(prev => ({ ...prev, profilePhoto: file }));
-    }
-  };
 
   const handleHumanAgentToggle = (agentId: string) => {
     setFormData(prev => ({
@@ -311,7 +304,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       setFormData({
         platformName: "",
         description: "",
-        profilePhoto: null,
         phoneNumber: "",
         selectedAIAgent: "",
         selectedHumanAgents: []
@@ -367,7 +359,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       setFormData({
         platformName: "",
         description: "",
-        profilePhoto: null,
         phoneNumber: "",
         selectedAIAgent: "",
         selectedHumanAgents: []
@@ -421,43 +412,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
           {/* WhatsApp Number removed per requirements */}
 
-          {/* Profile Photo / Logo */}
-          <div className="space-y-2">
-            <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
-                {formData.profilePhoto ? (
-                  <img
-                    src={URL.createObjectURL(formData.profilePhoto)}
-                    alt="Profile"
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                )}
-              </div>
-              <div className="flex-1">
-                <Input
-                  id="profilePhoto"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <Button 
-                  variant="outline"
-                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                  onClick={() => document.getElementById('profilePhoto')?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Photo
-                </Button>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Recommended: 512x512px, max 2MB
-                </p>
-              </div>
-            </div>
-          </div>
 
           {/* Super Agent (single-select dropdown) placed before AI Agent */}
           <div className="space-y-1">

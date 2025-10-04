@@ -31,6 +31,7 @@ export default function LiveChat() {
   const [sessionId, setSessionId] = useState<string>("session_" + Date.now());
   const [threadId, setThreadId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
+  const [aiProfileId, setAiProfileId] = useState<string | null>(null);
   // Profile settings are resolved server-side by the webhook; no client DB calls.
   const endRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -141,6 +142,29 @@ export default function LiveChat() {
   }, [messages.length]);
 
   // Attach to existing thread for this platform and current username, and subscribe to realtime
+  // Fetch AI profile ID from channel/platform
+  useEffect(() => {
+    const fetchAiProfileId = async () => {
+      try {
+        const { data: channel } = await supabase
+          .from('channels')
+          .select('ai_profile_id')
+          .eq('id', pid)
+          .single();
+        
+        if (channel?.ai_profile_id) {
+          setAiProfileId(channel.ai_profile_id);
+        }
+      } catch (error) {
+        console.error('Error fetching AI profile ID:', error);
+      }
+    };
+
+    if (pid && pid !== 'unknown') {
+      fetchAiProfileId();
+    }
+  }, [pid]);
+
   useEffect(() => {
     let sub: any = null;
     let threadsSub: any = null;
@@ -251,9 +275,10 @@ export default function LiveChat() {
         timestamp: new Date().toISOString(),
         channel_id: pid,
         username: username || undefined,
+        ai_profile_id: aiProfileId,
       } as const;
 
-      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS), {
+      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_TEST), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

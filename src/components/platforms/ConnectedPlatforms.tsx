@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Settings, Camera, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
+import { Plus, Settings, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader as DangerHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -858,20 +858,15 @@ const ConnectedPlatforms = () => {
         <div className="max-w-4xl">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 bg-muted rounded-lg flex items-center justify-center">
-                <Camera className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold">
-                  {selectedPlatformData?.display_name
-                    ? selectedPlatformData.display_name.toUpperCase()
-                    : 'Select Platform'}
-                </h1>
-                <p className="text-muted-foreground">
-                  {selectedPlatformData ? (selectedPlatformData.description || selectedPlatformData.website_url || '') : 'Choose a platform to manage'}
-                </p>
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold">
+                {selectedPlatformData?.display_name
+                  ? selectedPlatformData.display_name.toUpperCase()
+                  : 'Select Platform'}
+              </h1>
+              <p className="text-muted-foreground">
+                {selectedPlatformData ? (selectedPlatformData.description || selectedPlatformData.website_url || '') : 'Choose a platform to manage'}
+              </p>
             </div>
             <div className="flex gap-2">
               {selectedPlatformData && (
@@ -948,7 +943,40 @@ const ConnectedPlatforms = () => {
           </div>
 
           <div className="grid gap-6">
-            {selectedPlatformData && (
+            {!selectedPlatformData ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                  <MessageCircle className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Platform Selected</h3>
+                <p className="text-muted-foreground mb-6 max-w-md">
+                  Select a platform from the left panel to view its details, manage settings, and configure agents.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-2xl">
+                  <div className="p-4 border rounded-lg text-center">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                      <MessageCircle className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <h4 className="font-medium mb-1">WhatsApp</h4>
+                    <p className="text-sm text-muted-foreground">Connect your WhatsApp business account</p>
+                  </div>
+                  <div className="p-4 border rounded-lg text-center">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                      <Send className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <h4 className="font-medium mb-1">Telegram</h4>
+                    <p className="text-sm text-muted-foreground">Set up a Telegram bot for customer support</p>
+                  </div>
+                  <div className="p-4 border rounded-lg text-center">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                      <Globe className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <h4 className="font-medium mb-1">Live Chat</h4>
+                    <p className="text-sm text-muted-foreground">Embed chat widget on your website</p>
+                  </div>
+                </div>
+              </div>
+            ) : selectedPlatformData && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Channel Details</CardTitle>
@@ -976,16 +1004,8 @@ const ConnectedPlatforms = () => {
                       <div>{selectedPlatformData.created_at ? new Date(selectedPlatformData.created_at as any).toLocaleString() : '—'}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">External ID</div>
-                      <div>{(selectedPlatformData as any)?.external_id || '—'}</div>
-                    </div>
-                    <div>
                       <div className="text-muted-foreground">Secret Token</div>
                       <div>{(() => { const t = (selectedPlatformData as any)?.secret_token as string | undefined; if (!t) return '—'; return t.length > 8 ? `${t.slice(0,4)}••••${t.slice(-2)}` : '••••'; })()}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Channel ID</div>
-                      <div>{selectedPlatformData.id}</div>
                     </div>
                   </div>
                 </CardContent>
