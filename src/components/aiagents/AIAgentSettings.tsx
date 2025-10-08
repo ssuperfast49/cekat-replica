@@ -316,8 +316,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   
   const isNewAgent = !profileId;
   const { hasPermission } = useRBAC();
-  const UPLOAD_PERMISSION = "ai_agent_files.manage";
-  const canUploadAgentFiles = hasPermission(UPLOAD_PERMISSION);
+  const canUploadAgentFiles = hasPermission('ai_agent_files.manage') || hasPermission('ai_agent_files.create');
   
   // Use the custom hook for AI profile management
   const { profile, loading, saving, error, saveProfile } = useAIProfiles(profileId);
@@ -1450,7 +1449,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   ) : (
                     <>
                       <p className="text-sm text-muted-foreground">You don't have permission to upload files.</p>
-                      <p className="text-xs text-muted-foreground mt-1">Requires permission: {UPLOAD_PERMISSION}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Requires permission: ai_agent_files.create</p>
                     </>
                   )}
                 </div>

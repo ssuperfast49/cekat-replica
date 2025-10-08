@@ -147,21 +147,20 @@ const Index = () => {
         {/* Sidebar */}
         <aside 
           className={`shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out ${
-            sidebarExpanded ? 'w-64' : 'w-20'
+            sidebarExpanded ? 'w-64' : 'w-[4.7rem]'
           } md:flex md:flex-col p-4 sticky top-0 h-screen overflow-y-auto`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
-          <div className="flex items-center gap-2 px-2 py-1 transition-all duration-200">
-            <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-tr from-brand to-primary" aria-hidden />
-            <span className={`text-lg font-semibold transition-opacity duration-200 whitespace-nowrap ${
-              sidebarExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
-            }`}>
-              Cekat AI
-            </span>
+          <div className="flex items-center justify-center px-2 py-3 transition-all duration-200">
+            {sidebarExpanded ? (
+              <img src="/synka.png" alt="Synka" className="h-10 w-auto object-contain transition-all duration-300 scale-125" />
+            ) : (
+              <img src="/synka_logo.png" alt="Synka Logo" className="h-10 w-auto object-contain transition-all duration-300 scale-110" />
+            )}
           </div>
           
-          <Separator className="my-4" />
+          <Separator className="mb-4 mt-1"/>
           
           <nav className="flex flex-col gap-1 flex-1">
             {NAVIGATION_ORDER.map((navKey) => {
@@ -217,14 +216,14 @@ const Index = () => {
         <main className="flex-1">
           {/* Top bar */}
           <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-8">
               <div className="flex items-center gap-2 md:gap-3">
               </div>
               <div className="flex items-center gap-3">
                 <Badge className="hidden sm:inline-flex bg-success text-success-foreground">Online</Badge>
-                <div className="text-right hidden sm:block">
-                  <div className="text-sm font-medium">{user?.user_metadata?.full_name || 'User'}</div>
-                  <div className="text-xs text-muted-foreground">{user?.email}</div>
+                <div className="text-right hidden sm:block min-w-0">
+                  <div className="text-sm font-medium max-w-[28ch] truncate">{user?.user_metadata?.full_name || 'User'}</div>
+                  <div className="text-xs text-muted-foreground max-w-[32ch] truncate">{user?.email}</div>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -308,7 +307,7 @@ const Index = () => {
               </PermissionGate>
             ) : (
               <>
-                <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Selamat datang kembali di Cekat AI!</h1>
+                <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Selamat datang kembali di Synka!</h1>
                 <div className="mt-6 grid gap-4 md:max-w-2xl">
                   <StepCard step={1} title="Hubungkan Platform" description="Mulai terima pesan dari Whatsapp, IG, dan FB Anda!" emoji="📨" />
                   <StepCard step={2} title="Buat AI Agent" description="Jawab pesan masuk dengan Agent AI Anda." emoji="🤖" />

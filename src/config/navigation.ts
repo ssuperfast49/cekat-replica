@@ -44,12 +44,14 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "analytics",
     label: "Analytics",
     icon: BarChart2,
+    // Prefer a single read permission; remain backward-compatible for existing roles
     permissions: [
+      'analytics.read',
       'analytics.view_kpi',
-      'analytics.view_containment_rate', 
+      'analytics.view_containment_rate',
       'analytics.view_handover_rate'
     ],
-    requireAll: false, // User needs ANY analytics permission
+    requireAll: false,
     description: "View performance metrics and insights"
   },
 

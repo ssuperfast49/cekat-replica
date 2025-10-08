@@ -44,6 +44,12 @@ const App = () => (
                 <Index />
               </ProtectedRoute>
             } />
+            {/* Direct route to Chat inbox */}
+            <Route path="/chat" element={
+              <ProtectedRoute>
+                <Index />
+              </ProtectedRoute>
+            } />
             <Route path="/profile" element={
               <ProtectedRoute>
                 <Profile />

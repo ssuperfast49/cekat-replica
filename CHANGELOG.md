@@ -1,4 +1,18 @@
 # Change Log
+# [0.0.32] FE WEB CEKAT 2025-10-08
+### Updates
+- Update project branding to **Synka AI**
+- Enhance **chat functionality**
+- Improve **permissions management**
+- Key changes include:
+  - Renaming titles and meta descriptions
+  - Adding a direct route to the chat inbox
+  - Updating permission checks
+  - Refining UI elements for better user experience
+
+Updating permission checks
+
+Refining UI elements for better user experience
 # [0.0.31] FE WEB CEKAT 2025-10-04
 ### Updates
 - Introduced a new endpoint `CHAT_TEST` for testing AI agent chat settings.

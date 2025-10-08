@@ -6,12 +6,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useContacts, ContactWithDetails, ContactsFilter } from "@/hooks/useContacts";
 import { toast } from "@/components/ui/sonner";
+import { useNavigate } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +42,9 @@ export default function Contacts() {
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [contactDetailsOpen, setContactDetailsOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<ContactWithDetails | null>(null);
+  const navigate = useNavigate();
   
   // Use the contacts hook
   const { 
@@ -83,6 +90,22 @@ export default function Contacts() {
   const handleDeleteSelected = () => {
     if (selectedContacts.length === 0) return;
     setDeleteDialogOpen(true);
+  };
+
+  const handleViewConversation = (contact: ContactWithDetails) => {
+    // Navigate to chat page with contact filter
+    navigate(`/chat?contact=${contact.id}`);
+    toast.success(`Opening conversation with ${contact.name || 'contact'}`);
+  };
+
+  const handleViewDetails = (contact: ContactWithDetails) => {
+    setSelectedContact(contact);
+    setContactDetailsOpen(true);
+  };
+
+  const handleEditContact = (contact: ContactWithDetails) => {
+    setSelectedContact(contact);
+    setEditDialogOpen(true);
   };
 
   const confirmDeleteSelected = async () => {
@@ -383,12 +406,26 @@ export default function Contacts() {
                             <Button 
                               size="sm" 
                               className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700"
-                              aria-label="Open conversation"
+                              aria-label="View detailed conversation"
+                              onClick={() => handleViewConversation(contact)}
                             >
                               <MessageSquare className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Open conversation</TooltipContent>
+                          <TooltipContent>View detailed conversation</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              size="sm" 
+                              className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700"
+                              aria-label="View contact details"
+                              onClick={() => handleViewDetails(contact)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>View contact details</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -396,6 +433,7 @@ export default function Contacts() {
                               size="sm" 
                               className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600"
                               aria-label="Edit contact"
+                              onClick={() => handleEditContact(contact)}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -553,6 +591,170 @@ export default function Contacts() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Contact Details Modal */}
+      <Dialog open={contactDetailsOpen} onOpenChange={setContactDetailsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback>
+                  {selectedContact?.name?.[0]?.toUpperCase() || selectedContact?.phone?.[0]?.toUpperCase() || '?'}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="text-lg font-semibold">
+                  {selectedContact?.name || 'Unnamed Contact'}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Contact Details
+                </div>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedContact && (
+            <div className="space-y-6">
+              {/* Basic Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Name</Label>
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span>{selectedContact.name || 'Unnamed Contact'}</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Phone</Label>
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <span>{selectedContact.phone || '-'}</span>
+                    {selectedContact.phone && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedContact.phone as string);
+                          toast.success('Phone copied to clipboard');
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-muted-foreground">Notes</Label>
+                <div className="p-3 bg-muted rounded-md">
+                  {selectedContact.notes ? (
+                    <p className="text-sm">{selectedContact.notes}</p>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">No notes</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Labels and Inbox */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Label Names</Label>
+                  <div className="flex items-center gap-2">
+                    <span>{selectedContact.labelNames || '-'}</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Inbox</Label>
+                  <div className="flex items-center gap-2">
+                    {selectedContact.inbox ? (
+                      <Badge variant="outline">{selectedContact.inbox}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Chat Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Chat Status</Label>
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                    {renderChatStatus(selectedContact.chatStatus)}
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Handled By</Label>
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    {selectedContact.handledBy && selectedContact.handledBy !== '—' ? (
+                      <Badge className="bg-purple-100 text-purple-700 border-0">{selectedContact.handledBy}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact and Chat Creation Times */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Contact Created At</Label>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-mono text-sm">
+                      {selectedContact.created_at ? 
+                        new Date(selectedContact.created_at).toLocaleString('en-US', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        }) : '-'
+                      }
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Chat Created At</Label>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-mono text-sm">{selectedContact.chatCreatedAt || '-'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Button 
+                  onClick={() => handleViewConversation(selectedContact)}
+                  className="flex-1"
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  View Conversation
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => handleEditContact(selectedContact)}
+                  className="flex-1"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Contact
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

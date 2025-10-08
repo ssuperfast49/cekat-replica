@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +27,8 @@ import {
   UserMinus,
   Send,
   MoreVertical,
-  CheckCircle
+  CheckCircle,
+  X
 } from "lucide-react";
 import { useConversations, ConversationWithDetails, MessageWithDetails } from "@/hooks/useConversations";
 import { useContacts } from "@/hooks/useContacts";
@@ -115,6 +117,7 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
 };
 
 export default function ConversationPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -148,17 +151,34 @@ export default function ConversationPage() {
   const { createContact } = useContacts();
   const { agents: humanAgents } = useHumanAgents();
   const { user } = useAuth();
-  const { hasRole } = useRBAC();
+  const { hasRole, hasPermission } = useRBAC();
   const [assignOpen, setAssignOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
   const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
 
   // Filter conversations based on search query
   const [filters, setFilters] = useState<any>({});
+  
+  // Get contact ID and tab from URL parameters
+  const contactId = searchParams.get('contact');
+  const tabParam = searchParams.get('tab');
+
+  // Sync active tab from URL when provided (read-only to avoid loops)
+  useEffect(() => {
+    if (!tabParam) return;
+    if (tabParam === 'assigned' || tabParam === 'unassigned' || tabParam === 'resolved') {
+      if (tabParam !== activeTab) setActiveTab(tabParam as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam]);
+  
   const filteredConversations = useMemo(() => {
     let list = conversations.filter((conv) =>
       `${conv.contact_name} ${conv.last_message_preview}`.toLowerCase().includes(query.toLowerCase())
     );
+    
+    // Do not filter list by contactId; we only use it to auto-select
+    
     if (filters.status && filters.status !== 'all') {
       if (filters.status === 'resolved') {
         list = list.filter(c => c.status === 'closed');
@@ -197,7 +217,7 @@ export default function ConversationPage() {
       return new Date(b.last_msg_at).getTime() - new Date(a.last_msg_at).getTime();
     });
     return list;
-  }, [conversations, query, filters]);
+  }, [conversations, query, filters, contactId]);
 
   // If there are only resolved (closed) conversations, switch to the Resolved tab automatically
   useEffect(() => {
@@ -207,6 +227,38 @@ export default function ConversationPage() {
       setActiveTab('resolved');
     }
   }, [filteredConversations, activeTab]);
+
+  // Keep URL in sync with current tab for deep-linkability (write-only)
+  useEffect(() => {
+    const current = tabParam;
+    if (current === activeTab) return;
+    const next = new URLSearchParams(window.location.search);
+    next.set('tab', activeTab);
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Auto-select conversation by contactId (without filtering the list) and open it
+  useEffect(() => {
+    if (contactId && filteredConversations.length > 0) {
+      const target = filteredConversations.find(c => c.contact_id === contactId);
+      if (!target) return;
+      if (selectedThreadId !== target.id) {
+        setSelectedThreadId(target.id);
+      }
+      // Ensure tab reflects the selected conversation
+      if (target.status === 'closed') {
+        setActiveTab('resolved');
+      } else {
+        setActiveTab(target.assigned ? 'assigned' : 'unassigned');
+      }
+      // Fetch messages and set provider when auto-selecting
+      void fetchMessages(target.id);
+      if (target.channel?.provider) {
+        setSendMessageProvider(target.channel.provider);
+      }
+    }
+  }, [contactId, filteredConversations, selectedThreadId]);
 
   // Get selected conversation
   const selectedConversation = useMemo(() => {
@@ -446,9 +498,8 @@ export default function ConversationPage() {
 
   return (
     <div className="grid w-full grid-cols-[300px_1fr_320px] h-[calc(100vh-120px)] gap-4">
-      {/* Left sidebar styled like ChatMock */}
       <aside className="rounded-lg border bg-card p-3">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 pb-2 border-b flex items-center justify-between">
           <h2 className="text-sm font-medium">Conversations</h2>
           <div className="flex items-center gap-1">
             <ChatFilter onFilterChange={setFilters} />
@@ -458,7 +509,7 @@ export default function ConversationPage() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search..." value={query} onChange={(e)=>setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
         </div>
-        <Tabs value={activeTab} onValueChange={(v)=>setActiveTab(v as any)} className="w-full">
+        <Tabs value={activeTab} onValueChange={(v)=>{ if (v !== activeTab) setActiveTab(v as any); }} className="w-full">
           <TabsList className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
             <TabsTrigger
               value="assigned"
@@ -502,16 +553,18 @@ export default function ConversationPage() {
                           <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
                           <span className="text-xs text-gray-500 ml-2">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview || '—'}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Badge className="bg-blue-100 text-blue-600 text-xs">Assigned</Badge>
-                          {(conv as any).unreplied && (
-                            <Badge className="bg-red-100 text-red-600 text-xs">Unreplied</Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs">
-                            {conv.channel?.provider}
-                          </Badge>
+                        <div className="flex items-center justify-between mt-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0.5 bg-purple-50 text-purple-700 border-purple-200">
+                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                            </Badge>
+                            {(conv as any).unreplied && (
+                              <Badge className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5">Unreplied</Badge>
+                            )}
+                            <Badge className="bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5">Assigned</Badge>
+                          </div>
                         </div>
+                        <p className="text-xs text-gray-500 truncate mt-1">{conv.last_message_preview || '—'}</p>
                       </div>
                     </div>
                   </button>
@@ -526,20 +579,20 @@ export default function ConversationPage() {
                   <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <span className="text-xs text-gray-500 ml-2">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
+                          <span className="text-xs text-gray-500 shrink-0">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Badge variant="secondary" className="text-xs">Unassigned</Badge>
-                          {(conv as any).unreplied && (
-                            <Badge className="bg-red-100 text-red-600 text-xs">Unreplied</Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs">
-                            {conv.channel?.provider}
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0.5 bg-purple-50 text-purple-700 border-purple-200">
+                            {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
                           </Badge>
+                          {(conv as any).unreplied && (
+                            <Badge className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5">Unreplied</Badge>
+                          )}
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">Unassigned</Badge>
                         </div>
+                        <p className="text-xs text-gray-500 truncate">{conv.last_message_preview}</p>
                       </div>
                     </div>
                   </button>
@@ -555,17 +608,17 @@ export default function ConversationPage() {
                   <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <span className="text-xs text-gray-500 ml-2">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
+                          <span className="text-xs text-gray-500 shrink-0">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-1">{conv.last_message_preview}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Badge className="bg-green-100 text-green-700 text-xs">Resolved</Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {conv.channel?.provider}
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0.5 bg-purple-50 text-purple-700 border-purple-200">
+                            {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
                           </Badge>
+                          <Badge className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5">Resolved</Badge>
                         </div>
+                        <p className="text-xs text-gray-500 truncate">{conv.last_message_preview}</p>
                       </div>
                     </div>
                   </button>
@@ -652,8 +705,9 @@ export default function ConversationPage() {
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleKeyPress}
                     className="flex-1"
+                    disabled={!hasPermission('messages.create')}
                   />
-                  <Button type="button" onClick={handleSendMessage} disabled={!draft.trim()}>
+                  <Button type="button" onClick={handleSendMessage} disabled={!draft.trim() || !hasPermission('messages.create')} title={!hasPermission('messages.create') ? 'No permission to send messages' : undefined}>
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>

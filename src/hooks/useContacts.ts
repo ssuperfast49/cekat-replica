@@ -61,8 +61,6 @@ export const useContacts = () => {
           `,
           { count: 'exact' }
         )
-        // If your project uses org-based RLS, the org filter may be enforced automatically.
-        .eq('org_id', '00000000-0000-0000-0000-000000000001')
         .order('created_at', { ascending: false });
 
       // Apply search filter if provided
@@ -134,7 +132,7 @@ export const useContacts = () => {
           inbox: inboxName,
           chatStatus: lastThread?.status || '—',
           chatCreatedAt: chatCreated,
-          handledBy: lastThread?.assignee_user_id ? 'Assigned' : '—',
+          handledBy: lastThread?.assignee_user_id ? 'assigned' : 'unassigned',
         } as ContactWithDetails;
       });
 

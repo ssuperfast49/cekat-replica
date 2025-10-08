@@ -131,7 +131,10 @@ export const useConversations = () => {
     conversationsRefreshTimer.current = window.setTimeout(() => {
       // Only refresh if the document is visible to prevent unnecessary fetches when tab is hidden
       if (document.visibilityState === 'visible') {
-        fetchConversations();
+        // Prevent parallel fetches
+        if (!loading) {
+          fetchConversations();
+        }
       }
     }, delayMs) as unknown as number;
   };
@@ -729,12 +732,12 @@ export const useConversations = () => {
     }
   };
 
-  // Initial fetch on mount - always fetch fresh data on mount
+  // Initial fetch on mount - guard against duplicate calls
   useEffect(() => {
     // Hydrate from cache for instant UI
     hydrateFromCache();
-    // Always fetch fresh data on mount, regardless of visibility
-    fetchConversations();
+    // Avoid overlapping with other triggers by scheduling slightly
+    scheduleConversationsRefresh(10);
   }, []);
 
   // Auto-resolve check function

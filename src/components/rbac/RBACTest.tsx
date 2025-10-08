@@ -63,13 +63,13 @@ export default function RBACTest() {
         <h4 className="font-medium">Permission Tests:</h4>
         <div className="space-y-2">
           <div>
-            Can send messages: {hasPermission('messages.send') ? '✅' : '❌'}
+            Can send messages: {hasPermission('messages.create') ? '✅' : '❌'}
           </div>
           <div>
             Can read messages: {hasPermission('messages.read') ? '✅' : '❌'}
           </div>
           <div>
-            Can view analytics: {hasPermission('analytics.view_kpi') ? '✅' : '❌'}
+            Can view analytics: {hasPermission('analytics.read') || hasPermission('analytics.view_kpi') ? '✅' : '❌'}
           </div>
           <div>
             Can manage users: {hasPermission('users.read_all') ? '✅' : '❌'}
@@ -97,13 +97,13 @@ export default function RBACTest() {
       <div>
         <h4 className="font-medium">Permission Gate Tests:</h4>
         <div className="space-y-2">
-          <PermissionGate permission={'messages.send'}>
+          <PermissionGate permission={'messages.create'}>
             <div className="p-2 bg-green-100 text-green-800 rounded">
               ✅ You can send messages
             </div>
           </PermissionGate>
           
-          <PermissionGate permission={'analytics.view_kpi'}>
+          <PermissionGate permission={'analytics.read'}>
             <div className="p-2 bg-blue-100 text-blue-800 rounded">
               ✅ You can view analytics
             </div>
@@ -139,13 +139,13 @@ export default function RBACTest() {
       <div>
         <h4 className="font-medium">Async Permission Gate Tests (DB-level):</h4>
         <div className="space-y-2">
-          <AsyncPermissionGate resource="messages" action="send">
+          <AsyncPermissionGate resource="messages" action="create">
             <div className="p-2 bg-green-100 text-green-800 rounded">
               ✅ You can send messages (DB check)
             </div>
           </AsyncPermissionGate>
           
-          <AsyncPermissionGate resource="analytics" action="view_kpi">
+          <AsyncPermissionGate resource="analytics" action="read">
             <div className="p-2 bg-blue-100 text-blue-800 rounded">
               ✅ You can view analytics (DB check)
             </div>

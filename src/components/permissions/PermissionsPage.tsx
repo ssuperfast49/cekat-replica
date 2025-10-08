@@ -12,6 +12,8 @@ import { Shield, Settings, Edit, Trash2, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, logAction } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
+import PermissionGate from "@/components/rbac/PermissionGate";
+import AsyncPermissionGate from "@/components/rbac/AsyncPermissionGate";
 
 interface Role {
   id: string;
@@ -81,13 +83,30 @@ const PermissionsPage = () => {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [view, setView] = useState<'roles' | 'configure'>('roles');
   const { toast } = useToast();
-  const { refreshRBAC } = useRBAC();
+  const { refreshRBAC, hasPermission } = useRBAC();
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  // Role master editing state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingRole, setDeletingRole] = useState<Role | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
   const RESOURCES = ['conversations','users','channels','analytics','topup','config'];
   const ACTIONS = ['view','create','update','delete','export'];
   const [policy, setPolicy] = useState<Record<string, Set<string>>>({});
   const [policyLoading, setPolicyLoading] = useState(false);
   const [policySaving, setPolicySaving] = useState(false);
+
+  // Capability flags (frontend gating)
+  const canCreateRole = hasPermission('roles.create');
+  const canUpdateRole = hasPermission('roles.update');
+  const canDeleteRole = hasPermission('roles.delete');
+  const canGrantRolePerm = hasPermission('role_permissions.create');
+  const canRevokeRolePerm = hasPermission('role_permissions.delete');
+  const canConfigurePolicy = hasPermission('access_rules.configure');
 
   // Fetch roles and permissions data
   const fetchData = async () => {
@@ -135,6 +154,77 @@ const PermissionsPage = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const openCreateRole = () => {
+    setEditingRole(null);
+    setEditName("");
+    setEditDesc("");
+    setEditOpen(true);
+  };
+
+  const openEditRole = (role: Role) => {
+    setEditingRole(role);
+    setEditName(role.name);
+    setEditDesc(role.description);
+    setEditOpen(true);
+  };
+
+  const saveRole = async () => {
+    try {
+      setEditSaving(true);
+      if (editingRole) {
+        if (!canUpdateRole) {
+          toast({ title: 'Forbidden', description: 'You do not have permission to update roles', variant: 'destructive' });
+          return;
+        }
+        const { error } = await supabase.from('roles').update({ name: editName, description: editDesc }).eq('id', editingRole.id);
+        if (error) throw error;
+        try { await logAction({ action: 'roles.update', resource: 'roles', resourceId: editingRole.id, context: { name: editName } }); } catch {}
+        toast({ title: 'Saved', description: 'Role updated' });
+      } else {
+        if (!canCreateRole) {
+          toast({ title: 'Forbidden', description: 'You do not have permission to create roles', variant: 'destructive' });
+          return;
+        }
+        const { data, error } = await supabase.from('roles').insert([{ name: editName, description: editDesc }]).select('id').single();
+        if (error) throw error;
+        try { await logAction({ action: 'roles.create', resource: 'roles', resourceId: (data as any)?.id ?? null, context: { name: editName } }); } catch {}
+        toast({ title: 'Created', description: 'Role created' });
+      }
+      setEditOpen(false);
+      await fetchData();
+    } catch (e) {
+      toast({ title: 'Error', description: 'Failed to save role', variant: 'destructive' });
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const deleteRole = async (role: Role) => {
+    try {
+      if (!canDeleteRole) {
+        toast({ title: 'Forbidden', description: 'You do not have permission to delete roles', variant: 'destructive' });
+        return;
+      }
+      setSaving(prev => ({ ...prev, [role.id]: true }));
+      setDeleteSaving(true);
+      // Remove dependent records first to satisfy FK constraints
+      await supabase.from('role_permissions').delete().eq('role_id', role.id);
+      await supabase.from('user_roles').delete().eq('role_id', role.id);
+      const { error } = await supabase.from('roles').delete().eq('id', role.id);
+      if (error) throw error;
+      try { await logAction({ action: 'roles.delete', resource: 'roles', resourceId: role.id }); } catch {}
+      toast({ title: 'Deleted', description: 'Role deleted' });
+      setDeleteOpen(false);
+      setDeletingRole(null);
+      await fetchData();
+    } catch (e) {
+      toast({ title: 'Error', description: 'Failed to delete role', variant: 'destructive' });
+    } finally {
+      setSaving(prev => ({ ...prev, [role.id]: false }));
+      setDeleteSaving(false);
+    }
+  };
 
   // Load RBAC policy for selected role
   useEffect(() => {
@@ -195,28 +285,33 @@ const PermissionsPage = () => {
   // Toggle permission for role via secure RPCs
   const toggleRolePermission = async (roleId: string, permissionId: string) => {
     try {
-      const hasPermission = roleHasPermission(roleId, permissionId);
+      const isAssigned = roleHasPermission(roleId, permissionId);
       const key = `${roleId}:${permissionId}`;
       setSaving(prev => ({ ...prev, [key]: true }));
-
-      if (hasPermission) {
+      if (isAssigned) {
+        if (!canRevokeRolePerm) {
+          toast({ title: 'Forbidden', description: 'You do not have permission to revoke role permissions', variant: 'destructive' });
+          return;
+        }
         // Revoke via RPC
         const { error } = await supabase.rpc('revoke_role_permission', {
           p_role: roleId,
           p_perm: permissionId,
         });
         if (error) throw error;
-
         setRolePermissions(prev => prev.filter(rp => !(rp.role_id === roleId && rp.permission_id === permissionId)));
         try { await logAction({ action: 'rbac.revoke', resource: 'rbac', context: { role_id: roleId, permission_id: permissionId } }); } catch {}
       } else {
+        if (!canGrantRolePerm) {
+          toast({ title: 'Forbidden', description: 'You do not have permission to grant role permissions', variant: 'destructive' });
+          return;
+        }
         // Grant via RPC
         const { error } = await supabase.rpc('grant_role_permission', {
           p_role: roleId,
           p_perm: permissionId,
         });
         if (error) throw error;
-
         setRolePermissions(prev => [...prev, { role_id: roleId, permission_id: permissionId }]);
         try { await logAction({ action: 'rbac.grant', resource: 'rbac', context: { role_id: roleId, permission_id: permissionId } }); } catch {}
       }
@@ -226,7 +321,7 @@ const PermissionsPage = () => {
 
       toast({
         title: "Success",
-        description: `Permission ${hasPermission ? 'removed from' : 'added to'} role`,
+        description: `Permission ${isAssigned ? 'removed from' : 'added to'} role`,
       });
     } catch (error) {
       console.error('Error updating role permission:', error);
@@ -306,6 +401,9 @@ const PermissionsPage = () => {
             <h1 className="text-2xl font-bold tracking-tight">Role Permissions</h1>
             <p className="text-muted-foreground">Manage role permissions</p>
           </div>
+          <Button onClick={openCreateRole} disabled={!canCreateRole} title={!canCreateRole ? 'No permission: roles.create' : undefined}>
+            <Plus className="h-4 w-4 mr-2" /> New Role
+          </Button>
         </div>
         <div className="flex items-center justify-center py-8">
           <div className="text-center">
@@ -326,6 +424,9 @@ const PermissionsPage = () => {
             <h1 className="text-2xl font-bold tracking-tight">Role Permissions</h1>
             <p className="text-muted-foreground">Manage role permissions</p>
           </div>
+          <Button onClick={openCreateRole} disabled={!canCreateRole} title={!canCreateRole ? 'No permission: roles.create' : undefined}>
+            <Plus className="h-4 w-4 mr-2" /> New Role
+          </Button>
         </div>
 
         {/* Roles Table */}
@@ -361,17 +462,30 @@ const PermissionsPage = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          setSelectedRole(role);
-                          setView('configure');
-                        }}
-                      >
-                        <Settings className="h-4 w-4 mr-2" />
-                        Configure
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => { setSelectedRole(role); setView('configure'); }}
+                          disabled={!canConfigurePolicy}
+                          title={!canConfigurePolicy ? 'No permission: access_rules.configure' : undefined}
+                        >
+                          <Settings className="h-4 w-4 mr-2" />
+                          Configure
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => openEditRole(role)} disabled={!canUpdateRole} title={!canUpdateRole ? 'No permission: roles.update' : undefined}>
+                          <Edit className="h-4 w-4"/>
+                        </Button>
+                        <Button 
+                          variant="destructive" 
+                          size="sm" 
+                          onClick={() => { setDeletingRole(role); setDeleteOpen(true); }} 
+                          disabled={!!saving[role.id] || !canDeleteRole}
+                          title={!canDeleteRole ? 'No permission: roles.delete' : undefined}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -418,6 +532,63 @@ const PermissionsPage = () => {
             </CardContent>
           </Card>
         </div>
+      {/* Edit/Create Role Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingRole ? 'Edit Role' : 'Create Role'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="rname">Name</Label>
+              <Input id="rname" value={editName} onChange={(e)=>setEditName(e.target.value)} placeholder="e.g. Super Agent" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="rdesc">Description</Label>
+              <Input id="rdesc" value={editDesc} onChange={(e)=>setEditDesc(e.target.value)} placeholder="Optional" />
+            </div>
+            <div className="pt-2 flex justify-end gap-2">
+              <Button variant="outline" onClick={()=>setEditOpen(false)}>Cancel</Button>
+              <Button 
+                onClick={saveRole} 
+                disabled={
+                  editSaving || !editName.trim() || (editingRole ? !canUpdateRole : !canCreateRole)
+                }
+                title={
+                  editingRole
+                    ? (!canUpdateRole ? 'No permission: roles.update' : undefined)
+                    : (!canCreateRole ? 'No permission: roles.create' : undefined)
+                }
+              >
+                {editSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Role Confirmation */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Role</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the role{deletingRole ? ` "${formatRoleName(deletingRole.name)}"` : ''} and all its permissions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="pt-2 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleteSaving}>Cancel</Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => deletingRole && deleteRole(deletingRole)}
+              disabled={deleteSaving || !canDeleteRole}
+              title={!canDeleteRole ? 'No permission: roles.delete' : undefined}
+            >
+              {deleteSaving ? 'Deleting…' : 'Delete'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       </div>
     );
   }
@@ -475,7 +646,17 @@ const PermissionsPage = () => {
                                   id={`${resource}-${action}`}
                                   checked={roleHasPermission(selectedRole.id, permission.id)}
                                   onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                                  disabled={!!saving[`${selectedRole.id}:${permission.id}`]}
+                                  disabled={
+                                    !!saving[`${selectedRole.id}:${permission.id}`] ||
+                                    (
+                                      roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                                    )
+                                  }
+                                  title={
+                                    roleHasPermission(selectedRole.id, permission.id)
+                                      ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                                      : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                                  }
                                   className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                                 />
                               </div>
@@ -528,6 +709,8 @@ const PermissionsPage = () => {
                             <Checkbox
                               checked={!!policy[resource]?.has(action)}
                               onCheckedChange={() => togglePolicy(resource, action)}
+                              disabled={!canConfigurePolicy}
+                              title={!canConfigurePolicy ? 'No permission: access_rules.configure' : undefined}
                               className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                             />
                           </TableCell>
@@ -568,7 +751,17 @@ const PermissionsPage = () => {
                           id={permission.id}
                           checked={roleHasPermission(selectedRole.id, permission.id)}
                           onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                          disabled={!!saving[`${selectedRole.id}:${permission.id}`]}
+                          disabled={
+                            !!saving[`${selectedRole.id}:${permission.id}`] ||
+                            (
+                              roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                            )
+                          }
+                          title={
+                            roleHasPermission(selectedRole.id, permission.id)
+                              ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                              : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                          }
                           className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                         />
                         <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">

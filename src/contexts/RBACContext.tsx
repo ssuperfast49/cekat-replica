@@ -21,6 +21,12 @@ interface RBACContextType {
   hasRole: (role: RoleName | string) => boolean;
   hasAnyRole: (roles: (RoleName | string)[]) => boolean;
   hasPermissionDB: (resource: string, action: string) => Promise<boolean>;
+  // Helpers for concise UI checks
+  can: (resource: string, ...actions: string[]) => boolean;
+  canRead: (resource: string) => boolean;
+  canCreate: (resource: string) => boolean;
+  canUpdate: (resource: string) => boolean;
+  canDelete: (resource: string) => boolean;
   loading: boolean;
   error: string | null;
   refreshRBAC: () => Promise<void>;
@@ -145,14 +151,21 @@ export function RBACProvider({ children }: RBACProviderProps) {
     const matchedByKey = userPermissions.some(p => `${p.resource}.${p.action}`.toLowerCase() === normalizedInput);
     if (matchedByKey) return true;
 
-    // 3) Edit/Update synonym support (some resources use both)
+    // 3) Common action synonyms support (edit/update, remove/delete, send/create)
     const dotIndex = normalizedInput.indexOf('.');
     if (dotIndex > 0) {
       const resource = normalizedInput.slice(0, dotIndex);
       const action = normalizedInput.slice(dotIndex + 1);
-      const altAction = action === 'edit' ? 'update' : action === 'update' ? 'edit' : '';
-      if (altAction) {
-        const matchedByAlt = userPermissions.some(p => `${p.resource}.${p.action}`.toLowerCase() === `${resource}.${altAction}`);
+      const synonymMap: Record<string, string[]> = {
+        edit: ['update'],
+        update: ['edit'],
+        remove: ['delete'],
+        delete: ['remove'],
+        send: ['create'],
+      };
+      const alts = synonymMap[action] || [];
+      if (alts.length > 0) {
+        const matchedByAlt = userPermissions.some(p => alts.some(a => `${p.resource}.${p.action}`.toLowerCase() === `${resource}.${a}`));
         if (matchedByAlt) return true;
       }
     }
@@ -196,6 +209,16 @@ export function RBACProvider({ children }: RBACProviderProps) {
     }
   };
 
+  // Concise helpers for common checks
+  const can = (resource: string, ...actions: string[]) => {
+    if (!resource || actions.length === 0) return false;
+    return actions.every(a => hasPermission(`${resource}.${a}`));
+  };
+  const canRead = (resource: string) => hasPermission(`${resource}.read`);
+  const canCreate = (resource: string) => hasPermission(`${resource}.create`);
+  const canUpdate = (resource: string) => hasPermission(`${resource}.update`);
+  const canDelete = (resource: string) => hasPermission(`${resource}.delete`);
+
   const value: RBACContextType = {
     userRoles,
     userPermissions,
@@ -206,6 +229,11 @@ export function RBACProvider({ children }: RBACProviderProps) {
     hasRole,
     hasAnyRole,
     hasPermissionDB,
+    can,
+    canRead,
+    canCreate,
+    canUpdate,
+    canDelete,
     loading,
     error,
     refreshRBAC,
