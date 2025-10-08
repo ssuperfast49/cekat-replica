@@ -1,5 +1,7 @@
 # Change Log
-# [0.0.32] FE WEB CEKAT 2025-10-08
+# [0.0.32] FE WEB CEKAT 2025-10-04
+### Updates
+- Fixed Live chat error and detail chat
 ### Updates
 - Update project branding to **Synka AI**
 - Enhance **chat functionality**

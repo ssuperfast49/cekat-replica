@@ -24,7 +24,7 @@ export default function LiveChat() {
   // Support either :platform_id or :platformId param
   const pid = useMemo(() => platform_id || platformId || "unknown", [platform_id, platformId]);
 
-  const [messages, setMessages] = useState<Array<{ id: string; role: "user" | "assistant"; body: string; at: string }>>([]);
+  const [messages, setMessages] = useState<Array<{ id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
@@ -32,6 +32,7 @@ export default function LiveChat() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
   const [aiProfileId, setAiProfileId] = useState<string | null>(null);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   // Profile settings are resolved server-side by the webhook; no client DB calls.
   const endRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -141,19 +142,99 @@ export default function LiveChat() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // Test Supabase connection
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        const { data, error } = await supabase.from('channels').select('count').limit(1);
+        if (error) {
+          console.error('Supabase connection error:', error);
+        } else {
+          console.log('Supabase connection successful');
+        }
+      } catch (err) {
+        console.error('Supabase connection test failed:', err);
+      }
+    };
+    testConnection();
+  }, []);
+
+  // Cleanup streaming messages on unmount
+  useEffect(() => {
+    return () => {
+      if (streamingMessageId) {
+        setStreamingMessageId(null);
+      }
+    };
+  }, [streamingMessageId]);
+
+  // Periodic refresh as backup to ensure messages are up-to-date
+  useEffect(() => {
+    if (!threadId) return;
+    
+    const refreshMessages = async () => {
+      try {
+        const { data } = await supabase
+          .from('messages')
+          .select('id, role, body, created_at')
+          .eq('thread_id', threadId)
+          .order('created_at', { ascending: true });
+        
+        if (Array.isArray(data)) {
+          setMessages((prev) => {
+            const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>();
+            prev.forEach((m) => map.set(m.id, m));
+            
+            // Only process agent/assistant messages from periodic refresh
+            // Skip user messages to prevent duplicates with optimistic updates
+            for (const r of data) {
+              if (!r?.id) continue;
+              const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+              
+              // SKIP user messages from periodic refresh
+              if (role === 'user') {
+                console.log('Skipping user message from periodic refresh:', r.id);
+                continue;
+              }
+              
+              const item = { id: r.id, role, body: r.body || '', at: r.created_at || new Date().toISOString() };
+              map.set(item.id, item);
+            }
+            
+            const arr = Array.from(map.values());
+            arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
+            return arr;
+          });
+        }
+      } catch (error) {
+        console.error('Error refreshing messages:', error);
+      }
+    };
+
+    const interval = setInterval(refreshMessages, 2000); // Refresh every 2 seconds for faster updates
+    return () => clearInterval(interval);
+  }, [threadId]);
+
   // Attach to existing thread for this platform and current username, and subscribe to realtime
   // Fetch AI profile ID from channel/platform
   useEffect(() => {
     const fetchAiProfileId = async () => {
       try {
-        const { data: channel } = await supabase
+        console.log('Fetching AI profile ID for platform:', pid);
+        const { data: channel, error } = await supabase
           .from('channels')
           .select('ai_profile_id')
           .eq('id', pid)
           .single();
         
-        if (channel?.ai_profile_id) {
-          setAiProfileId(channel.ai_profile_id);
+        if (error) {
+          console.error('Error fetching channel:', error);
+        } else {
+          console.log('Channel data:', channel);
+          if (channel?.ai_profile_id) {
+            setAiProfileId(channel.ai_profile_id);
+            console.log('Set AI profile ID:', channel.ai_profile_id);
+          }
         }
       } catch (error) {
         console.error('Error fetching AI profile ID:', error);
@@ -171,17 +252,55 @@ export default function LiveChat() {
     
     const upsertFromRows = (rows: any[]) => {
       if (!rows || rows.length === 0) return;
+      console.log('Upserting rows:', rows);
+      
       setMessages((prev) => {
-        const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string }>();
+        const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>();
         prev.forEach((m) => map.set(m.id, m));
+        
         for (const r of rows) {
           if (!r?.id) continue;
           const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
           const item = { id: r.id, role, body: r.body || '', at: r.created_at || new Date().toISOString() };
-          map.set(item.id, item);
+          
+          // For user messages, check if we already have a temp message to replace
+          if (role === 'user') {
+            // Find and remove any temp message with same content
+            for (const [key, value] of map.entries()) {
+              if (value.id.startsWith('temp-') && 
+                  value.role === 'user' && 
+                  value.body === r.body &&
+                  Math.abs(new Date(value.at).getTime() - new Date(r.created_at).getTime()) < 10000) { // Within 10 seconds
+                map.delete(key);
+                console.log('Replaced temp user message with real one:', key, '->', r.id);
+                break; // Only replace one temp message
+              }
+            }
+          }
+          
+          // For assistant messages, remove any streaming message
+          if (role === 'assistant' && streamingMessageId) {
+            for (const [key, value] of map.entries()) {
+              if (value.id === streamingMessageId) {
+                map.delete(key);
+                console.log('Removed streaming message:', key);
+                break;
+              }
+            }
+          }
+          
+          // Only add if we don't already have this message
+          if (!map.has(item.id)) {
+            map.set(item.id, item);
+            console.log('Added new message:', item.id, item.role, item.body.substring(0, 50));
+          } else {
+            console.log('Skipped duplicate message:', item.id);
+          }
         }
+        
         const arr = Array.from(map.values());
         arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
+        console.log('Updated messages:', arr.map(m => ({id: m.id, role: m.role, body: m.body.substring(0, 20)})));
         return arr;
       });
     };
@@ -202,19 +321,25 @@ export default function LiveChat() {
           const ev = payload?.eventType;
           const row = payload?.new || payload?.old;
           if (!row) return;
-          // If INSERT of user's own message arrives, dedupe temporary local copy by body
-          if (ev === 'INSERT' && row?.body) {
-            setMessages((prev) => {
-              const tempIdx = prev.findIndex((m) => m.id.startsWith('temp-') && m.role === 'user' && m.body === row.body);
-              if (tempIdx >= 0) {
-                const next = prev.slice();
-                next.splice(tempIdx, 1);
-                return next;
-              }
-              return prev;
-            });
+          
+          console.log('Realtime message received:', { ev, row, streamingMessageId });
+          
+          // COMPLETELY SKIP user messages from realtime to prevent duplicates
+          if (row?.role === 'user') {
+            console.log('Skipping ALL user messages from realtime to prevent duplicates:', row.id);
+            return;
           }
-          upsertFromRows([row]);
+          
+          // Only process agent/assistant messages from realtime
+          if (row?.role === 'agent' || row?.role === 'assistant') {
+            console.log('Processing agent message from realtime:', row.id);
+            upsertFromRows([row]);
+          }
+          
+          // Clear streaming message ID if we get a real agent message
+          if (ev === 'INSERT' && row?.role === 'agent' && streamingMessageId) {
+            setStreamingMessageId(null);
+          }
         })
         .subscribe();
       setBooting(false);
@@ -268,6 +393,37 @@ export default function LiveChat() {
     playLow();
     setLoading(true);
 
+    // Set a timeout to ensure user message stays visible even if realtime is slow
+    const userMessageTimeout = setTimeout(() => {
+      setMessages((prev) => {
+        const tempIdx = prev.findIndex((m) => m.id === tempId);
+        if (tempIdx >= 0) {
+          // Keep the temp message as is - don't change the ID
+          // The realtime subscription will handle replacement when the real message arrives
+          console.log('User message timeout: keeping temp message visible');
+          return prev; // No change needed, message is already visible
+        }
+        return prev;
+      });
+    }, 3000); // 3 second timeout
+
+    // Create a streaming message for AI response (but don't add to messages until content arrives)
+    const streamingId = `streaming-${Date.now()}`;
+    setStreamingMessageId(streamingId);
+
+    // Set a timeout to fallback to realtime if streaming doesn't work
+    const streamingTimeout = setTimeout(() => {
+      if (streamingMessageId === streamingId) {
+        console.log('Streaming timeout, falling back to realtime');
+        setStreamingMessageId(null);
+        setMessages((prev) => prev.map(m => 
+          m.id === streamingId 
+            ? { ...m, streaming: false, body: m.body || "Waiting for response..." }
+            : m
+        ));
+      }
+    }, 10000); // 10 second timeout
+
     try {
       const body = {
         message: text,
@@ -276,21 +432,227 @@ export default function LiveChat() {
         channel_id: pid,
         username: username || undefined,
         ai_profile_id: aiProfileId,
+        stream: true, // Request streaming response
       } as const;
 
-      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_TEST), {
+      console.log('Sending request to webhook:', WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS));
+      console.log('Request body:', body);
+      
+      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      
+      console.log('Webhook response status:', resp.status);
+      console.log('Webhook response headers:', resp.headers);
+      
       if (!resp.ok) throw new Error(`Webhook failed ${resp.status}`);
-      // Do not use webhook response for chat content; realtime will deliver rows.
+      
+      // Handle streaming response
+      if (resp.body) {
+        console.log('Processing streaming response...');
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            
+            for (const line of lines) {
+              if (line.trim() === '') continue;
+              
+              try {
+                // Handle different streaming formats
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') {
+                    // Streaming complete
+                    setMessages((prev) => prev.map(m => 
+                      m.id === streamingId 
+                        ? { ...m, streaming: false }
+                        : m
+                    ));
+                    setStreamingMessageId(null);
+                    break;
+                  }
+                  
+                  const parsed = JSON.parse(data);
+                  console.log('Parsed streaming data:', parsed);
+                  if (parsed.content || parsed.delta) {
+                    const content = parsed.content || parsed.delta;
+                    console.log('Streaming content:', content);
+                    setMessages((prev) => {
+                      const existingIdx = prev.findIndex(m => m.id === streamingId);
+                      if (existingIdx >= 0) {
+                        // Update existing streaming message
+                        const next = prev.slice();
+                        next[existingIdx] = { ...next[existingIdx], body: next[existingIdx].body + content };
+                        return next;
+                      } else {
+                        // Create new streaming message with content
+                        return [...prev, {
+                          id: streamingId,
+                          role: "assistant",
+                          body: content,
+                          at: new Date().toISOString(),
+                          streaming: true
+                        }];
+                      }
+                    });
+                  }
+                } else {
+                  // Try to parse as JSON directly
+                  const parsed = JSON.parse(line);
+                  if (parsed.content || parsed.delta) {
+                    const content = parsed.content || parsed.delta;
+                    setMessages((prev) => {
+                      const existingIdx = prev.findIndex(m => m.id === streamingId);
+                      if (existingIdx >= 0) {
+                        // Update existing streaming message
+                        const next = prev.slice();
+                        next[existingIdx] = { ...next[existingIdx], body: next[existingIdx].body + content };
+                        return next;
+                      } else {
+                        // Create new streaming message with content
+                        return [...prev, {
+                          id: streamingId,
+                          role: "assistant",
+                          body: content,
+                          at: new Date().toISOString(),
+                          streaming: true
+                        }];
+                      }
+                    });
+                  }
+                }
+              } catch (parseError) {
+                // If it's not JSON, treat as plain text
+                setMessages((prev) => {
+                  const existingIdx = prev.findIndex(m => m.id === streamingId);
+                  if (existingIdx >= 0) {
+                    // Update existing streaming message
+                    const next = prev.slice();
+                    next[existingIdx] = { ...next[existingIdx], body: next[existingIdx].body + line };
+                    return next;
+                  } else {
+                    // Create new streaming message with content
+                    return [...prev, {
+                      id: streamingId,
+                      role: "assistant",
+                      body: line,
+                      at: new Date().toISOString(),
+                      streaming: true
+                    }];
+                  }
+                });
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      } else {
+        // Fallback to non-streaming response
+        console.log('No streaming response body, trying JSON response...');
+        try {
+          const data = await resp.json();
+          console.log('Non-streaming response data:', data);
+          const responseText = data.output || data.content || data.message || "Sorry, I couldn't process your message.";
+          
+          setMessages((prev) => {
+            const existingIdx = prev.findIndex(m => m.id === streamingId);
+            if (existingIdx >= 0) {
+              // Update existing streaming message
+              const next = prev.slice();
+              next[existingIdx] = { ...next[existingIdx], body: responseText, streaming: false };
+              return next;
+            } else {
+              // Create new message if streaming message doesn't exist
+              return [...prev, {
+                id: streamingId,
+                role: "assistant",
+                body: responseText,
+                at: new Date().toISOString(),
+                streaming: false
+              }];
+            }
+          });
+          setStreamingMessageId(null);
+        } catch (jsonError) {
+          console.error('Failed to parse JSON response:', jsonError);
+          // Create a fallback message
+          setMessages((prev) => [...prev, {
+            id: streamingId,
+            role: "assistant",
+            body: "I'm processing your message, please wait...",
+            at: new Date().toISOString(),
+            streaming: false
+          }]);
+          setStreamingMessageId(null);
+        }
+      }
+      
       playHigh();
+      
+      // Trigger immediate refresh to catch any realtime messages (AGENT ONLY)
+      setTimeout(() => {
+        if (threadId) {
+          supabase
+            .from('messages')
+            .select('id, role, body, created_at')
+            .eq('thread_id', threadId)
+            .order('created_at', { ascending: true })
+            .then(({ data }) => {
+              if (Array.isArray(data)) {
+                setMessages((prev) => {
+                  const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>();
+                  prev.forEach((m) => map.set(m.id, m));
+                  
+                  // Only process agent/assistant messages from immediate refresh
+                  for (const r of data) {
+                    if (!r?.id) continue;
+                    const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+                    
+                    // SKIP user messages from immediate refresh
+                    if (role === 'user') {
+                      console.log('Skipping user message from immediate refresh:', r.id);
+                      continue;
+                    }
+                    
+                    const item = { id: r.id, role, body: r.body || '', at: r.created_at || new Date().toISOString() };
+                    map.set(item.id, item);
+                  }
+                  
+                  const arr = Array.from(map.values());
+                  arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
+                  return arr;
+                });
+              }
+            });
+        }
+      }, 1000); // Refresh after 1 second
+      
     } catch (e) {
-      // Replace temp with an error note
-      setMessages((prev) => prev.filter((m) => m.id !== tempId).concat({ id: crypto.randomUUID(), role: "assistant", body: "Sorry, I'm having trouble right now. Please try again later.", at: new Date().toISOString() }));
+      console.error('Streaming error:', e);
+      // Replace streaming message with error
+      setMessages((prev) => prev.filter((m) => m.id !== streamingId).concat({ 
+        id: crypto.randomUUID(), 
+        role: "assistant", 
+        body: "Sorry, I'm having trouble right now. Please try again later.", 
+        at: new Date().toISOString() 
+      }));
+      setStreamingMessageId(null);
       playHigh();
     } finally {
+      clearTimeout(streamingTimeout);
+      clearTimeout(userMessageTimeout);
       setLoading(false);
     }
   };
@@ -321,24 +683,31 @@ export default function LiveChat() {
                     Preparing chat…
                   </div>
                 )}
-                {messages.map((m) => (
-                  <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className="max-w-[80%] space-y-1">
-                      <div
-                        className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${
-                          m.role === "user"
-                            ? "bg-blue-600 text-white rounded-br-md"
-                            : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
-                        }`}
-                      >
-                        {m.body}
-                      </div>
-                      <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
-                        {fmt(m.at)}
+                {messages.map((m) => {
+                  // Don't render empty messages or streaming messages with no content
+                  if (!m.body || (m.streaming && m.body.trim() === '')) {
+                    return null;
+                  }
+                  
+                  return (
+                    <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className="max-w-[80%] space-y-1">
+                        <div
+                          className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${
+                            m.role === "user"
+                              ? "bg-blue-600 text-white rounded-br-md"
+                              : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
+                          }`}
+                        >
+                          <span className="whitespace-pre-wrap">{m.body}</span>
+                        </div>
+                        <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
+                          {fmt(m.at)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {loading && (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
