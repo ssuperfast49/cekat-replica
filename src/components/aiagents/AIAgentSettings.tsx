@@ -227,6 +227,7 @@ const ChatPreview = ({
             size="sm"
             onClick={refreshSession}
             title="Refresh session"
+            aria-label="Refresh session"
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -235,6 +236,7 @@ const ChatPreview = ({
             size="sm"
             onClick={clearChat}
             title="Clear chat history"
+            aria-label="Clear chat history"
           >
             <RotateCcw className="w-4 h-4" />
           </Button>
@@ -284,6 +286,7 @@ const ChatPreview = ({
             className="flex-1 p-3 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20"
             rows={2}
             disabled={isLoading}
+            title={isLoading ? 'Please wait…' : undefined}
           />
           <Button 
             size="sm" 

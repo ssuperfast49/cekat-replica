@@ -551,31 +551,26 @@ const HumanAgents = () => {
                     </div>
                     <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
                     <div>
-                      {hasPermission('super_agents.update') && agent.primaryRole !== 'master_agent' ? (
+                      {hasPermission('super_agents.update') && (agent.primaryRole === 'agent' || agent.primaryRole === 'super_agent') ? (
                         // Editable role dropdown for users with edit permission
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="gap-2 h-8">
                             <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)}`}>
-                                {agent.primaryRole === "master_agent" ? "Master Agent" : 
-                                 agent.primaryRole === "super_agent" ? "Super Agent" : 
+                                {agent.primaryRole === "super_agent" ? "Super Agent" : 
                                  agent.primaryRole === "agent" ? "Agent" : "No Role"}
                               </Badge>
                               <ChevronDown className="h-3 w-3" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="bg-background border z-50">
-                            {/* Never allow changing a Master Agent's role */}
-                            {agent.primaryRole !== 'master_agent' && (
-                              <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
+                            {/* Never allow changing a Master Agent's role; this menu only shows for non-master */}
+                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
                               <Badge className={`text-xs ${roleBadgeClass("agent")}`}>Agent</Badge>
-                              </DropdownMenuItem>
-                            )}
-                            {agent.primaryRole !== 'master_agent' && (
-                              <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
                               <Badge className={`text-xs ${roleBadgeClass("super_agent")}`}>Super Agent</Badge>
-                              </DropdownMenuItem>
-                            )}
+                            </DropdownMenuItem>
                             {/* Creating/promoting to Master Agent disabled in UI */}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -616,19 +611,18 @@ const HumanAgents = () => {
                     <div className="flex items-center gap-1">
                       <PermissionGate permission={'users_profile.update_token_limit'}>
                         <Button
-                          variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
                           onClick={() => openEditLimits(agent)}
+                          title="Edit limits"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
                       </PermissionGate>
                       {hasRole(ROLES.MASTER_AGENT) && (
                         <Button
-                          variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                          className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
                           onClick={() => openUsageDetails(agent)}
                           title="View token usage"
                         >
@@ -637,9 +631,8 @@ const HumanAgents = () => {
                       )}
                       <PermissionGate permission={'super_agents.delete'}>
                         <Button 
-                          variant="ghost" 
                           size="sm" 
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
                           onClick={() => { setAgentPendingDelete(agent); setConfirmDeleteOpen(true); }}
                         >
                           <Trash2 className="h-4 w-4" />

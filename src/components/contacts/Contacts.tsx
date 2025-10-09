@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle } from "lucide-react";
+import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,8 @@ export default function Contacts() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(100);
+  const [sortKey, setSortKey] = useState<'name' | 'phone' | 'notes' | 'labelNames' | 'inbox' | 'channelProvider' | 'channelType' | 'chatStatus' | 'chatCreatedAtISO' | 'handledBy' | 'created_at' | null>(null);
+  const [sortAsc, setSortAsc] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<ContactsFilter>({
     chatStatus: '',
@@ -42,6 +44,10 @@ export default function Contacts() {
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editName, setEditName] = useState<string>("");
+  const [editPhone, setEditPhone] = useState<string>("");
+  const [editNotes, setEditNotes] = useState<string>("");
+  const [editSaving, setEditSaving] = useState(false);
   const [contactDetailsOpen, setContactDetailsOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ContactWithDetails | null>(null);
   const navigate = useNavigate();
@@ -54,6 +60,7 @@ export default function Contacts() {
     totalCount, 
     fetchContacts, 
     deleteContact, 
+    updateContact,
     deleteMultipleContacts 
   } = useContacts();
 
@@ -82,10 +89,7 @@ export default function Contacts() {
     }
   };
 
-  const handleEditSelected = () => {
-    if (selectedContacts.length === 0) return;
-    setEditDialogOpen(true);
-  };
+  // Remove bulk edit: edits happen per row
 
   const handleDeleteSelected = () => {
     if (selectedContacts.length === 0) return;
@@ -105,6 +109,9 @@ export default function Contacts() {
 
   const handleEditContact = (contact: ContactWithDetails) => {
     setSelectedContact(contact);
+    setEditName(contact.name || "");
+    setEditPhone(contact.phone || "");
+    setEditNotes(contact.notes || "");
     setEditDialogOpen(true);
   };
 
@@ -119,10 +126,22 @@ export default function Contacts() {
     }
   };
 
-  const confirmEditSelected = () => {
-    // For now, just show a toast. In a real app, you'd open an edit modal/form
-    toast.info(`Edit feature for ${selectedContacts.length} contact(s) will be implemented`);
+  const saveEditedContact = async () => {
+    if (!selectedContact) return;
+    try {
+      setEditSaving(true);
+      await updateContact(selectedContact.id, {
+        name: editName.trim() || null,
+        phone: editPhone.trim() || null,
+        notes: editNotes.trim() || null,
+      });
+      toast.success('Contact updated');
     setEditDialogOpen(false);
+    } catch {
+      toast.error('Failed to update contact');
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const handleDeleteContact = async (contactId: string) => {
@@ -167,6 +186,38 @@ export default function Contacts() {
 
   const isAllSelected = selectedContacts.length === contacts.length && contacts.length > 0;
   const isSomeSelected = selectedContacts.length > 0 && selectedContacts.length < contacts.length;
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+  };
+
+  const sortedContacts = (() => {
+    if (!sortKey) return contacts;
+    const copy = [...contacts];
+    copy.sort((a: any, b: any) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return sortAsc ? 1 : -1;
+      if (bv == null) return sortAsc ? -1 : 1;
+      if (sortKey === 'chatCreatedAtISO' || sortKey === 'created_at') {
+        const at = new Date(av).getTime();
+        const bt = new Date(bv).getTime();
+        return sortAsc ? at - bt : bt - at;
+      }
+      const as = String(av).toLowerCase();
+      const bs = String(bv).toLowerCase();
+      if (as < bs) return sortAsc ? -1 : 1;
+      if (as > bs) return sortAsc ? 1 : -1;
+      return 0;
+    });
+    return copy;
+  })();
 
   const renderChatStatus = (status?: string) => {
     if (!status || status === '—') return <span className="text-muted-foreground">—</span>;
@@ -315,15 +366,6 @@ export default function Contacts() {
           </div>
           
           <div className="flex gap-2">
-            <Button variant="outline">Recipient/Campaign</Button>
-            <Button 
-              variant={selectedContacts.length > 0 ? "default" : "outline"}
-              className={selectedContacts.length > 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
-              disabled={selectedContacts.length === 0}
-              onClick={handleEditSelected}
-            >
-              Edit Selected ({selectedContacts.length})
-            </Button>
             <Button 
               variant={selectedContacts.length > 0 ? "destructive" : "outline"}
               className={selectedContacts.length > 0 ? "bg-red-600 hover:bg-red-700 text-white" : ""}
@@ -359,16 +401,52 @@ export default function Contacts() {
                     className={isSomeSelected ? "data-[state=checked]:bg-blue-600" : ""}
                   />
                 </TableHead>
-                <TableHead>ACTION</TableHead>
-                <TableHead>NAME</TableHead>
-                <TableHead>PHONE</TableHead>
-                <TableHead>NOTE</TableHead>
-                <TableHead>LABEL NAMES</TableHead>
-                <TableHead>INBOX</TableHead>
-                
-                <TableHead>CHAT STATUS</TableHead>
-                <TableHead>CHAT CREATED AT</TableHead>
-                <TableHead>HANDLED BY</TableHead>
+                <TableHead className="text-xs py-2">ACTION</TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('name')}>
+                    NAME {sortKey==='name' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('phone')}>
+                    PHONE {sortKey==='phone' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('notes')}>
+                    NOTE {sortKey==='notes' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('labelNames')}>
+                    LABEL NAMES {sortKey==='labelNames' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('inbox')}>
+                    CHANNEL {sortKey==='inbox' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('channelType')}>
+                    PLATFORM {sortKey==='channelType' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('chatStatus')}>
+                    CHAT STATUS {sortKey==='chatStatus' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('chatCreatedAtISO')}>
+                    CREATED AT {sortKey==='chatCreatedAtISO' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('handledBy')}>
+                    HANDLED BY {sortKey==='handledBy' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                  </button>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -390,7 +468,7 @@ export default function Contacts() {
                   </TableCell>
                 </TableRow>
               ) : (
-                contacts.map((contact) => (
+                sortedContacts.map((contact) => (
                   <TableRow key={contact.id} className={`hover:bg-muted/50 ${selectedContacts.includes(contact.id) ? 'bg-blue-50' : ''}`}>
                     <TableCell>
                       <Checkbox 
@@ -405,35 +483,41 @@ export default function Contacts() {
                           <TooltipTrigger asChild>
                             <Button 
                               size="sm" 
-                              className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700"
+                              className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 text-white"
                               aria-label="View detailed conversation"
                               onClick={() => handleViewConversation(contact)}
+                              variant="ghost"
+                              title="Open conversation"
                             >
                               <MessageSquare className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>View detailed conversation</TooltipContent>
+                          <TooltipContent>Open conversation</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button 
                               size="sm" 
-                              className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700"
+                              className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700 text-white"
                               aria-label="View contact details"
                               onClick={() => handleViewDetails(contact)}
+                              variant="ghost"
+                              title="View details"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>View contact details</TooltipContent>
+                          <TooltipContent>View details</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button 
                               size="sm" 
-                              className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600"
+                              className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
                               aria-label="Edit contact"
                               onClick={() => handleEditContact(contact)}
+                              variant="ghost"
+                              title="Edit contact"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -486,8 +570,19 @@ export default function Contacts() {
                     </TableCell>
                     <TableCell>{contact.labelNames || '-'}</TableCell>
                     <TableCell>{contact.inbox ? <Badge variant="outline">{contact.inbox}</Badge> : '—'}</TableCell>
+                    <TableCell>
+                      {contact.channelProvider ? (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="capitalize">
+                            {contact.channelProvider}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{renderChatStatus(contact.chatStatus)}</TableCell>
-                    <TableCell className="font-mono text-sm">
+                    <TableCell className="font-mono text-sm whitespace-nowrap">
                       {contact.chatCreatedAt || '-'}
                     </TableCell>
                     <TableCell>
@@ -571,26 +666,34 @@ export default function Contacts() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Confirmation Dialog */}
-      <AlertDialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Edit Selected Contacts</AlertDialogTitle>
-            <AlertDialogDescription>
-              You are about to edit {selectedContacts.length} contact{selectedContacts.length > 1 ? 's' : ''}. This feature is currently being developed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={confirmEditSelected}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              Continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Edit Contact Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Contact</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Name</Label>
+              <Input value={editName} onChange={(e)=>setEditName(e.target.value)} placeholder="Full name" />
+            </div>
+            <div className="space-y-1">
+              <Label>Phone</Label>
+              <Input value={editPhone} onChange={(e)=>setEditPhone(e.target.value)} placeholder="Phone number" />
+            </div>
+            <div className="space-y-1">
+              <Label>Notes</Label>
+              <Textarea value={editNotes} onChange={(e)=>setEditNotes(e.target.value)} placeholder="Notes" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={()=>setEditDialogOpen(false)} disabled={editSaving}>Cancel</Button>
+              <Button onClick={saveEditedContact} disabled={editSaving} className="bg-blue-600 hover:bg-blue-700">
+                {editSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Contact Details Modal */}
       <Dialog open={contactDetailsOpen} onOpenChange={setContactDetailsOpen}>
@@ -725,7 +828,7 @@ export default function Contacts() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium text-muted-foreground">Chat Created At</Label>
+                  <Label className="text-sm font-medium text-muted-foreground">Created At</Label>
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="font-mono text-sm">{selectedContact.chatCreatedAt || '-'}</span>

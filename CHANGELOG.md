@@ -1,8 +1,16 @@
 # Change Log
+# [0.0.33] FE WEB CEKAT 2025-10-09
+### Updates
+- Update project branding, enhance chat functionality, and improve permissions management
+- Added aria-labels for accessibility in chat components
+- Refined URL state synchronization in ConversationPage
+- Implemented sorting and editing features in Contacts
+- Removed legacy policy editing from PermissionsPage
+- Updated navigation permissions for better clarity
+
 # [0.0.32] FE WEB CEKAT 2025-10-04
 ### Updates
 - Fixed Live chat error and detail chat
-### Updates
 - Update project branding to **Synka AI**
 - Enhance **chat functionality**
 - Improve **permissions management**

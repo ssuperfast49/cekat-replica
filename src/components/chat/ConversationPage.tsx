@@ -163,9 +163,11 @@ export default function ConversationPage() {
   const contactId = searchParams.get('contact');
   const tabParam = searchParams.get('tab');
 
-  // Sync active tab from URL when provided (read-only to avoid loops)
+  // Bidirectional URL<->state sync with loop guard
+  const isPushingTabRef = useRef(false);
   useEffect(() => {
     if (!tabParam) return;
+    if (isPushingTabRef.current) return; // ignore echo from our own push
     if (tabParam === 'assigned' || tabParam === 'unassigned' || tabParam === 'resolved') {
       if (tabParam !== activeTab) setActiveTab(tabParam as any);
     }
@@ -234,18 +236,21 @@ export default function ConversationPage() {
     if (current === activeTab) return;
     const next = new URLSearchParams(window.location.search);
     next.set('tab', activeTab);
+    isPushingTabRef.current = true;
     setSearchParams(next, { replace: true });
+    // clear the guard on the next tick after the router applies changes
+    setTimeout(() => { isPushingTabRef.current = false; }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  // Auto-select conversation by contactId (without filtering the list) and open it
+  // Auto-select by contactId only on first load for this navigation; do not override manual selection
   useEffect(() => {
-    if (contactId && filteredConversations.length > 0) {
+    if (!contactId) return;
+    if (selectedThreadId) return; // user has already selected a thread; don't override
+    if (filteredConversations.length === 0) return;
       const target = filteredConversations.find(c => c.contact_id === contactId);
       if (!target) return;
-      if (selectedThreadId !== target.id) {
         setSelectedThreadId(target.id);
-      }
       // Ensure tab reflects the selected conversation
       if (target.status === 'closed') {
         setActiveTab('resolved');
@@ -257,8 +262,7 @@ export default function ConversationPage() {
       if (target.channel?.provider) {
         setSendMessageProvider(target.channel.provider);
       }
-    }
-  }, [contactId, filteredConversations, selectedThreadId]);
+  }, [contactId, filteredConversations]);
 
   // Get selected conversation
   const selectedConversation = useMemo(() => {
@@ -348,6 +352,14 @@ export default function ConversationPage() {
       setSendMessageProvider(conv.channel.provider);
     }
     setSelectedThreadId(threadId);
+    // Clear URL contact param to avoid auto-selection overriding manual changes
+    try {
+      const next = new URLSearchParams(window.location.search);
+      if (next.has('contact')) {
+        next.delete('contact');
+        setSearchParams(next, { replace: true });
+      }
+    } catch {}
     await fetchMessages(threadId);
   };
 
@@ -461,6 +473,43 @@ export default function ConversationPage() {
     }
   };
 
+  // Helpers for thread list UI
+  const formatListTime = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const diffMs = now.getTime() - d.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (sameDay) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    if (diffDays < 7) {
+      return d.toLocaleDateString(undefined, { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+    }
+    // dd/MM/yy
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(2);
+    return `${dd}/${mm}/${yy}`;
+  };
+
+  const renderStatus = (conv: ConversationWithDetails) => {
+    if (conv.status === 'closed') {
+      return <Badge className="bg-green-100 text-green-700 border-0">Resolved</Badge>;
+    }
+    return (
+      <Badge className={conv.assigned ? 'bg-blue-100 text-blue-700 border-0' : 'bg-secondary text-secondary-foreground'}>
+        {conv.assigned ? 'Assigned' : 'Unassigned'}
+      </Badge>
+    );
+  };
+
+  const getListTimestamp = (conv: any) => {
+    const ts = (conv as any).last_msg_at || (conv as any).updated_at || (conv as any).created_at || '';
+    return formatListTime(ts);
+  };
+
   // Remove participant from thread
   const handleRemoveParticipant = async (userId: string) => {
     if (!selectedThreadId) return;
@@ -497,7 +546,7 @@ export default function ConversationPage() {
   }
 
   return (
-    <div className="grid w-full grid-cols-[300px_1fr_320px] h-[calc(100vh-120px)] gap-4">
+    <div className="grid w-full grid-cols-[360px_1fr_320px] h-[calc(100vh-120px)] gap-4">
       <aside className="rounded-lg border bg-card p-3">
         <div className="mb-3 pb-2 border-b flex items-center justify-between">
           <h2 className="text-sm font-medium">Conversations</h2>
@@ -543,88 +592,101 @@ export default function ConversationPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="assigned" className="mt-0">
-            <ScrollArea className="h-[calc(100vh-280px)]">
+            <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
                 {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).map(conv => (
-                  <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
+                  <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}> 
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src="" />
+                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
                           <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <span className="text-xs text-gray-500 ml-2">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                        </div>
-                        <div className="flex items-center justify-between mt-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0.5 bg-purple-50 text-purple-700 border-purple-200">
+                          <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
+                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            <span className="text-xs text-gray-600 truncate">
                               {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                            </Badge>
-                            {(conv as any).unreplied && (
-                              <Badge className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5">Unreplied</Badge>
-                            )}
-                            <Badge className="bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5">Assigned</Badge>
+                            </span>
                           </div>
                         </div>
-                        <p className="text-xs text-gray-500 truncate mt-1">{conv.last_message_preview || '—'}</p>
+                      </div>
+                      <div className="flex flex-col items-end shrink-0 w-[120px]">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                        <div className="mt-1">{renderStatus(conv)}</div>
                       </div>
                     </div>
                   </button>
                 ))}
-              </div>
-            </ScrollArea>
+               </div>
+            </div>
           </TabsContent>
           <TabsContent value="unassigned" className="mt-0">
-            <ScrollArea className="h-[calc(100vh-280px)]">
+            <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
                 {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).map(conv => (
                   <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src="" />
+                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
                           <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                          <span className="text-xs text-gray-500 shrink-0">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                          <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
+                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            <span className="text-xs text-gray-600 truncate">
+                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0.5 bg-purple-50 text-purple-700 border-purple-200">
-                            {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                          </Badge>
-                          {(conv as any).unreplied && (
-                            <Badge className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5">Unreplied</Badge>
-                          )}
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">Unassigned</Badge>
-                        </div>
-                        <p className="text-xs text-gray-500 truncate">{conv.last_message_preview}</p>
+                      </div>
+                      <div className="flex flex-col items-end shrink-0 w-[120px]">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                        <div className="mt-1">{renderStatus(conv)}</div>
                       </div>
                     </div>
                   </button>
                 ))}
-              </div>
-            </ScrollArea>
+               </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="resolved" className="mt-0">
-            <ScrollArea className="h-[calc(100vh-280px)]">
+            <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
                 {filteredConversations.filter(c=>c.status === 'closed').map(conv => (
                   <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src="" />
+                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
                           <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                          <span className="text-xs text-gray-500 shrink-0">{new Date(conv.last_msg_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                          <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
+                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            <span className="text-xs text-gray-600 truncate">
+                              {conv.channel?.display_name ||  'Unknown'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0.5 bg-purple-50 text-purple-700 border-purple-200">
-                            {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                          </Badge>
-                          <Badge className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5">Resolved</Badge>
-                        </div>
-                        <p className="text-xs text-gray-500 truncate">{conv.last_message_preview}</p>
+                      </div>
+                      <div className="flex flex-col items-end shrink-0 w-[120px]">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                        <div className="mt-1">{renderStatus(conv)}</div>
                       </div>
                     </div>
                   </button>
                 ))}
-              </div>
-            </ScrollArea>
+               </div>
+            </div>
           </TabsContent>
         </Tabs>
       </aside>
@@ -662,7 +724,7 @@ export default function ConversationPage() {
                     <Button
                       size="sm"
                       className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                      onClick={async()=>{ if(selectedConversation.status==='closed') return; const { error } = await supabase.from('threads').update({ status:'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null }).eq('id', selectedConversation.id); if(error){ toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); }} }
+                      onClick={async()=>{ if(selectedConversation.status==='closed') return; const { error } = await supabase.from('threads').update({ status:'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if(error){ toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); }} }
                     >
                       Resolve
                     </Button>
@@ -707,7 +769,13 @@ export default function ConversationPage() {
                     className="flex-1"
                     disabled={!hasPermission('messages.create')}
                   />
-                  <Button type="button" onClick={handleSendMessage} disabled={!draft.trim() || !hasPermission('messages.create')} title={!hasPermission('messages.create') ? 'No permission to send messages' : undefined}>
+                  <Button 
+                    type="button" 
+                    onClick={handleSendMessage} 
+                    disabled={!draft.trim() || !hasPermission('messages.create')} 
+                    title={!hasPermission('messages.create') ? 'No permission to send messages' : 'Send message'}
+                    aria-label="Send message"
+                  >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>

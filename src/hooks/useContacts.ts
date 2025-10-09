@@ -18,8 +18,11 @@ export interface ContactWithDetails extends Contact {
   // Additional fields for display
   labelNames?: string;
   inbox?: string;
+  channelProvider?: string | null;
+  channelType?: string | null;
   chatStatus?: string;
   chatCreatedAt?: string;
+  chatCreatedAtISO?: string | null;
   handledBy?: string;
 }
 
@@ -130,8 +133,11 @@ export const useContacts = () => {
           created_at: row.created_at,
           labelNames: '',
           inbox: inboxName,
+          channelProvider: lastThread?.channels?.provider || null,
+          channelType: lastThread?.channels?.type || null,
           chatStatus: lastThread?.status || '—',
           chatCreatedAt: chatCreated,
+          chatCreatedAtISO: lastThread?.created_at || null,
           handledBy: lastThread?.assignee_user_id ? 'assigned' : 'unassigned',
         } as ContactWithDetails;
       });
