@@ -8,12 +8,15 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Shield, Settings, Edit, Trash2, Plus } from "lucide-react";
+import { Shield, Settings, Edit, Trash2, Plus, Info } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { NAVIGATION_CONFIG, NavKey } from "@/config/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, logAction } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import AsyncPermissionGate from "@/components/rbac/AsyncPermissionGate";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Role {
   id: string;
@@ -83,7 +86,7 @@ const PermissionsPage = () => {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [view, setView] = useState<'roles' | 'configure'>('roles');
   const { toast } = useToast();
-  const { refreshRBAC, hasPermission } = useRBAC();
+  const { refreshRBAC, hasPermission, hasRole } = useRBAC();
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   // Role master editing state
   const [editOpen, setEditOpen] = useState(false);
@@ -94,11 +97,21 @@ const PermissionsPage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingRole, setDeletingRole] = useState<Role | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
-  const RESOURCES = ['conversations','users','channels','analytics','topup','config'];
-  const ACTIONS = ['view','create','update','delete','export'];
-  const [policy, setPolicy] = useState<Record<string, Set<string>>>({});
-  const [policyLoading, setPolicyLoading] = useState(false);
-  const [policySaving, setPolicySaving] = useState(false);
+  const [bundles, setBundles] = useState<Array<{ id: string; key: string; name: string; description: string }>>([]);
+  const [roleBundles, setRoleBundles] = useState<Record<string, boolean>>({});
+  const isMaster = hasRole('master_agent');
+
+  // Map navigation keys to bundle keys (when bundles are available)
+  const NAV_TO_BUNDLE: Record<NavKey, string> = {
+    chat: 'chat.view',
+    contacts: 'contacts.view',
+    platforms: 'platforms.view',
+    analytics: 'analytics.view',
+    logs: 'logs.view',
+    aiagents: 'aiagents.view',
+    humanagents: 'humanagents.view',
+    permissions: 'permissions.admin',
+  };
 
   // Capability flags (frontend gating)
   const canCreateRole = hasPermission('roles.create');
@@ -138,6 +151,18 @@ const PermissionsPage = () => {
       
       if (rolePermissionsError) throw rolePermissionsError;
       setRolePermissions(rolePermissionsData || []);
+
+      // Fetch bundles + current role bundles (best-effort; ignore if tables not present yet)
+      try {
+        const [{ data: bundlesData }, { data: roleBundlesData }] = await Promise.all([
+          supabase.from('permission_bundles').select('id,key,name,description'),
+          selectedRole ? supabase.from('role_bundles').select('bundle_id').eq('role_id', selectedRole.id) : Promise.resolve({ data: null }) as any
+        ]);
+        setBundles(bundlesData || []);
+        const rb: Record<string, boolean> = {};
+        (roleBundlesData || []).forEach((r: any) => { rb[r.bundle_id] = true; });
+        setRoleBundles(rb);
+      } catch {}
 
     } catch (error) {
       console.error('Error fetching RBAC data:', error);
@@ -226,56 +251,23 @@ const PermissionsPage = () => {
     }
   };
 
-  // Load RBAC policy for selected role
+  // Refresh role bundles when selected role changes
   useEffect(() => {
-    const loadPolicy = async () => {
+    const refreshRoleBundles = async () => {
       if (!selectedRole) return;
       try {
-        setPolicyLoading(true);
-        const { data, error } = await supabase.rpc('get_role_policy', { p_role: selectedRole.id });
-        if (error) throw error;
-        const json = (data as any) || {};
-        const res = json.resources || {};
-        const next: Record<string, Set<string>> = {};
-        for (const r of RESOURCES) {
-          next[r] = new Set<string>(Array.isArray(res[r]) ? res[r] : []);
-        }
-        setPolicy(next);
+        const { data: roleBundlesData } = await supabase.from('role_bundles').select('bundle_id').eq('role_id', selectedRole.id);
+        const rb: Record<string, boolean> = {};
+        (roleBundlesData || []).forEach((r: any) => { rb[r.bundle_id] = true; });
+        setRoleBundles(rb);
       } catch (e) {
-        console.warn('Failed to load policy', e);
-        setPolicy({});
-      } finally {
-        setPolicyLoading(false);
+        console.warn('Failed to refresh role bundles', e);
       }
     };
-    loadPolicy();
+    refreshRoleBundles();
   }, [selectedRole?.id]);
 
-  const togglePolicy = (resource: string, action: string) => {
-    setPolicy(prev => {
-      const cur = new Set(prev[resource] || []);
-      if (cur.has(action)) cur.delete(action); else cur.add(action);
-      return { ...prev, [resource]: cur };
-    });
-  };
-
-  const savePolicy = async () => {
-    if (!selectedRole) return;
-    try {
-      setPolicySaving(true);
-      const payload: any = { resources: {} as Record<string, string[]> };
-      for (const r of RESOURCES) payload.resources[r] = Array.from(policy[r] || []);
-      const { error } = await supabase.rpc('put_role_policy', { p_role: selectedRole.id, p_policy: payload });
-      if (error) throw error;
-      await logAction({ action: 'rbac.policy_update', resource: 'rbac', context: { role_id: selectedRole.id, policy: payload } });
-      toast({ title: 'Saved', description: 'Policy updated' });
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Error', description: 'Failed to save policy', variant: 'destructive' });
-    } finally {
-      setPolicySaving(false);
-    }
-  };
+  // No legacy policy editing in UI anymore
 
   // Check if role has permission
   const roleHasPermission = (roleId: string, permissionId: string): boolean => {
@@ -473,15 +465,23 @@ const PermissionsPage = () => {
                           <Settings className="h-4 w-4 mr-2" />
                           Configure
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => openEditRole(role)} disabled={!canUpdateRole} title={!canUpdateRole ? 'No permission: roles.update' : undefined}>
+                        <Button 
+                          size="sm" 
+                          className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                          onClick={() => openEditRole(role)} 
+                          disabled={!canUpdateRole} 
+                          title={!canUpdateRole ? 'No permission: roles.update' : 'Edit role'}
+                          aria-label="Edit role"
+                        >
                           <Edit className="h-4 w-4"/>
                         </Button>
                         <Button 
-                          variant="destructive" 
                           size="sm" 
                           onClick={() => { setDeletingRole(role); setDeleteOpen(true); }} 
                           disabled={!!saving[role.id] || !canDeleteRole}
-                          title={!canDeleteRole ? 'No permission: roles.delete' : undefined}
+                          title={!canDeleteRole ? 'No permission: roles.delete' : 'Delete role'}
+                          className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                          aria-label="Delete role"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -613,168 +613,211 @@ const PermissionsPage = () => {
           </div>
         </div>
 
-        {/* CRUD Permissions Table */}
+        {/* Menu Access (simple toggles) */}
         <Card>
           <CardHeader>
-            <CardTitle>CRUD Permissions</CardTitle>
-            <CardDescription>
-              Standard Create, Read, Update, and Delete permissions
-            </CardDescription>
+            <CardTitle>Menu Access</CardTitle>
+            <CardDescription>Grant access to app sections. These map to underlying permissions.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="w-full overflow-x-auto rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-1/3">Resource</TableHead>
-                    {CRUD_ACTIONS.map(action => (
-                      <TableHead key={action} className="capitalize text-center">{action}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {Object.entries(groupedCrudPermissions).map(([resource, actions]) => (
-                    <TableRow key={resource}>
-                      <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
-                      {CRUD_ACTIONS.map(action => {
-                        const permission = actions[action];
-                        return (
-                          <TableCell key={action} className="text-center">
-                            {permission ? (
-                              <div className="inline-flex items-center gap-2">
-                                <Checkbox
-                                  id={`${resource}-${action}`}
-                                  checked={roleHasPermission(selectedRole.id, permission.id)}
-                                  onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                                  disabled={
-                                    !!saving[`${selectedRole.id}:${permission.id}`] ||
-                                    (
-                                      roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
-                                    )
-                                  }
-                                  title={
-                                    roleHasPermission(selectedRole.id, permission.id)
-                                      ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
-                                      : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
-                                  }
-                                  className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {Object.values(NAVIGATION_CONFIG).map((nav) => {
+                const permKey = nav.permissions[0];
+                const permRow = allPermissions.find(p => `${p.resource}.${p.action}`.toLowerCase() === permKey.toLowerCase());
+                const bundleKey = NAV_TO_BUNDLE[nav.key as NavKey];
+                const bundle = bundles.find(b => b.key === bundleKey);
+                const assigned = bundle ? !!roleBundles[bundle.id] : (permRow ? roleHasPermission(selectedRole.id, permRow.id) : false);
+                return (
+                  <div key={nav.key} className="flex items-center justify-between rounded-md border p-3">
+                    <div className="mr-3">
+                      <div className="flex items-center gap-2 font-medium">
+                        {nav.label}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-4 w-4 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <div className="max-w-xs">
+                                <div className="font-medium mb-1">{nav.label}</div>
+                                <div className="text-xs text-muted-foreground">{nav.description || 'Section access'}</div>
+                                <div className="text-xs mt-1">
+                                  {bundle ? (
+                                    <>Grants bundle <code>{bundle.key}</code>.</>
+                                  ) : (
+                                    <>Grants permission <code>{permKey}</code>.</>
+                                  )}
+                                </div>
                               </div>
-                            ) : (
-                              <div className="inline-flex items-center gap-2">
-                                <Checkbox
-                                  disabled={true}
-                                  checked={false}
-                                  className="border-blue-300 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                                />
-                              </div>
-                            )}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {bundle ? `Bundle: ${bundle.key}` : `Requires ${permKey}`}
+                      </div>
+                    </div>
+                    {bundle ? (
+                      <Checkbox
+                        checked={assigned}
+                        onCheckedChange={async () => {
+                          try {
+                            if (roleBundles[bundle.id]) {
+                              await supabase.rpc('revoke_role_bundle', { p_role: selectedRole.id, p_bundle: bundle.id });
+                              setRoleBundles(prev => ({ ...prev, [bundle.id]: false }));
+                            } else {
+                              await supabase.rpc('grant_role_bundle', { p_role: selectedRole.id, p_bundle: bundle.id });
+                              setRoleBundles(prev => ({ ...prev, [bundle.id]: true }));
+                            }
+                            await refreshRBAC();
+                          } catch {}
+                        }}
+                        className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                      />
+                    ) : (
+                      <Checkbox
+                        checked={assigned}
+                        onCheckedChange={() => { if (permRow) toggleRolePermission(selectedRole.id, permRow.id); }}
+                        disabled={!permRow || (!!permRow && (assigned ? !canRevokeRolePerm : !canGrantRolePerm))}
+                        title={!permRow ? 'Permission not found in DB' : assigned ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined) : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)}
+                        className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
 
-        {/* Policy Rules (Matrix) */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Policy Rules (Matrix)</CardTitle>
-            <CardDescription>Fine-grained allow-list per resource and action</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {policyLoading ? (
-              <div className="text-sm text-muted-foreground">Loading policy…</div>
-            ) : (
-              <div className="w-full overflow-x-auto rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-1/3">Resource</TableHead>
-                      {ACTIONS.map(a => (
-                        <TableHead key={a} className="capitalize text-center">{a}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {RESOURCES.map(resource => (
-                      <TableRow key={resource}>
-                        <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
-                        {ACTIONS.map(action => (
-                          <TableCell key={action} className="text-center">
-                            <Checkbox
-                              checked={!!policy[resource]?.has(action)}
-                              onCheckedChange={() => togglePolicy(resource, action)}
-                              disabled={!canConfigurePolicy}
-                              title={!canConfigurePolicy ? 'No permission: access_rules.configure' : undefined}
-                              className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                            />
-                          </TableCell>
+        {/* Advanced sections collapsed by default */}
+        <Accordion type="multiple" defaultValue={[]}> 
+          <AccordionItem value="crud">
+            <AccordionTrigger>Advanced: CRUD Permissions</AccordionTrigger>
+            <AccordionContent>
+              <Card>
+                <CardHeader>
+                  <CardTitle>CRUD Permissions</CardTitle>
+                  <CardDescription>
+                    Standard Create, Read, Update, and Delete permissions
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="w-full overflow-x-auto rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-1/3">Resource</TableHead>
+                          {CRUD_ACTIONS.map(action => (
+                            <TableHead key={action} className="capitalize text-center">{action}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Object.entries(groupedCrudPermissions).map(([resource, actions]) => (
+                          <TableRow key={resource}>
+                            <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
+                            {CRUD_ACTIONS.map(action => {
+                              const permission = actions[action];
+                              return (
+                                <TableCell key={action} className="text-center">
+                                  {permission ? (
+                                    <div className="inline-flex items-center gap-2">
+                                      <Checkbox
+                                        id={`${resource}-${action}`}
+                                        checked={roleHasPermission(selectedRole.id, permission.id)}
+                                        onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
+                                        disabled={
+                                          !!saving[`${selectedRole.id}:${permission.id}`] ||
+                                          (
+                                            roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                                          )
+                                        }
+                                        title={
+                                          roleHasPermission(selectedRole.id, permission.id)
+                                            ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                                            : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                                        }
+                                        className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="inline-flex items-center gap-2">
+                                      <Checkbox
+                                        disabled={true}
+                                        checked={false}
+                                        className="border-blue-300 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                                      />
+                                    </div>
+                                  )}
+                                </TableCell>
+                              );
+                            })}
+                          </TableRow>
                         ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-            <div className="mt-3">
-              <Button onClick={savePolicy} disabled={policySaving}>
-                {policySaving ? 'Saving…' : 'Save Policy'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
 
-        {/* Special Permissions (grouped by resource) */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Special Permissions</CardTitle>
-            <CardDescription>
-              Advanced permissions that don't follow the standard CRUD pattern
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {Object.entries(groupedSpecialPermissions).map(([resource, permissions]) => (
-                <div key={resource} className="space-y-3">
-                  <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground border-b pb-2">
-                    {formatResourceName(resource)}
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {permissions.map(permission => (
-                      <div key={permission.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={permission.id}
-                          checked={roleHasPermission(selectedRole.id, permission.id)}
-                          onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                          disabled={
-                            !!saving[`${selectedRole.id}:${permission.id}`] ||
-                            (
-                              roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
-                            )
-                          }
-                          title={
-                            roleHasPermission(selectedRole.id, permission.id)
-                              ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
-                              : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
-                          }
-                          className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                        />
-                        <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
-                          {getSpecialPermissionLabel(permission)}
-                        </Label>
+          {/* Legacy policies removed from UI intentionally */}
+
+          <AccordionItem value="special">
+            <AccordionTrigger>Advanced: Special Permissions</AccordionTrigger>
+            <AccordionContent>
+              {/* Special Permissions (grouped by resource) */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Special Permissions</CardTitle>
+                  <CardDescription>
+                    Advanced permissions that don't follow the standard CRUD pattern
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {Object.entries(groupedSpecialPermissions).map(([resource, permissions]) => (
+                      <div key={resource} className="space-y-3">
+                        <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground border-b pb-2">
+                          {formatResourceName(resource)}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {permissions.map(permission => (
+                            <div key={permission.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={permission.id}
+                                checked={roleHasPermission(selectedRole.id, permission.id)}
+                                onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
+                                disabled={
+                                  !!saving[`${selectedRole.id}:${permission.id}`] ||
+                                  (
+                                    roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                                  )
+                                }
+                                title={
+                                  roleHasPermission(selectedRole.id, permission.id)
+                                    ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                                    : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                                }
+                                className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                              />
+                              <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
+                                {getSpecialPermissionLabel(permission)}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                </CardContent>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+
 
         {/* Summary for this role */}
         <Card>

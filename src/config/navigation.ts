@@ -35,8 +35,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "chat",
     label: "Chat",
     icon: MessageSquare,
-    permissions: ['messages.read', 'threads.read'],
-    requireAll: false, // User needs ANY of these permissions
+    permissions: ['threads.read'],
+    requireAll: true,
     description: "View and manage conversations"
   },
   
@@ -44,14 +44,9 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "analytics",
     label: "Analytics",
     icon: BarChart2,
-    // Prefer a single read permission; remain backward-compatible for existing roles
-    permissions: [
-      'analytics.read',
-      'analytics.view_kpi',
-      'analytics.view_containment_rate',
-      'analytics.view_handover_rate'
-    ],
-    requireAll: false,
+    // Use a single canonical permission for menu access
+    permissions: ['analytics.view_kpi'],
+    requireAll: true,
     description: "View performance metrics and insights"
   },
 
@@ -68,8 +63,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "contacts",
     label: "Contacts",
     icon: Users,
-    permissions: ['contacts.read', 'contact_identities.read'],
-    requireAll: false, // User needs ANY contact permission
+    permissions: ['contacts.read'],
+    requireAll: true,
     description: "Manage customer contacts and identities"
   },
   
@@ -89,7 +84,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     label: "AI Agents",
     icon: Bot,
     permissions: ['ai_profiles.read'],
-    requireAll: false,
+    requireAll: true,
     description: "Configure and manage AI agents"
   },
   

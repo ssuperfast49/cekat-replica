@@ -1,8 +1,34 @@
 # Change Log
+# [0.0.34] FE WEB CEKAT 2025-11-09
+### Updates
+### AIAgentSettings
+* Added new state variables:
+  * `historyLimit`
+  * `readFileLimit`
+  * `contextLimit`
+  * `responseTemperature`
+  * `messageAwait`
+  * `messageLimit`
+  * `timezone`
+* Improved overall usage tracking and configurability.
+
+### HumanAgent
+* Introduced **usage range option** for better monitoring.
+* Refactored **agent visibility logic** for clearer access control.
+* Enhanced handling of **agent roles and statuses** for more robust management.
+
+# [0.0.33] FE WEB CEKAT 2025-10-09
+### Updates
+- Update project branding, enhance chat functionality, and improve permissions management
+- Added aria-labels for accessibility in chat components
+- Refined URL state synchronization in ConversationPage
+- Implemented sorting and editing features in Contacts
+- Removed legacy policy editing from PermissionsPage
+- Updated navigation permissions for better clarity
+
 # [0.0.32] FE WEB CEKAT 2025-10-04
 ### Updates
 - Fixed Live chat error and detail chat
-### Updates
 - Update project branding to **Synka AI**
 - Enhance **chat functionality**
 - Improve **permissions management**
