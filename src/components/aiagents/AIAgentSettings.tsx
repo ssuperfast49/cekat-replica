@@ -351,6 +351,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
   const [autoResolveMinutes, setAutoResolveMinutes] = useState<number>((profile as any)?.auto_resolve_after_minutes ?? 0);
   const [enableResolve, setEnableResolve] = useState<boolean>(Boolean((profile as any)?.enable_resolve ?? false));
+  // Additional Settings
+  const [historyLimit, setHistoryLimit] = useState<number>((profile as any)?.history_limit ?? 50000);
+  const [readFileLimit, setReadFileLimit] = useState<number>((profile as any)?.read_file_limit ?? 3);
+  const [contextLimit, setContextLimit] = useState<number>((profile as any)?.context_limit ?? 28);
+  const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
+  const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
+  const [messageLimit, setMessageLimit] = useState<number>((profile as any)?.message_limit ?? 1000);
+  const [timezone, setTimezone] = useState<string>((profile as any)?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'));
   
   // Load available AI models
   useEffect(() => {
@@ -883,6 +891,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setTemperature(profile.temperature || 0.3);
       setAutoResolveMinutes((profile as any)?.auto_resolve_after_minutes ?? 0);
       setEnableResolve(Boolean((profile as any)?.enable_resolve ?? false));
+      setHistoryLimit((profile as any)?.history_limit ?? 50000);
+      setReadFileLimit((profile as any)?.read_file_limit ?? 3);
+      setContextLimit((profile as any)?.context_limit ?? 28);
+      setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
+      setMessageAwait((profile as any)?.message_await ?? 3);
+      setMessageLimit((profile as any)?.message_limit ?? 1000);
+      setTimezone((profile as any)?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'));
       const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
       if (qna && Array.isArray(qna)) {
         const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
@@ -911,6 +926,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       name: agentName,
       auto_resolve_after_minutes: autoResolveMinutes,
       enable_resolve: enableResolve,
+      history_limit: historyLimit,
+      read_file_limit: readFileLimit,
+      context_limit: contextLimit,
+      response_temperature: responseTemperature,
+      message_await: messageAwait,
+      message_limit: messageLimit,
+      timezone: timezone,
       // Persist Q&A pairs into ai_profiles.qna JSONB
       // Store compact q/a pairs for space efficiency
       qna: qaPairs
@@ -1123,39 +1145,27 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                 </div>
               </Card>
 
-              {/* Model Settings */}
-              <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-4 text-primary">Model Settings</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {/* <div>
-                    <label className="text-sm font-medium">Model</label>
-                    <select
-                      value={modelId}
-                      onChange={(e) => setModelId(e.target.value)}
-                      className="w-full p-2 border rounded-lg mt-1"
-                      disabled={availableModels.length === 0}
-                    >
-                      {availableModels.length === 0 ? (
-                        <option value="">Loading models...</option>
-                      ) : (
-                        availableModels.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {(m.display_name || m.model_name) + (m.provider ? ` (${m.provider})` : '')}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div> */}
+              {/* Model Settings merged into Additional Settings below */}
+
+              {/* Additional Settings (collapsible) */}
+              <Card className="p-6">
+                <Collapsible defaultOpen={false}>
+                  <CollapsibleTrigger className="flex w-full items-center justify-between py-1 font-medium [&[data-state=open]>svg]:rotate-180">
+                    <h3 className="text-lg font-semibold text-primary">Additional Settings</h3>
+                    <ChevronDown className="w-5 h-5 transition-transform" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Temperature</label>
-                    <input 
+                    <Input
                       type="number"
-                      min="0"
-                      max="2"
-                      step="0.1"
+                      min={0}
+                      max={2}
+                      step={0.1}
                       value={temperature}
-                      onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                      className="w-full p-2 border rounded-lg mt-1"
+                      onChange={(e) => setTemperature(parseFloat(e.target.value || '0'))}
+                      className="mt-1"
                     />
                   </div>
                   <div>
@@ -1164,28 +1174,59 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                       <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
                     </div>
                   </div>
-                  <div className="col-span-2">
+                  <div className="md:col-span-2">
                     <label className="text-sm font-medium">Auto-resolve after (minutes)</label>
-                    <input
+                    <Input
                       type="number"
-                      min="0"
-                      step="1"
+                      min={0}
+                      step={1}
                       value={autoResolveMinutes}
-                      onChange={(e) => setAutoResolveMinutes(Math.max(0, parseInt(e.target.value || '0', 10)))}
+                      onChange={(e) =>
+                        setAutoResolveMinutes(Math.max(0, parseInt(e.target.value || '0', 10)))
+                      }
                       disabled={!enableResolve}
-                      className={`w-full p-2 border rounded-lg mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
+                      className={`mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">{enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">AI History Limit</label>
+                    <Input type="number" min={0} value={historyLimit} onChange={(e)=>setHistoryLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">AI Read File Limit</label>
+                    <Input type="number" min={0} value={readFileLimit} onChange={(e)=>setReadFileLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">AI Context Limit</label>
+                    <Input type="number" min={0} value={contextLimit} onChange={(e)=>setContextLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">AI Temperature</label>
+                    <select value={responseTemperature} onChange={(e)=>setResponseTemperature(e.target.value)} className="w-full p-2 border rounded-lg mt-1">
+                      <option value="Conservative">Conservative</option>
+                      <option value="Balanced">Balanced</option>
+                      <option value="Creative">Creative</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Message Await (seconds)</label>
+                    <Input type="number" min={0} value={messageAwait} onChange={(e)=>setMessageAwait(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">AI Message Limit</label>
+                    <Input type="number" min={0} value={messageLimit} onChange={(e)=>setMessageLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium">Timezone</label>
+                    <Input type="text" value={timezone} onChange={(e)=>setTimezone(e.target.value)} className="mt-1" />
                   </div>
                 </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </Card>
-
-              {/* Additional Settings */}
-              {/* <Card className="p-6">
-                <Button variant="ghost" className="text-primary p-0 h-auto font-semibold">
-                  Additional Settings ↓
-                </Button>
-              </Card> */}
 
               {/* Save Button */}
               <Button 

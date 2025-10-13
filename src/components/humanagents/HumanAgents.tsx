@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,10 +28,14 @@ const HumanAgents = () => {
   const [selectedAgent, setSelectedAgent] = useState<AgentWithDetails | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
   const [tokenLimitForm, setTokenLimitForm] = useState<{ enabled: boolean; perDay: number; perMonth: number; twoFA: boolean }>({ enabled: false, perDay: 0, perMonth: 0, twoFA: false });
-  const [usageRange, setUsageRange] = useState<"7d" | "30d" | "this_month">("7d");
+  const [usageRange, setUsageRange] = useState<"7d" | "30d" | "this_month" | "all">("7d");
+  const [dialogRange, setDialogRange] = useState<"7d" | "30d" | "this_month">("7d");
   const [usageTotal, setUsageTotal] = useState<number | null>(null);
   const [loadingUsage, setLoadingUsage] = useState(false);
   const [agentStats, setAgentStats] = useState<{ assignedTo: number; assignedBy: number; resolvedBy: number; handoverFromAI: number } | null>(null);
+  const [usageBySuper, setUsageBySuper] = useState<Record<string, number>>({});
+  const [loadingSuperUsage, setLoadingSuperUsage] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent"; phone?: string }>({ 
     name: "", 
     email: "", 
@@ -232,10 +236,103 @@ const HumanAgents = () => {
     return { start: start.toISOString(), end: end.toISOString() };
   };
 
+  const fetchSuperUsage = async (range: "7d" | "30d" | "this_month" | "all") => {
+    try {
+      setLoadingSuperUsage(true);
+      const superIds = visibleAgents.filter(a => a.primaryRole === 'super_agent').map(a => a.user_id);
+      if (superIds.length === 0) {
+        setUsageBySuper({});
+        return;
+      }
+
+      let usageMap: Record<string, number> = {};
+      if (range === 'all') {
+        try {
+          const { data: vr } = await supabase
+            .from('v_super_agent_token_usage')
+            .select('super_agent_id,total_tokens');
+          for (const row of (vr as any[]) || []) {
+            const sid = String((row as any).super_agent_id || '');
+            if (!sid) continue;
+            usageMap[sid] = Number((row as any).total_tokens || 0);
+          }
+        } catch {}
+      } else {
+        const { start, end } = computeRange(range);
+        // Fallback: aggregate by channel.super_agent_id within range
+        const { data: logs } = await supabase
+          .from('token_usage_logs')
+          .select('id,channel_id,total_tokens,made_at')
+          .gte('made_at', start)
+          .lt('made_at', end);
+        const channelIds = Array.from(new Set(((logs as any[]) || []).map(r => (r as any).channel_id).filter(Boolean)));
+        let channelToSuper: Record<string, string> = {};
+        if (channelIds.length > 0) {
+          const { data: ch } = await supabase
+            .from('channels')
+            .select('id,super_agent_id')
+            .in('id', channelIds as any);
+          channelToSuper = Object.fromEntries(((ch as any[]) || []).map(c => [String((c as any).id), String((c as any).super_agent_id || '')]));
+        }
+        const seen = new Set<string>();
+        for (const row of (logs as any[]) || []) {
+          const id = String((row as any).id);
+          if (seen.has(id)) continue;
+          seen.add(id);
+          const channelId = String((row as any).channel_id || '');
+          const sid = channelId ? (channelToSuper[channelId] || '') : '';
+          if (sid) usageMap[sid] = (usageMap[sid] || 0) + Number((row as any).total_tokens || 0);
+        }
+      }
+
+      const finalMap: Record<string, number> = {};
+      for (const sid of superIds) finalMap[sid] = usageMap[sid] || 0;
+      setUsageBySuper(finalMap);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to load usage', variant: 'destructive' });
+    } finally {
+      setLoadingSuperUsage(false);
+    }
+  };
+
+  useEffect(() => {
+    if (agents.length > 0) {
+      // best-effort refresh; ignore errors
+      fetchSuperUsage(usageRange);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agents, usageRange]);
+
+  // Resolve current user id once
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        setCurrentUserId(data?.user?.id || null);
+      } catch {}
+    })();
+  }, []);
+
+  // Compute which agents are visible to the current viewer
+  const getVisibleAgents = () => {
+    if (hasRole(ROLES.MASTER_AGENT)) return agents;
+    if (hasRole(ROLES.SUPER_AGENT)) {
+      if (!currentUserId) return [];
+      return agents.filter(a =>
+        (a.primaryRole === 'super_agent' && a.user_id === currentUserId) ||
+        (a.primaryRole === 'agent' && a.super_agent_id === currentUserId)
+      );
+    }
+    // Default: no visibility (could be extended for regular agents if needed)
+    return [];
+  };
+
+  const visibleAgents = useMemo(() => getVisibleAgents(), [agents, hasRole, currentUserId]);
+
   const openUsageDetails = async (agent: AgentWithDetails) => {
     setSelectedAgent(agent);
     setIsUsageOpen(true);
-    await fetchUsage(agent.user_id, usageRange);
+    await fetchUsage(agent.user_id, dialogRange);
   };
 
   const fetchUsage = async (userId: string, range: "7d" | "30d" | "this_month") => {
@@ -387,15 +484,30 @@ const HumanAgents = () => {
           <h1 className="text-2xl font-bold tracking-tight">Human Agent Settings</h1>
           <p className="text-muted-foreground">Manage your human agents</p>
         </div>
-        <PermissionGate permission={'super_agents.create'}>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-                <Plus className="h-4 w-4" />
-                Create Agent
-              </Button>
-            </DialogTrigger>
-          <DialogContent className="sm:max-w-md bg-background border">
+        <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">Usage</Label>
+            <Select value={usageRange} onValueChange={async (v)=>{ const r = v as any; setUsageRange(r); try { await fetchSuperUsage(r); } catch {} }}>
+              <SelectTrigger className="h-8 w-[160px] bg-background border">
+                <SelectValue placeholder="Range" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border z-50">
+                <SelectItem value="all">All time</SelectItem>
+                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="this_month">This month</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <PermissionGate permission={'super_agents.create'}>
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                  <Plus className="h-4 w-4" />
+                  Create Agent
+                </Button>
+              </DialogTrigger>
+            <DialogContent className="sm:max-w-md bg-background border">
             <DialogHeader>
               <DialogTitle>Create New Agent</DialogTitle>
             </DialogHeader>
@@ -492,9 +604,10 @@ const HumanAgents = () => {
                 </Button>
               </div>
             </div>
-          </DialogContent>
-          </Dialog>
-        </PermissionGate>
+            </DialogContent>
+            </Dialog>
+          </PermissionGate>
+        </div>
       </div>
 
       {/* Tabs commented out for now */}
@@ -509,10 +622,11 @@ const HumanAgents = () => {
         <TabsContent value="agents" className="space-y-4"> */}
         <div className="space-y-4">
           <div className="rounded-lg border bg-card">
-            <div className="grid grid-cols-[200px,1fr,120px,120px,100px] gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
+            <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
               <div>Agent Name</div>
               <div>Email</div>
               <div>Role</div>
+              <div>Token Usage</div>
               <div>Status</div>
               <div>Action</div>
             </div>
@@ -524,7 +638,7 @@ const HumanAgents = () => {
                     <span>Loading agents...</span>
                   </div>
                 </div>
-              ) : agents.length === 0 ? (
+              ) : visibleAgents.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="text-center">
                     <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -539,8 +653,17 @@ const HumanAgents = () => {
                   </div>
                 </div>
               ) : (
-                agents.map((agent) => (
-                  <div key={agent.user_id} className="grid grid-cols-[200px,1fr,120px,120px,100px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors">
+                (() => {
+                  // Group agents by hierarchy
+                  const masterAgents = visibleAgents.filter(a => a.primaryRole === 'master_agent');
+                  const superAgents = visibleAgents.filter(a => a.primaryRole === 'super_agent');
+                  const regularAgents = visibleAgents.filter(a => a.primaryRole === 'agent');
+                  
+                  return (
+                    <>
+                      {/* Master Agents */}
+                      {masterAgents.map((agent) => (
+                        <div key={agent.user_id} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-blue-50/30">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
                         <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
@@ -550,39 +673,204 @@ const HumanAgents = () => {
                       <span className="font-medium text-blue-600">{agent.display_name || 'Unknown User'}</span>
                     </div>
                     <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
-                    <div>
-                      {hasPermission('super_agents.update') && (agent.primaryRole === 'agent' || agent.primaryRole === 'super_agent') ? (
-                        // Editable role dropdown for users with edit permission
+                          <div className="flex items-center h-8">
+                            <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Master Agent</Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground">—</div>
+                          <div className="flex items-center gap-2">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="gap-2 h-8">
-                            <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)}`}>
-                                {agent.primaryRole === "super_agent" ? "Super Agent" : 
-                                 agent.primaryRole === "agent" ? "Agent" : "No Role"}
-                              </Badge>
+                                  <div className={`h-2 w-2 rounded-full ${getStatusColor(agent.status)}`} />
+                                  <span className="text-xs">{agent.status}</span>
                               <ChevronDown className="h-3 w-3" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="bg-background border z-50">
-                            {/* Never allow changing a Master Agent's role; this menu only shows for non-master */}
+                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Active")}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 w-2 rounded-full bg-green-500" />
+                                    Active
+                                  </div>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Inactive")}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 w-2 rounded-full bg-gray-400" />
+                                    Inactive
+                                  </div>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <PermissionGate permission={'users_profile.update_token_limit'}>
+                              <Button
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                                onClick={() => openEditLimits(agent)}
+                                title="Edit limits"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
+                            {hasRole(ROLES.MASTER_AGENT) && (
+                              <Button
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => openUsageDetails(agent)}
+                                title="View token usage"
+                              >
+                                <BarChart3 className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <PermissionGate permission={'super_agents.delete'}>
+                              <Button 
+                                size="sm" 
+                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                onClick={() => { setAgentPendingDelete(agent); setConfirmDeleteOpen(true); }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Super Agents with their nested Agents */}
+                      {superAgents.map((superAgent) => {
+                        const assignedAgents = regularAgents.filter(a => a.super_agent_id === superAgent.user_id);
+                        return (
+                          <div key={superAgent.user_id}>
+                            {/* Super Agent Row */}
+                            <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-green-50/30">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback className="text-xs bg-green-100 text-green-700">
+                                    {getInitials(superAgent.display_name || 'Unknown')}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="font-medium text-green-600">{superAgent.display_name || 'Unknown User'}</span>
+                              </div>
+                              <div className="text-sm text-muted-foreground">{superAgent.email || 'No email'}</div>
+                              <div className="flex items-center h-8">
+                                {hasPermission('super_agents.update') ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="gap-2 h-8 px-0">
+                                        <Badge className={`text-xs ${roleBadgeClass(superAgent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
+                                        <ChevronDown className="h-3 w-3" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent className="bg-background border z-50">
+                                      <DropdownMenuItem onClick={() => handleRoleChange(superAgent.user_id, "agent")}>
+                                        <Badge className={`text-xs ${roleBadgeClass("agent")} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleRoleChange(superAgent.user_id, "super_agent")}>
+                                        <Badge className={`text-xs ${roleBadgeClass("super_agent")} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                ) : (
+                                  <Badge className={`text-xs ${roleBadgeClass(superAgent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
+                                )}
+                              </div>
+                              <div className="text-sm font-medium">{loadingSuperUsage ? '…' : ((usageBySuper[superAgent.user_id] ?? 0).toLocaleString())}</div>
+                              <div className="flex items-center gap-2">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                      <div className={`h-2 w-2 rounded-full ${getStatusColor(superAgent.status)}`} />
+                                      <span className="text-xs">{superAgent.status}</span>
+                                      <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="bg-background border z-50">
+                                    <DropdownMenuItem onClick={() => handleStatusChange(superAgent.user_id, "Active")}>
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-2 w-2 rounded-full bg-green-500" />
+                                        Active
+                                      </div>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(superAgent.user_id, "Inactive")}>
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-2 w-2 rounded-full bg-gray-400" />
+                                        Inactive
+                                      </div>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <PermissionGate permission={'users_profile.update_token_limit'}>
+                                  <Button
+                                    size="sm"
+                                    className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                                    onClick={() => openEditLimits(superAgent)}
+                                    title="Edit limits"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </PermissionGate>
+                                {hasRole(ROLES.MASTER_AGENT) && (
+                                  <Button
+                                    size="sm"
+                                    className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                    onClick={() => openUsageDetails(superAgent)}
+                                    title="View token usage"
+                                  >
+                                    <BarChart3 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                <PermissionGate permission={'super_agents.delete'}>
+                                  <Button 
+                                    size="sm" 
+                                    className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                    onClick={() => { setAgentPendingDelete(superAgent); setConfirmDeleteOpen(true); }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </PermissionGate>
+                              </div>
+                            </div>
+
+                            {/* Nested Agents under this Super Agent */}
+                            {assignedAgents.map((agent) => (
+                              <div key={agent.user_id} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-gray-50/30 pl-12">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-6 h-6 flex items-center justify-center">
+                                    <div className="w-4 h-4 border-l-2 border-b-2 border-gray-300 rounded-bl"></div>
+                                  </div>
+                                  <Avatar className="h-8 w-8">
+                                    <AvatarFallback className="text-xs bg-gray-100 text-gray-700">
+                                      {getInitials(agent.display_name || 'Unknown')}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="font-medium text-gray-600">{agent.display_name || 'Unknown User'}</span>
+                                </div>
+                                <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
+                                <div className="flex items-center h-8">
+                                  {hasPermission('super_agents.update') ? (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="gap-2 h-8 px-0">
+                                          <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
+                                          <ChevronDown className="h-3 w-3" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent className="bg-background border z-50">
                             <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
-                              <Badge className={`text-xs ${roleBadgeClass("agent")}`}>Agent</Badge>
+                                          <Badge className={`text-xs ${roleBadgeClass("agent")} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
-                              <Badge className={`text-xs ${roleBadgeClass("super_agent")}`}>Super Agent</Badge>
+                                          <Badge className={`text-xs ${roleBadgeClass("super_agent")} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
                             </DropdownMenuItem>
-                            {/* Creating/promoting to Master Agent disabled in UI */}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : (
-                        // Read-only role badge for users without edit permission
-                        <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)}`}>
-                          {agent.primaryRole === "master_agent" ? "Master Agent" : 
-                           agent.primaryRole === "super_agent" ? "Super Agent" : 
-                           agent.primaryRole === "agent" ? "Agent" : "No Role"}
-                        </Badge>
+                                    <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
                       )}
                     </div>
+                    <div className="text-sm text-muted-foreground">—</div>
                     <div className="flex items-center gap-2">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -640,7 +928,107 @@ const HumanAgents = () => {
                       </PermissionGate>
                     </div>
                   </div>
-                ))
+                            ))}
+                          </div>
+                        );
+                      })}
+
+                      {/* Unassigned Agents */}
+                      {regularAgents.filter(a => !a.super_agent_id).map((agent) => (
+                        <div key={agent.user_id} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-orange-50/30">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs bg-orange-100 text-orange-700">
+                                {getInitials(agent.display_name || 'Unknown')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium text-orange-600">{agent.display_name || 'Unknown User'}</span>
+                          </div>
+                          <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
+                          <div className="flex items-center h-8">
+                            {hasPermission('super_agents.update') ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="gap-2 h-8 px-0">
+                                    <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent (Unassigned)</Badge>
+                                    <ChevronDown className="h-3 w-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-background border z-50">
+                                  <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
+                                    <Badge className={`text-xs ${roleBadgeClass("agent")} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
+                                    <Badge className={`text-xs ${roleBadgeClass("super_agent")} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent (Unassigned)</Badge>
+              )}
+            </div>
+                          <div className="text-sm text-muted-foreground">—</div>
+                          <div className="flex items-center gap-2">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                  <div className={`h-2 w-2 rounded-full ${getStatusColor(agent.status)}`} />
+                                  <span className="text-xs">{agent.status}</span>
+                                  <ChevronDown className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent className="bg-background border z-50">
+                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Active")}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 w-2 rounded-full bg-green-500" />
+                                    Active
+                                  </div>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Inactive")}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 w-2 rounded-full bg-gray-400" />
+                                    Inactive
+                                  </div>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <PermissionGate permission={'users_profile.update_token_limit'}>
+                              <Button
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                                onClick={() => openEditLimits(agent)}
+                                title="Edit limits"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
+                            {hasRole(ROLES.MASTER_AGENT) && (
+                              <Button
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => openUsageDetails(agent)}
+                                title="View token usage"
+                              >
+                                <BarChart3 className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <PermissionGate permission={'super_agents.delete'}>
+                              <Button 
+                                size="sm" 
+                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                onClick={() => { setAgentPendingDelete(agent); setConfirmDeleteOpen(true); }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()
               )}
             </div>
           </div>
@@ -815,7 +1203,7 @@ const HumanAgents = () => {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Timeframe</Label>
-              <Select value={usageRange} onValueChange={async (v) => { const r = v as any; setUsageRange(r); if (selectedAgent) await fetchUsage(selectedAgent.user_id, r); }}>
+              <Select value={dialogRange} onValueChange={async (v) => { const r = v as any as ("7d"|"30d"|"this_month"); setDialogRange(r); if (selectedAgent) await fetchUsage(selectedAgent.user_id, r); }}>
                 <SelectTrigger className="bg-background border">
                   <SelectValue />
                 </SelectTrigger>
