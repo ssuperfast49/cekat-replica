@@ -84,7 +84,7 @@ export interface Message {
   created_at: string;
 }
 
-export interface ConversationWithDetails extends Thread {
+  export interface ConversationWithDetails extends Thread {
   // Additional fields for display
   contact_name: string;
   contact_phone: string;
@@ -92,12 +92,15 @@ export interface ConversationWithDetails extends Thread {
   channel_name: string;
   channel_type: string;
   channel_provider?: string;
-  channel?: {
-    provider?: string;
-    type?: string;
-    display_name?: string;
-    external_id?: string;
-  };
+    channel?: {
+      provider?: string;
+      type?: string;
+      display_name?: string;
+      external_id?: string;
+      logo_url?: string | null;
+      profile_photo_url?: string | null;
+    };
+    channel_logo_url?: string | null;
   last_message_preview: string;
   last_message_direction?: 'in' | 'out' | null;
   last_message_role?: 'user' | 'assistant' | 'agent' | 'system' | null;
@@ -202,7 +205,7 @@ export const useConversations = () => {
         .select(`
           *,
           contacts(name, phone, email),
-          channels(display_name, type, provider, external_id),
+          channels(display_name, type, provider, external_id, logo_url, profile_photo_url),
           messages(id, body, role, direction, created_at, seq)
         `)
         .order('last_msg_at', { ascending: false })
@@ -257,7 +260,10 @@ export const useConversations = () => {
             type: thread.channels?.type,
             display_name: thread.channels?.display_name,
             external_id: thread.channels?.external_id,
+            logo_url: thread.channels?.logo_url || null,
+            profile_photo_url: thread.channels?.profile_photo_url || null,
           },
+          channel_logo_url: thread.channels?.logo_url || thread.channels?.profile_photo_url || null,
           last_message_preview: lastPreview || '—',
           last_message_direction: lastDir,
           last_message_role: lastRole as any,

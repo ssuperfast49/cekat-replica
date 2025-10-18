@@ -280,6 +280,24 @@ export const usePlatforms = () => {
       if (typeof updates.provider !== 'undefined') channelUpdates.provider = updates.provider;
       if (typeof updates.super_agent_id !== 'undefined') channelUpdates.super_agent_id = updates.super_agent_id;
 
+      // Strict clustering: prevent changing super_agent_id once set (except from undefined -> value)
+      if (typeof updates.super_agent_id !== 'undefined') {
+        try {
+          const { data: existing } = await supabase
+            .from('channels')
+            .select('super_agent_id')
+            .eq('id', platformId)
+            .single();
+          const currentSid = (existing as any)?.super_agent_id || null;
+          const nextSid = updates.super_agent_id ?? null;
+          if (currentSid && nextSid && currentSid !== nextSid) {
+            throw new Error('Strict clustering: channel cannot be reassigned to a different Super Agent');
+          }
+        } catch (guardErr: any) {
+          throw guardErr;
+        }
+      }
+
       if (Object.keys(channelUpdates).length > 0) {
         const { error: platformError } = await supabase
           .from('channels')
@@ -355,29 +373,154 @@ export const usePlatforms = () => {
     }
   };
 
-  const uploadProfilePhoto = async (file: File): Promise<string> => {
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `platform-photos/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        throw uploadError;
+  // Upload a channel avatar to the canonical storage path and update logo_url
+  const uploadChannelAvatar = async (
+    channelId: string,
+    file: File,
+    orgIdFromCaller?: string
+  ): Promise<string> => {
+    // Basic validation: only images and a reasonable size
+    const allowedTypes = [/^image\//i];
+    const allowedExt = /\.(png|jpe?g|webp)$/i;
+    const isImage = allowedTypes.some((re) => re.test(file.type || '')) || allowedExt.test(file.name || '');
+    if (!isImage) {
+      throw new Error('Only image files are allowed (PNG, JPG, WEBP).');
+    }
+    const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+    if (typeof file.size === 'number' && file.size > MAX_IMAGE_BYTES) {
+      throw new Error('Image is too large. Maximum size is 5 MB.');
+    }
+    // Convert to PNG to honor canonical filename avatar.png where possible
+    async function convertToPngBlob(input: File): Promise<Blob | null> {
+      try {
+        if (typeof window === 'undefined') return null;
+        const img = document.createElement('img');
+        const url = URL.createObjectURL(input);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = reject as any;
+            img.src = url;
+          });
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const blob: Blob | null = await new Promise((resolve) =>
+          canvas.toBlob((b) => resolve(b), 'image/png')
+        );
+        return blob;
+      } catch {
+        return null;
       }
+    }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Resolve org_id for the channel if not provided
+      let orgId = orgIdFromCaller || '';
+      if (!orgId) {
+        const { data: chRow, error: chErr } = await supabase
+          .from('channels')
+          .select('org_id')
+          .eq('id', channelId)
+          .single();
+        if (chErr) throw chErr;
+        orgId = (chRow as any)?.org_id as string;
+      }
+      if (!orgId) throw new Error('Missing org_id for channel');
+
+      // Prepare upload to canonical key
+      const storageBucket = 'channel-assets';
+      const objectPath = `${orgId}/${channelId}/profile/avatar.png`;
+
+      const pngBlob = await convertToPngBlob(file);
+      const dataToUpload = pngBlob || file;
+      const contentType = pngBlob ? 'image/png' : (file.type || 'image/*');
+
+      const { error: upErr } = await supabase.storage
+        .from(storageBucket)
+        .upload(objectPath, dataToUpload, {
+          cacheControl: '31536000',
+          upsert: true,
+          contentType,
+        });
+      if (upErr) throw upErr;
+
+      // Derive a public URL
+      const { data: pub } = supabase.storage
+        .from(storageBucket)
+        .getPublicUrl(objectPath);
+      const publicUrl = (pub as any)?.publicUrl as string;
+
+      // Update channel row; keep profile_photo_url for backward compatibility
+      const { error: updErr } = await supabase
+        .from('channels')
+        .update({ logo_url: publicUrl, profile_photo_url: publicUrl })
+        .eq('id', channelId);
+      if (updErr) throw updErr;
+
+      try { await logAction({ action: 'channel.avatar.update', resource: 'channel', resourceId: channelId, context: { objectPath } }); } catch {}
 
       return publicUrl;
-    } catch (error: any) {
-      console.error('Error uploading profile photo:', error);
-      throw new Error('Failed to upload profile photo');
+    } catch (e: any) {
+      console.error('Error uploading channel avatar:', e);
+      throw new Error(e?.message || 'Failed to upload channel avatar');
     }
+  };
+
+  // Remove channel avatar from storage and clear DB fields
+  const deleteChannelAvatar = async (
+    channelId: string,
+    orgIdFromCaller?: string
+  ): Promise<void> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Resolve org_id for the channel if not provided
+      let orgId = orgIdFromCaller || '';
+      if (!orgId) {
+        const { data: chRow, error: chErr } = await supabase
+          .from('channels')
+          .select('org_id')
+          .eq('id', channelId)
+          .single();
+        if (chErr) throw chErr;
+        orgId = (chRow as any)?.org_id as string;
+      }
+      if (!orgId) throw new Error('Missing org_id for channel');
+
+      const bucket = 'channel-assets';
+      const objectPath = `${orgId}/${channelId}/profile/avatar.png`;
+
+      // Best-effort delete; ignore 404
+      try { await supabase.storage.from(bucket).remove([objectPath]); } catch {}
+
+      // Clear DB fields and touch updated_at
+      const { error: updErr } = await supabase
+        .from('channels')
+        .update({ logo_url: null, profile_photo_url: null, updated_at: new Date().toISOString() })
+        .eq('id', channelId);
+      if (updErr) throw updErr;
+
+      try { await logAction({ action: 'channel.avatar.delete', resource: 'channel', resourceId: channelId, context: { objectPath } }); } catch {}
+    } catch (e: any) {
+      console.error('Error deleting channel avatar:', e);
+      throw new Error(e?.message || 'Failed to delete channel avatar');
+    }
+  };
+
+  // Deprecated: use uploadChannelAvatar instead
+  const uploadProfilePhoto = async (_file: File): Promise<string> => {
+    throw new Error('uploadProfilePhoto is deprecated. Use uploadChannelAvatar(channelId, file, orgId?)');
   };
 
   useEffect(() => {
@@ -393,6 +536,7 @@ export const usePlatforms = () => {
     createPlatform,
     updatePlatform,
     deletePlatform,
-    uploadProfilePhoto
+    uploadChannelAvatar
+    , deleteChannelAvatar
   };
 };

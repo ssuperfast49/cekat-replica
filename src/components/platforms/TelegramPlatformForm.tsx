@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { usePlatforms } from "@/hooks/usePlatforms";
 
 interface TelegramPlatformFormProps {
   isOpen: boolean;
@@ -26,13 +27,15 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const { user } = useAuth();
   const { aiAgents, loading: aiAgentsLoading, setFilterBySuper } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
+  const { uploadChannelAvatar } = usePlatforms();
 
   const [formData, setFormData] = useState({
     displayName: "",
     description: "",
     telegramBotToken: "",
     selectedAIAgent: "",
-    selectedHumanAgents: [] as string[]
+    selectedHumanAgents: [] as string[],
+    profilePhoto: null as File | null,
   });
   const [submitting, setSubmitting] = useState(false);
   const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
@@ -155,9 +158,30 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       }
       console.log('Telegram webhook response:', webhookResult);
 
-      // Do not create a channel client-side for Telegram.
-      // The webhook above is responsible for creating the platform/channel.
-      // We only refresh the platform list after webhook success.
+      // Upload avatar only after webhook success and channel exists
+      try {
+        if (formData.profilePhoto) {
+          // Try to get channel_id from webhook response first
+          let channelId: string | null = (webhookResult?.channel_id || webhookResult?.id || webhookResult?.channel?.id || null) as string | null;
+          if (!channelId) {
+            // Fallback: query by org_id + provider + external_id (bot token)
+            const { data: chRow } = await supabase
+              .from('channels')
+              .select('id')
+              .eq('org_id', orgId)
+              .eq('provider', 'telegram')
+              .eq('external_id', normalizedToken)
+              .limit(1)
+              .maybeSingle();
+            channelId = (chRow as any)?.id || null;
+          }
+          if (channelId) {
+            await uploadChannelAvatar(channelId, formData.profilePhoto, orgId);
+          }
+        }
+      } catch (uploadErr: any) {
+        console.warn('Telegram avatar upload failed:', uploadErr);
+      }
 
       toast({ title: "Success", description: "Telegram channel created successfully" });
       try {
@@ -170,7 +194,8 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         description: "",
         telegramBotToken: "",
         selectedAIAgent: "",
-        selectedHumanAgents: []
+        selectedHumanAgents: [],
+        profilePhoto: null,
       });
       setSelectedSuperAgentId(null);
     } catch (error: any) {
@@ -217,6 +242,39 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               rows={3}
             />
+          </div>
+
+          {/* Profile Photo / Logo */}
+          <div className="space-y-2">
+            <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                {formData.profilePhoto ? (
+                  <img
+                    src={URL.createObjectURL(formData.profilePhoto)}
+                    alt="Profile"
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <Input
+                  id="profilePhoto"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e)=>{ const f = e.target.files?.[0] || null; setFormData(prev=>({ ...prev, profilePhoto: f })); }}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={()=>document.getElementById('profilePhoto')?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" /> Upload Photo
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Telegram Bot Setup Instructions */}
@@ -294,26 +352,6 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             )}
           </div>
 
-
-          {/* Select Super Agent */}
-          <div className="space-y-2">
-            <Label>Super Agent *</Label>
-            {humanAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading...</div>
-            ) : (
-              <Select value={selectedSuperAgentId || ''} onValueChange={(v)=>handleSuperAgentSelect(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a Super Agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  {humanAgents.filter(a=>a.primaryRole==='super_agent').map(sa => (
-                    <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
           {/* Select AI Agent (filtered by selected Super Agent) */}
           <div className="space-y-2">
             <Label htmlFor="aiAgent">Select AI Agent *</Label>
@@ -367,7 +405,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={()=>{ if (submitting) return; setFormData({ displayName: "", description: "", telegramBotToken: "", selectedAIAgent: "", selectedHumanAgents: [] }); setSelectedSuperAgentId(null); onClose(); }} disabled={isSubmitting || submitting}>
+          <Button variant="outline" onClick={()=>{ if (submitting) return; setFormData({ displayName: "", description: "", telegramBotToken: "", selectedAIAgent: "", selectedHumanAgents: [] as string[], profilePhoto: null }); setSelectedSuperAgentId(null); onClose(); }} disabled={isSubmitting || submitting}>
             Cancel
           </Button>
           <Button 

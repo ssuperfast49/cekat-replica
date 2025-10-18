@@ -599,7 +599,7 @@ export default function ConversationPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-2 flex-1 min-w-0">
                         <Avatar className="h-6 w-6">
-                          <AvatarImage src="" />
+                          <AvatarImage src={conv.channel_logo_url || ''} />
                           <AvatarFallback className="text-[10px]">💬</AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">

@@ -1,4 +1,13 @@
 # Change Log
+# [0.0.35] FE WEB CEKAT 2025-16-09
+### Updates
+- Added HCaptcha site key to .env for CAPTCHA validation.
+- Enhanced Login component to include CAPTCHA verification.
+- Improved ConversationPage to display channel logos.
+- Updated HumanAgents component for better pagination and agent management.
+- Adjusted useConversations and useHumanAgents hooks to support new fields for channel logos and agent organization.
+- Implemented strict checks for super agent assignments in usePlatforms hook.
+
 # [0.0.34] FE WEB CEKAT 2025-11-09
 ### Updates
 ### AIAgentSettings

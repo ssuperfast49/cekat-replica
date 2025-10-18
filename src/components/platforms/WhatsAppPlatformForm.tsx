@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -33,7 +33,8 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     description: "",
     phoneNumber: "",
     selectedAIAgent: "",
-    selectedHumanAgents: [] as string[]
+    selectedHumanAgents: [] as string[],
+    profilePhoto: null as File | null,
   });
 
   // WhatsApp QR connection state
@@ -306,7 +307,8 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         description: "",
         phoneNumber: "",
         selectedAIAgent: "",
-        selectedHumanAgents: []
+        selectedHumanAgents: [],
+        profilePhoto: null,
       });
       setIsWhatsAppConnected(false);
       setIsFetchingQR(false);
@@ -361,7 +363,8 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         description: "",
         phoneNumber: "",
         selectedAIAgent: "",
-        selectedHumanAgents: []
+        selectedHumanAgents: [],
+        profilePhoto: null,
       });
       setSelectedSuperAgentId(null);
     } catch (error: any) {
@@ -396,6 +399,39 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               value={formData.platformName}
               onChange={(e) => setFormData(prev => ({ ...prev, platformName: e.target.value }))}
             />
+          </div>
+
+          {/* Profile Photo / Logo */}
+          <div className="space-y-2">
+            <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                {formData.profilePhoto ? (
+                  <img
+                    src={URL.createObjectURL(formData.profilePhoto)}
+                    alt="Profile"
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <Input
+                  id="profilePhoto"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e)=>{ const f = e.target.files?.[0] || null; setFormData(prev=>({ ...prev, profilePhoto: f })); }}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={()=>document.getElementById('profilePhoto')?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" /> Upload Photo
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Description */}

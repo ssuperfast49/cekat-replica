@@ -149,6 +149,8 @@ export const useHumanAgents = () => {
     full_name: string;
     email: string;
     role: 'master_agent' | 'super_agent' | 'agent';
+    super_agent_id?: string | null;
+    org_id?: string | null;
   }) => {
     try {
       setError(null);
@@ -158,7 +160,13 @@ export const useHumanAgents = () => {
           // Allow CORS when running from Netlify/localhost
           'x-client-origin': typeof window !== 'undefined' ? window.location.origin : ''
         },
-        body: { email: agentData.email, full_name: agentData.full_name, role: agentData.role },
+        body: {
+          email: agentData.email,
+          full_name: agentData.full_name,
+          role: agentData.role,
+          super_agent_id: agentData.super_agent_id ?? null,
+          org_id: agentData.org_id ?? null,
+        },
       });
       if (error) throw error;
 
@@ -166,16 +174,21 @@ export const useHumanAgents = () => {
 
       // Set 2FA status based on the flag
       try {
-        await supabase
-          .from('users_profile')
-          .update({ is_2fa_email_enabled: enable2FAFlagForCreate })
-          .eq('user_id', data?.id);
+        const newUserId = (data as any)?.id || (data as any)?.user_id || (data as any)?.user?.id || null;
+        if (newUserId) {
+          await supabase
+            .from('users_profile')
+            .update({ is_2fa_email_enabled: enable2FAFlagForCreate })
+            .eq('user_id', newUserId);
+        }
       } catch {}
 
       await fetchAgents({ force: true });
       try { await logAction({ action: 'user.create', resource: 'user', resourceId: data?.id || null, context: agentData as any }); } catch {}
 
-      return { id: data?.id } as any;
+      const createdId = (data as any)?.id || (data as any)?.user_id || (data as any)?.user?.id || null;
+
+      return { id: createdId } as any;
     } catch (error) {
       console.error('Error creating agent:', error);
       setError(error instanceof Error ? error.message : 'Failed to create agent');

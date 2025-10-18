@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3 } from "lucide-react";
+import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3, UserPlus, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -53,13 +54,26 @@ const HumanAgents = () => {
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentWithDetails | null>(null);
   const { toast } = useToast();
   const { hasPermission, hasRole } = useRBAC();
+  // Pagination and Pending tab state backed by v_human_agents
+  const [activeRows, setActiveRows] = useState<any[]>([]);
+  const [pendingRows, setPendingRows] = useState<any[]>([]);
+  const [activeTotal, setActiveTotal] = useState(0);
+  const [pendingTotal, setPendingTotal] = useState(0);
+  const [activePage, setActivePage] = useState(1);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [activePageSize, setActivePageSize] = useState(10);
+  const [pendingPageSize, setPendingPageSize] = useState(10);
+  const [loadingActiveTable, setLoadingActiveTable] = useState(false);
+  const [loadingPendingTable, setLoadingPendingTable] = useState(false);
+  const [tabValue, setTabValue] = useState<'active' | 'pending'>('active');
+  const [activeAgentToSuperMap, setActiveAgentToSuperMap] = useState<Record<string, string>>({});
+  const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
 
   // Form validation
   const isFormValid = newAgent.name.trim() && 
     newAgent.email.trim() && 
     (newAgent.role !== 'agent' || selectedSuperForNewAgent);
-  const [selectedSuperForCluster, setSelectedSuperForCluster] = useState<string | null>(null);
-  const { aiAgents, setFilterBySuper, fetchAIAgents } = useAIAgents();
+  // Clustering section removed
 
   const {
     agents,
@@ -76,6 +90,566 @@ const HumanAgents = () => {
     // removeAgentFromTeam,
     setEnable2FAFlagForCreate
   } = useHumanAgents();
+
+  // Normalize role names coming from the DB view
+  const normalizeRoleName = (name: string | null | undefined): "master_agent" | "super_agent" | "agent" | null => {
+    if (!name) return null;
+    const n = String(name).toLowerCase();
+    if (n.includes('master')) return 'master_agent';
+    if (n.includes('super')) return 'super_agent';
+    if (n.includes('agent')) return 'agent';
+    return null;
+  };
+
+  // Server-side pagination against v_human_agents
+  const fetchHumanAgentsPage = async ({ invited, page, pageSize }: { invited: boolean; page: number; pageSize: number }) => {
+    try {
+      invited ? setLoadingPendingTable(true) : setLoadingActiveTable(true);
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+      let query = supabase
+        .from('v_human_agents')
+        .select('*', { count: 'exact' });
+      if (currentOrgId) {
+        query = query.eq('org_id', currentOrgId);
+      }
+      if (invited) {
+        // Pending = anything not accepted (including null/expired/pending)
+        query = query.or('confirmation_status.is.null,confirmation_status.neq.accepted');
+      } else {
+        // Active = accepted
+        query = query.eq('confirmation_status', 'accepted');
+      }
+      const { data, count, error: qErr } = await query
+        .order('agent_name', { ascending: true })
+        .range(from, to);
+      if (qErr) throw qErr;
+      if (invited) {
+        setPendingRows(data || []);
+        setPendingTotal(count || 0);
+      } else {
+        const rows = data || [];
+        setActiveRows(rows);
+        setActiveTotal(count || 0);
+        // Load super-agent membership mapping for agents on this page
+        try {
+          const agentIds = rows.filter((r: any) => String((r?.role_name || '')).toLowerCase() === 'agent').map((r: any) => r.user_id);
+          if (agentIds.length > 0) {
+            let mapsQuery = supabase
+              .from('super_agent_members')
+              .select('agent_user_id, super_agent_id')
+              .in('agent_user_id', agentIds);
+            if (currentOrgId) mapsQuery = mapsQuery.eq('org_id', currentOrgId);
+            const { data: maps } = await mapsQuery;
+            const byId: Record<string, string> = {};
+            (maps || []).forEach((m: any) => { if (m?.agent_user_id) byId[String(m.agent_user_id)] = String(m.super_agent_id || ''); });
+            setActiveAgentToSuperMap(byId);
+          } else {
+            setActiveAgentToSuperMap({});
+          }
+        } catch {
+          setActiveAgentToSuperMap({});
+        }
+      }
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to fetch agents', variant: 'destructive' });
+      if (invited) { setPendingRows([]); setPendingTotal(0); }
+      else { setActiveRows([]); setActiveTotal(0); }
+    } finally {
+      invited ? setLoadingPendingTable(false) : setLoadingActiveTable(false);
+    }
+  };
+
+  // Load Active on mount and when paging changes
+  useEffect(() => {
+    fetchHumanAgentsPage({ invited: false, page: activePage, pageSize: activePageSize });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage, activePageSize]);
+
+  // Load Pending when selected or paging changes
+  useEffect(() => {
+    if (tabValue !== 'pending') return;
+    fetchHumanAgentsPage({ invited: true, page: pendingPage, pageSize: pendingPageSize });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabValue, pendingPage, pendingPageSize]);
+
+  // Reusable renderer for a paginated table view
+  const renderPagedTable = (
+    rows: any[],
+    loadingRows: boolean,
+    total: number,
+    page: number,
+    pageSize: number,
+    setPage: (n: number) => void,
+    setPageSize: (n: number) => void,
+    isPending: boolean,
+    activeMap?: Record<string, string>
+  ) => {
+    const pageCount = Math.max(1, Math.ceil((total || 0) / Math.max(1, pageSize)));
+    const canPrev = page > 1;
+    const canNext = page < pageCount;
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-card">
+          <div className={`grid gap-4 p-4 border-b bg-muted/50 font-medium text-sm ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,220px,160px,120px,120px]'}`}>
+            <div>Agent Name</div>
+            <div>Email</div>
+            <div>Role</div>
+            {!isPending && <div>Token Usage</div>}
+            <div>Status</div>
+            <div>Action</div>
+          </div>
+          <div className="divide-y">
+            {loadingRows ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Loading agents...</span>
+                </div>
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No {isPending ? 'Pending' : 'Active'} Agents</h3>
+                  <p className="text-muted-foreground">{isPending ? 'Invited users will appear here until they sign in.' : 'Create your first agent to get started.'}</p>
+                </div>
+              </div>
+            ) : (
+              (!isPending && activeMap
+                ? (() => {
+                    // Group for Active tab
+                    const toLower = (v: any) => String(v || '').toLowerCase();
+                    const isMaster = (r: any) => toLower(r.role_name).includes('master');
+                    const isSuper = (r: any) => toLower(r.role_name).includes('super');
+                    const isAgentOnly = (r: any) => toLower(r.role_name) === 'agent' || (toLower(r.role_name).includes('agent') && !toLower(r.role_name).includes('super'));
+
+                    const masters = rows.filter(isMaster);
+                    const supers = rows.filter(isSuper);
+                    const agentsOnly = rows.filter(isAgentOnly);
+                    const superById: Record<string, any> = Object.fromEntries(supers.map((s: any) => [String(s.user_id), s]));
+                    const assigned: Record<string, any[]> = {};
+                    const unassigned: any[] = [];
+                    for (const a of agentsOnly) {
+                      const sid = activeMap[String(a.user_id)];
+                      if (sid && superById[sid]) {
+                        (assigned[sid] = assigned[sid] || []).push(a);
+                      } else {
+                        unassigned.push(a);
+                      }
+                    }
+
+                    return (
+                      <>
+                        {masters.map((row: any) => {
+                          const primaryRole = 'master_agent' as const;
+                          const stub: AgentWithDetails = {
+                            user_id: String(row.user_id),
+                            email: row.email || '',
+                            display_name: row.agent_name || row.email || 'Unknown',
+                            avatar_url: row.avatar_url || null,
+                            timezone: null as any,
+                            created_at: '',
+                            roles: [primaryRole],
+                            primaryRole: primaryRole,
+                            status: row.is_active ? 'Active' : 'Inactive',
+                            super_agent_id: null
+                          };
+                          return (
+                            <div key={`master-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-blue-50/30">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback className="text-xs bg-blue-100 text-blue-700">{getInitials(stub.display_name || 'U')}</AvatarFallback>
+                                </Avatar>
+                                <span className="font-medium text-blue-600">{stub.display_name}</span>
+                              </div>
+                              <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                              <div className="flex items-center h-8">
+                                <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Master Agent</Badge>
+                              </div>
+                              <div className="text-sm text-muted-foreground">—</div>
+                              <div className="flex items-center gap-2">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                      <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
+                                      <span className="text-xs">{stub.status}</span>
+                                      <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="bg-background border z-50">
+                                    <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <PermissionGate permission={'users_profile.update_token_limit'}>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                                </PermissionGate>
+                                {hasRole(ROLES.MASTER_AGENT) && (
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                                )}
+                                <PermissionGate permission={'super_agents.delete'}>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                </PermissionGate>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {supers.map((row: any) => {
+                          const primaryRole = 'super_agent' as const;
+                          const stub: AgentWithDetails = {
+                            user_id: String(row.user_id),
+                            email: row.email || '',
+                            display_name: row.agent_name || row.email || 'Unknown',
+                            avatar_url: row.avatar_url || null,
+                            timezone: null as any,
+                            created_at: '',
+                            roles: [primaryRole],
+                            primaryRole: primaryRole,
+                            status: row.is_active ? 'Active' : 'Inactive',
+                            super_agent_id: null
+                          };
+                          const children = assigned[String(row.user_id)] || [];
+                          return (
+                            <div key={`super-${row.user_id}`} className="">
+                              <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-green-50/30">
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-green-100 text-green-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
+                                  <span className="font-medium text-green-600">{stub.display_name}</span>
+                                </div>
+                                <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                                <div className="flex items-center h-8">
+                                  <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
+                                </div>
+                                <div className="text-sm font-medium">{loadingSuperUsage ? '…' : ((usageBySuper[stub.user_id] ?? 0).toLocaleString())}</div>
+                                <div className="flex items-center gap-2">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                        <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
+                                        <span className="text-xs">{stub.status}</span>
+                                        <ChevronDown className="h-3 w-3" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent className="bg-background border z-50">
+                                      <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <PermissionGate permission={'users_profile.update_token_limit'}>
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                                  </PermissionGate>
+                                  {hasRole(ROLES.MASTER_AGENT) && (
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                                  )}
+                                  <PermissionGate permission={'super_agents.delete'}>
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  </PermissionGate>
+                                </div>
+                              </div>
+
+                              {children.map((row: any) => {
+                                const primaryRole = 'agent' as const;
+                                const child: AgentWithDetails = {
+                                  user_id: String(row.user_id),
+                                  email: row.email || '',
+                                  display_name: row.agent_name || row.email || 'Unknown',
+                                  avatar_url: row.avatar_url || null,
+                                  timezone: null as any,
+                                  created_at: '',
+                                  roles: [primaryRole],
+                                  primaryRole: primaryRole,
+                                  status: row.is_active ? 'Active' : 'Inactive',
+                                  super_agent_id: stub.user_id
+                                };
+                                return (
+                                  <div key={`agent-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-gray-50/30 pl-12">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-6 h-6 flex items-center justify-center"><div className="w-4 h-4 border-l-2 border-b-2 border-gray-300 rounded-bl"></div></div>
+                                      <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-gray-100 text-gray-700">{getInitials(child.display_name || 'U')}</AvatarFallback></Avatar>
+                                      <span className="font-medium text-gray-600">{child.display_name}</span>
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">{child.email || '—'}</div>
+                                    <div className="flex items-center h-8">
+                                      <Badge className={`text-xs ${roleBadgeClass(child.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">—</div>
+                                    <div className="flex items-center gap-2">
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                            <div className={`h-2 w-2 rounded-full ${getStatusColor(child.status)}`} />
+                                            <span className="text-xs">{child.status}</span>
+                                            <ChevronDown className="h-3 w-3" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent className="bg-background border z-50">
+                                          <DropdownMenuItem onClick={() => handleStatusChange(child.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleStatusChange(child.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <PermissionGate permission={'users_profile.update_token_limit'}>
+                                        <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(child)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                                      </PermissionGate>
+                                      {hasRole(ROLES.MASTER_AGENT) && (
+                                        <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(child)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                                      )}
+                                      <PermissionGate permission={'super_agents.delete'}>
+                                        <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                      </PermissionGate>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+
+                        {unassigned.map((row: any) => {
+                          const primaryRole = 'agent' as const;
+                          const stub: AgentWithDetails = {
+                            user_id: String(row.user_id),
+                            email: row.email || '',
+                            display_name: row.agent_name || row.email || 'Unknown',
+                            avatar_url: row.avatar_url || null,
+                            timezone: null as any,
+                            created_at: '',
+                            roles: [primaryRole],
+                            primaryRole: primaryRole,
+                            status: row.is_active ? 'Active' : 'Inactive',
+                            super_agent_id: null
+                          };
+                          return (
+                            <div key={`unassigned-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-orange-50/30">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-orange-100 text-orange-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
+                                <span className="font-medium text-orange-600">{stub.display_name}</span>
+                              </div>
+                              <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                              <div className="flex items-center h-8">
+                                <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent (Unassigned)</Badge>
+                              </div>
+                              <div className="text-sm text-muted-foreground">—</div>
+                              <div className="flex items-center gap-2">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                      <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
+                                      <span className="text-xs">{stub.status}</span>
+                                      <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="bg-background border z-50">
+                                    <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <PermissionGate permission={'users_profile.update_token_limit'}>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                                </PermissionGate>
+                                {hasRole(ROLES.MASTER_AGENT) && (
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                                )}
+                                <PermissionGate permission={'super_agents.delete'}>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                </PermissionGate>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    );
+                  })()
+                : rows.map((row: any) => {
+                const primaryRole = normalizeRoleName(row.role_name);
+                const stub: AgentWithDetails = {
+                  user_id: String(row.user_id),
+                  email: row.email || '',
+                  display_name: row.agent_name || row.email || 'Unknown',
+                  avatar_url: row.avatar_url || null,
+                  timezone: null as any,
+                  created_at: '',
+                  roles: primaryRole ? [primaryRole] : [],
+                  primaryRole: primaryRole,
+                  status: row.is_active ? 'Active' : 'Inactive',
+                  super_agent_id: null
+                };
+                const isExpired = String(row.confirmation_status || '').toLowerCase() === 'expired';
+                return (
+                  <div key={row.user_id} className={`grid gap-4 p-4 items-center hover:bg-muted/30 transition-colors ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,220px,160px,120px,120px]'}`}>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs">
+                          {getInitials(stub.display_name || 'U')}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-medium">{stub.display_name}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                    <div className="flex items-center h-8">
+                      <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>
+                        {stub.primaryRole === 'master_agent' ? 'Master Agent' : stub.primaryRole === 'super_agent' ? 'Super Agent' : 'Agent'}
+                      </Badge>
+                    </div>
+                    {!isPending && (
+                      <div className="text-sm text-muted-foreground">—</div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {isPending ? (
+                        <Badge className={`text-xs leading-none h-6 px-2 inline-flex items-center ${isExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{isExpired ? 'Expired' : 'Invited'}</Badge>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="gap-2 h-8">
+                              <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
+                              <span className="text-xs">{stub.status}</span>
+                              <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="bg-background border z-50">
+                            <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}>
+                              <div className="flex items-center gap-2">
+                                <div className="h-2 w-2 rounded-full bg-green-500" />
+                                Active
+                              </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}>
+                              <div className="flex items-center gap-2">
+                                <div className="h-2 w-2 rounded-full bg-gray-400" />
+                                Inactive
+                              </div>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!isPending && (
+                        <PermissionGate permission={'users_profile.update_token_limit'}>
+                          <Button
+                            size="sm"
+                            className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                            onClick={() => openEditLimits(stub)}
+                            title="Edit limits"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </PermissionGate>
+                      )}
+                      {hasRole(ROLES.MASTER_AGENT) && !isPending && (
+                        <Button
+                          size="sm"
+                          className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => openUsageDetails(stub)}
+                          title="View token usage"
+                        >
+                          <BarChart3 className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {isPending ? (
+                        <>
+                          {isExpired && (
+                            <PermissionGate permission={'super_agents.create'}>
+                              <Button
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 text-white"
+                                onClick={async () => {
+                                  try {
+                                    await supabase.functions.invoke('admin-create-user', {
+                                      body: { email: stub.email, full_name: stub.display_name, role: stub.primaryRole || 'agent', reinvite: true },
+                                    });
+                                    toast({ title: 'Reinvite sent', description: `${stub.email}` });
+                                    fetchHumanAgentsPage({ invited: true, page, pageSize });
+                                  } catch (e: any) {
+                                    toast({ title: 'Error', description: e?.message || 'Failed to reinvite', variant: 'destructive' });
+                                  }
+                                }}
+                                title="Reinvite user"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
+                          )}
+                          <PermissionGate permission={'super_agents.delete'}>
+                            <Button 
+                              size="sm" 
+                              className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                              onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </PermissionGate>
+                        </>
+                      ) : (
+                        <PermissionGate permission={'super_agents.delete'}>
+                          <Button 
+                            size="sm" 
+                            className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                            onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </PermissionGate>
+                      )}
+                    </div>
+                  </div>
+                );
+              }))
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm text-muted-foreground">
+            {total > 0 ? (
+              <span>
+                Showing {Math.min((page - 1) * pageSize + 1, total)}–{Math.min(page * pageSize, total)} of {total}
+              </span>
+            ) : (
+              <span>0 results</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground">Rows</Label>
+              <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                <SelectTrigger className="h-8 w-[100px] bg-background border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-background border z-50">
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious className={page <= 1 ? 'pointer-events-none opacity-50' : ''} onClick={() => page > 1 && setPage(page - 1)} href="#" />
+                </PaginationItem>
+                <PaginationItem>
+                  <span className="text-sm text-muted-foreground px-2">Page {page} of {Math.max(1, Math.ceil((total || 0) / Math.max(1, pageSize)))}</span>
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationNext className={page >= Math.max(1, Math.ceil((total || 0) / Math.max(1, pageSize))) ? 'pointer-events-none opacity-50' : ''} onClick={() => page < Math.max(1, Math.ceil((total || 0) / Math.max(1, pageSize))) && setPage(page + 1)} href="#" />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const handleCreateAgent = async () => {
     if (!newAgent.name || !newAgent.email) {
@@ -100,30 +674,30 @@ const HumanAgents = () => {
     try {
       setCreatingAgent(true);
       setEnable2FAFlagForCreate(enable2FA);
+      // Resolve org once for downstream attach
+      let orgIdForCreate = currentOrgId || null;
+      if (!orgIdForCreate) {
+        try {
+          const { data: me } = await supabase.auth.getUser();
+          const { data: mem } = await supabase
+            .from('org_members')
+            .select('org_id')
+            .eq('user_id', me?.user?.id || '')
+            .limit(1);
+          orgIdForCreate = (mem as any[])?.[0]?.org_id || null;
+        } catch {}
+      }
+
       const res = await createAgent({
         full_name: newAgent.name,
         email: newAgent.email,
-        role: newAgent.role
+        role: newAgent.role,
+        super_agent_id: newAgent.role === 'agent' ? (selectedSuperForNewAgent || null) : null,
+        org_id: orgIdForCreate,
       });
 
       // Auto-assign super_agent membership when role is agent and a super is chosen
-      try {
-        if (newAgent.role === 'agent') {
-          // If creator is master_agent, they must select a super agent to attach
-          const targetSuper = selectedSuperForNewAgent;
-          if (!targetSuper) {
-            toast({ title: 'Assignment needed', description: 'Select a Super Agent to attach this agent to.', variant: 'destructive' });
-          } else if (res?.id) {
-            // Resolve org of current user
-            const { data: me } = await supabase.auth.getUser();
-            const { data: mem } = await supabase.from('org_members').select('org_id').eq('user_id', me?.user?.id || '').limit(1);
-            const orgId = mem?.[0]?.org_id || null;
-            if (orgId) {
-              await supabase.from('super_agent_members').insert({ org_id: orgId, super_agent_id: targetSuper, agent_user_id: res.id });
-            }
-          }
-        }
-      } catch {}
+      // Edge function will handle membership; no client upsert here
 
       setNewAgent({ name: "", email: "", role: "agent" });
       setSelectedSuperForNewAgent(null);
@@ -166,6 +740,20 @@ const HumanAgents = () => {
       toast({ title: "Success", description: "Agent deleted successfully" });
       setConfirmDeleteOpen(false);
       setAgentPendingDelete(null);
+      // Refresh current tab data so UI reflects deletion
+      if (tabValue === 'pending') {
+        if (pendingRows.length <= 1 && pendingPage > 1) {
+          setPendingPage((p) => Math.max(1, p - 1));
+        } else {
+          await fetchHumanAgentsPage({ invited: true, page: pendingPage, pageSize: pendingPageSize });
+        }
+      } else {
+        if (activeRows.length <= 1 && activePage > 1) {
+          setActivePage((p) => Math.max(1, p - 1));
+        } else {
+          await fetchHumanAgentsPage({ invited: false, page: activePage, pageSize: activePageSize });
+        }
+      }
     } catch (error) {
       toast({
         title: "Error",
@@ -309,6 +897,15 @@ const HumanAgents = () => {
       try {
         const { data } = await supabase.auth.getUser();
         setCurrentUserId(data?.user?.id || null);
+        try {
+          const { data: mem } = await supabase
+            .from('org_members')
+            .select('org_id')
+            .eq('user_id', data?.user?.id || '')
+            .limit(1)
+            .maybeSingle();
+          setCurrentOrgId(mem?.org_id || null);
+        } catch {}
       } catch {}
     })();
   }, []);
@@ -610,510 +1207,27 @@ const HumanAgents = () => {
         </div>
       </div>
 
-      {/* Tabs commented out for now */}
-      {/* <Tabs defaultValue="agents" className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-1">
-          <TabsTrigger value="agents" className="gap-2">
+      <Tabs value={tabValue} onValueChange={(v)=>setTabValue(v as any)} className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="active" className="gap-2">
             <UserCheck className="h-4 w-4" />
-            Human Agent
+            Active
+          </TabsTrigger>
+          <TabsTrigger value="pending" className="gap-2">
+            <UserPlus className="h-4 w-4" />
+            Pending
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="agents" className="space-y-4"> */}
-        <div className="space-y-4">
-          <div className="rounded-lg border bg-card">
-            <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
-              <div>Agent Name</div>
-              <div>Email</div>
-              <div>Role</div>
-              <div>Token Usage</div>
-              <div>Status</div>
-              <div>Action</div>
-            </div>
-            <div className="divide-y">
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Loading agents...</span>
-                  </div>
-                </div>
-              ) : visibleAgents.length === 0 ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-center">
-                    <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No Agents Yet</h3>
-                    <p className="text-muted-foreground mb-4">Create your first agent to get started.</p>
-                    <PermissionGate permission={'super_agents.create'}>
-                      <Button onClick={() => setIsCreateDialogOpen(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create Agent
-                      </Button>
-                    </PermissionGate>
-                  </div>
-                </div>
-              ) : (
-                (() => {
-                  // Group agents by hierarchy
-                  const masterAgents = visibleAgents.filter(a => a.primaryRole === 'master_agent');
-                  const superAgents = visibleAgents.filter(a => a.primaryRole === 'super_agent');
-                  const regularAgents = visibleAgents.filter(a => a.primaryRole === 'agent');
-                  
-                  return (
-                    <>
-                      {/* Master Agents */}
-                      {masterAgents.map((agent) => (
-                        <div key={agent.user_id} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-blue-50/30">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                          {getInitials(agent.display_name || 'Unknown')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium text-blue-600">{agent.display_name || 'Unknown User'}</span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
-                          <div className="flex items-center h-8">
-                            <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Master Agent</Badge>
-                          </div>
-                          <div className="text-sm text-muted-foreground">—</div>
-                          <div className="flex items-center gap-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="gap-2 h-8">
-                                  <div className={`h-2 w-2 rounded-full ${getStatusColor(agent.status)}`} />
-                                  <span className="text-xs">{agent.status}</span>
-                              <ChevronDown className="h-3 w-3" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent className="bg-background border z-50">
-                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Active")}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-2 w-2 rounded-full bg-green-500" />
-                                    Active
-                                  </div>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Inactive")}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-2 w-2 rounded-full bg-gray-400" />
-                                    Inactive
-                                  </div>
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <PermissionGate permission={'users_profile.update_token_limit'}>
-                              <Button
-                                size="sm"
-                                className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
-                                onClick={() => openEditLimits(agent)}
-                                title="Edit limits"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </PermissionGate>
-                            {hasRole(ROLES.MASTER_AGENT) && (
-                              <Button
-                                size="sm"
-                                className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                onClick={() => openUsageDetails(agent)}
-                                title="View token usage"
-                              >
-                                <BarChart3 className="h-4 w-4" />
-                              </Button>
-                            )}
-                            <PermissionGate permission={'super_agents.delete'}>
-                              <Button 
-                                size="sm" 
-                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                                onClick={() => { setAgentPendingDelete(agent); setConfirmDeleteOpen(true); }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </PermissionGate>
-                          </div>
-                        </div>
-                      ))}
+        <TabsContent value="active" className="space-y-4">
+          {renderPagedTable(activeRows, loadingActiveTable || loading, activeTotal, activePage, activePageSize, setActivePage, setActivePageSize, false, activeAgentToSuperMap)}
+        </TabsContent>
+        <TabsContent value="pending" className="space-y-4">
+          {renderPagedTable(pendingRows, loadingPendingTable, pendingTotal, pendingPage, pendingPageSize, setPendingPage, setPendingPageSize, true)}
+        </TabsContent>
+      </Tabs>
 
-                      {/* Super Agents with their nested Agents */}
-                      {superAgents.map((superAgent) => {
-                        const assignedAgents = regularAgents.filter(a => a.super_agent_id === superAgent.user_id);
-                        return (
-                          <div key={superAgent.user_id}>
-                            {/* Super Agent Row */}
-                            <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-green-50/30">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8">
-                                  <AvatarFallback className="text-xs bg-green-100 text-green-700">
-                                    {getInitials(superAgent.display_name || 'Unknown')}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="font-medium text-green-600">{superAgent.display_name || 'Unknown User'}</span>
-                              </div>
-                              <div className="text-sm text-muted-foreground">{superAgent.email || 'No email'}</div>
-                              <div className="flex items-center h-8">
-                                {hasPermission('super_agents.update') ? (
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="gap-2 h-8 px-0">
-                                        <Badge className={`text-xs ${roleBadgeClass(superAgent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
-                                        <ChevronDown className="h-3 w-3" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent className="bg-background border z-50">
-                                      <DropdownMenuItem onClick={() => handleRoleChange(superAgent.user_id, "agent")}>
-                                        <Badge className={`text-xs ${roleBadgeClass("agent")} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleRoleChange(superAgent.user_id, "super_agent")}>
-                                        <Badge className={`text-xs ${roleBadgeClass("super_agent")} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                ) : (
-                                  <Badge className={`text-xs ${roleBadgeClass(superAgent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
-                                )}
-                              </div>
-                              <div className="text-sm font-medium">{loadingSuperUsage ? '…' : ((usageBySuper[superAgent.user_id] ?? 0).toLocaleString())}</div>
-                              <div className="flex items-center gap-2">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
-                                      <div className={`h-2 w-2 rounded-full ${getStatusColor(superAgent.status)}`} />
-                                      <span className="text-xs">{superAgent.status}</span>
-                                      <ChevronDown className="h-3 w-3" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent className="bg-background border z-50">
-                                    <DropdownMenuItem onClick={() => handleStatusChange(superAgent.user_id, "Active")}>
-                                      <div className="flex items-center gap-2">
-                                        <div className="h-2 w-2 rounded-full bg-green-500" />
-                                        Active
-                                      </div>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleStatusChange(superAgent.user_id, "Inactive")}>
-                                      <div className="flex items-center gap-2">
-                                        <div className="h-2 w-2 rounded-full bg-gray-400" />
-                                        Inactive
-                                      </div>
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <PermissionGate permission={'users_profile.update_token_limit'}>
-                                  <Button
-                                    size="sm"
-                                    className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
-                                    onClick={() => openEditLimits(superAgent)}
-                                    title="Edit limits"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                </PermissionGate>
-                                {hasRole(ROLES.MASTER_AGENT) && (
-                                  <Button
-                                    size="sm"
-                                    className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                    onClick={() => openUsageDetails(superAgent)}
-                                    title="View token usage"
-                                  >
-                                    <BarChart3 className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                <PermissionGate permission={'super_agents.delete'}>
-                                  <Button 
-                                    size="sm" 
-                                    className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                                    onClick={() => { setAgentPendingDelete(superAgent); setConfirmDeleteOpen(true); }}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </PermissionGate>
-                              </div>
-                            </div>
-
-                            {/* Nested Agents under this Super Agent */}
-                            {assignedAgents.map((agent) => (
-                              <div key={agent.user_id} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-gray-50/30 pl-12">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-6 h-6 flex items-center justify-center">
-                                    <div className="w-4 h-4 border-l-2 border-b-2 border-gray-300 rounded-bl"></div>
-                                  </div>
-                                  <Avatar className="h-8 w-8">
-                                    <AvatarFallback className="text-xs bg-gray-100 text-gray-700">
-                                      {getInitials(agent.display_name || 'Unknown')}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <span className="font-medium text-gray-600">{agent.display_name || 'Unknown User'}</span>
-                                </div>
-                                <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
-                                <div className="flex items-center h-8">
-                                  {hasPermission('super_agents.update') ? (
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm" className="gap-2 h-8 px-0">
-                                          <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
-                                          <ChevronDown className="h-3 w-3" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent className="bg-background border z-50">
-                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
-                                          <Badge className={`text-xs ${roleBadgeClass("agent")} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
-                                          <Badge className={`text-xs ${roleBadgeClass("super_agent")} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                                    <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground">—</div>
-                    <div className="flex items-center gap-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="gap-2 h-8">
-                            <div className={`h-2 w-2 rounded-full ${getStatusColor(agent.status)}`} />
-                            <span className="text-xs">{agent.status}</span>
-                            <ChevronDown className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="bg-background border z-50">
-                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Active")}>
-                            <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-green-500" />
-                              Active
-                            </div>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Inactive")}>
-                            <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-gray-400" />
-                              Inactive
-                            </div>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <PermissionGate permission={'users_profile.update_token_limit'}>
-                        <Button
-                          size="sm"
-                          className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
-                          onClick={() => openEditLimits(agent)}
-                          title="Edit limits"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </PermissionGate>
-                      {hasRole(ROLES.MASTER_AGENT) && (
-                        <Button
-                          size="sm"
-                          className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
-                          onClick={() => openUsageDetails(agent)}
-                          title="View token usage"
-                        >
-                          <BarChart3 className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <PermissionGate permission={'super_agents.delete'}>
-                        <Button 
-                          size="sm" 
-                          className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                          onClick={() => { setAgentPendingDelete(agent); setConfirmDeleteOpen(true); }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </PermissionGate>
-                    </div>
-                  </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-
-                      {/* Unassigned Agents */}
-                      {regularAgents.filter(a => !a.super_agent_id).map((agent) => (
-                        <div key={agent.user_id} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-orange-50/30">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="text-xs bg-orange-100 text-orange-700">
-                                {getInitials(agent.display_name || 'Unknown')}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium text-orange-600">{agent.display_name || 'Unknown User'}</span>
-                          </div>
-                          <div className="text-sm text-muted-foreground">{agent.email || 'No email'}</div>
-                          <div className="flex items-center h-8">
-                            {hasPermission('super_agents.update') ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="gap-2 h-8 px-0">
-                                    <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent (Unassigned)</Badge>
-                                    <ChevronDown className="h-3 w-3" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent className="bg-background border z-50">
-                                  <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "agent")}>
-                                    <Badge className={`text-xs ${roleBadgeClass("agent")} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleRoleChange(agent.user_id, "super_agent")}>
-                                    <Badge className={`text-xs ${roleBadgeClass("super_agent")} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            ) : (
-                              <Badge className={`text-xs ${roleBadgeClass(agent.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent (Unassigned)</Badge>
-              )}
-            </div>
-                          <div className="text-sm text-muted-foreground">—</div>
-                          <div className="flex items-center gap-2">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="gap-2 h-8">
-                                  <div className={`h-2 w-2 rounded-full ${getStatusColor(agent.status)}`} />
-                                  <span className="text-xs">{agent.status}</span>
-                                  <ChevronDown className="h-3 w-3" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent className="bg-background border z-50">
-                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Active")}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-2 w-2 rounded-full bg-green-500" />
-                                    Active
-                                  </div>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(agent.user_id, "Inactive")}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-2 w-2 rounded-full bg-gray-400" />
-                                    Inactive
-                                  </div>
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <PermissionGate permission={'users_profile.update_token_limit'}>
-                              <Button
-                                size="sm"
-                                className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
-                                onClick={() => openEditLimits(agent)}
-                                title="Edit limits"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </PermissionGate>
-                            {hasRole(ROLES.MASTER_AGENT) && (
-                              <Button
-                                size="sm"
-                                className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                onClick={() => openUsageDetails(agent)}
-                                title="View token usage"
-                              >
-                                <BarChart3 className="h-4 w-4" />
-                              </Button>
-                            )}
-                            <PermissionGate permission={'super_agents.delete'}>
-                              <Button 
-                                size="sm" 
-                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                                onClick={() => { setAgentPendingDelete(agent); setConfirmDeleteOpen(true); }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </PermissionGate>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  );
-                })()
-              )}
-            </div>
-          </div>
-        </div>
-        {/* </TabsContent>
-
-        {/** Teams tab removed temporarily */}
-      {/* </Tabs> */}
-
-      {/* Clustering UI: Super Agent → Agents & AI Agents */}
-      <div className="rounded-lg border bg-card">
-        <div className="p-4 border-b bg-muted/50 font-medium text-sm">Clustering: Super Agents → Agents & AI Agents</div>
-        <div className="p-4 space-y-4">
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Select Super Agent</Label>
-              <Select value={selectedSuperForCluster || ''} onValueChange={(v)=>{ setSelectedSuperForCluster(v); setFilterBySuper(v); }}>
-                <SelectTrigger className="bg-background border">
-                  <SelectValue placeholder="Choose a super agent" />
-                </SelectTrigger>
-                <SelectContent className="bg-background border z-50">
-                  {agents.filter(a=>a.primaryRole==='super_agent').map(sa => (
-                    <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Agents</Label>
-              <div className="rounded-md border p-2 max-h-64 overflow-auto">
-                {!selectedSuperForCluster ? (
-                  <div className="text-sm text-muted-foreground">Select a Super Agent.</div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="text-xs text-muted-foreground">Assigned to this Super</div>
-                    {(agents.filter(a=>a.primaryRole==='agent' && a.super_agent_id===selectedSuperForCluster)).map(a => (
-                      <div key={a.user_id} className="flex items-center justify-between text-sm">
-                        <span>{a.display_name || a.email}</span>
-                        <Button size="sm" variant="outline" onClick={async()=>{
-                          try{
-                            const { data: me } = await supabase.auth.getUser();
-                            const { data: mem } = await supabase.from('org_members').select('org_id').eq('user_id', me?.user?.id||'').limit(1);
-                            const orgId = mem?.[0]?.org_id || null;
-                            if (orgId) await supabase.from('super_agent_members').delete().eq('org_id', orgId).eq('agent_user_id', a.user_id);
-                            toast({ title: 'Unassigned', description: 'Agent removed from Super Agent' });
-                            await fetchAgents({ force: true });
-                          }catch(e:any){ toast({ title:'Error', description:e?.message||'Failed', variant:'destructive' }); }
-                        }}>Remove</Button>
-                      </div>
-                    ))}
-                    <div className="h-px bg-border my-2"></div>
-                    <div className="text-xs text-muted-foreground">Available (Unassigned)</div>
-                    {(agents.filter(a=>a.primaryRole==='agent' && !a.super_agent_id)).map(a => (
-                      <div key={a.user_id} className="flex items-center justify-between text-sm">
-                        <span>{a.display_name || a.email}</span>
-                        <Button size="sm" onClick={async()=>{
-                          try{
-                            const { data: me } = await supabase.auth.getUser();
-                            const { data: mem } = await supabase.from('org_members').select('org_id').eq('user_id', me?.user?.id||'').limit(1);
-                            const orgId = mem?.[0]?.org_id || null;
-                            if (orgId && selectedSuperForCluster) await supabase.from('super_agent_members').insert({ org_id: orgId, super_agent_id: selectedSuperForCluster, agent_user_id: a.user_id });
-                            toast({ title: 'Assigned', description: 'Agent assigned to Super Agent' });
-                            await fetchAgents({ force: true });
-                          }catch(e:any){ toast({ title:'Error', description:e?.message||'Failed', variant:'destructive' }); }
-                        }}>Assign</Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>AI Agents</Label>
-              <div className="rounded-md border p-2 max-h-64 overflow-auto">
-                <div className="text-sm text-muted-foreground">
-                  AI Agents are now independent and can be assigned to channels directly in the Platforms section.
-                  Super Agents are assigned to channels, not to AI Agents.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Clustering UI removed per design simplification; nested table above is sufficient */}
 
       {/* Confirm Delete Dialog */}
       <Dialog open={confirmDeleteOpen} onOpenChange={(v)=>{ if (!deletingAgent) setConfirmDeleteOpen(v); }}>
@@ -1179,11 +1293,11 @@ const HumanAgents = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="limit-day">Max Tokens / Day</Label>
-                <Input id="limit-day" type="number" min={0} value={tokenLimitForm.perDay} onChange={(e) => setTokenLimitForm({ ...tokenLimitForm, perDay: Number(e.target.value) })} />
+                <Input id="limit-day" type="number" min={0} placeholder="0" value={tokenLimitForm.perDay === 0 ? "" : tokenLimitForm.perDay} onChange={(e) => setTokenLimitForm({ ...tokenLimitForm, perDay: Number(e.target.value || "0") })} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="limit-month">Max Tokens / Month</Label>
-                <Input id="limit-month" type="number" min={0} value={tokenLimitForm.perMonth} onChange={(e) => setTokenLimitForm({ ...tokenLimitForm, perMonth: Number(e.target.value) })} />
+                <Input id="limit-month" type="number" min={0} placeholder="0" value={tokenLimitForm.perMonth === 0 ? "" : tokenLimitForm.perMonth} onChange={(e) => setTokenLimitForm({ ...tokenLimitForm, perMonth: Number(e.target.value || "0") })} />
               </div>
             </div>
             <div className="flex gap-2 pt-2">

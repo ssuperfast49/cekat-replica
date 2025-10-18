@@ -25,10 +25,11 @@ import WebPlatformForm from "./WebPlatformForm";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { useRBAC } from "@/contexts/RBACContext";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
-  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, uploadProfilePhoto, fetchPlatforms, updatePlatform } = usePlatforms();
+  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, fetchPlatforms, updatePlatform, uploadChannelAvatar, deleteChannelAvatar } = usePlatforms();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
@@ -46,6 +47,8 @@ const ConnectedPlatforms = () => {
   const [updatingAgents, setUpdatingAgents] = useState(false);
   const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
   const [savingPlatform, setSavingPlatform] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
 
 
@@ -392,24 +395,25 @@ const ConnectedPlatforms = () => {
     try {
       setIsSubmitting(true);
       
-      let profilePhotoUrl = "";
-      if (formData.profilePhoto) {
-        profilePhotoUrl = await uploadProfilePhoto(formData.profilePhoto);
-      }
-
       const platformData: CreatePlatformData = {
         display_name: formData.displayName || formData.platformName || formData.brandName,
         website_url: formData.websiteUrl || undefined,
         business_category: formData.businessCategory || undefined,
         description: formData.description || undefined,
-        profile_photo_url: profilePhotoUrl || undefined,
         ai_profile_id: formData.selectedAIAgent || undefined,
         provider: selectedPlatformType || 'web',
         human_agent_ids: formData.selectedHumanAgents,
         super_agent_id: formData.selectedSuperAgentId || undefined
       };
 
-      await createPlatform(platformData);
+      const created = await createPlatform(platformData);
+      if (created && formData.profilePhoto) {
+        try {
+          await uploadChannelAvatar((created as any).id, formData.profilePhoto, (created as any).org_id);
+        } catch (e: any) {
+          toast({ title: 'Avatar upload failed', description: e?.message || 'Could not upload avatar', variant: 'destructive' });
+        }
+      }
       
       toast({
         title: "Success",
@@ -721,14 +725,14 @@ const ConnectedPlatforms = () => {
                 platforms.filter(p=>getPlatformType(p)===providerTab).map((platform) => (
                   <Card 
                     key={platform.id}
-                    className={`cursor-pointer transition-colors hover:bg-accent ${
-                      selectedPlatform === platform.id ? 'bg-accent border-primary' : ''
+                    className={`cursor-pointer transition-colors hover:bg-muted/50 ${
+                      selectedPlatform === platform.id ? 'border-primary shadow-sm' : ''
                     }`}
                     onClick={() => setSelectedPlatform(platform.id)}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
                           {platform.profile_photo_url ? (
                             <img
                               src={platform.profile_photo_url}
@@ -736,7 +740,7 @@ const ConnectedPlatforms = () => {
                               className="h-10 w-10 rounded-full object-cover"
                             />
                           ) : (
-                            <span className="text-xs font-medium text-blue-600">
+                            <span className="text-xs font-medium text-foreground/70">
                               {(platform.display_name || '').charAt(0) || "?"}
                             </span>
                           )}
@@ -761,7 +765,7 @@ const ConnectedPlatforms = () => {
 
           <Dialog open={isPlatformSelectionOpen} onOpenChange={setIsPlatformSelectionOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="w-full mt-4 text-blue-600 border-blue-200 hover:bg-blue-50">
+              <Button variant="outline" className="w-full mt-4">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Channel
               </Button>
@@ -981,7 +985,7 @@ const ConnectedPlatforms = () => {
                 <CardHeader>
                   <CardTitle className="text-base">Channel Details</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-6">
                   <div className="grid md:grid-cols-2 gap-4 text-sm">
                     <div>
                       <div className="text-muted-foreground">Provider</div>
@@ -1006,6 +1010,34 @@ const ConnectedPlatforms = () => {
                     <div>
                       <div className="text-muted-foreground">Secret Token</div>
                       <div>{(() => { const t = (selectedPlatformData as any)?.secret_token as string | undefined; if (!t) return '—'; return t.length > 8 ? `${t.slice(0,4)}••••${t.slice(-2)}` : '••••'; })()}</div>
+                    </div>
+                  </div>
+                  {/* Channel Profile block inside details with border */}
+                  <div className="rounded-lg border p-4">
+                    <div className="text-sm font-medium mb-3">Channel Profile</div>
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                        {selectedPlatformData?.profile_photo_url ? (
+                          <img src={(selectedPlatformData as any)?.profile_photo_url || ''} alt="Avatar" className="h-12 w-12 object-cover" />
+                        ) : (
+                          <span className="text-xs text-foreground/70">{(selectedPlatformData?.display_name || '?').charAt(0)}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={!selectedPlatformData || uploadingAvatar}>
+                          {uploadingAvatar ? (
+                            <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-2"><Upload className="h-4 w-4" /> Upload Avatar</span>
+                          )}
+                        </Button>
+                        {!!((selectedPlatformData as any)?.logo_url || (selectedPlatformData as any)?.profile_photo_url) && (
+                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={async()=>{ if (!selectedPlatformData) return; try { setUploadingAvatar(true); await deleteChannelAvatar(selectedPlatformData.id, selectedPlatformData.org_id); await fetchPlatforms(); toast({ title: 'Avatar removed' }); } catch (e:any) { toast({ title: 'Failed to remove avatar', description: e?.message || 'Please try again', variant: 'destructive' }); } finally { setUploadingAvatar(false); } }}>
+                            <Trash2 className="h-4 w-4 mr-1" /> Remove
+                          </Button>
+                        )}
+                      </div>
+                      <div className="ml-2 text-xs text-muted-foreground">Accepted: PNG, JPG, WEBP • Max 5 MB</div>
                     </div>
                   </div>
                 </CardContent>
