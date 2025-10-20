@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Mail, Lock, Eye, EyeOff, User, ArrowLeft } from "lucide-react";
+import { HCaptcha } from "@/components/ui/hcaptcha";
 import { supabase } from "@/lib/supabase";
 import pkg from "../../../package.json";
 import { Link, useNavigate } from "react-router-dom";
@@ -22,6 +23,15 @@ export default function Login({ onBack }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // CAPTCHA
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const HCAPTCHA_SITEKEY = (import.meta as any).env?.VITE_HCAPTCHA_SITEKEY || '';
+  const CAPTCHA_ENABLED = !!HCAPTCHA_SITEKEY;
+  // Expose a reset helper from the HCaptcha widget
+  const resetCaptcha = () => {
+    try { (window as any)?.hcaptcha?.reset?.(); } catch {}
+  };
 
   // Form states
   const [email, setEmail] = useState("");
@@ -33,11 +43,20 @@ export default function Login({ onBack }: LoginProps) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setCaptchaError(null);
+
+    // Require CAPTCHA token only when configured; Supabase validates server-side
+    if (CAPTCHA_ENABLED && !captchaToken) {
+      setCaptchaError('Please complete the CAPTCHA');
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        ...(CAPTCHA_ENABLED && captchaToken ? { options: { captchaToken } } : {}),
       });
 
       if (error) throw error;
@@ -70,6 +89,7 @@ export default function Login({ onBack }: LoginProps) {
       console.error("Login error:", error);
       setError(error instanceof Error ? error.message : "Failed to login");
       toast.error("Login failed");
+      if (CAPTCHA_ENABLED) resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -241,6 +261,18 @@ export default function Login({ onBack }: LoginProps) {
                     <Link to="/reset-password" className="hover:underline">Forgot password?</Link>
                   </div>
                 </div>
+                {/* CAPTCHA */}
+                {CAPTCHA_ENABLED ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <HCaptcha
+                      sitekey={HCAPTCHA_SITEKEY}
+                      onVerify={(t:string)=>setCaptchaToken(t)}
+                      onExpire={()=>{ setCaptchaToken(null); }}
+                    />
+                    {captchaError && (<p className="text-xs text-red-600 mt-1">{captchaError}</p>)}
+                  </div>
+                ) : null}
+
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (
                     <>

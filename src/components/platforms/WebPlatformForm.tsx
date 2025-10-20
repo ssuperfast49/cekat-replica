@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -33,7 +33,8 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
     websiteUrl: "",
     businessCategory: "",
     selectedAIAgent: "",
-    selectedHumanAgents: [] as string[]
+    selectedHumanAgents: [] as string[],
+    profilePhoto: null as File | null,
   });
   const [submitting, setSubmitting] = useState(false);
   const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
@@ -99,7 +100,8 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
         websiteUrl: "",
         businessCategory: "",
         selectedAIAgent: "",
-        selectedHumanAgents: []
+        selectedHumanAgents: [],
+        profilePhoto: null,
       });
       setSelectedSuperAgentId(null);
       onClose();
@@ -118,7 +120,17 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
       websiteUrl: "",
       businessCategory: "",
       selectedAIAgent: "",
-      selectedHumanAgents: []
+      selectedHumanAgents: [],
+      profilePhoto: null,
+    });
+    setFormData({
+      description: "",
+      displayName: "",
+      websiteUrl: "",
+      businessCategory: "",
+      selectedAIAgent: "",
+      selectedHumanAgents: [],
+      profilePhoto: null,
     });
     setSelectedSuperAgentId(null);
     onClose();
@@ -147,6 +159,39 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               rows={3}
             />
+          </div>
+
+          {/* Profile Photo / Logo */}
+          <div className="space-y-2">
+            <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                {formData.profilePhoto ? (
+                  <img
+                    src={URL.createObjectURL(formData.profilePhoto)}
+                    alt="Profile"
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <Input
+                  id="profilePhoto"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e)=>{ const f = e.target.files?.[0] || null; setFormData(prev=>({ ...prev, profilePhoto: f })); }}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={()=>document.getElementById('profilePhoto')?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" /> Upload Photo
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Display Name */}
