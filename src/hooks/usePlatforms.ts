@@ -504,10 +504,10 @@ export const usePlatforms = () => {
       // Best-effort delete; ignore 404
       try { await supabase.storage.from(bucket).remove([objectPath]); } catch {}
 
-      // Clear DB fields and touch updated_at
+      // Clear DB fields (no updated_at column in channels)
       const { error: updErr } = await supabase
         .from('channels')
-        .update({ logo_url: null, profile_photo_url: null, updated_at: new Date().toISOString() })
+        .update({ logo_url: null, profile_photo_url: null })
         .eq('id', channelId);
       if (updErr) throw updErr;
 
