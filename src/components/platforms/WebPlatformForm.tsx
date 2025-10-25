@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, HelpCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
@@ -138,20 +139,39 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Setup Web Live Chat Platform</DialogTitle>
-          <DialogDescription>
-            Configure your new web live chat platform with all the necessary information.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-6">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" style={{ overflowX: 'visible', overflowY: 'auto' }}>
+        <div>
+          <DialogHeader>
+            <DialogTitle>Setup Web Live Chat Platform</DialogTitle>
+            <DialogDescription>
+              Configure your new web live chat platform with all the necessary information.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
           {/* Removed brand/org name in favor of Display Name */}
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="description">Description</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Textarea
               id="description"
               placeholder="Describe your business and what you offer"
@@ -163,7 +183,25 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
           {/* Profile Photo / Logo */}
           <div className="space-y-2">
-            <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Foto profil atau logo yang akan ditampilkan di widget live chat</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <div className="flex items-center gap-4">
               <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
                 {formData.profilePhoto ? (
@@ -196,7 +234,25 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
           {/* Display Name */}
           <div className="space-y-2">
-            <Label htmlFor="displayName">Display Name *</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="displayName">Display Name *</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Nama yang akan ditampilkan di widget live chat</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Input
               id="displayName"
               placeholder="Name that will appear in the chat widget"
@@ -241,7 +297,25 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
           {/* Select Super Agent (required, above AI Agent) */}
           <div className="space-y-2">
-            <Label>Super Agent *</Label>
+            <div className="flex items-center gap-2">
+              <Label>Super Agent *</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Super Agent yang akan mengawasi dan mengelola platform Live Chat ini</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {humanAgentsLoading ? (
               <div className="text-sm text-muted-foreground">Loading super agents...</div>
             ) : (
@@ -260,7 +334,25 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
           {/* Select AI Agent (filtered by selected super agent) */}
           <div className="space-y-2">
-            <Label htmlFor="aiAgent">Select AI Agent *</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="aiAgent">Select AI Agent *</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Agen AI yang akan menangani percakapan otomatis di platform Live Chat ini</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {aiAgentsLoading ? (
               <div className="text-sm text-muted-foreground">Loading AI agents...</div>
             ) : (
@@ -283,7 +375,25 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
           {/* Assign Agents with role clustering */}
           <div className="space-y-4">
-            <Label>Assign Agents</Label>
+            <div className="flex items-center gap-2">
+              <Label>Assign Agents</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {humanAgentsLoading ? (
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
@@ -344,6 +454,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
               "Create Web Live Chat Platform"
             )}
           </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

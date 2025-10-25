@@ -2,9 +2,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ResponsiveContainer, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, LabelList, PieChart, Pie, Cell, LineChart, Line } from "recharts";
+import { ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip, BarChart, Bar, Legend, LabelList, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 import { useEffect, useMemo, useState } from "react";
 import { supabase, logAction } from "@/lib/supabase";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
@@ -250,9 +251,30 @@ export default function Analytics() {
 
       <Tabs defaultValue="conversation" className="w-full mt-4">
         <TabsList className="grid w-full max-w-xl grid-cols-3">
-          <TabsTrigger value="conversation">Conversation</TabsTrigger>
-          <TabsTrigger value="ai-agent">AI Agent</TabsTrigger>
-          <TabsTrigger value="human-agent">Human Agent</TabsTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TabsTrigger value="conversation">Conversation</TabsTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Lihat analitik percakapan dan KPI</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TabsTrigger value="ai-agent">AI Agent</TabsTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Lihat metrik kinerja agen AI</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TabsTrigger value="human-agent">Human Agent</TabsTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Lihat metrik kinerja agen manusia</p>
+            </TooltipContent>
+          </Tooltip>
         </TabsList>
 
         <TabsContent value="conversation" className="space-y-6">
@@ -296,7 +318,7 @@ export default function Analytics() {
                 <BarChart data={channelCounts.map(r=>({ name: r.display_name || r.provider, count: r.thread_count }))}>
                   <XAxis dataKey="name" />
                   <YAxis />
-                  <Tooltip />
+                  <RechartsTooltip />
                   <Bar dataKey="count" fill={COLORS[2]} radius={[4,4,0,0]}>
                     <LabelList dataKey="count" position="top" />
                   </Bar>
@@ -325,7 +347,7 @@ export default function Analytics() {
                     <BarChart data={data}>
                       <XAxis dataKey="bucket" />
                       <YAxis />
-                      <Tooltip />
+                      <RechartsTooltip />
                       <Legend />
                       {providers.map((p, idx) => (
                         <Bar key={p} dataKey={p} stackId={undefined} fill={COLORS[(idx % (COLORS.length-1))+1]} />
@@ -348,7 +370,7 @@ export default function Analytics() {
                 <BarChart data={[{ name: 'AI Avg Response (s)', value: aiAvg }]}>
                   <XAxis dataKey="name" />
                   <YAxis />
-                  <Tooltip />
+                  <RechartsTooltip />
                   <Bar dataKey="value" fill={COLORS[3]} radius={[4, 4, 0, 0]}>
                     <LabelList dataKey="value" position="top" />
                   </Bar>
@@ -366,7 +388,7 @@ export default function Analytics() {
                 <BarChart data={tokenSeries.map(r=>({ day: new Date(r.day).toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' }), input: r.input, output: r.output }))}>
                   <XAxis dataKey="day" />
                   <YAxis />
-                  <Tooltip />
+                  <RechartsTooltip />
                   <Legend />
                   <Bar dataKey="input" stackId="tokens" fill={COLORS[1]} name="Prompt tokens" />
                   <Bar dataKey="output" stackId="tokens" fill={COLORS[2]} name="Completion tokens" />
@@ -385,7 +407,7 @@ export default function Analytics() {
                 <BarChart data={modelUsage.map(m=>({ name: m.model, tokens: m.tokens }))} layout="vertical">
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="name" width={160} />
-                  <Tooltip />
+                  <RechartsTooltip />
                   <Bar dataKey="tokens" fill={COLORS[4]} radius={[0,4,4,0]}>
                     <LabelList dataKey="tokens" position="right" />
                   </Bar>
@@ -421,7 +443,7 @@ export default function Analytics() {
                 <BarChart data={handoverByAgent.map(r=>({ name: r.agent_name || '—', ratePct: Math.round((r.handover_rate||0)*100), human: r.human_resolved, ai: r.ai_resolved }))}>
                   <XAxis dataKey="name" />
                   <YAxis />
-                  <Tooltip />
+                  <RechartsTooltip />
                   <Legend />
                   <Bar dataKey="ratePct" name="Handover % (Human/(Human+AI))" fill={COLORS[2]} radius={[4,4,0,0]}>
                     <LabelList dataKey="ratePct" position="top" />
@@ -441,7 +463,7 @@ export default function Analytics() {
                 <BarChart data={agentKpis.map(k=>({ name: k.agent_name || '—', resolved: k.resolved_count, avgMin: Math.round((k.avg_resolution_minutes||0)) }))}>
                   <XAxis dataKey="name" />
                   <YAxis />
-                  <Tooltip />
+                  <RechartsTooltip />
                   <Legend />
                   <Bar dataKey="resolved" name="Resolved" fill={COLORS[3]} radius={[4,4,0,0]} />
                   <Bar dataKey="avgMin" name="Avg Resolution (min)" fill={COLORS[5]} radius={[4,4,0,0]} />

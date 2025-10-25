@@ -21,15 +21,30 @@ export async function logAction(params: {
     const { data: authData } = await supabase.auth.getUser();
     const resolvedUserId = params.userId ?? authData?.user?.id ?? null;
     let resolvedOrgId = params.orgId ?? null;
-    if (!resolvedOrgId && resolvedUserId) {
-      const { data: mem } = await supabase
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', resolvedUserId)
-        .limit(1)
-        .maybeSingle();
-      resolvedOrgId = mem?.org_id ?? null;
+    
+    // Only try to resolve org if we have a valid user and session
+    if (!resolvedOrgId && resolvedUserId && authData?.user) {
+      try {
+        const { data: mem } = await supabase
+          .from('org_members')
+          .select('org_id')
+          .eq('user_id', resolvedUserId)
+          .limit(1)
+          .maybeSingle();
+        resolvedOrgId = mem?.org_id ?? null;
+      } catch (error) {
+        // If we can't access org_members (e.g., during logout), skip logging
+        console.debug('Cannot access org_members during logout, skipping audit log');
+        return;
+      }
     }
+    
+    // If we still don't have an org_id and this is a logout action, skip logging
+    if (!resolvedOrgId && action === 'auth.logout') {
+      console.debug('No org_id available for logout action, skipping audit log');
+      return;
+    }
+    
     if (!resolvedOrgId) {
       // Fallback to default org if available to satisfy NOT NULL
       try {
@@ -39,7 +54,11 @@ export async function logAction(params: {
           .limit(1)
           .maybeSingle();
         resolvedOrgId = org?.id ?? null;
-      } catch {}
+      } catch (error) {
+        // If we can't access orgs table, skip logging
+        console.debug('Cannot access orgs table, skipping audit log');
+        return;
+      }
     }
     // Debounce frequent duplicates within a short window (e.g., auth refresh loops)
     try {
@@ -54,6 +73,12 @@ export async function logAction(params: {
       }
       if (typeof localStorage !== 'undefined') localStorage.setItem(key, String(now));
     } catch {}
+
+    // Only proceed if we have a valid org_id
+    if (!resolvedOrgId) {
+      console.debug('No valid org_id found, skipping audit log');
+      return;
+    }
 
     const { error } = await supabase.rpc('log_action', {
       p_action: action,

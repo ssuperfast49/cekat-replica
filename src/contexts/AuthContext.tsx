@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode, useMemo, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, logAction } from '@/lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 interface AuthContextType {
   user: User | null;
@@ -12,6 +13,8 @@ interface AuthContextType {
   otpVerified: boolean;
   setOtpVerified: (value: boolean) => void;
   otpEvaluated: boolean;
+  accountDeactivated: boolean;
+  setAccountDeactivated: (value: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +24,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +50,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch { return false; }
   });
   const [otpEvaluated, setOtpEvaluated] = useState<boolean>(false);
+  const [accountDeactivated, setAccountDeactivated] = useState<boolean>(false);
+  const [accountStatusChecked, setAccountStatusChecked] = useState<boolean>(false);
+  const [isCheckingAccount, setIsCheckingAccount] = useState<boolean>(false);
+  const [checkAccountStatusCallCount, setCheckAccountStatusCallCount] = useState<number>(0);
+  
+  // Debug accountDeactivated state changes
+  useEffect(() => {
+    console.log('AuthContext: accountDeactivated changed to:', accountDeactivated);
+    console.trace('AuthContext: accountDeactivated change stack trace');
+    
+    // Add a timestamp to see timing
+    console.log('AuthContext: accountDeactivated change at:', new Date().toISOString());
+  }, [accountDeactivated]);
+  
+  // Reset account status check when user changes
+  useEffect(() => {
+    console.log('AuthContext: Resetting accountStatusChecked due to user change');
+    console.log('AuthContext: New user ID:', user?.id);
+    setAccountStatusChecked(false);
+  }, [user?.id]);
+  const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
   const lastLoginLoggedUserIdRef = useRef<string | null>(null);
 
   const setOtpVerified = useCallback((value: boolean) => {
@@ -63,6 +88,89 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch {}
   }, [session?.user?.id]);
 
+  const checkAccountStatus = async (currentSession: Session | null) => {
+    const userId = currentSession?.user?.id;
+    const callCount = checkAccountStatusCallCount + 1;
+    setCheckAccountStatusCallCount(callCount);
+    console.log('AuthContext: checkAccountStatus called with userId:', userId);
+    console.log('AuthContext: accountStatusChecked:', accountStatusChecked);
+    console.log('AuthContext: isCheckingAccount:', isCheckingAccount);
+    console.log('AuthContext: checkAccountStatus call count:', callCount);
+    console.log('AuthContext: checkAccountStatus called at:', new Date().toISOString());
+    
+    if (!userId) {
+      console.log('AuthContext: No userId, setting accountDeactivated to false');
+      setAccountDeactivated(false);
+      return true;
+    }
+    
+    // Temporarily disable the isCheckingAccount check to see if it's causing issues
+    // if (isCheckingAccount) {
+    //   console.log('AuthContext: Already checking account status, skipping');
+    //   return !accountDeactivated;
+    // }
+    
+    // Temporarily disable the accountStatusChecked check to see if it's causing issues
+    // if (accountStatusChecked && currentSession?.user?.id === user?.id) {
+    //   console.log('AuthContext: Account status already checked for this user, skipping');
+    //   console.log('AuthContext: Current accountDeactivated state:', accountDeactivated);
+    //   return !accountDeactivated;
+    // }
+    
+    // Temporarily disable the checking flag to see if it's causing issues
+    // setIsCheckingAccount(true);
+    
+    try {
+      console.log('AuthContext: Checking account status for user:', userId);
+      const { data, error } = await supabase
+        .from('users_profile')
+        .select('is_active')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      console.log('AuthContext: Profile data:', data);
+      console.log('AuthContext: Profile error:', error);
+      
+      if (error) {
+        console.error('Error checking account status:', error);
+        // If we can't check the status, block access for security
+        setAccountDeactivated(true);
+        return false;
+      }
+      
+      // If profile row is missing, block access (fail closed for security)
+      if (!data) {
+        console.warn('No user profile found for user:', userId);
+        setAccountDeactivated(true);
+        return false;
+      }
+      
+      const isActive = data.is_active === true;
+      console.log('AuthContext: User is active:', isActive);
+      
+      if (!isActive) {
+        // Account is deactivated - redirect to warning page
+        console.log('AuthContext: Account is deactivated, redirecting to warning page');
+        navigate('/account-deactivated', { replace: true });
+        return false;
+      }
+      
+      console.log('AuthContext: Account is active, setting accountDeactivated to false');
+      setAccountDeactivated(false);
+      // Temporarily disable the status checked flag
+      // setAccountStatusChecked(true);
+      return true;
+    } catch (e) {
+      console.error('Failed to check account status', e);
+      // Fail closed on errors for security
+      setAccountDeactivated(true);
+      return false;
+    } finally {
+      // Temporarily disable the checking flag reset
+      // setIsCheckingAccount(false);
+    }
+  };
+
   const updateOtpRequirementFromProfile = async (currentSession: Session | null) => {
     const userId = currentSession?.user?.id;
     if (!userId) {
@@ -76,7 +184,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const { data, error } = await supabase
         .from('users_profile')
-        .select('*')
+        .select('is_2fa_email_enabled')
         .eq('user_id', userId)
         .maybeSingle();
       if (error) throw error;
@@ -89,7 +197,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } catch {}
         return true;
       }
-      const isEnabled = (data as any)?.is_2fa_email_enabled === true || (data as any)?.is_f2a_email_enabled === true;
+      const isEnabled = (data as any)?.is_2fa_email_enabled === true;
       setOtpRequired(!!isEnabled);
       try {
         const key = currentSession?.user?.id ? `otpRequired:${currentSession.user.id}` : 'otpRequired';
@@ -148,6 +256,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
           return;
         }
         if (initialSession) {
+          // Check account status first before setting user as signed in
+          console.log('AuthContext: Checking account status for initial session');
+          const isAccountActive = await checkAccountStatus(initialSession);
+          console.log('AuthContext: Account is active:', isAccountActive);
+          if (!isAccountActive) {
+            console.log('AuthContext: Account is deactivated, showing modal');
+            // Account is deactivated, show modal but keep session for now
+            setSession(initialSession);
+            setUser(initialSession.user);
+            setOtpRequired(false);
+            setOtpVerified(false);
+            setOtpEvaluated(true);
+            setLoading(false);
+            return;
+          }
+          // Only set user as signed in if account is active
+          setSession(initialSession);
+          setUser(initialSession.user);
           // Defer OTP decision until profile evaluation completes to avoid flicker
           setLoading(false);
           // Evaluate in background
@@ -174,12 +300,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, nextSession) => {
-        // Always keep session/user in sync immediately
-        setSession(nextSession);
-        setUser(nextSession?.user ?? null);
-
         try {
           if (event === 'SIGNED_IN') {
+            // Skip processing if user is signing out
+            if (isSigningOut) {
+              setSession(nextSession);
+              setUser(nextSession?.user ?? null);
+              return;
+            }
+            
+            // Check account status first before setting user as signed in
+            console.log('AuthContext: Checking account status for SIGNED_IN event');
+            const isAccountActive = await checkAccountStatus(nextSession);
+            console.log('AuthContext: Account is active:', isAccountActive);
+            if (!isAccountActive) {
+              console.log('AuthContext: Account is deactivated, showing modal');
+              // Account is deactivated, show modal but keep session for now
+              setSession(nextSession);
+              setUser(nextSession?.user ?? null);
+              setOtpRequired(false);
+              setOtpVerified(false);
+              setOtpEvaluated(true);
+              setLoading(false);
+              return;
+            }
+            
+            // Set user as signed in (account status is checked during login)
+            setSession(nextSession);
+            setUser(nextSession?.user ?? null);
+            
             // Non-blocking log once per user per lifecycle
             const uid = nextSession?.user?.id || null;
             if (uid && lastLoginLoggedUserIdRef.current !== uid) {
@@ -248,10 +397,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
           }
 
           if (event === 'SIGNED_OUT') {
-            // Non-blocking log
-            logAction({ action: 'auth.logout', resource: 'auth', userId: user?.id || null, context: {} }).catch(() => {});
+            // Non-blocking log - only if we have a valid user and org context
+            if (user?.id) {
+              // Try to log the logout action, but don't fail if it doesn't work
+              logAction({ 
+                action: 'auth.logout', 
+                resource: 'auth', 
+                userId: user.id, 
+                context: {} 
+              }).catch(() => {
+                // Silently fail - logging is not critical for logout
+                console.debug('Logout action logging failed, continuing with logout');
+              });
+            }
             setOtpRequired(false);
             setOtpVerified(false);
+            setIsSigningOut(false);
+            setAccountDeactivated(false);
             try {
               const vid = user?.id ? `otpVerified:${user.id}` : 'otpVerified';
               const rid = user?.id ? `otpRequired:${user.id}` : 'otpRequired';
@@ -263,6 +425,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } catch {}
 
         // For non-auth-critical events (TOKEN_REFRESHED, USER_UPDATED, etc.), never block UI
+        if (event !== 'SIGNED_IN') {
+          setSession(nextSession);
+          setUser(nextSession?.user ?? null);
+        }
         setOtpEvaluated(true);
         setLoading(false);
       }
@@ -273,9 +439,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = useCallback(async () => {
     try {
+      setIsSigningOut(true);
       await supabase.auth.signOut();
     } catch (error) {
       console.error('Error signing out:', error);
+    } finally {
+      setIsSigningOut(false);
     }
   }, []);
 
@@ -298,7 +467,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     otpVerified,
     setOtpVerified,
     otpEvaluated,
-  }), [user, session, loading, signOut, refreshUser, otpRequired, otpVerified, setOtpVerified, otpEvaluated]);
+    accountDeactivated,
+    setAccountDeactivated,
+  }), [user, session, loading, signOut, refreshUser, otpRequired, otpVerified, setOtpVerified, otpEvaluated, accountDeactivated, setAccountDeactivated]);
 
   return (
     <AuthContext.Provider value={value}>

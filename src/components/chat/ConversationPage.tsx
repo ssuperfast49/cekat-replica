@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChatFilter } from "./ChatFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -560,36 +561,57 @@ export default function ConversationPage() {
         </div>
         <Tabs value={activeTab} onValueChange={(v)=>{ if (v !== activeTab) setActiveTab(v as any); }} className="w-full">
           <TabsList className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
-            <TabsTrigger
-              value="assigned"
-              className="text-xs border-b-2 border-transparent data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:border-blue-500"
-            >
-              Assigned
-              <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger
-              value="unassigned"
-              className="text-xs border-b-2 border-transparent data-[state=active]:bg-red-50 data-[state=active]:text-red-600 data-[state=active]:border-red-500"
-            >
-              Unassigned
-              <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger
-              value="resolved"
-              className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
-              aria-label="Resolved"
-            >
-              <div className="flex items-center gap-1">
-                <CheckCircle className="h-4 w-4" />
-                <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
-                  {filteredConversations.filter(c=>c.status === 'closed').length}
-                </Badge>
-              </div>
-            </TabsTrigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <TabsTrigger
+                  value="assigned"
+                  className="text-xs border-b-2 border-transparent data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:border-blue-500"
+                >
+                  Assigned
+                  <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
+                    {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).length}
+                  </Badge>
+                </TabsTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Lihat percakapan yang ditugaskan ke agen</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <TabsTrigger
+                  value="unassigned"
+                  className="text-xs border-b-2 border-transparent data-[state=active]:bg-red-50 data-[state=active]:text-red-600 data-[state=active]:border-red-500"
+                >
+                  Unassigned
+                  <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
+                    {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).length}
+                  </Badge>
+                </TabsTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Lihat percakapan yang menunggu penugasan</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <TabsTrigger
+                  value="resolved"
+                  className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
+                  aria-label="Resolved"
+                >
+                  <div className="flex items-center gap-1">
+                    <CheckCircle className="h-4 w-4" />
+                    <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
+                      {filteredConversations.filter(c=>c.status === 'closed').length}
+                    </Badge>
+                  </div>
+                </TabsTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Lihat percakapan yang telah diselesaikan</p>
+              </TooltipContent>
+            </Tooltip>
           </TabsList>
           <TabsContent value="assigned" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">

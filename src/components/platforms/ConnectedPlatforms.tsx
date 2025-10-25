@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Plus, Settings, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader as DangerHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 // Removed tabs; rendering is based on provider
 import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
@@ -150,7 +151,17 @@ const ConnectedPlatforms = () => {
       {/* AI Agent */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">AI Agent</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            AI Agent
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Agen AI yang akan menangani percakapan otomatis di platform ini</p>
+              </TooltipContent>
+            </Tooltip>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {aiAgentsLoading ? (
@@ -182,7 +193,17 @@ const ConnectedPlatforms = () => {
       {/* Super Agent */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Super Agent</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            Super Agent
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Super Agent yang akan mengawasi dan mengelola platform ini (hanya master agent yang dapat mengatur)</p>
+              </TooltipContent>
+            </Tooltip>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {(() => {
@@ -231,7 +252,17 @@ const ConnectedPlatforms = () => {
       {/* Human Agent */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Human Agent</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            Human Agent
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
+              </TooltipContent>
+            </Tooltip>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {humanAgentsLoading ? (
@@ -273,24 +304,31 @@ const ConnectedPlatforms = () => {
           {canEditAgents && selectedPlatformData && (
             <div className="mt-3 flex items-center gap-2">
               <MultiSelect options={multiSelectOptions} value={pendingAgentIds} onChange={setPendingAgentIds} placeholder="Select human agents to add" />
-              <Button
-                variant="outline"
-                disabled={updatingAgents || pendingAgentIds.length === 0}
-                onClick={async () => {
-                  if (!selectedPlatformData) return;
-                  try {
-                    setUpdatingAgents(true);
-                    const currentIds = assignedHumanAgents.map((a: any) => a.user_id);
-                    const nextIds = Array.from(new Set([...currentIds, ...pendingAgentIds]));
-                    await updatePlatform(selectedPlatformData.id, { human_agent_ids: nextIds });
-                    setPendingAgentIds([]);
-                  } finally {
-                    setUpdatingAgents(false);
-                  }
-                }}
-              >
-                Add selected
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={updatingAgents || pendingAgentIds.length === 0}
+                    onClick={async () => {
+                      if (!selectedPlatformData) return;
+                      try {
+                        setUpdatingAgents(true);
+                        const currentIds = assignedHumanAgents.map((a: any) => a.user_id);
+                        const nextIds = Array.from(new Set([...currentIds, ...pendingAgentIds]));
+                        await updatePlatform(selectedPlatformData.id, { human_agent_ids: nextIds });
+                        setPendingAgentIds([]);
+                      } finally {
+                        setUpdatingAgents(false);
+                      }
+                    }}
+                  >
+                    Add selected
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Tambahkan agen manusia yang dipilih ke platform ini</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           )}
         </CardContent>
@@ -690,10 +728,46 @@ const ConnectedPlatforms = () => {
             This is where you can connect all your platforms
           </p>
           <Tabs value={providerTab} onValueChange={(v)=>setProviderTab(v as any)} className="mb-3">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
-              <TabsTrigger value="telegram">Telegram</TabsTrigger>
-              <TabsTrigger value="web">Live Chat</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1">
+              <TabsTrigger 
+                value="whatsapp" 
+                className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>WhatsApp</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Kelola koneksi WhatsApp Business</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="telegram"
+                className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>Telegram</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Kelola koneksi Bot Telegram</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="web"
+                className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>Live Chat</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Kelola koneksi widget Live Chat</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TabsTrigger>
             </TabsList>
           </Tabs>
           
@@ -764,12 +838,19 @@ const ConnectedPlatforms = () => {
           )}
 
           <Dialog open={isPlatformSelectionOpen} onOpenChange={setIsPlatformSelectionOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="w-full mt-4">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Channel
-              </Button>
-            </DialogTrigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full mt-4">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Channel
+                  </Button>
+                </DialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Tambahkan saluran atau platform baru</p>
+              </TooltipContent>
+            </Tooltip>
             <DialogContent className="sm:max-w-xl p-0 overflow-hidden">
               <DialogHeader className="p-6 pb-4">
                 <div className="flex items-center justify-between">
@@ -988,33 +1069,103 @@ const ConnectedPlatforms = () => {
                 <CardContent className="space-y-6">
                   <div className="grid md:grid-cols-2 gap-4 text-sm">
                     <div>
-                      <div className="text-muted-foreground">Provider</div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        Provider
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Jenis platform komunikasi yang digunakan (WhatsApp, Telegram, Live Chat)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <div className="capitalize">{getPlatformType(selectedPlatformData)}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Status</div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        Status
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Status koneksi platform saat ini (Aktif atau Tidak Aktif)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <div>{selectedPlatformData.status === 'active' ? 'Active' : 'Inactive'}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Display Name</div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        Display Name
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Nama yang ditampilkan untuk platform ini</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <div>{selectedPlatformData.display_name || '—'}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">AI Agent</div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        AI Agent
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Agen AI yang ditugaskan untuk menangani percakapan di platform ini</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <div>{aiAgents.find(a => a.id === (selectedPlatformData as any)?.ai_profile_id)?.name || '—'}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Created At</div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        Created At
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Tanggal dan waktu platform ini dibuat</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <div>{selectedPlatformData.created_at ? new Date(selectedPlatformData.created_at as any).toLocaleString() : '—'}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Secret Token</div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        Secret Token
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Token rahasia untuk autentikasi dan keamanan platform</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <div>{(() => { const t = (selectedPlatformData as any)?.secret_token as string | undefined; if (!t) return '—'; return t.length > 8 ? `${t.slice(0,4)}••••${t.slice(-2)}` : '••••'; })()}</div>
                     </div>
                   </div>
                   {/* Channel Profile block inside details with border */}
                   <div className="rounded-lg border p-4">
-                    <div className="text-sm font-medium mb-3">Channel Profile</div>
+                    <div className="flex items-center gap-2 text-sm font-medium mb-3">
+                      Channel Profile
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Kelola foto profil atau logo untuk platform ini</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <div className="flex items-center gap-3">
                       <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center overflow-hidden">
                         {selectedPlatformData?.profile_photo_url ? (
@@ -1024,20 +1175,37 @@ const ConnectedPlatforms = () => {
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={!selectedPlatformData || uploadingAvatar}>
-                          {uploadingAvatar ? (
-                            <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</span>
-                          ) : (
-                            <span className="inline-flex items-center gap-2"><Upload className="h-4 w-4" /> Upload Avatar</span>
-                          )}
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={!selectedPlatformData || uploadingAvatar}>
+                              {uploadingAvatar ? (
+                                <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-2"><Upload className="h-4 w-4" /> Upload Avatar</span>
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Unggah foto profil atau logo untuk platform ini</p>
+                          </TooltipContent>
+                        </Tooltip>
                         {!!((selectedPlatformData as any)?.logo_url || (selectedPlatformData as any)?.profile_photo_url) && (
                           <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={async()=>{ if (!selectedPlatformData) return; try { setUploadingAvatar(true); await deleteChannelAvatar(selectedPlatformData.id, selectedPlatformData.org_id); await fetchPlatforms(); toast({ title: 'Avatar removed' }); } catch (e:any) { toast({ title: 'Failed to remove avatar', description: e?.message || 'Please try again', variant: 'destructive' }); } finally { setUploadingAvatar(false); } }}>
                             <Trash2 className="h-4 w-4 mr-1" /> Remove
                           </Button>
                         )}
                       </div>
-                      <div className="ml-2 text-xs text-muted-foreground">Accepted: PNG, JPG, WEBP • Max 5 MB</div>
+                      <div className="flex items-center gap-2 ml-2 text-xs text-muted-foreground">
+                        Accepted: PNG, JPG, WEBP • Max 5 MB
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Format file yang didukung: PNG, JPG, WEBP dengan ukuran maksimal 5 MB</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -1163,9 +1331,19 @@ const ConnectedPlatforms = () => {
           {/* Danger Zone - always at bottom */}
           {selectedPlatformData && (
             <div className="mt-8">
-              <Card className="bg-red-50">
+              <Card className="bg-red-50 border-2 border-red-200">
                 <CardHeader>
-                  <CardTitle className="text-base text-red-700">Danger Zone</CardTitle>
+                  <CardTitle className="text-base text-red-700 flex items-center gap-2">
+                    Danger Zone
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-red-600 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Zona berbahaya untuk tindakan yang tidak dapat dibatalkan seperti menghapus platform</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">

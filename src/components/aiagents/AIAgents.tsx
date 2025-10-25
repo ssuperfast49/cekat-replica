@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings, Trash2, Plus, Loader2 } from "lucide-react";
@@ -40,19 +41,33 @@ const AIAgentCard = ({ agent, onSettings, onDelete }: {
       </div>
     </div>
     <div className="flex gap-2 justify-center">
-      <Button variant="outline" size="sm" className="gap-2" onClick={() => onSettings(agent)}>
-        <Settings className="w-4 h-4" />
-        Settings
-      </Button>
-      <Button 
-        variant="outline" 
-        size="sm" 
-        className="gap-2 text-destructive hover:text-destructive"
-        onClick={() => onDelete(agent.id)}
-      >
-        <Trash2 className="w-4 h-4" />
-        Delete
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => onSettings(agent)}>
+            <Settings className="w-4 h-4" />
+            Settings
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Konfigurasi pengaturan agen AI</p>
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-2 text-destructive hover:text-destructive"
+            onClick={() => onDelete(agent.id)}
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Hapus agen AI ini</p>
+        </TooltipContent>
+      </Tooltip>
     </div>
   </Card>
 );

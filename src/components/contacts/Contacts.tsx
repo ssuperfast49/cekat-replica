@@ -9,9 +9,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useContacts, ContactWithDetails, ContactsFilter } from "@/hooks/useContacts";
 import { toast } from "@/components/ui/sonner";
@@ -267,7 +267,17 @@ export default function Contacts() {
                   
                   <div className="space-y-3">
                     <div>
-                      <label className="text-sm font-medium">Chat Status</label>
+                      <div className="flex items-center gap-1 mb-1">
+                        <label className="text-sm font-medium">Chat Status</label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-4 h-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Filter berdasarkan status percakapan: Open (terbuka), Pending (menunggu), atau Closed (tertutup)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <Select
                         value={filters.chatStatus}
                         onValueChange={(value) =>
@@ -291,7 +301,17 @@ export default function Contacts() {
 
                     
                     <div>
-                      <label className="text-sm font-medium">Handled By</label>
+                      <div className="flex items-center gap-1 mb-1">
+                        <label className="text-sm font-medium">Handled By</label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-4 h-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Filter berdasarkan siapa yang menangani percakapan: Assigned (ditugaskan ke agen) atau Unassigned (belum ditugaskan)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <Select
                         value={filters.handledBy || ''}
                         onValueChange={(value) =>
@@ -310,7 +330,17 @@ export default function Contacts() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Date Range</label>
+                      <div className="flex items-center gap-1">
+                        <label className="text-sm font-medium">Date Range</label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-4 h-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Filter berdasarkan rentang tanggal kontak dibuat. Pilih tanggal mulai dan tanggal akhir untuk membatasi hasil pencarian</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <Input
@@ -339,43 +369,78 @@ export default function Contacts() {
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
               <Input 
-                placeholder="Search by Name or Phone" 
+                placeholder="Cari berdasarkan Nama atau Telepon" 
                 className="pl-10 pr-8 w-80"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Hapus pencarian</p>
+                  </TooltipContent>
+                </Tooltip>
               )}
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleRefresh}
-              disabled={loading}
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRefresh}
+                  disabled={loading}
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Segarkan daftar kontak</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
           
           <div className="flex gap-2">
-            <Button 
-              variant={selectedContacts.length > 0 ? "destructive" : "outline"}
-              className={selectedContacts.length > 0 ? "bg-red-600 hover:bg-red-700 text-white" : ""}
-              onClick={handleDeleteSelected}
-              disabled={selectedContacts.length === 0}
-            >
-              Delete Selected ({selectedContacts.length})
-            </Button>
-            <Button variant="outline">Export</Button>
-            <Button variant="outline">Customize Columns</Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant={selectedContacts.length > 0 ? "destructive" : "outline"}
+                  className={selectedContacts.length > 0 ? "bg-red-600 hover:bg-red-700 text-white" : ""}
+                  onClick={handleDeleteSelected}
+                  disabled={selectedContacts.length === 0}
+                >
+                  Delete Selected ({selectedContacts.length})
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Hapus kontak yang dipilih</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline">Export</Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Ekspor daftar kontak</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline">Customize Columns</Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Kustomisasi kolom yang ditampilkan</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -401,51 +466,123 @@ export default function Contacts() {
                     className={isSomeSelected ? "data-[state=checked]:bg-blue-600" : ""}
                   />
                 </TableHead>
-                <TableHead className="text-xs py-2">ACTION</TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('name')}>
-                    NAME {sortKey==='name' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help">ACTION</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Aksi yang dapat dilakukan pada kontak (lihat, edit, hapus)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('phone')}>
-                    PHONE {sortKey==='phone' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('name')}>
+                        NAME {sortKey==='name' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Nama kontak (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('notes')}>
-                    NOTE {sortKey==='notes' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('phone')}>
+                        PHONE {sortKey==='phone' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Nomor telepon kontak (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('labelNames')}>
-                    LABEL NAMES {sortKey==='labelNames' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('notes')}>
+                        NOTE {sortKey==='notes' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Catatan atau keterangan tambahan kontak (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('inbox')}>
-                    CHANNEL {sortKey==='inbox' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('labelNames')}>
+                        LABEL NAMES {sortKey==='labelNames' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Label atau tag yang diberikan pada kontak (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('channelType')}>
-                    PLATFORM {sortKey==='channelType' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('inbox')}>
+                        CHANNEL {sortKey==='inbox' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Saluran komunikasi kontak (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('chatStatus')}>
-                    CHAT STATUS {sortKey==='chatStatus' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('channelType')}>
+                        PLATFORM {sortKey==='channelType' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Platform komunikasi (WhatsApp, Telegram, dll) (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('chatCreatedAtISO')}>
-                    CREATED AT {sortKey==='chatCreatedAtISO' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('chatStatus')}>
+                        CHAT STATUS {sortKey==='chatStatus' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Status percakapan (Open, Pending, Closed) (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-xs py-2">
-                  <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('handledBy')}>
-                    HANDLED BY {sortKey==='handledBy' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('chatCreatedAtISO')}>
+                        CREATED AT {sortKey==='chatCreatedAtISO' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Tanggal dan waktu kontak dibuat (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+                <TableHead className="text-xs py-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('handledBy')}>
+                        HANDLED BY {sortKey==='handledBy' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Agen yang menangani percakapan (klik untuk mengurutkan)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TableHead>
               </TableRow>
             </TableHeader>

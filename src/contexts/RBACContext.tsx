@@ -39,7 +39,7 @@ interface RBACProviderProps {
 }
 
 export function RBACProvider({ children }: RBACProviderProps) {
-  const { user } = useAuth();
+  const { user, accountDeactivated } = useAuth();
   const [userRoles, setUserRoles] = useState<Role[]>([]);
   const [userPermissions, setUserPermissions] = useState<Permission[]>([]);
   const [userWithRoles, setUserWithRoles] = useState<UserWithRoles | null>(null);
@@ -126,7 +126,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
 
   // Fetch RBAC data when user changes (gate network on visibility)
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !accountDeactivated) {
       const run = () => fetchUserRBAC(user.id);
       run();
     } else {
@@ -135,7 +135,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
       setUserWithRoles(null);
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, accountDeactivated]);
 
   // Permission checking functions
   const hasPermission = (permission: PermissionName | string): boolean => {

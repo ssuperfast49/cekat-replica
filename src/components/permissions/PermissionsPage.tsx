@@ -455,36 +455,54 @@ const PermissionsPage = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => { setSelectedRole(role); setView('configure'); }}
-                          disabled={!canConfigurePolicy}
-                          title={!canConfigurePolicy ? 'No permission: access_rules.configure' : undefined}
-                        >
-                          <Settings className="h-4 w-4 mr-2" />
-                          Configure
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
-                          onClick={() => openEditRole(role)} 
-                          disabled={!canUpdateRole} 
-                          title={!canUpdateRole ? 'No permission: roles.update' : 'Edit role'}
-                          aria-label="Edit role"
-                        >
-                          <Edit className="h-4 w-4"/>
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          onClick={() => { setDeletingRole(role); setDeleteOpen(true); }} 
-                          disabled={!!saving[role.id] || !canDeleteRole}
-                          title={!canDeleteRole ? 'No permission: roles.delete' : 'Delete role'}
-                          className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                          aria-label="Delete role"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => { setSelectedRole(role); setView('configure'); }}
+                              disabled={!canConfigurePolicy}
+                            >
+                              <Settings className="h-4 w-4 mr-2" />
+                              Configure
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{!canConfigurePolicy ? 'Tidak ada izin: access_rules.configure' : 'Konfigurasi aturan akses untuk peran ini'}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              size="sm" 
+                              className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                              onClick={() => openEditRole(role)} 
+                              disabled={!canUpdateRole} 
+                              aria-label="Edit role"
+                            >
+                              <Edit className="h-4 w-4"/>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{!canUpdateRole ? 'Tidak ada izin: roles.update' : 'Edit peran ini'}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              size="sm" 
+                              onClick={() => { setDeletingRole(role); setDeleteOpen(true); }} 
+                              disabled={!!saving[role.id] || !canDeleteRole}
+                              className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                              aria-label="Delete role"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{!canDeleteRole ? 'Tidak ada izin: roles.delete' : 'Hapus peran ini'}</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </TableCell>
                   </TableRow>

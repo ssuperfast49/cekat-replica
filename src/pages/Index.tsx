@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ConversationPage from "@/components/chat/ConversationPage";
@@ -79,7 +80,7 @@ const StepCard = ({ step, title, description, emoji }: { step: number; title: st
 const Index = () => {
   const [active, setActive] = useState<NavKey>("chat");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, signOut, setAccountDeactivated, accountDeactivated } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { getDefaultNavItem, getNavItem, canAccessNavItem } = useNavigation();
@@ -141,8 +142,48 @@ const Index = () => {
     return email.substring(0, 2).toUpperCase();
   };
 
+  // If account is deactivated, don't render the main content to prevent API calls
+  if (accountDeactivated) {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        {/* Temporary test button for debugging modal */}
+        <div className="fixed top-4 right-4 z-50">
+          <Button 
+            onClick={() => {
+              console.log('Test button clicked - setting accountDeactivated to true');
+              setAccountDeactivated(true);
+            }}
+            variant="destructive"
+            size="sm"
+          >
+            Test Modal
+          </Button>
+        </div>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-red-600 mb-4">Akun Dinonaktifkan</h1>
+            <p className="text-gray-600">Akun Anda telah dinonaktifkan dan tidak dapat mengakses sistem.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Temporary test button for debugging modal */}
+      <div className="fixed top-4 right-4 z-50">
+        <Button 
+          onClick={() => {
+            console.log('Test button clicked - setting accountDeactivated to true');
+            setAccountDeactivated(true);
+          }}
+          variant="destructive"
+          size="sm"
+        >
+          Test Modal
+        </Button>
+      </div>
       <div className="mx-auto flex min-h-screen">
         {/* Sidebar */}
         <aside 
@@ -220,10 +261,31 @@ const Index = () => {
               <div className="flex items-center gap-2 md:gap-3">
               </div>
               <div className="flex items-center gap-3">
-                <Badge className="hidden sm:inline-flex bg-success text-success-foreground">Online</Badge>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge className="hidden sm:inline-flex bg-success text-success-foreground cursor-help">Online</Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Status pengguna saat ini: Online</p>
+                  </TooltipContent>
+                </Tooltip>
                 <div className="text-right hidden sm:block min-w-0">
-                  <div className="text-sm font-medium max-w-[28ch] truncate">{user?.user_metadata?.full_name || 'User'}</div>
-                  <div className="text-xs text-muted-foreground max-w-[32ch] truncate">{user?.email}</div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="text-sm font-medium max-w-[28ch] truncate cursor-help">{user?.user_metadata?.full_name || 'User'}</div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Nama lengkap pengguna</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="text-xs text-muted-foreground max-w-[32ch] truncate cursor-help">{user?.email}</div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Alamat email pengguna</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, HelpCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -381,18 +382,37 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Setup WhatsApp Platform</DialogTitle>
-          <DialogDescription>
-            Configure your new WhatsApp platform with all the necessary information.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-6">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" style={{ overflowX: 'visible', overflowY: 'auto' }}>
+        <div>
+          <DialogHeader>
+            <DialogTitle>Setup WhatsApp Platform</DialogTitle>
+            <DialogDescription>
+              Configure your new WhatsApp platform with all the necessary information.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
           {/* Platform Name */}
           <div className="space-y-2">
-            <Label htmlFor="platformName">Platform Name *</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="platformName">Platform Name *</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Nama platform atau merek yang akan ditampilkan kepada pelanggan</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Input
               id="platformName"
               placeholder="Enter your platform or brand name"
@@ -403,7 +423,25 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
           {/* Profile Photo / Logo */}
           <div className="space-y-2">
-            <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Foto profil atau logo yang akan ditampilkan di WhatsApp Business</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <div className="flex items-center gap-4">
               <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
                 {formData.profilePhoto ? (
@@ -436,7 +474,25 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="description">Description</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Textarea
               id="description"
               placeholder="Describe your business and what you offer"
@@ -451,7 +507,25 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
           {/* Super Agent (single-select dropdown) placed before AI Agent */}
           <div className="space-y-1">
-            <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Super Agent yang akan mengawasi dan mengelola platform WhatsApp ini</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Select value={selectedSuperAgentId || ''} onValueChange={(v)=>handleSuperAgentSelect(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Choose a Super Agent" />
@@ -466,7 +540,25 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
           {/* Select AI Agent (filtered by selected Super Agent) */}
           <div className="space-y-2">
-            <Label htmlFor="aiAgent">Select AI Agent *</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="aiAgent">Select AI Agent *</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Agen AI yang akan menangani percakapan otomatis di platform WhatsApp ini</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {aiAgentsLoading ? (
               <div className="text-sm text-muted-foreground">Loading AI agents...</div>
             ) : (
@@ -489,7 +581,25 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
           {/* Select Human Agents */}
           <div className="space-y-4">
-            <Label>Assign Agents</Label>
+            <div className="flex items-center gap-2">
+              <Label>Assign Agents</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="z-[9999] max-w-xs" 
+                  side="top" 
+                  align="start" 
+                  sideOffset={5} 
+                  avoidCollisions={true} 
+                  collisionPadding={20}
+                  sticky="always"
+                >
+                  <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {humanAgentsLoading ? (
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
@@ -561,6 +671,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               "Create WhatsApp Platform"
             )}
           </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

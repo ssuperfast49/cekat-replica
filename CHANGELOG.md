@@ -1,4 +1,51 @@
 # Change Log
+# [0.0.36] FE WEB CEKAT 2025-10-25
+### Security & Authentication
+- **Account Deactivation System**: Implemented comprehensive account deactivation blocking system
+  - Added database-level RLS policies to prevent deactivated users from accessing system resources
+  - Created dedicated `/account-deactivated` warning page with Indonesian content
+  - Implemented pre-login account status validation to prevent deactivated users from authenticating
+  - Added automatic redirect to warning page when deactivated account is detected
+  - Enhanced security with "fail closed" approach - blocks access if account status cannot be verified
+
+### User Experience Improvements
+- **Enhanced Navigation**: Fixed navigation issues and improved user flow
+  - Replaced modal-based account deactivation with dedicated warning page
+  - Added "Kembali ke Halaman Login" button with complete cleanup functionality
+  - Implemented localStorage clearing and user signout on account deactivation
+  - Fixed infinite loading issues caused by component conflicts
+  - Added loading states and prevented multiple button clicks during navigation
+
+### Technical Improvements
+- **Component Architecture**: Streamlined authentication flow components
+  - Removed deprecated `AccountDeactivatedModal` component
+  - Created dedicated `AccountDeactivated` page component with proper routing
+  - Fixed Router context issues by restructuring component hierarchy in App.tsx
+  - Enhanced error handling and timeout management for signOut operations
+  - Added comprehensive debugging and logging for authentication flow
+
+### Database & Security
+- **Row Level Security (RLS)**: Enhanced database security policies
+  - Updated RLS policies to include active user checks for all major tables
+  - Created `is_current_user_active()` helper function for consistent security checks
+  - Applied security policies to `users_profile`, `org_members`, `channels`, `contacts`, `threads`, and `messages` tables
+  - Implemented strict access control preventing deactivated users from reading sensitive data
+
+### Bug Fixes
+- **Authentication Flow**: Resolved multiple authentication-related issues
+  - Fixed flicker when logging in with deactivated accounts
+  - Resolved race conditions in account status checking
+  - Fixed logout button functionality by preventing account deactivation interference
+  - Corrected database column name from `is_f2a_email_enabled` to `is_2fa_email_enabled`
+  - Fixed CORS errors with edge function approach by implementing direct database validation
+
+### UI/UX Enhancements
+- **Account Deactivation Warning Page**: Created comprehensive user feedback system
+  - Added clear Indonesian messaging explaining account deactivation
+  - Implemented contact instructions for Master Agent reactivation
+  - Added visual warning indicators with appropriate icons and styling
+  - Created responsive design with proper loading states and button interactions
+
 # [0.0.35] FE WEB CEKAT 2025-16-09
 ### Updates
 - Added HCaptcha site key to .env for CAPTCHA validation.

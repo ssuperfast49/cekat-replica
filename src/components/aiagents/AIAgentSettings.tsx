@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus } from "lucide-react";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
@@ -222,24 +223,36 @@ const ChatPreview = ({
         </div>
         <div className="flex items-center gap-2">
           {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={refreshSession}
-            title="Refresh session"
-            aria-label="Refresh session"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearChat}
-            title="Clear chat history"
-            aria-label="Clear chat history"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshSession}
+                aria-label="Refresh session"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Segarkan sesi</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearChat}
+                aria-label="Clear chat history"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Hapus riwayat chat</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
       
@@ -288,14 +301,21 @@ const ChatPreview = ({
             disabled={isLoading}
             title={isLoading ? 'Please wait…' : undefined}
           />
-          <Button 
-            size="sm" 
-            onClick={sendMessage}
-            disabled={!inputMessage.trim() || isLoading}
-            className="px-4"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                size="sm" 
+                onClick={sendMessage}
+                disabled={!inputMessage.trim() || isLoading}
+                className="px-4"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Kirim pesan ke agen AI</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
         <p className="text-xs text-muted-foreground mt-2 text-center">
           Press Enter to send, Shift+Enter for new line
@@ -961,10 +981,17 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-2">
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Kembali ke daftar agen AI</p>
+          </TooltipContent>
+        </Tooltip>
         <h1 className="text-2xl font-bold">{agentName}</h1>
         {isNewAgent ? (
           <Badge variant="outline" className="text-blue-600 border-blue-600">
@@ -987,14 +1014,28 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="general" className="gap-2">
-            <Settings className="w-4 h-4" />
-            General
-          </TabsTrigger>
-          <TabsTrigger value="knowledge" className="gap-2">
-            <BookOpen className="w-4 h-4" />
-            Knowledge Sources
-          </TabsTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TabsTrigger value="general" className="gap-2">
+                <Settings className="w-4 h-4" />
+                General
+              </TabsTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Konfigurasi pengaturan umum agen AI</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TabsTrigger value="knowledge" className="gap-2">
+                <BookOpen className="w-4 h-4" />
+                Knowledge Sources
+              </TabsTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Kelola sumber pengetahuan dan pasangan T&J</p>
+            </TooltipContent>
+          </Tooltip>
           {/* <TabsTrigger value="integrations" className="gap-2">
             <Zap className="w-4 h-4" />
             Integrations
@@ -1038,7 +1079,17 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   onClick={() => toggleSection('behavior')}
                 >
                   <div>
-                    <h3 className="text-lg font-semibold text-primary">AI Agent Behavior</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-primary">AI Agent Behavior</h3>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Konfigurasi kepribadian dan perilaku agen AI untuk menentukan cara berinteraksi dengan pelanggan</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       Configure AI personality and behavior
                     </p>
@@ -1072,7 +1123,17 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   onClick={() => toggleSection('welcome')}
                 >
                   <div>
-                    <h3 className="text-lg font-semibold text-primary">Welcome Message</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-primary">Welcome Message</h3>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Pesan selamat datang yang dikirim otomatis kepada pelanggan saat memulai percakapan</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       First message sent to users
                     </p>
@@ -1106,7 +1167,17 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   onClick={() => toggleSection('transfer')}
                 >
                   <div>
-                    <h3 className="text-lg font-semibold text-primary">Agent Transfer Conditions</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-primary">Agent Transfer Conditions</h3>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Kondisi yang menentukan kapan percakapan dialihkan dari agen AI ke agen manusia</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       When to transfer to human agents
                     </p>
@@ -1136,7 +1207,17 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold">Stop AI after Handoff</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold">Stop AI after Handoff</h3>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Menghentikan agen AI mengirim pesan setelah percakapan dialihkan ke agen manusia</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       Stop AI from sending messages after handoff
                     </p>
@@ -1151,13 +1232,33 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               <Card className="p-6">
                 <Collapsible defaultOpen={false}>
                   <CollapsibleTrigger className="flex w-full items-center justify-between py-1 font-medium [&[data-state=open]>svg]:rotate-180">
-                    <h3 className="text-lg font-semibold text-primary">Additional Settings</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-primary">Additional Settings</h3>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Pengaturan tambahan untuk konfigurasi lanjutan agen AI seperti batas riwayat, konteks, dan resolusi otomatis</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <ChevronDown className="w-5 h-5 transition-transform" />
                   </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-4">
+                  <CollapsibleContent className="mt-4 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium">Temperature</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">Temperature</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Mengontrol kreativitas dan keacakan respons AI (0 = deterministik, 2 = sangat kreatif)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input
                       type="number"
                       min={0}
@@ -1169,13 +1270,33 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Enable Auto-resolve</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">Enable Auto-resolve</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Mengaktifkan resolusi otomatis percakapan setelah waktu tertentu tanpa respons pelanggan</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <div className="mt-2">
                       <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-sm font-medium">Auto-resolve after (minutes)</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">Auto-resolve after (minutes)</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Waktu dalam menit sebelum percakapan secara otomatis diselesaikan (0 = nonaktif)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input
                       type="number"
                       min={0}
@@ -1192,35 +1313,95 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                     </p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium">AI History Limit</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">AI History Limit</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Batas maksimal riwayat percakapan yang dapat diingat AI (dalam token)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input type="number" min={0} value={historyLimit} onChange={(e)=>setHistoryLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">AI Read File Limit</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">AI Read File Limit</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Batas maksimal jumlah file yang dapat dibaca AI dalam satu percakapan</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input type="number" min={0} value={readFileLimit} onChange={(e)=>setReadFileLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">AI Context Limit</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">AI Context Limit</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Batas maksimal konteks yang dapat diproses AI dalam satu respons (dalam K tokens)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input type="number" min={0} value={contextLimit} onChange={(e)=>setContextLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">AI Temperature</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">AI Temperature</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Preset kreativitas AI: Conservative (akurat), Balanced (seimbang), Creative (kreatif)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <select value={responseTemperature} onChange={(e)=>setResponseTemperature(e.target.value)} className="w-full p-2 border rounded-lg mt-1">
                       <option value="Conservative">Conservative</option>
                       <option value="Balanced">Balanced</option>
                       <option value="Creative">Creative</option>
                     </select>
                   </div>
-                  <div>
+                  {/* <div>
                     <label className="text-sm font-medium">Message Await (seconds)</label>
                     <Input type="number" min={0} value={messageAwait} onChange={(e)=>setMessageAwait(parseInt(e.target.value||'0')||0)} className="mt-1" />
-                  </div>
+                  </div> */}
                   <div>
-                    <label className="text-sm font-medium">AI Message Limit</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">AI Message Limit</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Batas maksimal jumlah pesan yang dapat dikirim AI dalam satu percakapan</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input type="number" min={0} value={messageLimit} onChange={(e)=>setMessageLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-sm font-medium">Timezone</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">Timezone</label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Zona waktu untuk agen AI (format: Asia/Jakarta, UTC, dll)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input type="text" value={timezone} onChange={(e)=>setTimezone(e.target.value)} className="mt-1" />
                   </div>
                 </div>
@@ -1229,23 +1410,30 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               </Card>
 
               {/* Save Button */}
-              <Button 
-                className="w-full" 
-                onClick={handleSave}
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {isNewAgent ? 'Creating...' : 'Saving...'}
-                  </>
-                ) : (
-                  <>
-                    <Settings className="w-4 h-4 mr-2" />
-                    {isNewAgent ? 'Create AI Agent' : 'Save AI Settings'}
-                  </>
-                )}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    className="w-full" 
+                    onClick={handleSave}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        {isNewAgent ? 'Creating...' : 'Saving...'}
+                      </>
+                    ) : (
+                      <>
+                        <Settings className="w-4 h-4 mr-2" />
+                        {isNewAgent ? 'Create AI Agent' : 'Save AI Settings'}
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isNewAgent ? 'Buat agen AI baru dengan pengaturan ini' : 'Simpan semua pengaturan saat ini'}</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Chat Preview */}
@@ -1294,43 +1482,113 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
               <TabsContent value="text" className="space-y-4">
                 {/* Add Button and Default Button */}
                 <div className="flex gap-2 items-center">
-                  <Button size="sm" className="gap-2">
-                    <Edit3 className="w-4 h-4" />
-                    Add
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    Default
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" className="gap-2">
+                        <Edit3 className="w-4 h-4" />
+                        Add
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Tambah item pengetahuan baru</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Default
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Gunakan item pengetahuan default</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
 
                 {/* Text Formatting Toolbar */}
                 <div className="flex items-center gap-1 p-2 border rounded-md bg-muted/30">
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <Undo className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <Redo className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Undo className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Batal</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Redo className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Ulang</p>
+                    </TooltipContent>
+                  </Tooltip>
                   <div className="w-px h-6 bg-border mx-1" />
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <Bold className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <Italic className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Bold className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Tebal</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Italic className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Miring</p>
+                    </TooltipContent>
+                  </Tooltip>
                   <div className="w-px h-6 bg-border mx-1" />
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <AlignLeft className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <AlignCenter className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <AlignRight className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <AlignJustify className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <AlignLeft className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Rata Kiri</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <AlignCenter className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Rata Tengah</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <AlignRight className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Rata Kanan</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <AlignJustify className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Rata Kiri-Kanan</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
 
                 {/* Content Areas */}
@@ -1705,7 +1963,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                         <ChevronDown className={`w-4 h-4 transition-transform ${followup.expanded ? 'rotate-180' : ''}`} />
                         Options
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-4">
+                      <CollapsibleContent className="pt-4 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden">
                         <div className="text-sm text-muted-foreground">
                           Additional options for this followup message can be configured here.
                         </div>
@@ -1718,13 +1976,27 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
             {/* Action Buttons */}
             <div className="flex justify-between">
-              <Button onClick={addFollowup} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Add Followup
-              </Button>
-              <Button className="bg-green-600 hover:bg-green-700">
-                Save Followups
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={addFollowup} className="gap-2">
+                    <Plus className="w-4 h-4" />
+                    Add Followup
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Tambah pesan tindak lanjut baru</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button className="bg-green-600 hover:bg-green-700">
+                    Save Followups
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Simpan semua pesan tindak lanjut</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </TabsContent>
@@ -1736,7 +2008,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
   );
 };
 

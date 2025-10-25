@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3, UserPlus, RotateCcw } from "lucide-react";
+import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3, UserPlus, RotateCcw, HelpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -17,6 +17,7 @@ import PermissionGate from "@/components/rbac/PermissionGate";
 import { useRBAC } from "@/contexts/RBACContext";
 import { ROLES } from "@/types/rbac";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/lib/supabase";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -68,6 +69,13 @@ const HumanAgents = () => {
   const [tabValue, setTabValue] = useState<'active' | 'pending'>('active');
   const [activeAgentToSuperMap, setActiveAgentToSuperMap] = useState<Record<string, string>>({});
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
+
+  // Ensure only master agents can create super agents
+  useEffect(() => {
+    if (!hasRole(ROLES.MASTER_AGENT) && newAgent.role === 'super_agent') {
+      setNewAgent({ ...newAgent, role: 'agent' });
+    }
+  }, [hasRole, newAgent.role]);
 
   // Form validation
   const isFormValid = newAgent.name.trim() && 
@@ -1143,17 +1151,28 @@ const HumanAgents = () => {
                 <Label htmlFor="agent-2fa" className="text-sm">Enable email 2FA for this agent</Label>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="agent-role">Role</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="agent-role">Role</Label>
+                  {!hasRole(ROLES.MASTER_AGENT) && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Hanya Master Agent yang dapat membuat Super Agent</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
                 <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" })}>
                   <SelectTrigger className="bg-background border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-background border z-50">
                     <SelectItem value="agent">Agent</SelectItem>
-                    <SelectItem value="super_agent">Super Agent</SelectItem>
-                    <PermissionGate permission={'super_agents.create'}>
-                      <SelectItem value="master_agent">Master Agent</SelectItem>
-                    </PermissionGate>
+                    {hasRole(ROLES.MASTER_AGENT) && (
+                      <SelectItem value="super_agent">Super Agent</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1301,8 +1320,22 @@ const HumanAgents = () => {
               </div>
             </div>
             <div className="flex gap-2 pt-2">
-              <Button onClick={saveTokenLimits} disabled={savingLimits} className="flex-1 bg-green-600 hover:bg-green-700 text-white">Save</Button>
-              <Button variant="outline" onClick={() => setIsEditLimitOpen(false)} className="flex-1">Cancel</Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={saveTokenLimits} disabled={savingLimits} className="flex-1 bg-green-600 hover:bg-green-700 text-white">Save</Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Simpan batas token</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" onClick={() => setIsEditLimitOpen(false)} className="flex-1">Cancel</Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Batal</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </DialogContent>
@@ -1351,7 +1384,14 @@ const HumanAgents = () => {
             </div>
           </div>
             <div className="flex justify-end">
-              <Button variant="outline" onClick={() => setIsUsageOpen(false)}>Close</Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" onClick={() => setIsUsageOpen(false)}>Close</Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Tutup</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </DialogContent>

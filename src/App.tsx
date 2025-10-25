@@ -14,6 +14,7 @@ import Logout from "./pages/Logout";
 import NotFound from "./pages/NotFound";
 import Changelog from "./pages/Changelog";
 import LiveChat from "./pages/LiveChat";
+import AccountDeactivated from "./pages/AccountDeactivated";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,12 +33,12 @@ const queryClient = new QueryClient({
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <RBACProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
+        <RBACProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
             <Routes>
                         <Route path="/" element={
               <ProtectedRoute>
@@ -57,6 +58,7 @@ const App = () => (
             } />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/invite" element={<ResetPassword />} />
+            <Route path="/account-deactivated" element={<AccountDeactivated />} />
             <Route path="/otp" element={
               <ProtectedRoute>
                 <Otp />
@@ -70,10 +72,10 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
             </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </RBACProvider>
-    </AuthProvider>
+          </TooltipProvider>
+        </RBACProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 
