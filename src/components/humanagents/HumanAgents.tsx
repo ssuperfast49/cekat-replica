@@ -118,15 +118,19 @@ const HumanAgents = () => {
       let query = supabase
         .from('v_human_agents')
         .select('*', { count: 'exact' });
-      if (currentOrgId) {
-        query = query.eq('org_id', currentOrgId);
-      }
+        // if (currentOrgId) {
+        //   query = query.eq('org_id', currentOrgId);
+        // }
+      
       if (invited) {
         // Pending = anything not accepted (including null/expired/pending)
         query = query.or('confirmation_status.is.null,confirmation_status.neq.accepted');
       } else {
         // Active = accepted
         query = query.eq('confirmation_status', 'accepted');
+        // if (currentOrgId) {
+        //   query = query.eq('org_id', currentOrgId);
+        // }
       }
       const { data, count, error: qErr } = await query
         .order('agent_name', { ascending: true })

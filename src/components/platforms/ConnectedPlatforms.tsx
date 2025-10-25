@@ -49,6 +49,7 @@ const ConnectedPlatforms = () => {
   const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [removingAvatar, setRemovingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
 
@@ -1177,7 +1178,7 @@ const ConnectedPlatforms = () => {
                       <div className="flex items-center gap-2">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={!selectedPlatformData || uploadingAvatar}>
+                            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={!selectedPlatformData || uploadingAvatar || removingAvatar}>
                               {uploadingAvatar ? (
                                 <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</span>
                               ) : (
@@ -1189,9 +1190,54 @@ const ConnectedPlatforms = () => {
                             <p>Unggah foto profil atau logo untuk platform ini</p>
                           </TooltipContent>
                         </Tooltip>
+                        {/* Hidden file input for avatar upload */}
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.currentTarget.files?.[0];
+                            if (!file || !selectedPlatformData) return;
+                            try {
+                              setUploadingAvatar(true);
+                              await uploadChannelAvatar(selectedPlatformData.id, file, selectedPlatformData.org_id);
+                              toast({ title: 'Avatar updated' });
+                              await fetchPlatforms();
+                            } catch (err: any) {
+                              toast({ title: 'Avatar upload failed', description: err?.message || 'Please try again', variant: 'destructive' });
+                            } finally {
+                              setUploadingAvatar(false);
+                              // reset input so the same file can be selected again if needed
+                              try { (e.currentTarget as HTMLInputElement).value = ''; } catch {}
+                            }
+                          }}
+                        />
                         {!!((selectedPlatformData as any)?.logo_url || (selectedPlatformData as any)?.profile_photo_url) && (
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={async()=>{ if (!selectedPlatformData) return; try { setUploadingAvatar(true); await deleteChannelAvatar(selectedPlatformData.id, selectedPlatformData.org_id); await fetchPlatforms(); toast({ title: 'Avatar removed' }); } catch (e:any) { toast({ title: 'Failed to remove avatar', description: e?.message || 'Please try again', variant: 'destructive' }); } finally { setUploadingAvatar(false); } }}>
-                            <Trash2 className="h-4 w-4 mr-1" /> Remove
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            disabled={!selectedPlatformData || uploadingAvatar || removingAvatar}
+                            onClick={async()=>{
+                              if (!selectedPlatformData) return;
+                              try {
+                                setRemovingAvatar(true);
+                                await deleteChannelAvatar(selectedPlatformData.id, selectedPlatformData.org_id);
+                                await fetchPlatforms();
+                                toast({ title: 'Avatar removed' });
+                              } catch (e:any) {
+                                toast({ title: 'Failed to remove avatar', description: e?.message || 'Please try again', variant: 'destructive' });
+                              } finally {
+                                setRemovingAvatar(false);
+                              }
+                            }}
+                          >
+                            {removingAvatar ? (
+                              <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Removing...</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-2"><Trash2 className="h-4 w-4" /> Remove</span>
+                            )}
                           </Button>
                         )}
                       </div>
