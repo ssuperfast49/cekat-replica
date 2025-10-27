@@ -802,14 +802,16 @@ export default function ConversationPage() {
                   </Button>
                 </div>
               ) : (
-                <Button 
-                  type="button"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
-                  onClick={handleTakeoverChat} 
-                  disabled={!user?.id}
-                >
-                  Takeover Chat
-                </Button>
+                <PermissionGate permission={'threads.update'}>
+                  <Button 
+                    type="button"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
+                    onClick={handleTakeoverChat} 
+                    disabled={!user?.id}
+                  >
+                    Takeover Chat
+                  </Button>
+                </PermissionGate>
               )}
             </div>
           </>

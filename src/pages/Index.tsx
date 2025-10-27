@@ -333,30 +333,38 @@ const Index = () => {
             ) : active === "analytics" ? (
               <>
                 <h1 className="sr-only">Analytics Dashboard</h1>
-                <Analytics />
+                <PermissionGate permission={'analytics.view_kpi'}>
+                  <Analytics />
+                </PermissionGate>
               </>
             ) : active === "contacts" ? (
               <>
                 <h1 className="sr-only">Contacts Management</h1>
-                <Contacts />
+                <PermissionGate permission={'contacts.read'}>
+                  <Contacts />
+                </PermissionGate>
               </>
             ) : active === "platforms" ? (
               <>
                 <h1 className="sr-only">Connected Platforms</h1>
-                <ConnectedPlatforms />
+                <PermissionGate permission={'channels.read'}>
+                  <ConnectedPlatforms />
+                </PermissionGate>
               </>
             ) : active === "aiagents" ? (
               <>
                 <h1 className="sr-only">AI Agents</h1>
-                <AIAgents />
+                <PermissionGate permission={'ai_profiles.read'}>
+                  <AIAgents />
+                </PermissionGate>
               </>
             ) : /* settings hidden */ false ? (
               <></>
             ) : active === "humanagents" ? (
-              <>
+              <PermissionGate permission={'super_agents.read'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Human Agents.</div>}>
                 <h1 className="sr-only">Human Agents</h1>
                 <HumanAgents />
-              </>
+              </PermissionGate>
             ) : active === "permissions" ? (
               <PermissionGate permission={'access_rules.configure'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
                 <h1 className="sr-only">Permissions</h1>
