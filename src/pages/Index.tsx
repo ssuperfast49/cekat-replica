@@ -146,19 +146,6 @@ const Index = () => {
   if (accountDeactivated) {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        {/* Temporary test button for debugging modal */}
-        <div className="fixed top-4 right-4 z-50">
-          <Button 
-            onClick={() => {
-              console.log('Test button clicked - setting accountDeactivated to true');
-              setAccountDeactivated(true);
-            }}
-            variant="destructive"
-            size="sm"
-          >
-            Test Modal
-          </Button>
-        </div>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-red-600 mb-4">Akun Dinonaktifkan</h1>
@@ -171,19 +158,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Temporary test button for debugging modal */}
-      <div className="fixed top-4 right-4 z-50">
-        <Button 
-          onClick={() => {
-            console.log('Test button clicked - setting accountDeactivated to true');
-            setAccountDeactivated(true);
-          }}
-          variant="destructive"
-          size="sm"
-        >
-          Test Modal
-        </Button>
-      </div>
       <div className="mx-auto flex min-h-screen">
         {/* Sidebar */}
         <aside 
