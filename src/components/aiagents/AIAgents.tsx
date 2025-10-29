@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings, Trash2, Plus, Loader2 } from "lucide-react";
+import PermissionGate from "@/components/rbac/PermissionGate";
 import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
@@ -43,10 +44,12 @@ const AIAgentCard = ({ agent, onSettings, onDelete }: {
     <div className="flex gap-2 justify-center">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => onSettings(agent)}>
-            <Settings className="w-4 h-4" />
-            Settings
-          </Button>
+          <PermissionGate permission={'ai_profiles.update'}>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => onSettings(agent)}>
+              <Settings className="w-4 h-4" />
+              Settings
+            </Button>
+          </PermissionGate>
         </TooltipTrigger>
         <TooltipContent>
           <p>Konfigurasi pengaturan agen AI</p>
@@ -54,15 +57,17 @@ const AIAgentCard = ({ agent, onSettings, onDelete }: {
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2 text-destructive hover:text-destructive"
-            onClick={() => onDelete(agent.id)}
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
-          </Button>
+          <PermissionGate permission={'ai_profiles.delete'}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-2 text-destructive hover:text-destructive"
+              onClick={() => onDelete(agent.id)}
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </Button>
+          </PermissionGate>
         </TooltipTrigger>
         <TooltipContent>
           <p>Hapus agen AI ini</p>
@@ -253,7 +258,9 @@ const AIAgents = () => {
             onDelete={handleDeleteAgent}
           />
         ))}
-        <CreateNewCard onClick={handleCreateNew} />
+        <PermissionGate permission={'ai_profiles.create'}>
+          <CreateNewCard onClick={handleCreateNew} />
+        </PermissionGate>
       </div>
 
       {/* Empty State */}
@@ -274,7 +281,8 @@ const AIAgents = () => {
       )}
 
       {/* Create New Agent Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <PermissionGate permission={'ai_profiles.create'}>
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">Create New AI Agent</DialogTitle>
@@ -322,7 +330,8 @@ const AIAgents = () => {
             </Button>
           </div>
         </DialogContent>
-      </Dialog>
+        </Dialog>
+      </PermissionGate>
     </div>
   );
 };

@@ -122,6 +122,48 @@ const HumanAgents = () => {
         //   query = query.eq('org_id', currentOrgId);
         // }
       
+      // Restrict visibility based on viewer's role
+      const isMaster = hasRole(ROLES.MASTER_AGENT);
+      const isSuper = hasRole(ROLES.SUPER_AGENT);
+      if (isSuper) {
+        // For super agents, limit to self + agents assigned under them
+        if (!currentUserId) {
+          // Defer until we know viewer id
+          invited ? setLoadingPendingTable(false) : setLoadingActiveTable(false);
+          return;
+        }
+        try {
+          let memQ = supabase
+            .from('super_agent_members')
+            .select('agent_user_id')
+            .eq('super_agent_id', currentUserId);
+          if (currentOrgId) memQ = memQ.eq('org_id', currentOrgId);
+          const { data: memberRows } = await memQ;
+          const allowedIds = [currentUserId, ...((memberRows || []).map((m: any) => String(m.agent_user_id)).filter(Boolean))];
+          if (allowedIds.length > 0) {
+            query = query.in('user_id', allowedIds);
+          } else {
+            // No members found; only self
+            query = query.eq('user_id', currentUserId);
+          }
+        } catch {
+          // If membership lookup fails, fall back to showing only self
+          query = query.eq('user_id', currentUserId);
+        }
+      } else if (!isMaster) {
+        // Regular agents have no access – return empty dataset
+        if (invited) {
+          setPendingRows([]);
+          setPendingTotal(0);
+          setLoadingPendingTable(false);
+        } else {
+          setActiveRows([]);
+          setActiveTotal(0);
+          setLoadingActiveTable(false);
+        }
+        return;
+      }
+      
       if (invited) {
         // Pending = anything not accepted (including null/expired/pending)
         query = query.or('confirmation_status.is.null,confirmation_status.neq.accepted');
@@ -921,6 +963,16 @@ const HumanAgents = () => {
       } catch {}
     })();
   }, []);
+
+  // When current user id becomes available, refresh current tables
+  useEffect(() => {
+    if (!currentUserId) return;
+    fetchHumanAgentsPage({ invited: false, page: activePage, pageSize: activePageSize });
+    if (tabValue === 'pending') {
+      fetchHumanAgentsPage({ invited: true, page: pendingPage, pageSize: pendingPageSize });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId]);
 
   // Compute which agents are visible to the current viewer
   const getVisibleAgents = () => {

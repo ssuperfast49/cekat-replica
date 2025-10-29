@@ -25,6 +25,7 @@ import TelegramPlatformForm from "./TelegramPlatformForm";
 import WebPlatformForm from "./WebPlatformForm";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { useRBAC } from "@/contexts/RBACContext";
+import PermissionGate from "@/components/rbac/PermissionGate";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -224,27 +225,29 @@ const ConnectedPlatforms = () => {
               );
             }
             return (
-              <div className="flex items-center gap-2">
-                <Select
-                  value={superAgentId || ""}
-                  onValueChange={async (val) => {
-                    if (!selectedPlatformData) return;
-                    await updatePlatform(selectedPlatformData.id, { super_agent_id: val || undefined });
-                  }}
-                >
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Assign super agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {superAgentsOnly.map(sa => (
-                      <SelectItem key={sa.user_id} value={sa.user_id}>
-                        👤 {sa.display_name || sa.email || sa.user_id.slice(0,8)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className="text-xs text-muted-foreground">(master agent only)</span>
-              </div>
+              <PermissionGate permission={'channels.update'}>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={superAgentId || ""}
+                    onValueChange={async (val) => {
+                      if (!selectedPlatformData) return;
+                      await updatePlatform(selectedPlatformData.id, { super_agent_id: val || undefined });
+                    }}
+                  >
+                    <SelectTrigger className="w-64">
+                      <SelectValue placeholder="Assign super agent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {superAgentsOnly.map(sa => (
+                        <SelectItem key={sa.user_id} value={sa.user_id}>
+                          👤 {sa.display_name || sa.email || sa.user_id.slice(0,8)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-xs text-muted-foreground">(master agent only)</span>
+                </div>
+              </PermissionGate>
             );
           })()}
         </CardContent>
@@ -307,7 +310,8 @@ const ConnectedPlatforms = () => {
               <MultiSelect options={multiSelectOptions} value={pendingAgentIds} onChange={setPendingAgentIds} placeholder="Select human agents to add" />
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
+                  <PermissionGate permission={'channel_agents.update'}>
+                    <Button
                     variant="outline"
                     disabled={updatingAgents || pendingAgentIds.length === 0}
                     onClick={async () => {
@@ -325,6 +329,7 @@ const ConnectedPlatforms = () => {
                   >
                     Add selected
                   </Button>
+                  </PermissionGate>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Tambahkan agen manusia yang dipilih ke platform ini</p>

@@ -393,9 +393,11 @@ const PermissionsPage = () => {
             <h1 className="text-2xl font-bold tracking-tight">Role Permissions</h1>
             <p className="text-muted-foreground">Manage role permissions</p>
           </div>
-          <Button onClick={openCreateRole} disabled={!canCreateRole} title={!canCreateRole ? 'No permission: roles.create' : undefined}>
-            <Plus className="h-4 w-4 mr-2" /> New Role
-          </Button>
+          <PermissionGate permission={'roles.create'}>
+            <Button onClick={openCreateRole}>
+              <Plus className="h-4 w-4 mr-2" /> New Role
+            </Button>
+          </PermissionGate>
         </div>
         <div className="flex items-center justify-center py-8">
           <div className="text-center">
@@ -455,52 +457,56 @@ const PermissionsPage = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
+                        <PermissionGate permission={'access_rules.configure'}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => { setSelectedRole(role); setView('configure'); }}
+                              >
+                                <Settings className="h-4 w-4 mr-2" />
+                                Configure
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Konfigurasi aturan akses untuk peran ini</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </PermissionGate>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => { setSelectedRole(role); setView('configure'); }}
-                              disabled={!canConfigurePolicy}
-                            >
-                              <Settings className="h-4 w-4 mr-2" />
-                              Configure
-                            </Button>
+                            <PermissionGate permission={'roles.update'}>
+                              <Button 
+                                size="sm" 
+                                className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                                onClick={() => openEditRole(role)} 
+                                aria-label="Edit role"
+                              >
+                                <Edit className="h-4 w-4"/>
+                              </Button>
+                            </PermissionGate>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>{!canConfigurePolicy ? 'Tidak ada izin: access_rules.configure' : 'Konfigurasi aturan akses untuk peran ini'}</p>
+                            <p>Edit peran ini</p>
                           </TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button 
-                              size="sm" 
-                              className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
-                              onClick={() => openEditRole(role)} 
-                              disabled={!canUpdateRole} 
-                              aria-label="Edit role"
-                            >
-                              <Edit className="h-4 w-4"/>
-                            </Button>
+                            <PermissionGate permission={'roles.delete'}>
+                              <Button 
+                                size="sm" 
+                                onClick={() => { setDeletingRole(role); setDeleteOpen(true); }} 
+                                disabled={!!saving[role.id]}
+                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                aria-label="Delete role"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>{!canUpdateRole ? 'Tidak ada izin: roles.update' : 'Edit peran ini'}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              size="sm" 
-                              onClick={() => { setDeletingRole(role); setDeleteOpen(true); }} 
-                              disabled={!!saving[role.id] || !canDeleteRole}
-                              className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                              aria-label="Delete role"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{!canDeleteRole ? 'Tidak ada izin: roles.delete' : 'Hapus peran ini'}</p>
+                            <p>Hapus peran ini</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -551,6 +557,7 @@ const PermissionsPage = () => {
           </Card>
         </div>
       {/* Edit/Create Role Dialog */}
+      <PermissionGate permission={'roles.update'}>
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
@@ -584,8 +591,10 @@ const PermissionsPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+      </PermissionGate>
 
       {/* Delete Role Confirmation */}
+      <PermissionGate permission={'roles.delete'}>
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -607,6 +616,7 @@ const PermissionsPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+      </PermissionGate>
       </div>
     );
   }
