@@ -5,6 +5,10 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Export protected wrapper
+import { createProtectedSupabaseClient } from './supabaseProtected';
+export const protectedSupabase = createProtectedSupabaseClient(supabase);
+
 export async function logAction(params: {
   action: string;
   resource: string;

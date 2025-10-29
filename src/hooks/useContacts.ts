@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, logAction } from '@/lib/supabase';
+import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 export interface Contact {
@@ -52,7 +52,7 @@ export const useContacts = () => {
       // Determine whether we need to inner-join threads based on filters
       const needsThreadInnerJoin = !!(filters?.chatStatus || filters?.handledBy || filters?.dateRange?.from || filters?.dateRange?.to);
 
-      let query = supabase
+      let query = protectedSupabase
         .from('contacts')
         .select(
           `
@@ -195,7 +195,7 @@ export const useContacts = () => {
     try {
       setError(null);
 
-      const { data, error } = await supabase
+      const { data, error } = await protectedSupabase
         .from('contacts')
         .insert([{
           ...contactData,
@@ -224,7 +224,7 @@ export const useContacts = () => {
     try {
       setError(null);
 
-      const { error } = await supabase
+      const { error } = await protectedSupabase
         .from('contacts')
         .update(updateData)
         .eq('id', contactId);
@@ -248,7 +248,7 @@ export const useContacts = () => {
     try {
       setError(null);
 
-      const { error } = await supabase
+      const { error } = await protectedSupabase
         .from('contacts')
         .delete()
         .eq('id', contactId);
@@ -272,7 +272,7 @@ export const useContacts = () => {
     try {
       setError(null);
 
-      const { error } = await supabase
+      const { error } = await protectedSupabase
         .from('contacts')
         .delete()
         .in('id', contactIds);

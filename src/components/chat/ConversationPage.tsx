@@ -35,7 +35,7 @@ import { useConversations, ConversationWithDetails, MessageWithDetails } from "@
 import { useContacts } from "@/hooks/useContacts";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
+import { supabase, protectedSupabase } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLES } from "@/types/rbac";
@@ -281,7 +281,7 @@ export default function ConversationPage() {
           setIsCollaborator(false);
           return;
         }
-        const { data, error } = await supabase
+        const { data, error } = await protectedSupabase
           .from('thread_collaborators')
           .select('user_id')
           .eq('thread_id', selectedConversation.id)
@@ -309,7 +309,7 @@ export default function ConversationPage() {
       if (!isCollaborator) {
         if (isAdmin) {
           try {
-            const { data: existing } = await supabase
+            const { data: existing } = await protectedSupabase
               .from('thread_collaborators')
               .select('user_id')
               .eq('thread_id', selectedConversation.id)
@@ -746,7 +746,7 @@ export default function ConversationPage() {
                     <Button
                       size="sm"
                       className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                      onClick={async()=>{ if(selectedConversation.status==='closed') return; const { error } = await supabase.from('threads').update({ status:'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if(error){ toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); }} }
+                      onClick={async()=>{ if(selectedConversation.status==='closed') return; const { error } = await protectedSupabase.from('threads').update({ status:'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if(error){ toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); }} }
                     >
                       Resolve
                     </Button>

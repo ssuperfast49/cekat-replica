@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase, logAction } from '@/lib/supabase';
+import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
 import { waitForAuthReady } from '@/lib/authReady';
 import WEBHOOK_CONFIG from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
@@ -200,7 +200,7 @@ export const useConversations = () => {
       // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
 
-      const selectPromise = supabase
+      const selectPromise = protectedSupabase
         .from('threads')
         .select(`
           *,
@@ -227,7 +227,7 @@ export const useConversations = () => {
 
       let userIdToName: Record<string, string> = {};
       if (userIds.length > 0) {
-        const { data: profiles, error: profileErr } = await supabase
+        const { data: profiles, error: profileErr } = await protectedSupabase
           .from('users_profile')
           .select('user_id, display_name')
           .in('user_id', userIds);
@@ -610,7 +610,7 @@ export const useConversations = () => {
       }
 
       // Ensure AI access is disabled even if already assigned
-      try { await supabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch {}
+      try { await protectedSupabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch {}
 
       // Create a system event message noting the takeover
       try {
@@ -627,7 +627,7 @@ export const useConversations = () => {
           displayName = profile?.display_name || null;
         }
 
-        await supabase.from('messages').insert([{
+        await protectedSupabase.from('messages').insert([{
           thread_id: threadId,
           direction: null,
           role: 'system',
@@ -749,7 +749,7 @@ export const useConversations = () => {
   // Auto-resolve check function
   const checkAutoResolve = async () => {
     try {
-      const { data, error } = await supabase.rpc('check_and_auto_resolve_threads');
+      const { data, error } = await protectedSupabase.rpc('check_and_auto_resolve_threads');
       if (error) {
         console.error('Auto-resolve check failed:', error);
         return;
