@@ -1,4 +1,12 @@
 # Change Log
+# [0.0.38] FE WEB CEKAT 2025-10-30
+### Refactor Authentication & RBAC
+* Removed unnecessary debug logging from authentication and RBAC components.
+* Enhanced role checks within navigation for more secure access control.
+* Improved account status handling to better manage user states.
+* Added role-based restrictions directly in navigation configuration.
+* Updated related components for improved clarity and performance.
+
 # [0.0.37] FE WEB CEKAT 2025-10-30
 ### Circuit Breaker & Database Protection System
 - **Comprehensive Circuit Breaker Implementation**: Implemented full-featured circuit breaker system for database protection
