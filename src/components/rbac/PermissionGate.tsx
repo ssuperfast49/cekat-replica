@@ -1,4 +1,5 @@
-import { ReactNode } from 'react';
+import { ReactNode, forwardRef } from 'react';
+import { Slot } from '@radix-ui/react-slot';
 import { useRBAC } from '@/contexts/RBACContext';
 import type { PermissionName } from '@/types/rbac';
 
@@ -19,27 +20,30 @@ interface PermissionGateProps {
  * @param fallback - Component to render if permission is denied
  * @param children - Component to render if permission is granted
  */
-export default function PermissionGate({
+const PermissionGate = forwardRef<any, PermissionGateProps>(({ 
   permission,
   permissions = [],
   requireAll = false,
   fallback = null,
   children
-}: PermissionGateProps) {
-  const { hasPermission, hasAnyPermission, hasAllPermissions, loading } = useRBAC();
+}, ref) => {
+  const { hasAnyPermission, hasAllPermissions, loading } = useRBAC();
 
-  // Show loading state while RBAC data is being fetched
-  if (loading) {
-    return null; // or a loading spinner
-  }
+  if (loading) return null;
 
-  // Combine single permission with permissions array
   const allPermissions = permission ? [permission, ...permissions] : permissions;
+  const hasAccess = requireAll ? hasAllPermissions(allPermissions) : hasAnyPermission(allPermissions);
 
-  // Check permissions based on requireAll flag
-  const hasAccess = requireAll 
-    ? hasAllPermissions(allPermissions)
-    : hasAnyPermission(allPermissions);
+  // Only use Slot when there's exactly one valid React element child.
+  const canUseSlot = !Array.isArray(children) && typeof children !== 'string' && typeof children !== 'number';
 
-  return hasAccess ? <>{children}</> : <>{fallback}</>;
-}
+  if (!hasAccess) return <>{fallback}</>;
+
+  return canUseSlot ? (
+    <Slot ref={ref}>{children}</Slot>
+  ) : (
+    <>{children}</>
+  );
+});
+
+export default PermissionGate;

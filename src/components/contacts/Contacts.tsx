@@ -34,7 +34,7 @@ export default function Contacts() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(100);
-  const [sortKey, setSortKey] = useState<'name' | 'phone' | 'notes' | 'labelNames' | 'inbox' | 'channelProvider' | 'channelType' | 'chatStatus' | 'chatCreatedAtISO' | 'handledBy' | 'created_at' | null>(null);
+  const [sortKey, setSortKey] = useState<'name' | 'phone' | 'notes' | 'inbox' | 'channelProvider' | 'channelType' | 'chatStatus' | 'chatCreatedAtISO' | 'handledBy' | 'created_at' | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<ContactsFilter>({
@@ -515,18 +515,6 @@ export default function Contacts() {
                 <TableHead className="text-xs py-2">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('labelNames')}>
-                        LABEL NAMES {sortKey==='labelNames' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Label atau tag yang diberikan pada kontak (klik untuk mengurutkan)</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TableHead>
-                <TableHead className="text-xs py-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
                       <button className="flex items-center gap-1 text-xs" onClick={()=>toggleSort('inbox')}>
                         CHANNEL {sortKey==='inbox' ? (sortAsc ? <ArrowUp className="h-3.5 w-3.5"/> : <ArrowDown className="h-3.5 w-3.5"/>) : <ArrowUpDown className="h-3.5 w-3.5" />}
                       </button>
@@ -589,7 +577,7 @@ export default function Contacts() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8">
+                  <TableCell colSpan={10} className="text-center py-8">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span>Loading contacts...</span>
@@ -598,7 +586,7 @@ export default function Contacts() {
                 </TableRow>
               ) : contacts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8">
+                  <TableCell colSpan={10} className="text-center py-8">
                     <div className="text-muted-foreground">
                       {searchQuery ? 'No contacts found matching your search.' : 'No contacts found.'}
                     </div>
@@ -705,7 +693,6 @@ export default function Contacts() {
                         <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
-                    <TableCell>{contact.labelNames || '-'}</TableCell>
                     <TableCell>{contact.inbox ? <Badge variant="outline">{contact.inbox}</Badge> : '—'}</TableCell>
                     <TableCell>
                       {contact.channelProvider ? (

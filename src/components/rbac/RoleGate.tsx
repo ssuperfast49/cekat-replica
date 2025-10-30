@@ -1,4 +1,5 @@
-import { ReactNode } from 'react';
+import { ReactNode, forwardRef } from 'react';
+import { Slot } from '@radix-ui/react-slot';
 import { useRBAC } from '@/contexts/RBACContext';
 import type { RoleName } from '@/types/rbac';
 
@@ -19,27 +20,29 @@ interface RoleGateProps {
  * @param fallback - Component to render if role is denied
  * @param children - Component to render if role is granted
  */
-export default function RoleGate({
+const RoleGate = forwardRef<any, RoleGateProps>(({ 
   role,
   roles = [],
   requireAll = false,
   fallback = null,
   children
-}: RoleGateProps) {
+}, ref) => {
   const { hasRole, hasAnyRole, loading } = useRBAC();
 
-  // Show loading state while RBAC data is being fetched
-  if (loading) {
-    return null; // or a loading spinner
-  }
+  if (loading) return null;
 
-  // Combine single role with roles array
   const allRoles = role ? [role, ...roles] : roles;
+  const hasAccess = requireAll ? allRoles.every(r => hasRole(r)) : hasAnyRole(allRoles);
 
-  // Check roles based on requireAll flag
-  const hasAccess = requireAll 
-    ? allRoles.every(r => hasRole(r))
-    : hasAnyRole(allRoles);
+  const canUseSlot = !Array.isArray(children) && typeof children !== 'string' && typeof children !== 'number';
 
-  return hasAccess ? <>{children}</> : <>{fallback}</>;
-}
+  if (!hasAccess) return <>{fallback}</>;
+
+  return canUseSlot ? (
+    <Slot ref={ref}>{children}</Slot>
+  ) : (
+    <>{children}</>
+  );
+});
+
+export default RoleGate;

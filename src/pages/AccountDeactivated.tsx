@@ -11,34 +11,22 @@ export default function AccountDeactivated() {
   const [isNavigating, setIsNavigating] = useState(false);
 
   const handleBackToLogin = async () => {
-    if (isNavigating) {
-      console.log('AccountDeactivated: Already navigating, ignoring click');
-      return;
-    }
+    if (isNavigating) { return; }
     
-    console.log('AccountDeactivated: handleBackToLogin called');
     setIsNavigating(true);
     
     try {
       // Clear localStorage first
-      console.log('AccountDeactivated: Clearing localStorage...');
       localStorage.clear();
-      console.log('AccountDeactivated: localStorage cleared successfully');
       
       // Try to sign out, but don't wait for it
-      console.log('AccountDeactivated: Attempting to sign out user...');
-      signOut().catch(error => {
-        console.log('AccountDeactivated: SignOut failed, continuing anyway:', error);
-      });
+      signOut().catch(() => {});
       
       // Force navigation immediately
-      console.log('AccountDeactivated: Navigating to root path...');
       navigate('/', { replace: true });
-      console.log('AccountDeactivated: Navigation completed');
     } catch (error) {
       console.error('AccountDeactivated: Error in handleBackToLogin:', error);
       // Force navigation even on error
-      console.log('AccountDeactivated: Forcing navigation despite error...');
       navigate('/', { replace: true });
     } finally {
       setIsNavigating(false);

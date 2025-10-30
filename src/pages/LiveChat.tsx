@@ -150,7 +150,7 @@ export default function LiveChat() {
         if (error) {
           console.error('Supabase connection error:', error);
         } else {
-          console.log('Supabase connection successful');
+          
         }
       } catch (err) {
         console.error('Supabase connection test failed:', err);
@@ -193,7 +193,7 @@ export default function LiveChat() {
               
               // SKIP user messages from periodic refresh
               if (role === 'user') {
-                console.log('Skipping user message from periodic refresh:', r.id);
+                
                 continue;
               }
               
@@ -220,7 +220,7 @@ export default function LiveChat() {
   useEffect(() => {
     const fetchAiProfileId = async () => {
       try {
-        console.log('Fetching AI profile ID for platform:', pid);
+        
         const { data: channel, error } = await supabase
           .from('channels')
           .select('ai_profile_id')
@@ -230,10 +230,10 @@ export default function LiveChat() {
         if (error) {
           console.error('Error fetching channel:', error);
         } else {
-          console.log('Channel data:', channel);
+          
           if (channel?.ai_profile_id) {
             setAiProfileId(channel.ai_profile_id);
-            console.log('Set AI profile ID:', channel.ai_profile_id);
+            
           }
         }
       } catch (error) {
@@ -252,7 +252,7 @@ export default function LiveChat() {
     
     const upsertFromRows = (rows: any[]) => {
       if (!rows || rows.length === 0) return;
-      console.log('Upserting rows:', rows);
+      
       
       setMessages((prev) => {
         const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>();
@@ -272,7 +272,7 @@ export default function LiveChat() {
                   value.body === r.body &&
                   Math.abs(new Date(value.at).getTime() - new Date(r.created_at).getTime()) < 10000) { // Within 10 seconds
                 map.delete(key);
-                console.log('Replaced temp user message with real one:', key, '->', r.id);
+                
                 break; // Only replace one temp message
               }
             }
@@ -283,7 +283,7 @@ export default function LiveChat() {
             for (const [key, value] of map.entries()) {
               if (value.id === streamingMessageId) {
                 map.delete(key);
-                console.log('Removed streaming message:', key);
+                
                 break;
               }
             }
@@ -292,15 +292,15 @@ export default function LiveChat() {
           // Only add if we don't already have this message
           if (!map.has(item.id)) {
             map.set(item.id, item);
-            console.log('Added new message:', item.id, item.role, item.body.substring(0, 50));
+            
           } else {
-            console.log('Skipped duplicate message:', item.id);
+            
           }
         }
         
         const arr = Array.from(map.values());
         arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
-        console.log('Updated messages:', arr.map(m => ({id: m.id, role: m.role, body: m.body.substring(0, 20)})));
+        
         return arr;
       });
     };
@@ -322,17 +322,17 @@ export default function LiveChat() {
           const row = payload?.new || payload?.old;
           if (!row) return;
           
-          console.log('Realtime message received:', { ev, row, streamingMessageId });
+          
           
           // COMPLETELY SKIP user messages from realtime to prevent duplicates
           if (row?.role === 'user') {
-            console.log('Skipping ALL user messages from realtime to prevent duplicates:', row.id);
+            
             return;
           }
           
           // Only process agent/assistant messages from realtime
           if (row?.role === 'agent' || row?.role === 'assistant') {
-            console.log('Processing agent message from realtime:', row.id);
+            
             upsertFromRows([row]);
           }
           
@@ -400,7 +400,7 @@ export default function LiveChat() {
         if (tempIdx >= 0) {
           // Keep the temp message as is - don't change the ID
           // The realtime subscription will handle replacement when the real message arrives
-          console.log('User message timeout: keeping temp message visible');
+          
           return prev; // No change needed, message is already visible
         }
         return prev;
@@ -414,7 +414,7 @@ export default function LiveChat() {
     // Set a timeout to fallback to realtime if streaming doesn't work
     const streamingTimeout = setTimeout(() => {
       if (streamingMessageId === streamingId) {
-        console.log('Streaming timeout, falling back to realtime');
+        
         setStreamingMessageId(null);
         setMessages((prev) => prev.map(m => 
           m.id === streamingId 
@@ -435,8 +435,7 @@ export default function LiveChat() {
         stream: true, // Request streaming response
       } as const;
 
-      console.log('Sending request to webhook:', WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS));
-      console.log('Request body:', body);
+      
       
       const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS), {
         method: 'POST',
@@ -444,14 +443,13 @@ export default function LiveChat() {
         body: JSON.stringify(body),
       });
       
-      console.log('Webhook response status:', resp.status);
-      console.log('Webhook response headers:', resp.headers);
+      
       
       if (!resp.ok) throw new Error(`Webhook failed ${resp.status}`);
       
       // Handle streaming response
       if (resp.body) {
-        console.log('Processing streaming response...');
+        
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -484,10 +482,10 @@ export default function LiveChat() {
                   }
                   
                   const parsed = JSON.parse(data);
-                  console.log('Parsed streaming data:', parsed);
+                  
                   if (parsed.content || parsed.delta) {
                     const content = parsed.content || parsed.delta;
-                    console.log('Streaming content:', content);
+                    
                     setMessages((prev) => {
                       const existingIdx = prev.findIndex(m => m.id === streamingId);
                       if (existingIdx >= 0) {
@@ -560,10 +558,10 @@ export default function LiveChat() {
         }
       } else {
         // Fallback to non-streaming response
-        console.log('No streaming response body, trying JSON response...');
+        
         try {
           const data = await resp.json();
-          console.log('Non-streaming response data:', data);
+          
           const responseText = data.output || data.content || data.message || "Sorry, I couldn't process your message.";
           
           setMessages((prev) => {
@@ -622,7 +620,7 @@ export default function LiveChat() {
                     
                     // SKIP user messages from immediate refresh
                     if (role === 'user') {
-                      console.log('Skipping user message from immediate refresh:', r.id);
+                      
                       continue;
                     }
                     

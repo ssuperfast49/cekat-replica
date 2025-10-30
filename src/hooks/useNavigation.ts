@@ -6,7 +6,7 @@ import { NAVIGATION_CONFIG, NAVIGATION_ORDER, NavKey } from '@/config/navigation
  * Now uses centralized navigation configuration
  */
 export function useNavigation() {
-  const { hasAnyPermission, hasAllPermissions } = useRBAC();
+  const { hasAnyPermission, hasAllPermissions, hasAnyRole } = useRBAC();
 
   /**
    * Check if user can access a navigation item
@@ -16,9 +16,16 @@ export function useNavigation() {
     if (!navItem) return false;
 
     // Strict check: only explicit permissions are considered
-    return navItem.requireAll
+    const permsOk = navItem.requireAll
       ? hasAllPermissions(navItem.permissions)
       : hasAnyPermission(navItem.permissions);
+
+    // If requiredRoles specified, also enforce roles (ANY-of)
+    const rolesOk = !navItem.requiredRoles || navItem.requiredRoles.length === 0
+      ? true
+      : hasAnyRole(navItem.requiredRoles);
+
+    return permsOk && rolesOk;
   };
 
   /**

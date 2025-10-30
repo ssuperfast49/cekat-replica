@@ -1,4 +1,5 @@
 import { LucideIcon, MessageSquare, BarChart2, Users, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, Shield, ClipboardList } from 'lucide-react';
+import { ROLES } from '@/types/rbac';
 
 export type NavKey = 
   | "chat"
@@ -24,6 +25,10 @@ export interface NavigationItem {
    * Example: ['channels', 'channel_agents']
    */
   resourceAny?: string[];
+  /**
+   * Optional: restrict nav item visibility to specific roles (ANY-of)
+   */
+  requiredRoles?: string[];
 }
 
 /**
@@ -103,6 +108,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     icon: Shield,
     permissions: ['access_rules.configure'],
     requireAll: true,
+    requiredRoles: [ROLES.MASTER_AGENT],
     description: "Manage roles and permissions"
   },
   

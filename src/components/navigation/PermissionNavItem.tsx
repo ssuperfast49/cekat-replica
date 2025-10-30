@@ -11,6 +11,7 @@ interface PermissionNavItemProps {
   permissions: string[];
   requireAll?: boolean;
   resourceAny?: string[];
+  requiredRoles?: string[];
 }
 
 /**
@@ -26,17 +27,19 @@ export default function PermissionNavItem({
   permissions,
   requireAll = false,
   resourceAny = [],
+  requiredRoles = [],
 }: PermissionNavItemProps) {
-  const { hasAnyPermission, hasAllPermissions, userPermissions, loading } = useRBAC();
+  const { hasAnyPermission, hasAllPermissions, hasAnyRole, loading } = useRBAC();
 
   if (loading) return null;
 
   // Strict: rely only on explicit permissions (e.g., 'channels.read')
-  const allowed = requireAll
+  const allowedPerms = requireAll
     ? hasAllPermissions(permissions)
     : hasAnyPermission(permissions);
+  const allowedRoles = requiredRoles.length === 0 || hasAnyRole(requiredRoles);
 
-  if (!allowed) return null;
+  if (!allowedPerms || !allowedRoles) return null;
 
   return (
     <button

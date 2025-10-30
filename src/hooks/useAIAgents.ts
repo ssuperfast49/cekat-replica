@@ -34,8 +34,6 @@ export const useAIAgents = () => {
       setLoading(true);
       setError(null);
 
-      console.log('Fetching AI agents...');
-
       // Fetch all AI profiles for selection
       await waitForAuthReady();
       let query = supabase
@@ -44,8 +42,7 @@ export const useAIAgents = () => {
         .order('created_at', { ascending: false }) as any;
       const { data: aiAgentsData, error: aiAgentsError } = await query;
 
-      console.log('AI agents data:', aiAgentsData);
-      console.log('AI agents error:', aiAgentsError);
+      
 
       if (aiAgentsError) {
         console.error('Error fetching AI agents:', aiAgentsError);
@@ -54,7 +51,7 @@ export const useAIAgents = () => {
         return;
       }
 
-      console.log('Successfully fetched AI agents:', aiAgentsData);
+      
       setAIAgents(aiAgentsData || []);
       try { localStorage.setItem('app.cachedAIAgents', JSON.stringify(aiAgentsData || [])); } catch {}
     } catch (error) {

@@ -157,7 +157,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         // ignore body parsing errors
         webhookResult = null;
       }
-      console.log('Telegram webhook response:', webhookResult);
+      
 
       // Upload avatar only after webhook success and channel exists
       try {

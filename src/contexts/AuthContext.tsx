@@ -55,23 +55,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isCheckingAccount, setIsCheckingAccount] = useState<boolean>(false);
   const [checkAccountStatusCallCount, setCheckAccountStatusCallCount] = useState<number>(0);
   
-  // Debug accountDeactivated state changes
-  useEffect(() => {
-    console.log('AuthContext: accountDeactivated changed to:', accountDeactivated);
-    console.trace('AuthContext: accountDeactivated change stack trace');
-    
-    // Add a timestamp to see timing
-    console.log('AuthContext: accountDeactivated change at:', new Date().toISOString());
-  }, [accountDeactivated]);
+  // Removed noisy debug logging for accountDeactivated state changes
   
   // Reset account status check when user changes
   useEffect(() => {
-    console.log('AuthContext: Resetting accountStatusChecked due to user change');
-    console.log('AuthContext: New user ID:', user?.id);
     setAccountStatusChecked(false);
   }, [user?.id]);
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
   const lastLoginLoggedUserIdRef = useRef<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
+  useEffect(() => { currentUserIdRef.current = user?.id ?? null; }, [user?.id]);
 
   const setOtpVerified = useCallback((value: boolean) => {
     setOtpVerifiedState(value);
@@ -92,82 +85,59 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const userId = currentSession?.user?.id;
     const callCount = checkAccountStatusCallCount + 1;
     setCheckAccountStatusCallCount(callCount);
-    console.log('AuthContext: checkAccountStatus called with userId:', userId);
-    console.log('AuthContext: accountStatusChecked:', accountStatusChecked);
-    console.log('AuthContext: isCheckingAccount:', isCheckingAccount);
-    console.log('AuthContext: checkAccountStatus call count:', callCount);
-    console.log('AuthContext: checkAccountStatus called at:', new Date().toISOString());
+    // Trimmed verbose debug logs from account status check
     
     if (!userId) {
-      console.log('AuthContext: No userId, setting accountDeactivated to false');
       setAccountDeactivated(false);
       return true;
     }
     
-    // Temporarily disable the isCheckingAccount check to see if it's causing issues
-    // if (isCheckingAccount) {
-    //   console.log('AuthContext: Already checking account status, skipping');
-    //   return !accountDeactivated;
-    // }
-    
-    // Temporarily disable the accountStatusChecked check to see if it's causing issues
-    // if (accountStatusChecked && currentSession?.user?.id === user?.id) {
-    //   console.log('AuthContext: Account status already checked for this user, skipping');
-    //   console.log('AuthContext: Current accountDeactivated state:', accountDeactivated);
-    //   return !accountDeactivated;
-    // }
-    
-    // Temporarily disable the checking flag to see if it's causing issues
-    // setIsCheckingAccount(true);
+    // Avoid duplicate checks for the same user within this lifecycle
+    if (isCheckingAccount) {
+      return !accountDeactivated;
+    }
+    if (accountStatusChecked && currentSession?.user?.id === user?.id) {
+      return !accountDeactivated;
+    }
+    setIsCheckingAccount(true);
     
     try {
-      console.log('AuthContext: Checking account status for user:', userId);
       const { data, error } = await supabase
         .from('users_profile')
         .select('is_active')
         .eq('user_id', userId)
         .maybeSingle();
       
-      console.log('AuthContext: Profile data:', data);
-      console.log('AuthContext: Profile error:', error);
-      
       if (error) {
         console.error('Error checking account status:', error);
-        // If we can't check the status, block access for security
-        setAccountDeactivated(true);
-        return false;
+        // On transient errors (e.g., during tab resume), do not block access.
+        // We'll keep previous state and allow UI to continue.
+        return !accountDeactivated;
       }
       
       // If profile row is missing, block access (fail closed for security)
       if (!data) {
-        console.warn('No user profile found for user:', userId);
-        setAccountDeactivated(true);
-        return false;
+        // Treat as transient during resume to avoid false blocks; allow UI and re-check later
+        return !accountDeactivated;
       }
       
       const isActive = data.is_active === true;
-      console.log('AuthContext: User is active:', isActive);
       
       if (!isActive) {
         // Account is deactivated - redirect to warning page
-        console.log('AuthContext: Account is deactivated, redirecting to warning page');
         navigate('/account-deactivated', { replace: true });
         return false;
       }
       
-      console.log('AuthContext: Account is active, setting accountDeactivated to false');
       setAccountDeactivated(false);
-      // Temporarily disable the status checked flag
-      // setAccountStatusChecked(true);
+      setAccountStatusChecked(true);
       return true;
     } catch (e) {
       console.error('Failed to check account status', e);
-      // Fail closed on errors for security
-      setAccountDeactivated(true);
-      return false;
+      // On unexpected errors, keep previous state and allow UI
+      return !accountDeactivated;
     } finally {
-      // Temporarily disable the checking flag reset
-      // setIsCheckingAccount(false);
+      setIsCheckingAccount(false);
     }
   };
 
@@ -257,11 +227,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
         if (initialSession) {
           // Check account status first before setting user as signed in
-          console.log('AuthContext: Checking account status for initial session');
           const isAccountActive = await checkAccountStatus(initialSession);
-          console.log('AuthContext: Account is active:', isAccountActive);
           if (!isAccountActive) {
-            console.log('AuthContext: Account is deactivated, showing modal');
             // Account is deactivated, show modal but keep session for now
             setSession(initialSession);
             setUser(initialSession.user);
@@ -302,6 +269,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       async (event, nextSession) => {
         try {
           if (event === 'SIGNED_IN') {
+            // Detect silent re-auth/refresh where the user didn't actually sign in again
+            const prevUserId = currentUserIdRef.current;
+            const nextUserId = nextSession?.user?.id || null;
+            const isSilentReauth = !!prevUserId && !!nextUserId && prevUserId === nextUserId;
+            if (isSilentReauth) {
+              // Just update session/user and skip heavy checks to avoid blocking UI on tab resume
+              setSession(nextSession);
+              setUser(nextSession?.user ?? null);
+              return;
+            }
             // Skip processing if user is signing out
             if (isSigningOut) {
               setSession(nextSession);
@@ -310,11 +287,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             }
             
             // Check account status first before setting user as signed in
-            console.log('AuthContext: Checking account status for SIGNED_IN event');
             const isAccountActive = await checkAccountStatus(nextSession);
-            console.log('AuthContext: Account is active:', isAccountActive);
             if (!isAccountActive) {
-              console.log('AuthContext: Account is deactivated, showing modal');
               // Account is deactivated, show modal but keep session for now
               setSession(nextSession);
               setUser(nextSession?.user ?? null);
@@ -405,10 +379,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 resource: 'auth', 
                 userId: user.id, 
                 context: {} 
-              }).catch(() => {
-                // Silently fail - logging is not critical for logout
-                console.debug('Logout action logging failed, continuing with logout');
-              });
+              }).catch(() => {});
             }
             setOtpRequired(false);
             setOtpVerified(false);
@@ -435,6 +406,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
     );
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Refresh session on window focus / tab visibility to recover after long idle or sleep
+  useEffect(() => {
+    const refreshSession = async () => {
+      try {
+        await supabase.auth.getSession();
+      } catch {}
+    };
+    const onVisibilityChange = () => {
+      try {
+        if (document.visibilityState === 'visible') {
+          refreshSession();
+        }
+      } catch {}
+    };
+    window.addEventListener('focus', refreshSession);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    // Lightweight keepalive while visible to proactively refresh tokens
+    const keepaliveId = window.setInterval(() => {
+      try {
+        if (document.visibilityState === 'visible') {
+          supabase.auth.getSession().catch(() => {});
+        }
+      } catch {}
+    }, 4 * 60 * 1000);
+    return () => {
+      window.removeEventListener('focus', refreshSession);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      try { clearInterval(keepaliveId); } catch {}
+    };
   }, []);
 
   const signOut = useCallback(async () => {

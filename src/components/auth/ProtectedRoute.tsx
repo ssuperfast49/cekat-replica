@@ -26,48 +26,29 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
         const type = url.searchParams.get('type');
         const code = url.searchParams.get('code');
         const hash = window.location.hash || '';
-        
-        // Check for invite-specific indicators
-        isInviteFlow = type === 'invite' || 
-                      (code && !hash.includes('access_token=')) ||
-                      hash.includes('type=invite') ||
-                      window.location.pathname === '/invite';
-        
-        // Debug logging
-        console.log('Invite flow detection:', {
-          type,
-          code: !!code,
-          hash: hash.substring(0, 50),
-          pathname: window.location.pathname,
-          isInviteFlow,
-          userId: user?.id
-        });
+        isInviteFlow = type === 'invite' || (code && !hash.includes('access_token=')) || hash.includes('type=invite') || window.location.pathname === '/invite';
       } catch {}
       
       // Always check if user needs to set password (regardless of URL parameters)
       if (user) {
-        supabase
-          .from('users_profile')
-          .select('password_set')
-          .eq('user_id', user.id)
-          .single()
-          .then(({ data: profile }) => {
-            console.log('Password set check:', { userId: user.id, password_set: profile?.password_set });
+        (async () => {
+          try {
+            const { data: profile } = await supabase
+              .from('users_profile')
+              .select('password_set')
+              .eq('user_id', user.id)
+              .single();
             if (profile && profile.password_set === false) {
-              console.log('User needs to set password - redirecting to password creation page');
               // Redirect to password creation page
               setTimeout(() => navigate('/reset-password', { replace: true }), 0);
               return; // Exit early to prevent 2FA check
             }
-          })
-          .catch((error) => {
-            console.log('Error checking password_set:', error);
-          });
+          } catch {}
+        })();
       }
       
       // If this is an invite flow and user is not on password creation page, redirect them
       if (isInviteFlow && !isOnResetPasswordPage && !isOnInvitePage) {
-        console.log('Redirecting to password creation page for invite flow');
         setTimeout(() => navigate('/reset-password', { replace: true }), 0);
         return;
       }

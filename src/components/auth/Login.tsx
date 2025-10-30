@@ -65,41 +65,31 @@ export default function Login({ onBack }: LoginProps) {
       const userId = data.user?.id;
       if (userId) {
         try {
-          console.log('Checking account status for user:', userId);
           const { data: profile, error: profErr } = await supabase
             .from('users_profile')
             .select('is_active, is_2fa_email_enabled')
             .eq('user_id', userId)
             .maybeSingle();
-          
-          console.log('Profile data:', profile);
-          console.log('Profile error:', profErr);
-          
+
           if (profErr) {
             console.error('Profile fetch error:', profErr);
             throw profErr;
           }
-          
+
           // Check if account is deactivated or missing profile
           if (!profile) {
-            console.log('No profile found, blocking access');
-            // No profile found, block access
             await supabase.auth.signOut();
             setError('Your account profile is missing. Please contact your Master Agent.');
             setLoading(false);
             return;
           }
-          
-          console.log('Profile is_active status:', profile.is_active);
+
           if (profile.is_active === false) {
-            console.log('Account is deactivated, redirecting to warning page');
             // Account is deactivated, redirect to warning page
             navigate('/account-deactivated', { replace: true });
             return;
           }
-          
-          console.log('Account is active, allowing login');
-          
+
           const requiresOtp = (profile as any)?.is_2fa_email_enabled === true;
           // Defer to global guard to prevent double redirects / flicker
           toast.success("Login successful!");

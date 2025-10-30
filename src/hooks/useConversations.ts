@@ -16,14 +16,14 @@ const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
 
     // Only play sounds when the tab is visible
     if (document.visibilityState !== 'visible') {
-      console.log('Skipping audio notification - tab not visible');
+      
       return;
     }
 
     // Debounce notifications to prevent duplicate sounds
     const now = Date.now();
     if (now - lastNotificationTime < NOTIFICATION_DEBOUNCE_MS) {
-      console.log('Skipping duplicate audio notification');
+      
       return;
     }
     lastNotificationTime = now;
@@ -39,12 +39,8 @@ const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
     }
     
     audio.volume = 0.7; // Set a reasonable volume
-    audio.play().catch(error => {
-      console.log('Audio notification failed:', error);
-    });
-  } catch (error) {
-    console.log('Audio notification error:', error);
-  }
+    audio.play().catch(() => {});
+  } catch {}
 };
 
 export interface Thread {
@@ -244,9 +240,7 @@ export const useConversations = () => {
         const unreplied = lastDir === 'in' || lastRole === 'user';
         
         // Log to verify we're getting the latest message timestamp
-        if (last) {
-          console.log(`Thread ${thread.id}: Latest message at ${last.created_at}, DB last_msg_at: ${thread.last_msg_at}`);
-        }
+        
         return {
           ...thread,
           contact_name: thread.contacts?.name || 'Unknown Contact',
@@ -291,7 +285,7 @@ export const useConversations = () => {
         return bTime - aTime;
       });
 
-      console.log('Sorted conversations:', sortedData.length, 'conversations');
+      
       setConversations(sortedData);
       // Cache for next refresh
       try { localStorage.setItem('app.cachedConversations', JSON.stringify(sortedData)); } catch {}
@@ -307,7 +301,7 @@ export const useConversations = () => {
   // Fetch messages for a specific thread
   const fetchMessages = async (threadId: string) => {
     try {
-      console.log('Fetching messages for thread:', threadId);
+      
       setError(null);
 
       const { data, error } = await supabase
@@ -351,7 +345,7 @@ export const useConversations = () => {
         contact_avatar: contactName[0]?.toUpperCase() || 'U'
       }));
 
-      console.log('Setting messages:', transformedData.length, 'messages for thread:', threadId);
+      
       setMessages(transformedData);
       setSelectedThreadId(threadId);
 
@@ -756,7 +750,7 @@ export const useConversations = () => {
       }
       
       if (data && data.length > 0) {
-        console.log('Auto-resolved threads:', data);
+        
         // Refresh conversations to show updated status
         fetchConversations();
       }
@@ -805,11 +799,8 @@ export const useConversations = () => {
         // Only refresh for incoming messages or system messages
         // Skip outgoing messages (direction: 'out') to avoid refresh when sending
         const message = payload.new;
-        console.log('New message for conversation list:', payload);
         if (message && message.direction === 'in' && document.visibilityState === 'visible') {
-          console.log('Refreshing conversations for incoming message');
           // Play notification sound for incoming messages
-          console.log('Playing notification sound for incoming message in conversation list');
           playNotificationSound('incoming');
           // Immediately update the conversation preview and re-sort
           updateConversationPreview(message.thread_id, message);
@@ -817,15 +808,12 @@ export const useConversations = () => {
           // Check auto-resolve after user message (cancels auto-resolve)
           checkAutoResolve();
         } else if (message && (message.role === 'system' || message.type === 'event') && document.visibilityState === 'visible') {
-          console.log('Refreshing conversations for system/event message');
           // Play notification sound for system messages
-          console.log('Playing notification sound for system/event message');
           playNotificationSound('incoming');
           // Immediately update the conversation preview and re-sort
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(200); // Also do a full refresh for consistency
         } else if (message && message.role === 'agent' && message.direction === 'out' && document.visibilityState === 'visible') {
-          console.log('AI agent responded - checking auto-resolve');
           // AI responded, auto-resolve timer will be set by database trigger
           // Check for any threads that might be ready for auto-resolve
           checkAutoResolve();
@@ -852,9 +840,7 @@ export const useConversations = () => {
           scheduleConversationsRefresh(300);
         }
       })
-      .subscribe((status) => {
-        console.log('Conversations subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
       try { supabase.removeChannel(channel); } catch {}
@@ -866,13 +852,10 @@ export const useConversations = () => {
   useEffect(() => {
     if (!selectedThreadId) return;
     
-    console.log('Setting up realtime subscription for thread:', selectedThreadId);
+    
     
     // Set up a periodic refresh as a fallback (every 30 seconds)
-    const refreshInterval = setInterval(() => {
-      console.log('Periodic refresh of messages for thread:', selectedThreadId);
-      fetchMessages(selectedThreadId);
-    }, 30000);
+    const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 30000);
     
     const channel = supabase
       .channel(`messages-${selectedThreadId}`)
@@ -882,12 +865,9 @@ export const useConversations = () => {
         table: 'messages', 
         filter: `thread_id=eq.${selectedThreadId}` 
       }, (payload) => {
-        console.log('New message received:', payload);
-        
         // Play notification sound for incoming messages
         const message = payload.new;
         if (message && message.direction === 'in') {
-          console.log('Playing notification sound for incoming message');
           playNotificationSound('incoming');
         }
         
@@ -899,8 +879,7 @@ export const useConversations = () => {
         schema: 'public', 
         table: 'messages', 
         filter: `thread_id=eq.${selectedThreadId}` 
-      }, (payload) => {
-        console.log('Message updated:', payload);
+      }, () => {
         // Fetch fresh messages for updates
         fetchMessages(selectedThreadId);
       })
@@ -909,27 +888,18 @@ export const useConversations = () => {
         schema: 'public', 
         table: 'messages', 
         filter: `thread_id=eq.${selectedThreadId}` 
-      }, (payload) => {
-        console.log('Message deleted:', payload);
+      }, () => {
         // Fetch fresh messages for deletions
         fetchMessages(selectedThreadId);
       })
       .subscribe((status) => {
-        console.log('Messages subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('Successfully subscribed to messages for thread:', selectedThreadId);
-        } else if (status === 'CHANNEL_ERROR') {
+        if (status === 'CHANNEL_ERROR') {
           console.error('Error subscribing to messages for thread:', selectedThreadId);
-          // Retry subscription after a delay
-          setTimeout(() => {
-            console.log('Retrying messages subscription...');
-            fetchMessages(selectedThreadId);
-          }, 1000);
+          setTimeout(() => { fetchMessages(selectedThreadId); }, 1000);
         }
       });
       
     return () => {
-      console.log('Cleaning up messages subscription for thread:', selectedThreadId);
       clearInterval(refreshInterval);
       try { supabase.removeChannel(channel); } catch {}
     };
@@ -944,25 +914,11 @@ export const useConversations = () => {
     fetchConversations,
     fetchMessages,
     sendMessage,
-    refreshMessages: () => {
-      if (selectedThreadId) {
-        console.log('Manual refresh of messages for thread:', selectedThreadId);
-        fetchMessages(selectedThreadId);
-      }
-    },
+    refreshMessages: () => { if (selectedThreadId) { fetchMessages(selectedThreadId); } },
     // Audio notification controls
-    enableAudioNotifications: () => {
-      localStorage.setItem('audioNotifications', 'true');
-      console.log('Audio notifications enabled');
-    },
-    disableAudioNotifications: () => {
-      localStorage.setItem('audioNotifications', 'false');
-      console.log('Audio notifications disabled');
-    },
-    testAudioNotification: () => {
-      console.log('Testing audio notification');
-      playNotificationSound('incoming');
-    },
+    enableAudioNotifications: () => { localStorage.setItem('audioNotifications', 'true'); },
+    disableAudioNotifications: () => { localStorage.setItem('audioNotifications', 'false'); },
+    testAudioNotification: () => { playNotificationSound('incoming'); },
     createConversation,
     updateThreadStatus,
     assignThread,

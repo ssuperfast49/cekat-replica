@@ -38,14 +38,14 @@ export async function logAction(params: {
         resolvedOrgId = mem?.org_id ?? null;
       } catch (error) {
         // If we can't access org_members (e.g., during logout), skip logging
-        console.debug('Cannot access org_members during logout, skipping audit log');
+        
         return;
       }
     }
     
     // If we still don't have an org_id and this is a logout action, skip logging
     if (!resolvedOrgId && action === 'auth.logout') {
-      console.debug('No org_id available for logout action, skipping audit log');
+      
       return;
     }
     
@@ -60,7 +60,7 @@ export async function logAction(params: {
         resolvedOrgId = org?.id ?? null;
       } catch (error) {
         // If we can't access orgs table, skip logging
-        console.debug('Cannot access orgs table, skipping audit log');
+        
         return;
       }
     }
@@ -80,7 +80,7 @@ export async function logAction(params: {
 
     // Only proceed if we have a valid org_id
     if (!resolvedOrgId) {
-      console.debug('No valid org_id found, skipping audit log');
+      
       return;
     }
 

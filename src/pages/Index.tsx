@@ -21,10 +21,12 @@ import Logs from "./Logs";
 import ProfilePopover from "@/components/auth/ProfileDialog";
 import PermissionNavItem from "@/components/navigation/PermissionNavItem";
 import PermissionGate from "@/components/rbac/PermissionGate";
+import RoleGate from "@/components/rbac/RoleGate";
 import { useNavigation } from "@/hooks/useNavigation";
 import { useRBAC } from "@/contexts/RBACContext";
 import { NAVIGATION_ORDER, NavKey } from "@/config/navigation";
 import { cn } from "@/lib/utils";
+import { ROLES } from "@/types/rbac";
 
 // NavKey is now imported from navigation config
 
@@ -194,6 +196,7 @@ const Index = () => {
                   permissions={navItem.permissions}
                   requireAll={navItem.requireAll}
                   resourceAny={navItem.resourceAny}
+                  requiredRoles={navItem.requiredRoles}
                 />
               );
             })}
@@ -340,10 +343,12 @@ const Index = () => {
                 <HumanAgents />
               </PermissionGate>
             ) : active === "permissions" ? (
-              <PermissionGate permission={'access_rules.configure'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
-                <h1 className="sr-only">Permissions</h1>
-                <PermissionsPage />
-              </PermissionGate>
+              <RoleGate role={ROLES.MASTER_AGENT} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
+                <PermissionGate permission={'access_rules.configure'}>
+                  <h1 className="sr-only">Permissions</h1>
+                  <PermissionsPage />
+                </PermissionGate>
+              </RoleGate>
             ) : active === "logs" ? (
               <PermissionGate permission={'audit_logs.read'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Logs.</div>}>
                 <h1 className="sr-only">Logs</h1>
