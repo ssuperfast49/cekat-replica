@@ -1,4 +1,81 @@
 # Change Log
+# [0.0.41] FE WEB CEKAT 2025-11-01
+### Data Retention & GDPR Compliance
+- **Data Retention Policy System**: Implemented configurable data retention with automatic cleanup
+  - Added 90-day default retention policy (adjustable from 1-365 days) stored in `org_settings` table
+  - Created `cleanup_old_chat_data()` PostgreSQL function for automatic deletion of old chat data
+  - Scheduled daily cleanup job at 2 AM UTC via `pg_cron` extension
+  - Respects organization-specific retention periods stored in `org_settings.retention_days`
+  - Only deletes data older than retention period (rolling window, not everything daily)
+  - Deletes old threads, messages, and orphaned contacts based on `created_at` timestamps
+  - Supports both org-specific cleanup and global cleanup for all organizations
+
+- **GDPR/PDPA Right to Erasure**: Implemented compliant user data deletion functionality
+  - Created `gdpr_delete_user_data()` PostgreSQL function for permanent deletion of user data
+  - Deletes all threads, messages, and contact records for a specific contact UUID
+  - Validates contact belongs to requesting organization before deletion
+  - Returns detailed deletion results (threads, messages, contacts deleted count)
+  - Permanently removes all user-associated data in compliance with GDPR/PDPA regulations
+  - Action cannot be undone with clear warning messages in UI
+
+- **Admin Controls in Analytics**: Added data retention and GDPR controls in Conversation tab
+  - Data Retention Policy card with current retention period display and edit functionality
+  - Manual "Run Cleanup Now" button for immediate cleanup execution
+  - GDPR/PDPA deletion card with contact UUID input field
+  - Restricted to users with `access_rules.configure` permission (master/super agents only)
+  - Real-time success/error message display for all operations
+  - Last cleanup results display showing threads, messages, and contacts deleted counts
+
+- **Database Migration**: Applied comprehensive migration for data retention features
+  - Migration `20250102_data_retention_and_gdpr.sql` successfully applied via Supabase MCP
+  - Created `cleanup_old_chat_data()` and `gdpr_delete_user_data()` functions with proper security
+  - Added RLS policies for `org_settings` table updates restricted to master/super agents
+  - Initialized default 90-day retention for all existing organizations
+  - Ensured `is_current_user_active()` dependency function exists for RLS checks
+
+### Contact Management Enhancements
+- **Contact UUID Detail Modal**: Added master agent-only contact UUID display
+  - New UUID section in contact details modal visible only to master agents
+  - Displays contact UUID with copy-to-clipboard functionality
+  - Includes helpful description for GDPR deletion requests and system integrations
+  - Uses RBAC role check (`hasRole('master_agent')`) to restrict visibility
+  - Styled with monospace font and muted background for clear readability
+  - Badge indicator showing "Master Agent Only" restriction
+
+### Technical Improvements
+- **Supabase Integration**: Full integration with Supabase database functions
+  - `fetchRetentionSettings()` reads from `org_settings` table via protected Supabase client
+  - `saveRetentionDays()` updates retention period using upsert operation
+  - `triggerCleanup()` calls `cleanup_old_chat_data` RPC function
+  - `executeGdprDeletion()` calls `gdpr_delete_user_data` RPC function
+  - All operations use `protectedSupabase` client respecting circuit breaker and RLS
+  - Proper error handling and user feedback for all database operations
+
+- **RBAC Integration**: Enhanced role-based access control for admin features
+  - Permission gates around data retention and GDPR controls
+  - Master agent role check for contact UUID visibility
+  - Secure access control using `useRBAC` context hooks
+
+### UI/UX Enhancements
+- **Data Retention UI**: Comprehensive admin interface for retention management
+  - Edit modal for configuring retention period (1-365 days range)
+  - Visual display of current retention period with clear descriptions
+  - Warning messages explaining automatic cleanup schedule
+  - Success/error message toasts for user feedback
+
+- **GDPR Deletion UI**: Secure and user-friendly deletion interface
+  - Two-step confirmation process with warning modal
+  - Clear indication of what will be deleted (threads, messages, contacts)
+  - Contact UUID input with validation
+  - Destructive button styling to indicate permanent action
+
+### Security & Compliance
+- **Data Protection**: Enhanced data protection mechanisms
+  - Row Level Security (RLS) policies enforce master/super agent access only
+  - Automatic cleanup respects retention periods to prevent accidental data loss
+  - GDPR deletion function validates organization membership before deletion
+  - All database operations use security definer functions with proper permissions
+
 # [0.0.40] FE WEB CEKAT 2025-11-01
 ### Adaptive Rate Limiter Integration & DDoS Protection
 - **Adaptive Rate Limiter Full Integration**: Integrated adaptive rate limiter into Supabase protection system

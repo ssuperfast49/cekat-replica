@@ -9,13 +9,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from "lucide-react";
+import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, Key } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useContacts, ContactWithDetails, ContactsFilter } from "@/hooks/useContacts";
 import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router-dom";
+import { useRBAC } from "@/contexts/RBACContext";
+import PermissionGate from "@/components/rbac/PermissionGate";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +32,9 @@ import {
 // Remove hardcoded data - will use Supabase data instead
 
 export default function Contacts() {
+  const { hasRole } = useRBAC();
+  const isMasterAgent = hasRole('master_agent');
+  
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -952,13 +957,47 @@ export default function Contacts() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium text-muted-foreground">Created At</Label>
+                  <Label className="text-sm font-medium text-muted-foreground">Chat Created At</Label>
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="font-mono text-sm">{selectedContact.chatCreatedAt || '-'}</span>
                   </div>
                 </div>
               </div>
+
+              {/* UUID - Master Agent Only */}
+              {isMasterAgent && selectedContact && (
+                <div className="space-y-2 pt-4 border-t">
+                  <Label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Key className="h-4 w-4" />
+                    Contact UUID
+                  </Label>
+                  <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
+                    <code className="flex-1 font-mono text-xs text-foreground break-all">
+                      {selectedContact.id}
+                    </code>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 flex-shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedContact.id);
+                            toast.success('Contact UUID copied to clipboard');
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy UUID</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Unique identifier for this contact. Use this UUID for GDPR deletion requests or system integrations.
+                  </p>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex gap-3 pt-4 border-t">
