@@ -9,6 +9,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { databaseCircuitBreaker, CircuitState } from './circuitBreaker';
 import { classifyError, isRetryableError, getRetryDelay, getUserFriendlyMessage, ErrorCategory } from './errorHandler';
 import { defaultRateLimiter, OperationType, RateLimitResult } from './rateLimiter';
+import { defaultAdaptiveRateLimiter } from './adaptiveRateLimiter';
 import { defaultRequestQueue } from './requestQueue';
 import { defaultFallbackHandler, CacheStrategy } from './fallbackHandler';
 import { defaultMetricsCollector } from './metrics';
@@ -110,20 +111,22 @@ async function checkRateLimit(
     return;
   }
   
+  // Use adaptive rate limiter for better traffic spike handling
+  const resolvedUserId = userId !== undefined ? userId : await getUserId(supabaseInstance).catch(() => null);
+  
   // For RPC calls, be more lenient - they're typically batch operations
   if (operation === 'rpc') {
-    // Only enforce rate limit if we're very close to the limit
-    const resolvedUserId = userId !== undefined ? userId : await getUserId(supabaseInstance).catch(() => null);
-    const usage = defaultRateLimiter.getUsage(resolvedUserId, operation, endpoint);
+    // Get adaptive limit
+    const usage = defaultAdaptiveRateLimiter.getUsage(resolvedUserId, operation, endpoint);
     
-    // Allow if we're under 90% of limit
+    // Allow if we're under 90% of adaptive limit
     if (usage.count < usage.limit * 0.9) {
-      defaultRateLimiter.recordRequest(resolvedUserId, operation, endpoint);
+      defaultAdaptiveRateLimiter.recordRequest(resolvedUserId, operation, endpoint);
       return;
     }
     
-    // Otherwise check normally
-    const result = defaultRateLimiter.checkLimit(resolvedUserId, operation, endpoint);
+    // Otherwise check normally with adaptive limiter
+    const result = defaultAdaptiveRateLimiter.checkLimit(resolvedUserId, operation, endpoint);
     if (!result.allowed) {
       const error: any = new Error(
         result.retryAfter 
@@ -139,9 +142,8 @@ async function checkRateLimit(
     return;
   }
   
-  // For other operations, check normally
-  const resolvedUserId = userId !== undefined ? userId : await getUserId(supabaseInstance).catch(() => null);
-  const result = defaultRateLimiter.checkLimit(resolvedUserId, operation, endpoint);
+  // For other operations, use adaptive rate limiter
+  const result = defaultAdaptiveRateLimiter.checkLimit(resolvedUserId, operation, endpoint);
   
   if (!result.allowed) {
     const error: any = new Error(
@@ -213,9 +215,9 @@ function wrapQueryBuilder(
               userIdPromise,
               new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 100))
             ]);
-            // For reads, just record the request (non-blocking)
+            // For reads, just record the request (non-blocking) with adaptive limiter
             if (currentOperation === 'read') {
-              defaultRateLimiter.recordRequest(userId, currentOperation, endpoint);
+              defaultAdaptiveRateLimiter.recordRequest(userId, currentOperation, endpoint);
             } else {
               await checkRateLimit(supabaseInstance, currentOperation, endpoint, userId);
             }

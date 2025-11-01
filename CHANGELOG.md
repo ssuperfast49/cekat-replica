@@ -1,4 +1,98 @@
 # Change Log
+# [0.0.40] FE WEB CEKAT 2025-11-01
+### Adaptive Rate Limiter Integration & DDoS Protection
+- **Adaptive Rate Limiter Full Integration**: Integrated adaptive rate limiter into Supabase protection system
+  - Enhanced AdaptiveRateLimiter class with getConfig() and updateConfig() methods for runtime configuration
+  - Added localStorage persistence for adaptive rate limiter configuration and multipliers
+  - Integrated adaptive rate limiter into supabaseProtected.ts, replacing static rate limiter for all operations
+  - Implemented automatic limit adjustment based on system health metrics (response time, error rate)
+  - Added query to circuit_breaker_metrics table in Supabase for real-time metrics analysis
+  - Automatic adjustment loop runs every adjustment interval to update limits dynamically
+
+- **Adaptive Rate Limiter Configuration UI**: Added comprehensive configuration interface
+  - Created new "Adaptive Rate Limiter Configuration" section in Limit Configuration
+  - Display base limits for all 4 operations (Reads, Writes, RPC, Auth) with current effective limits
+  - Real-time display of multipliers (percentage) for each operation type
+  - Show min/max multiplier, adjustment interval, and latency thresholds
+  - Added "Edit" button with comprehensive modal for editing all adaptive rate limiter parameters
+  - Visual status indicator showing adaptive rate limiter is active and protecting database
+  - All configuration values are editable with proper validation and range limits
+
+- **Enhanced Rate Limiter Card**: Updated to show adaptive limits
+  - Changed card title to "Rate Limiter (Adaptive)" to reflect dynamic nature
+  - Display effective limits (dynamically calculated) instead of static limits
+  - Show multiplier percentage for each operation type
+  - Real-time updates every second to reflect current adaptive limits
+  - Informative tooltips explaining how adaptive limits work for traffic spike protection
+
+- **Comprehensive Circuit Breaker Documentation Updates**: Enhanced documentation with detailed input explanations
+  - Added detailed explanation section for all Circuit Breaker inputs (5 parameters)
+    - Failure Threshold: When circuit opens, tips, recommendations
+    - Reset Timeout: Recovery time, tips for different scenarios
+    - Success Threshold: Recovery validation, recommendations
+    - Monitoring Period: Sliding window explanation, impact on detection
+    - Request Timeout: Timeout handling, recommendations per operation type
+  - Added comprehensive explanation for all Adaptive Rate Limiter inputs (7+ parameters)
+    - Base Limits: Explanation for Reads/Writes/RPC/Auth with recommendations
+    - Min/Max Multiplier: How multipliers affect limits, examples with calculations
+    - Latency Thresholds: Healthy vs Stress thresholds, tips for optimization
+    - Adjustment Interval: How often limits adjust, recommendations for different scenarios
+  - Added "How They Work Together" sections showing complete workflow for both systems
+
+- **DDoS & Traffic Spike Protection Guide**: Added dedicated protection guide
+  - Created comprehensive guide section explaining inputs specifically for DDoS protection
+  - Ranked inputs by importance: Min Multiplier (most important), Stress Threshold, Base Limits, etc.
+  - Detailed recommendations for each input with effectiveness ratings
+  - Provided optimal configuration preset for maximum DDoS protection
+  - Explained complete attack scenario flow (5-step process)
+  - Visual color-coded sections for easy reference (red borders for critical inputs)
+
+- **Documentation Improvements**: Enhanced existing documentation sections
+  - Updated "Best Practices" section to include adaptive rate limiter tips
+  - Enhanced "Configuration Reference" to show both Circuit Breaker and Adaptive Rate Limiter configs
+  - Added effective limits display with multiplier percentages in configuration reference
+  - Updated troubleshooting section to mention adaptive rate limiter as protection layer
+  - All documentation now uses dynamic values from current configuration (real-time)
+
+### Technical Improvements
+- **Type System Enhancements**: Improved TypeScript type exports
+  - Re-exported OperationType from adaptiveRateLimiter for better type consistency
+  - Fixed import issues in CircuitBreakerStatus component
+  - All types properly exported and available for external use
+
+- **Storage Management**: Enhanced persistence system
+  - Adaptive rate limiter config persists to localStorage with multipliers
+  - Automatic loading of saved configuration on initialization
+  - Interval ID management for proper cleanup when adjustment interval changes
+  - Backward compatible with existing localStorage data
+
+### UI/UX Enhancements
+- **Configuration Visualization**: Better display of adaptive limits
+  - Show both base limit and effective limit side-by-side
+  - Multiplier percentage displayed with color coding (green for healthy)
+  - Real-time status indicators showing system is actively protecting
+  - Clear distinction between static base limits and dynamic effective limits
+
+- **Documentation UX**: Improved documentation readability
+  - Color-coded input explanations (red, orange, yellow, blue, purple borders)
+  - Step-by-step workflows with numbered lists
+  - Practical examples using actual configuration values
+  - Tips and recommendations clearly separated from explanations
+  - Warning boxes for critical information
+
+### Performance & Security
+- **DDoS Protection**: Multi-layered defense system
+  - Adaptive rate limiter as first line of defense (reduces limits automatically)
+  - Request timeout as second layer (cancels slow requests)
+  - Circuit breaker as last resort (blocks all requests if needed)
+  - Complete protection against traffic spikes and DDoS attacks
+
+- **Smart Limit Adjustment**: Intelligent limit management
+  - Limits increase when system is healthy (up to 200% of base)
+  - Limits decrease when system is stressed (down to 50% of base by default)
+  - Gradual adjustment prevents sudden changes (max 10% increase, 20% decrease per cycle)
+  - Automatic return to normal limits when system recovers
+
 # [0.0.39] FE WEB CEKAT 2025-11-01
 ### Circuit Breaker Enhancements & Documentation
 - **Circuit Breaker Configuration Management**: Added comprehensive limit configuration interface for admins

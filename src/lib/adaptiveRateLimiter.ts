@@ -5,8 +5,11 @@
  * and response times.
  */
 
-import { RateLimiter, OperationType, RateLimitConfig } from './rateLimiter';
+import { RateLimiter, RateLimitConfig, RateLimitResult, OperationType } from './rateLimiter';
 import { getMetricsStats } from './metrics';
+
+// Re-export types for convenience
+export type { OperationType, RateLimitResult, RateLimitConfig };
 
 export interface AdaptiveConfig {
   baseConfig: Record<OperationType, RateLimitConfig>;
@@ -36,18 +39,23 @@ export class AdaptiveRateLimiter {
   private currentMultipliers: Map<OperationType, number> = new Map();
   private lastAdjustment: number = Date.now();
   private rateLimiters: Map<OperationType, RateLimiter> = new Map();
+  private storageKey: string = 'adaptive_rate_limiter';
+  private adjustmentIntervalId: NodeJS.Timeout | null = null;
 
   constructor(config: Partial<AdaptiveConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.loadFromStorage();
     
-    // Initialize multipliers to 1.0 (100% of base)
+    // Initialize multipliers to 1.0 (100% of base) if not loaded
     Object.keys(this.config.baseConfig).forEach(op => {
-      this.currentMultipliers.set(op as OperationType, 1.0);
+      if (!this.currentMultipliers.has(op as OperationType)) {
+        this.currentMultipliers.set(op as OperationType, 1.0);
+      }
     });
 
     // Start adaptive adjustment loop
     if (typeof window !== 'undefined') {
-      setInterval(() => this.adjustLimits(), this.config.adjustmentInterval);
+      this.adjustmentIntervalId = setInterval(() => this.adjustLimits(), this.config.adjustmentInterval);
     }
   }
 
@@ -175,6 +183,9 @@ export class AdaptiveRateLimiter {
       operation,
       new RateLimiter(`adaptive_${operation}`, { [operation]: adaptedConfig })
     );
+    
+    // Save to storage after adjustment
+    this.saveToStorage();
   }
 
   /**
@@ -201,6 +212,121 @@ export class AdaptiveRateLimiter {
       this.currentMultipliers.set(op as OperationType, 1.0);
       this.rateLimiters.delete(op as OperationType);
     });
+    this.saveToStorage();
+  }
+
+  /**
+   * Get current configuration
+   */
+  getConfig(): AdaptiveConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * Update configuration
+   */
+  updateConfig(newConfig: Partial<AdaptiveConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+    
+    // Restart adjustment interval if it changed
+    if (newConfig.adjustmentInterval && typeof window !== 'undefined') {
+      if (this.adjustmentIntervalId) {
+        clearInterval(this.adjustmentIntervalId);
+      }
+      this.adjustmentIntervalId = setInterval(() => this.adjustLimits(), this.config.adjustmentInterval);
+    }
+    
+    // Reset rate limiters to use new base config
+    this.rateLimiters.clear();
+    
+    this.saveToStorage();
+  }
+
+  /**
+   * Check rate limit (delegates to appropriate limiter)
+   */
+  checkLimit(
+    userId: string | null,
+    operation: OperationType,
+    endpoint?: string
+  ): RateLimitResult {
+    const limiter = this.getLimiter(operation);
+    return limiter.checkLimit(userId, operation, endpoint);
+  }
+
+  /**
+   * Record request (delegates to appropriate limiter)
+   */
+  recordRequest(
+    userId: string | null,
+    operation: OperationType,
+    endpoint?: string
+  ): void {
+    const limiter = this.getLimiter(operation);
+    limiter.recordRequest(userId, operation, endpoint);
+  }
+
+  /**
+   * Get usage (delegates to appropriate limiter)
+   */
+  getUsage(
+    userId: string | null,
+    operation: OperationType,
+    endpoint?: string
+  ): { count: number; limit: number; resetAt: number } {
+    const limiter = this.getLimiter(operation);
+    return limiter.getUsage(userId, operation, endpoint);
+  }
+
+  /**
+   * Save to localStorage
+   */
+  private saveToStorage(): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const data = {
+          config: this.config,
+          multipliers: Object.fromEntries(this.currentMultipliers),
+          lastAdjustment: this.lastAdjustment,
+        };
+        localStorage.setItem(this.storageKey, JSON.stringify(data));
+      }
+    } catch (error) {
+      console.warn('Failed to save adaptive rate limiter config:', error);
+    }
+  }
+
+  /**
+   * Load from localStorage
+   */
+  private loadFromStorage(): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const data = localStorage.getItem(this.storageKey);
+        if (data) {
+          const parsed = JSON.parse(data);
+          
+          // Load config
+          if (parsed.config) {
+            this.config = { ...DEFAULT_CONFIG, ...parsed.config };
+          }
+          
+          // Load multipliers
+          if (parsed.multipliers) {
+            Object.entries(parsed.multipliers).forEach(([op, mult]) => {
+              this.currentMultipliers.set(op as OperationType, mult as number);
+            });
+          }
+          
+          // Load last adjustment time
+          if (parsed.lastAdjustment) {
+            this.lastAdjustment = parsed.lastAdjustment;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load adaptive rate limiter config:', error);
+    }
   }
 }
 
