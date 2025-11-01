@@ -371,6 +371,34 @@ export default function ConversationPage() {
     if (!text || !selectedThreadId) return;
     
     try {
+      // Check AI message limit before sending (for AI responses)
+      const { checkAIMessageLimit, autoAssignToSuperAgent } = await import('@/lib/aiMessageLimit');
+      // @ts-ignore - protectedSupabase is compatible with the function signature
+      const limitInfo = await checkAIMessageLimit(protectedSupabase as any, selectedThreadId);
+      
+      if (limitInfo.isExceeded && limitInfo.superAgentId) {
+        // Auto-assign to super agent
+        // @ts-ignore - protectedSupabase is compatible with the function signature
+        const assignResult = await autoAssignToSuperAgent(protectedSupabase as any, selectedThreadId, limitInfo.superAgentId);
+        
+        if (assignResult.success) {
+          toast.error(
+            `Batas pesan AI telah tercapai (${limitInfo.currentCount}/${limitInfo.limit}). ` +
+            `Percakapan telah dialihkan ke super agent dan AI access dinonaktifkan.`
+          );
+          // Refresh conversations to show updated assignment
+          await fetchConversations();
+          // Don't send message - let super agent handle it
+          return;
+        }
+      } else if (limitInfo.isExceeded && !limitInfo.superAgentId) {
+        toast.error(
+          `Batas pesan AI telah tercapai (${limitInfo.currentCount}/${limitInfo.limit}). ` +
+          `Tidak ada super agent yang tersedia untuk penanganan.`
+        );
+        return;
+      }
+
       // Enforce token limit before sending AI message
       if (user?.id) {
         const { data: profile } = await supabase

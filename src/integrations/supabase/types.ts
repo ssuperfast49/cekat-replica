@@ -58,7 +58,7 @@ export type Database = {
           qna: Json
           stop_ai_after_handoff: boolean | null
           system_prompt: string | null
-          temperature: number | null
+          response_temperature: string | null
           transfer_conditions: string | null
           welcome_message: string | null
         }
@@ -72,7 +72,7 @@ export type Database = {
           qna?: Json
           stop_ai_after_handoff?: boolean | null
           system_prompt?: string | null
-          temperature?: number | null
+          response_temperature?: string | null
           transfer_conditions?: string | null
           welcome_message?: string | null
         }
@@ -86,7 +86,7 @@ export type Database = {
           qna?: Json
           stop_ai_after_handoff?: boolean | null
           system_prompt?: string | null
-          temperature?: number | null
+          response_temperature?: string | null
           transfer_conditions?: string | null
           welcome_message?: string | null
         }

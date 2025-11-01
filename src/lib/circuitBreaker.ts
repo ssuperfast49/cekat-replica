@@ -247,6 +247,31 @@ export class CircuitBreaker {
   }
 
   /**
+   * Get current configuration
+   */
+  getConfig(): CircuitBreakerConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * Update configuration
+   */
+  updateConfig(newConfig: Partial<CircuitBreakerConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+    // Save config to localStorage
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const existingData = localStorage.getItem(this.storageKey);
+        const data = existingData ? JSON.parse(existingData) : {};
+        data.config = this.config;
+        localStorage.setItem(this.storageKey, JSON.stringify(data));
+      }
+    } catch (error) {
+      console.warn('Failed to save circuit breaker config:', error);
+    }
+  }
+
+  /**
    * Manually reset the circuit breaker (admin override)
    */
   reset(): void {
@@ -342,6 +367,12 @@ export class CircuitBreaker {
         const data = localStorage.getItem(this.storageKey);
         if (data) {
           const parsed = JSON.parse(data);
+          
+          // Load config if it exists in storage, otherwise use current config
+          if (parsed.config) {
+            this.config = { ...this.config, ...parsed.config };
+          }
+          
           this.state = parsed.state || CircuitState.CLOSED;
           this.stateChangedAt = parsed.stateChangedAt || Date.now();
           this.failures = (parsed.failures || []).filter((f: any) => {

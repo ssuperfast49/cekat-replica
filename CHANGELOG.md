@@ -1,11 +1,81 @@
 # Change Log
+# [0.0.39] FE WEB CEKAT 2025-11-01
+### Circuit Breaker Enhancements & Documentation
+- **Circuit Breaker Configuration Management**: Added comprehensive limit configuration interface for admins
+  - Created "Limit Configuration" section displaying all circuit breaker thresholds (disabled by default)
+  - Added "Edit" button to open configuration modal for modifying limits
+  - Implemented getConfig() and updateConfig() methods in CircuitBreaker class
+  - Added configuration persistence to localStorage for client-side recovery
+  - Configuration values are now dynamically displayed and editable
+  - Each configuration field includes descriptive tooltips explaining the purpose
+
+- **Circuit Breaker Documentation System**: Implemented comprehensive documentation modal
+  - Added documentation card section above "Danger Zone" with "Lihat Dokumentasi Circuit Breaker" button
+  - Created detailed documentation modal covering:
+    - What is Circuit Breaker and its purpose
+    - How Circuit Breaker works (three states: CLOSED, OPEN, HALF_OPEN)
+    - Step-by-step workflow with dynamic configuration values
+    - What to do when circuit breaker opens (troubleshooting guide)
+    - Understanding metrics and their meanings
+    - Best practices for monitoring and optimization
+    - Configuration reference with current values
+  - All documentation content in Indonesian language with clear formatting
+  - Modal is scrollable and responsive for better readability
+
+- **Enhanced UI/UX for Circuit Breaker Analytics**: Improved user experience and safety
+  - Added question mark icons (HelpCircle) beside all labels in "Limit Configuration" section
+  - Each icon displays informative tooltip on hover with Indonesian descriptions
+  - Reorganized admin controls into two distinct sections:
+    - "Limit Configuration": For viewing and editing circuit breaker thresholds
+    - "Danger Zone": For critical admin actions with enhanced warnings
+  - Added tooltips to all buttons in "Danger Zone" explaining their effects
+  - Enhanced visual hierarchy with color-coded sections (blue for docs, red for danger)
+  - All tooltips and descriptions use dynamic values from current configuration
+
+- **Circuit Breaker Class Improvements**: Enhanced circuit breaker functionality
+  - Added getConfig() method to retrieve current configuration
+  - Added updateConfig() method to modify configuration at runtime
+  - Configuration is automatically saved to localStorage on update
+  - Configuration is automatically loaded from localStorage on initialization
+  - Maintains backward compatibility with existing circuit breaker state
+
+### AI Agent Settings Cleanup
+- **Removed Timezone Field**: Cleaned up unused timezone configuration
+  - Removed timezone field from AI Agent Settings UI component
+  - Dropped timezone column from ai_profiles table via database migration
+  - Removed timezone state variables and related logic from frontend
+  - Updated TypeScript types to remove timezone references
+  - Note: timezone field in users_profile table remains unchanged (separate feature)
+
+### Technical Improvements
+- **Code Organization**: Better separation of concerns in Circuit Breaker Status component
+  - Split admin controls into logical sections (Documentation, Limit Configuration, Danger Zone)
+  - Improved component structure for better maintainability
+  - Enhanced modal management with dedicated state variables
+  - Better error handling and user feedback
+
+### UI/UX Enhancements
+- **Documentation Integration**: Added comprehensive help system
+  - Documentation card with prominent call-to-action button
+  - Modal-based documentation with scrollable content
+  - Color-coded sections for better visual hierarchy
+  - Responsive design for all screen sizes
+  - Dark mode support throughout documentation modal
+
+- **Enhanced Tooltips**: Improved user guidance
+  - Question mark icons next to all configuration labels
+  - Contextual tooltips explaining each configuration parameter
+  - Tooltips on danger zone buttons with detailed warnings
+  - All tooltips in Indonesian language for consistency
+
+
 # [0.0.38] FE WEB CEKAT 2025-10-30
 ### Refactor Authentication & RBAC
-* Removed unnecessary debug logging from authentication and RBAC components.
-* Enhanced role checks within navigation for more secure access control.
-* Improved account status handling to better manage user states.
-* Added role-based restrictions directly in navigation configuration.
-* Updated related components for improved clarity and performance.
+- Removed unnecessary debug logging from authentication and RBAC components.
+- Enhanced role checks within navigation for more secure access control.
+- Improved account status handling to better manage user states.
+- Added role-based restrictions directly in navigation configuration.
+- Updated related components for improved clarity and performance.
 
 # [0.0.37] FE WEB CEKAT 2025-10-30
 ### Circuit Breaker & Database Protection System

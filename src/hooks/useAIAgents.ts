@@ -13,7 +13,7 @@ export interface AIAgent {
   transfer_conditions?: string;
   stop_ai_after_handoff?: boolean;
   model?: string;
-  temperature?: number;
+  response_temperature?: string | null;
   created_at: string;
   auto_resolve_after_minutes?: number;
   enable_resolve?: boolean;
@@ -38,7 +38,7 @@ export const useAIAgents = () => {
       await waitForAuthReady();
       let query = supabase
         .from('ai_profiles')
-        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, temperature, created_at, auto_resolve_after_minutes, enable_resolve')
+        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve')
         .order('created_at', { ascending: false }) as any;
       const { data: aiAgentsData, error: aiAgentsError } = await query;
 

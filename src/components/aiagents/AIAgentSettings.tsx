@@ -14,6 +14,7 @@ import { toast } from "@/components/ui/sonner";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { supabase } from "@/integrations/supabase/client";
 import { useRBAC } from "@/contexts/RBACContext";
+import { getTemperatureValue } from '@/lib/temperatureUtils';
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -35,7 +36,7 @@ const ChatPreview = ({
   profile,
   profileId,
   modelName,
-  temperature,
+  temperature: legacyTemperature,
   transfer_conditions
 }: { 
   welcomeMessage: string;
@@ -47,6 +48,12 @@ const ChatPreview = ({
   profile: any;
   profileId?: string;
 }) => {
+  // Get the actual temperature value from response_temperature preset
+  // Use the mapped value from response_temperature if available, otherwise fallback to legacy temperature
+  const responseTemperature = (profile as any)?.response_temperature;
+  const actualTemperature = responseTemperature 
+    ? getTemperatureValue(responseTemperature, legacyTemperature || 0.5)
+    : (legacyTemperature || 0.5);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   // Initialize messages with welcome message
@@ -111,7 +118,7 @@ const ChatPreview = ({
       const requestBody = {
         message: inputMessage,
         model: modelName,
-        temperature: temperature,
+        temperature: actualTemperature, // Use the mapped temperature value from response_temperature preset
         session_id: sessionId,
         timestamp: new Date().toISOString(),
         ai_profile_id: profile?.id || profileId
@@ -210,7 +217,7 @@ const ChatPreview = ({
         <div className="flex-1">
           <span className="font-medium">AI Agent Chat</span>
           <div className="text-xs text-muted-foreground">
-            Model: {modelDisplay} • Temp: {temperature}
+            Model: {modelDisplay} • Temp: {responseTemperature || 'Legacy'} ({actualTemperature})
             <span className={`ml-2 px-1 rounded text-xs ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
               {isConnected ? 'Connected' : 'Disconnected'}
             </span>
@@ -368,7 +375,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   // Model handling now uses ai_models (UUID) foreign key
   const [availableModels, setAvailableModels] = useState<{ id: string; model_name: string; display_name: string | null; provider: string }[]>([]);
   const [modelId, setModelId] = useState("");
-  const [temperature, setTemperature] = useState(profile?.temperature || 0.3);
   const [autoResolveMinutes, setAutoResolveMinutes] = useState<number>((profile as any)?.auto_resolve_after_minutes ?? 0);
   const [enableResolve, setEnableResolve] = useState<boolean>(Boolean((profile as any)?.enable_resolve ?? false));
   // Additional Settings
@@ -378,7 +384,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
   const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
   const [messageLimit, setMessageLimit] = useState<number>((profile as any)?.message_limit ?? 1000);
-  const [timezone, setTimezone] = useState<string>((profile as any)?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'));
   
   // Load available AI models
   useEffect(() => {
@@ -908,7 +913,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setTransferConditions(profile.transfer_conditions || "");
       setStopAfterHandoff(profile.stop_ai_after_handoff);
       // model is no longer stored on ai_profiles
-      setTemperature(profile.temperature || 0.3);
       setAutoResolveMinutes((profile as any)?.auto_resolve_after_minutes ?? 0);
       setEnableResolve(Boolean((profile as any)?.enable_resolve ?? false));
       setHistoryLimit((profile as any)?.history_limit ?? 50000);
@@ -917,7 +921,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
       setMessageAwait((profile as any)?.message_await ?? 3);
       setMessageLimit((profile as any)?.message_limit ?? 1000);
-      setTimezone((profile as any)?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'));
       const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
       if (qna && Array.isArray(qna)) {
         const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
@@ -942,7 +945,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       welcome_message: welcomeMessage,
       transfer_conditions: transferConditions,
       stop_ai_after_handoff: stopAfterHandoff,
-      temperature: temperature,
       name: agentName,
       auto_resolve_after_minutes: autoResolveMinutes,
       enable_resolve: enableResolve,
@@ -952,7 +954,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       response_temperature: responseTemperature,
       message_await: messageAwait,
       message_limit: messageLimit,
-      timezone: timezone,
       // Persist Q&A pairs into ai_profiles.qna JSONB
       // Store compact q/a pairs for space efficiency
       qna: qaPairs
@@ -1249,28 +1250,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Temperature</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mengontrol kreativitas dan keacakan respons AI (0 = deterministik, 2 = sangat kreatif)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={2}
-                      step={0.1}
-                      value={temperature}
-                      onChange={(e) => setTemperature(parseFloat(e.target.value || '0'))}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
                       <label className="text-sm font-medium">Enable Auto-resolve</label>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1390,20 +1369,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                     </div>
                     <Input type="number" min={0} value={messageLimit} onChange={(e)=>setMessageLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div>
-                  <div className="md:col-span-2">
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Timezone</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Zona waktu untuk agen AI (format: Asia/Jakarta, UTC, dll)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input type="text" value={timezone} onChange={(e)=>setTimezone(e.target.value)} className="mt-1" />
-                  </div>
                 </div>
                   </CollapsibleContent>
                 </Collapsible>
@@ -1445,7 +1410,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                 profile={profile}
                 profileId={profileId} 
                 modelName={selectedModel?.model_name || ''} 
-                temperature={temperature} 
+                temperature={getTemperatureValue(responseTemperature)} // Use mapped value from response_temperature
                 transfer_conditions={transferConditions}
               />
             </div>

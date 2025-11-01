@@ -386,6 +386,42 @@ export default function LiveChat() {
   const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
+
+    // Check AI message limit before sending user message
+    if (threadId) {
+      try {
+        const { checkAIMessageLimit, autoAssignToSuperAgent } = await import('@/lib/aiMessageLimit');
+        const limitInfo = await checkAIMessageLimit(supabase, threadId);
+        
+        if (limitInfo.isExceeded && limitInfo.superAgentId) {
+          // Auto-assign to super agent
+          const assignResult = await autoAssignToSuperAgent(supabase, threadId, limitInfo.superAgentId);
+          
+          if (assignResult.success) {
+            // Show notification that thread was assigned to super agent
+            const { toast } = await import('@/components/ui/sonner');
+            toast.error(
+              `Batas pesan AI telah tercapai (${limitInfo.currentCount}/${limitInfo.limit}). ` +
+              `Percakapan telah dialihkan ke super agent.`
+            );
+            // Don't send message to AI, let super agent handle it
+            return;
+          }
+        } else if (limitInfo.isExceeded && !limitInfo.superAgentId) {
+          // Limit exceeded but no super agent available
+          const { toast } = await import('@/components/ui/sonner');
+          toast.error(
+            `Batas pesan AI telah tercapai (${limitInfo.currentCount}/${limitInfo.limit}). ` +
+            `Tidak ada super agent yang tersedia untuk penanganan.`
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking AI message limit:', error);
+        // Continue with normal flow if check fails (graceful degradation)
+      }
+    }
+
     setDraft("");
     // Optimistic preview while waiting for DB insert (will be replaced by realtime row)
     const tempId = `temp-${Date.now()}`;
