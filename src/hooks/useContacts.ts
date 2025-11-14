@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
+import { defaultFallbackHandler } from '@/lib/fallbackHandler';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 export interface Contact {
@@ -248,12 +249,14 @@ export const useContacts = () => {
     try {
       setError(null);
 
-      const { error } = await protectedSupabase
+      const { error } = await supabase
         .from('contacts')
         .delete()
         .eq('id', contactId);
 
       if (error) throw error;
+
+      defaultFallbackHandler.invalidatePattern('^query:contacts');
 
       // Refresh contacts list
       await fetchContacts();
@@ -272,12 +275,14 @@ export const useContacts = () => {
     try {
       setError(null);
 
-      const { error } = await protectedSupabase
+      const { error } = await supabase
         .from('contacts')
         .delete()
         .in('id', contactIds);
 
       if (error) throw error;
+
+      defaultFallbackHandler.invalidatePattern('^query:contacts');
 
       // Refresh contacts list
       await fetchContacts();

@@ -24,6 +24,7 @@ import WhatsAppPlatformForm from "./WhatsAppPlatformForm";
 import TelegramPlatformForm from "./TelegramPlatformForm";
 import WebPlatformForm from "./WebPlatformForm";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { callWebhook } from "@/lib/webhookClient";
 import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
@@ -79,7 +80,6 @@ const ConnectedPlatforms = () => {
   const pollConnectTimer = useRef<number | null>(null);
   const [isDeletingChannel, setIsDeletingChannel] = useState(false);
 
-  const n8nBaseUrl = WEBHOOK_CONFIG.BASE_URL;
   const WAHA_BASE = 'https://waha-plus-production-97c1.up.railway.app';
   const lastFetchedProviderRef = useRef<string | null>(null);
   const isFetchingSessionsRef = useRef<boolean>(false);
@@ -604,7 +604,7 @@ const ConnectedPlatforms = () => {
     return () => { if (pollConnectTimer.current) { clearInterval(pollConnectTimer.current); pollConnectTimer.current = null; } };
   }, [isConnectDialogOpen, lastConnectSessionName]);
 
-  const logoutEndpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.LOGOUT_SESSION);
+  const logoutEndpoint = WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.LOGOUT_SESSION;
   const logoutWhatsAppSession = async (sessionName: string) => {
     if (!sessionName) return;
     setLoggingOutSessions((prev) => {
@@ -613,7 +613,7 @@ const ConnectedPlatforms = () => {
       return next;
     });
     try {
-      const response = await fetch(logoutEndpoint, {
+      const response = await callWebhook(logoutEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session: sessionName }),
@@ -638,8 +638,7 @@ const ConnectedPlatforms = () => {
     if (!sessionName) return;
     setDeletingSessions((prev) => new Set(prev).add(sessionName));
     try {
-      const endpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION || "/delete_session");
-      const res = await fetch(endpoint, {
+      const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_name: sessionName }),
@@ -661,7 +660,7 @@ const ConnectedPlatforms = () => {
     setIsConnectDialogOpen(true);
     setLastConnectSessionName(sessionName);
     try {
-      const res = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_LOGIN_QR), {
+      const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_LOGIN_QR, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_name: sessionName }),
@@ -693,8 +692,7 @@ const ConnectedPlatforms = () => {
     if (!sessionName) return;
     setLoggingOutSessions((prev) => new Set(prev).add(sessionName));
     try {
-      const endpoint = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DISCONNECT_SESSION || "/disconnect_session");
-      const res = await fetch(endpoint, {
+      const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DISCONNECT_SESSION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_name: sessionName }),
@@ -1002,17 +1000,15 @@ const ConnectedPlatforms = () => {
                         // Call provider-specific webhook cleanup before deleting
                         const provider = getPlatformType(selectedPlatformData);
                         if (provider === 'telegram') {
-                          const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK);
-                          await fetch(url, {
+                          await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ channel_id: selectedPlatformData.id })
                           });
                         }
                         if (provider === 'whatsapp') {
-                          const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION || '/delete_session');
                           const sessionName = (selectedPlatformData.display_name || '').replace(/\s/g, '');
-                          await fetch(url, {
+                          await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ session_name: sessionName })
@@ -1425,16 +1421,14 @@ const ConnectedPlatforms = () => {
                                 setIsDeletingChannel(true);
                                 const provider = getPlatformType(selectedPlatformData);
                                 if (provider === 'whatsapp') {
-                                  const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION || '/delete_session');
                                   const sessionName = (selectedPlatformData.display_name || '').replace(/\s/g, '');
-                                  await fetch(url, {
+                                  await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ session_name: sessionName })
                                   });
                                 } else if (provider === 'telegram') {
-                                  const url = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK);
-                                  await fetch(url, {
+                                  await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ channel_id: selectedPlatformData.id })

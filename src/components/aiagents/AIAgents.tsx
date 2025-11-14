@@ -10,6 +10,7 @@ import PermissionGate from "@/components/rbac/PermissionGate";
 import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
+import { supabase } from "@/lib/supabase";
 
 interface AIAgent {
   id: string;
@@ -18,7 +19,15 @@ interface AIAgent {
   creator: string;
   description?: string;
   created_at: string;
+  modelId?: string | null;
 }
+
+// Helpers for model UI
+const formatCost = (v: number | null | undefined) => {
+  if (v == null) return "Pricing on request";
+  return `${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:v>=1?2:3}).format(v)} / 1M`;
+};
+const formatProvider = (p: string | null | undefined) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : "Unknown");
 
 const AIAgentCard = ({ agent, onSettings, onDelete }: { 
   agent: AIAgent; 
@@ -99,6 +108,12 @@ const AIAgents = () => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("customer-service");
+  const [aiModels, setAiModels] = useState<Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean; description?: string | null }>>([]);
+  const [fallbackModels, setFallbackModels] = useState<Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean; description?: string | null }>>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  const [selectedFallbackModelId, setSelectedFallbackModelId] = useState<string>("");
   
   // Use the custom hook for AI profile management
   const { fetchAllProfiles, deleteProfile } = useAIProfiles();
@@ -162,12 +177,18 @@ const AIAgents = () => {
       return;
     }
 
+    if (!selectedModelId) {
+      toast.error('Please select an AI model');
+      return;
+    }
+
     const newAgent: AIAgent = {
       id: 'new',
       name: newAgentName.trim(),
       initials: newAgentName.trim().split(' ').map(word => word.charAt(0)).join('').toUpperCase().slice(0, 2),
       creator: 'Admin',
       created_at: new Date().toISOString(),
+      modelId: selectedModelId,
     };
     
     setSelectedAgent(newAgent);
@@ -176,6 +197,47 @@ const AIAgents = () => {
     setSelectedTemplate("customer-service");
     toast.info('Creating new AI agent...');
   };
+
+  // Load AI models (separate regular and fallback)
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        setModelsLoading(true);
+        setModelsError(null);
+        const { data, error } = await supabase
+          .from('ai_models')
+          .select('id, display_name, model_name, provider, cost_per_1m_tokens, is_active')
+          .eq('is_active', true)
+          .order('display_name', { ascending: true });
+        
+        if (error) throw error;
+        
+        const allModels = (data || []) as Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean }>;
+        
+        // Separate regular models from fallback models
+        const regular = allModels.filter(m => (m.display_name || '').toLowerCase() !== 'fallback');
+        const fallback = allModels.filter(m => (m.display_name || '').toLowerCase() === 'fallback');
+        
+        setAiModels(regular);
+        setFallbackModels(fallback);
+        
+        // Auto-select first model if available
+        if (regular.length > 0 && !selectedModelId) {
+          setSelectedModelId(regular[0].id);
+        }
+        if (fallback.length > 0 && !selectedFallbackModelId) {
+          setSelectedFallbackModelId(fallback[0].id);
+        }
+      } catch (err) {
+        console.error('Error loading AI models:', err);
+        setModelsError('Failed to load AI models');
+        toast.error('Failed to load AI models');
+      } finally {
+        setModelsLoading(false);
+      }
+    };
+    loadModels();
+  }, []);
 
   // Load agents on component mount
   useEffect(() => {
@@ -191,6 +253,7 @@ const AIAgents = () => {
           fetchAgents(); // Refresh the list when returning
         }}
         profileId={selectedAgent.id === 'new' ? undefined : selectedAgent.id}
+        initialModelId={selectedAgent.modelId || undefined}
       />
     );
   }
@@ -306,11 +369,11 @@ const AIAgents = () => {
                   <SelectValue placeholder="Select a template" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="customer-service">
+                  {/* <SelectItem value="customer-service">
                     <div className="space-y-1">
                       <div className="font-medium">Customer Service AI</div>
                     </div>
-                  </SelectItem>
+                  </SelectItem> */}
                 </SelectContent>
               </Select>
               
@@ -321,10 +384,91 @@ const AIAgents = () => {
               )}
             </div>
 
+            {/* AI Model picker */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">AI Model</label>
+              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={modelsLoading || aiModels.length === 0}>
+                    <SelectTrigger className="w-full py-3">
+                      {selectedModelId ? (
+                    (() => {
+                      const m = aiModels.find(x => x.id === selectedModelId);
+                      if (!m) return <SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select an AI model'} />;
+                      return (
+                        <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
+                          <span className="truncate">{m.display_name || 'Custom'} · {formatCost(m.cost_per_1m_tokens)} · {formatProvider(m.provider)}</span>
+                        </span>
+                      );
+                    })()
+                  ) : (
+                    <SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select an AI model'} />
+                  )}
+                </SelectTrigger>
+                <SelectContent side="bottom" align="start" sideOffset={4}>
+                  {aiModels.map((m) => {
+                    return (
+                      <SelectItem key={m.id} value={m.id}>
+                        <div className="flex flex-col text-left">
+                          <div className="flex items-center justify-between text-sm font-medium">
+                            <span>{m.display_name || 'Custom'}</span>
+                            <span className="text-muted-foreground">{formatCost(m.cost_per_1m_tokens)}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground leading-tight">{m.description || 'No description available'}</span>
+                          <span className="text-[11px] font-mono text-muted-foreground">{m.model_name} · {formatProvider(m.provider)}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {modelsError && (
+                <p className="text-xs text-destructive">{modelsError}</p>
+              )}
+            </div>
+
+            {/* Fallback Model picker */}
+            {fallbackModels.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Fallback Model</label>
+                <Select value={selectedFallbackModelId} onValueChange={setSelectedFallbackModelId} disabled={modelsLoading || fallbackModels.length === 0}>
+                  <SelectTrigger className="w-full py-3">
+                    {selectedFallbackModelId ? (
+                      (() => {
+                        const m = fallbackModels.find(x => x.id === selectedFallbackModelId);
+                        if (!m) return <SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select a fallback model'} />;
+                        return (
+                          <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
+                            <span className="truncate">{m.display_name || 'Custom'} · {formatCost(m.cost_per_1m_tokens)} · {formatProvider(m.provider)}</span>
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      <SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select a fallback model'} />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent side="bottom" align="start" sideOffset={4}>
+                    {fallbackModels.map((m) => {
+                      return (
+                        <SelectItem key={m.id} value={m.id}>
+                          <div className="flex flex-col text-left">
+                            <div className="flex items-center justify-between text-sm font-medium">
+                              <span>{m.display_name || 'Custom'}</span>
+                              <span className="text-muted-foreground">{formatCost(m.cost_per_1m_tokens)}</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground leading-tight">{m.description || 'No description available'}</span>
+                            <span className="text-[11px] font-mono text-muted-foreground">{m.model_name} · {formatProvider(m.provider)}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <Button 
               onClick={handleCreateAgent}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              disabled={!newAgentName.trim()}
+              disabled={!newAgentName.trim() || !selectedModelId}
             >
               Create AI Agent
             </Button>

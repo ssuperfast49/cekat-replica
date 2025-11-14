@@ -1,4 +1,150 @@
 # Change Log
+# [0.0.42] FE WEB CEKAT 2025-11-03
+### Admin Panel & Centralized Management
+- **New Admin Panel Component**: Created centralized admin control center for master agents
+  - New dedicated Admin Panel page accessible via navigation (master agents only)
+  - Moved data retention and GDPR controls from Analytics to Admin Panel for better organization
+  - Added quick access links to all admin sections (Permissions, Human Agents, Platforms, Analytics, Logs, Contacts)
+  - Integrated Circuit Breaker Status monitoring directly in admin panel
+  - Added cache clearing utility for local storage cleanup
+  - Bulk contact deletion interface with UUID parsing (comma/newline separated)
+  - Enhanced data retention controls with manual cleanup trigger
+  - GDPR/PDPA deletion interface with confirmation modals
+  - All admin features consolidated in single, role-gated interface
+
+### Webhook Infrastructure Refactoring
+- **Centralized Webhook Client**: Created new `webhookClient.ts` for unified webhook handling
+  - Automatic authentication for proxy endpoints using Supabase session tokens
+  - Support for both legacy and proxy-based endpoints
+  - Automatic API key injection for proxy requests
+  - Consistent error handling across all webhook calls
+  - `callWebhook()` function replaces direct `fetch()` calls throughout application
+
+- **Proxy-Aware Webhook Configuration**: Major refactoring of webhook routing system
+  - Introduced `route:` prefix system for proxy-based endpoints
+  - Automatic routing to Supabase Edge Function proxy (`proxy-n8n`) for prefixed endpoints
+  - Legacy endpoint support maintained for backward compatibility
+  - Provider-specific endpoint resolution (`resolveSendMessageEndpoint()`)
+  - Enhanced provider normalization (wa/whatsapp_cloud → whatsapp, tg/tele → telegram)
+  - All platform forms (WhatsApp, Telegram) now use centralized webhook client
+  - Live Chat component updated to use new webhook client
+
+### AI Agent Enhancements
+- **AI Model Selection System**: Comprehensive model management in AI Agent creation and settings
+  - Model selection dropdown in AI Agent creation dialog with pricing and provider information
+  - Fallback model selection for automatic failover when primary model unavailable
+  - Model-specific context window and history limit validation
+  - Dynamic limit calculation based on selected model capabilities
+  - Enhanced model display with cost per 1M tokens, provider badges, and descriptions
+  - Model filtering (regular vs fallback models) for better UX
+  - Auto-selection of first available model on load
+
+- **AI Agent Settings UI Improvements**: Enhanced settings interface with better input handling
+  - Replaced numeric inputs with text inputs using `inputMode="numeric"` for better mobile support
+  - Added input validation with clamping to model-specific maximums
+  - Context window input now in "K tokens" format with model-specific limits
+  - History limit shows model-specific maximums with helpful descriptions
+  - Auto-resolve timeout input with proper validation (0-1440 minutes)
+  - Message cap input with placeholder examples
+  - Removed "AI Read File Limit" field (commented out, not in use)
+  - Better label clarity: "Enable auto-resolve", "Auto-resolve timeout", "Conversation History (tokens)", "Context Window (K tokens)", "Creativity Preset", "AI Message Cap"
+  - Model selection card with primary and fallback model sections
+  - Real-time display of model capabilities and limits
+
+- **AI Agent Creation Flow**: Enhanced creation process
+  - Model selection required before agent creation
+  - Fallback model optional selection during creation
+  - Better validation and error messages
+  - Improved dialog with cancel button and loading states
+
+### Analytics Component Cleanup
+- **Removed Admin Controls**: Moved data retention and GDPR controls to Admin Panel
+  - Removed data retention policy card from Analytics Conversation tab
+  - Removed GDPR deletion card from Analytics
+  - Removed Circuit Breaker Status from Analytics (now in Admin Panel)
+  - Simplified Analytics component focusing on analytics and reporting only
+  - Better separation of concerns between analytics and administration
+
+### Database & Permissions
+- **New Migration**: Added `users_profile.create` permission
+  - Created migration `20251103_add_users_profile_create_permission.sql`
+  - Grants `users_profile.create` permission to `master_agent` and `super_agent` roles
+  - Enables proper RBAC for user profile creation operations
+
+### Enhanced Caching & Performance
+- **Query Signature-Based Caching**: Improved cache key generation in `supabaseProtected.ts`
+  - Added query signature serialization for more accurate cache keys
+  - Cache keys now include query method signatures and arguments
+  - Prevents cache collisions between similar but different queries
+  - Better cache invalidation with pattern matching
+  - Enhanced cache hit rates with more granular key generation
+
+- **Cache Invalidation Improvements**: Better cache management
+  - Contact deletion now invalidates related query caches
+  - Thread deletion invalidates conversation caches
+  - Pattern-based cache invalidation using `defaultFallbackHandler.invalidatePattern()`
+
+### Conversation & Contact Management
+- **Enhanced Conversation Hooks**: Improved conversation management
+  - Added `deleteThread()` function to `useConversations` hook
+  - Provider-aware message sending using `resolveSendMessageEndpoint()`
+  - Better provider detection from conversation data
+  - Cache invalidation on thread deletion
+
+- **Contact Management**: Improved deletion handling
+  - Enhanced bulk deletion with cache invalidation
+  - Better error handling in contact operations
+  - Improved cache management for contact queries
+
+### Platform Integration Updates
+- **WhatsApp Platform**: Updated to use new webhook client
+  - Session creation, login QR, logout, disconnect, and delete operations use `callWebhook()`
+  - Consistent error handling across all WhatsApp operations
+
+- **Telegram Platform**: Updated to use new webhook client
+  - Platform creation and webhook deletion use centralized webhook client
+  - Better error handling and response parsing
+
+- **Connected Platforms**: Enhanced platform management
+  - All webhook calls migrated to `callWebhook()` function
+  - Better error handling and user feedback
+  - Consistent authentication across all platform operations
+
+### Navigation & Routing
+- **New Admin Panel Route**: Added admin panel to navigation
+  - New "Admin Panel" navigation item (master agents only)
+  - Requires `access_rules.configure` permission
+  - Added to navigation config and routing
+  - Default navigation fallback improved to handle permission-based routing
+
+### UI/UX Improvements
+- **Human Agents**: Enhanced creation dialog
+  - Better validation and error messages
+  - Cancel button in creation dialog
+  - Improved loading states
+  - Permission-based UI (disabled buttons with tooltips when permission missing)
+
+- **Input Improvements**: Better form inputs throughout application
+  - Numeric inputs use `inputMode="numeric"` for mobile keyboards
+  - Better placeholder text and validation messages
+  - Improved accessibility with proper input types
+
+### Technical Improvements
+- **Code Organization**: Better separation of concerns
+  - Admin functionality centralized in Admin Panel component
+  - Webhook logic centralized in webhook client
+  - Better component structure and maintainability
+
+- **Type Safety**: Enhanced TypeScript types
+  - Added `model_id` to AIProfile interface
+  - Better type definitions for webhook responses
+  - Improved type safety in platform forms
+
+- **Error Handling**: Consistent error handling
+  - Unified error handling in webhook client
+  - Better error messages throughout application
+  - Improved user feedback with toast notifications
+
 # [0.0.41] FE WEB CEKAT 2025-11-01
 ### Data Retention & GDPR Compliance
 - **Data Retention Policy System**: Implemented configurable data retention with automatic cleanup

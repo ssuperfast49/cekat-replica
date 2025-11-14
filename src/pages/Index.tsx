@@ -17,6 +17,7 @@ import AIAgents from "@/components/aiagents/AIAgents";
 import Settings from "@/components/settings/Settings";
 import HumanAgents from "@/components/humanagents/HumanAgents";
 import PermissionsPage from "@/components/permissions/PermissionsPage";
+import AdminPanel from "@/components/admin/AdminPanel";
 import Logs from "./Logs";
 import ProfilePopover from "@/components/auth/ProfileDialog";
 import PermissionNavItem from "@/components/navigation/PermissionNavItem";
@@ -113,7 +114,10 @@ const Index = () => {
       }
     } else {
       // Ensure the URL always has a valid menu param
-      if (!menuParam) updateMenuParam("chat", { replace: true });
+      if (!menuParam) {
+        const fallback = getDefaultNavItem();
+        updateMenuParam(fallback || "chat", { replace: true });
+      }
     }
   }, [searchParams, canAccessNavItem, getDefaultNavItem, rbacLoading]);
 
@@ -302,7 +306,12 @@ const Index = () => {
 
           {/* Content */}
           <section className="px-4 py-6 md:px-8">
-            {active === "chat" ? (
+            {active === "admin" ? (
+              <>
+                <h1 className="sr-only">Admin Panel</h1>
+                <AdminPanel />
+              </>
+            ) : active === "chat" ? (
               <>
                 <h1 className="sr-only">Chat Inbox</h1>
                 <ConversationPage />

@@ -56,6 +56,8 @@ export default function Contacts() {
   const [contactDetailsOpen, setContactDetailsOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ContactWithDetails | null>(null);
   const navigate = useNavigate();
+  const { hasPermission } = useRBAC();
+  const canDeleteContacts = hasPermission('contacts.delete');
   
   // Use the contacts hook
   const { 
@@ -98,6 +100,10 @@ export default function Contacts() {
 
   const handleDeleteSelected = () => {
     if (selectedContacts.length === 0) return;
+    if (!canDeleteContacts) {
+      toast.error('You do not have permission to delete contacts');
+      return;
+    }
     setDeleteDialogOpen(true);
   };
 
@@ -415,21 +421,23 @@ export default function Contacts() {
           </div>
           
           <div className="flex gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant={selectedContacts.length > 0 ? "destructive" : "outline"}
-                  className={selectedContacts.length > 0 ? "bg-red-600 hover:bg-red-700 text-white" : ""}
-                  onClick={handleDeleteSelected}
-                  disabled={selectedContacts.length === 0}
-                >
-                  Delete Selected ({selectedContacts.length})
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Hapus kontak yang dipilih</p>
-              </TooltipContent>
-            </Tooltip>
+            {canDeleteContacts && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant={selectedContacts.length > 0 ? "destructive" : "outline"}
+                    className={selectedContacts.length > 0 ? "bg-red-600 hover:bg-red-700 text-white" : ""}
+                    onClick={handleDeleteSelected}
+                    disabled={selectedContacts.length === 0}
+                  >
+                    Delete Selected ({selectedContacts.length})
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Hapus kontak yang dipilih</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline">Export</Button>

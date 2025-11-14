@@ -1,32 +1,51 @@
-// Webhook Configuration
+// Webhook Configuration with proxy-aware routing
+const env = (import.meta as any).env ?? {};
+
+const LEGACY_BASE_URL = (env?.VITE_WEBHOOK_BASE_URL || "https://primary-production-376c.up.railway.app/webhook").replace(/\/$/, "");
+// HARD-CODED to ensure correct project during debugging. Revert to env-based later.
+// const SUPABASE_URL = (env?.VITE_SUPABASE_URL || "https://tgrmxlbnutxpewfmofdx.supabase.co").replace(/\/$/, "");
+// const PROXY_FUNCTION_SLUG = (env?.VITE_WEBHOOK_PROXY_SLUG || 'proxy-n8n');
+// const PROXY_BASE_URL = `${SUPABASE_URL}/functions/v1/${PROXY_FUNCTION_SLUG}`.replace(/\/$/, "");
+const PROXY_BASE_URL = "https://tgrmxlbnutxpewfmofdx.supabase.co/functions/v1/proxy-n8n";
+
+const ROUTE_PREFIX = "route:";
+
+const ensureLeadingSlash = (endpoint: string) => endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+const isProxyEndpoint = (endpoint: string) => endpoint.startsWith(ROUTE_PREFIX);
+const extractRouteKey = (endpoint: string) => isProxyEndpoint(endpoint) ? endpoint.slice(ROUTE_PREFIX.length) : null;
+
 export const WEBHOOK_CONFIG = {
-  // Base URL for all webhooks
-  BASE_URL: (import.meta as any).env?.VITE_WEBHOOK_BASE_URL || "https://primary-production-376c.up.railway.app/webhook",
-  
+  // Maintain legacy base for compatibility / fallback use-cases
+  BASE_URL: LEGACY_BASE_URL,
+  LEGACY_BASE_URL,
+  PROXY_BASE_URL,
+  ROUTE_PREFIX,
+
   // Specific endpoints
   ENDPOINTS: {
     // WhatsApp endpoints
     WHATSAPP: {
-      GET_LOGIN_QR: "/get_login_qr",
+      GET_LOGIN_QR: `${ROUTE_PREFIX}session.get_login_qr`,
       GET_SESSIONS: "/get_sessions",
-      LOGOUT_SESSION: "/logout_session",
+      LOGOUT_SESSION: `${ROUTE_PREFIX}session.logout`,
       CREATE_PLATFORM: "/whatsapp/create-platform",
-      CREATE_SESSION: "/create_session",
+      CREATE_SESSION: `${ROUTE_PREFIX}session.create`,
       DISCONNECT_SESSION: "/disconnect_session",
-      DELETE_SESSION: "/delete_session",
+      DELETE_SESSION: `${ROUTE_PREFIX}session.delete`,
     },
     // Telegram endpoints
     TELEGRAM: {
-      CREATE_PLATFORM: "/telegram/create-platform",
+      CREATE_PLATFORM: `${ROUTE_PREFIX}telegram.create_platform`,
       // Provider-specific send endpoint
-      SEND_MESSAGE: "/telegram/send-message",
-      DELETE_WEBHOOK: "/telegram/delete-webhook",
+      SEND_MESSAGE: `${ROUTE_PREFIX}telegram.send_message`,
+      DELETE_WEBHOOK: `${ROUTE_PREFIX}telegram.delete_webhook`,
     },
     
     // AI Agent endpoints
     AI_AGENT: {
-      CHAT_SETTINGS: "/chat-ai-agent-settings",
-      CHAT_TEST: "/chat-ai-agent-test",
+      CHAT_SETTINGS: `${ROUTE_PREFIX}chat.settings`,
+      CHAT_TEST: `${ROUTE_PREFIX}chat.test`,
     },
     // Knowledgebase endpoints
     KNOWLEDGE: {
@@ -37,35 +56,69 @@ export const WEBHOOK_CONFIG = {
     // Message endpoints
     MESSAGE: {
       // Default generic send endpoint
+      DEFAULT: "/send-message",
       SEND_MESSAGE: "/send-message",
-      // WhatsApp provider-specific send endpoint
-      WHATSAPP_SEND_MESSAGE: "/whatsapp/send-message",
+      // Provider-specific send endpoints
+      WHATSAPP_SEND_MESSAGE: `${ROUTE_PREFIX}whatsapp.send_message`,
+      TELEGRAM_SEND_MESSAGE: `${ROUTE_PREFIX}telegram.send_message`,
+      WEB_SEND_MESSAGE: `${ROUTE_PREFIX}web.send_message`,
     },
   },
   
-  // Helper function to build full URLs
-  buildUrl: (endpoint: string): string => {
-    return `${WEBHOOK_CONFIG.BASE_URL}${endpoint}`;
+  // Helper function to build full URLs based on endpoint type
+  buildUrl: (endpoint: string, opts: { forceLegacy?: boolean } = {}): string => {
+    if (!endpoint) throw new Error("Endpoint must be provided");
+    if (endpoint.startsWith("http")) return endpoint;
+
+    if (!opts.forceLegacy && isProxyEndpoint(endpoint)) {
+      const routeKey = extractRouteKey(endpoint);
+      if (!routeKey) throw new Error("Invalid proxy route key");
+      return `${PROXY_BASE_URL}/${routeKey}`;
+    }
+
+    return `${LEGACY_BASE_URL}${ensureLeadingSlash(endpoint)}`;
   },
   
-  // Helper function to build test URLs
+  // Helper function to build test URLs (legacy only)
   buildTestUrl: (endpoint: string): string => {
-    const baseUrl = WEBHOOK_CONFIG.BASE_URL.replace('/webhook', '/webhook-test');
-    return `${baseUrl}${endpoint}`;
+    if (isProxyEndpoint(endpoint)) {
+      const routeKey = extractRouteKey(endpoint);
+      if (!routeKey) throw new Error("Invalid proxy route key");
+      return `${PROXY_BASE_URL}/${routeKey}`;
+    }
+    const baseUrl = LEGACY_BASE_URL.replace('/webhook', '/webhook-test');
+    return `${baseUrl}${ensureLeadingSlash(endpoint)}`;
   },
+
+  isProxyEndpoint,
+  extractRouteKey,
 };
 
-// Map provider to its send-message path
+// Map provider to its send-message route key
 const PROVIDER_SEND_PATHS: Record<string, string> = {
-  telegram: WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.SEND_MESSAGE,
+  telegram: WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.TELEGRAM_SEND_MESSAGE,
   whatsapp: WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.WHATSAPP_SEND_MESSAGE,
+  web: WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.WEB_SEND_MESSAGE,
 };
 
 // Setter to switch the active send-message endpoint based on provider
+const normalizeProvider = (provider: string | null | undefined): string => {
+  const p = (provider || '').toLowerCase();
+  if (p === 'wa' || p === 'waha' || p === 'whatsapp_cloud') return 'whatsapp';
+  if (p === 'tg' || p === 'tele') return 'telegram';
+  return p;
+};
+
 export const setSendMessageProvider = (provider: string) => {
-  const key = (provider || '').toLowerCase();
-  const newPath = PROVIDER_SEND_PATHS[key] || WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.SEND_MESSAGE;
+  const key = normalizeProvider(provider);
+  const newPath = PROVIDER_SEND_PATHS[key] || WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.DEFAULT;
   WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.SEND_MESSAGE = newPath;
+};
+
+// Compute the send-message endpoint without mutating global state
+export const resolveSendMessageEndpoint = (provider: string | null | undefined): string => {
+  const key = normalizeProvider(provider);
+  return PROVIDER_SEND_PATHS[key] || WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.DEFAULT;
 };
 
 export default WEBHOOK_CONFIG;

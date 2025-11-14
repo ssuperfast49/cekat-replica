@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,11 +7,13 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus } from "lucide-react";
-import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
+import useAIProfiles, { AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { callWebhook } from "@/lib/webhookClient";
 import { supabase } from "@/integrations/supabase/client";
 import { useRBAC } from "@/contexts/RBACContext";
 import { getTemperatureValue } from '@/lib/temperatureUtils';
@@ -20,6 +22,7 @@ interface AIAgentSettingsProps {
   agentName: string;
   onBack: () => void;
   profileId?: string; // Optional profile ID to load specific profile
+  initialModelId?: string;
 }
 
 interface ChatMessage {
@@ -126,7 +129,7 @@ const ChatPreview = ({
 
       console.log('Sending request to API:', requestBody);
 
-      const response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_TEST), {
+      const response = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_TEST, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -217,7 +220,7 @@ const ChatPreview = ({
         <div className="flex-1">
           <span className="font-medium">AI Agent Chat</span>
           <div className="text-xs text-muted-foreground">
-            Model: {modelDisplay} • Temp: {responseTemperature || 'Legacy'} ({actualTemperature})
+            Model: {modelDisplay} • Temp: {responseTemperature || 'Legacy'} ({actualTemperature}
             <span className={`ml-2 px-1 rounded text-xs ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
               {isConnected ? 'Connected' : 'Disconnected'}
             </span>
@@ -332,7 +335,15 @@ const ChatPreview = ({
   );
 };
 
-const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps) => {
+// Local helpers for model UI
+const formatProvider = (value: string | null | undefined) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Unknown');
+
+const formatCost = (value: number | null | undefined) => {
+  if (value == null) return 'Pricing on request';
+  return `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: value >= 1 ? 2 : 3 }).format(value)} / 1M`;
+};
+
+const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAgentSettingsProps) => {
   const [activeTab, setActiveTab] = useState("general");
   const [knowledgeTab, setKnowledgeTab] = useState("text");
   const [expandedSections, setExpandedSections] = useState({
@@ -351,6 +362,18 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   const isNewAgent = !profileId;
   const { hasPermission } = useRBAC();
   const canUploadAgentFiles = hasPermission('ai_agent_files.manage') || hasPermission('ai_agent_files.create');
+  
+  const clampNumber = (value: number, minVal: number, maxVal: number) => {
+    if (Number.isNaN(value)) return minVal;
+    return Math.min(maxVal, Math.max(minVal, value));
+  };
+
+  const HISTORY_PRACTICAL_MAX = 24000;
+  const HISTORY_HARD_MAX = 200000;
+  const CONTEXT_PRACTICAL_MAX = 40;
+  const MESSAGE_PRACTICAL_MAX = 1000;
+  const READ_FILE_HARD_MAX = 25;
+  const AUTO_RESOLVE_MAX_MINUTES = 24 * 60; // 24 hours
   
   // Use the custom hook for AI profile management
   const { profile, loading, saving, error, saveProfile } = useAIProfiles(profileId);
@@ -373,39 +396,180 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
   );
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
   // Model handling now uses ai_models (UUID) foreign key
-  const [availableModels, setAvailableModels] = useState<{ id: string; model_name: string; display_name: string | null; provider: string }[]>([]);
+  type AIModelOption = {
+    id: string;
+    model_name: string;
+    display_name: string | null;
+    provider: string;
+    cost_per_1m_tokens?: number | null;
+    description?: string | null;
+    max_context_tokens?: number | null;
+  };
+
+  const [availableModels, setAvailableModels] = useState<AIModelOption[]>([]);
+  const [fallbackModels, setFallbackModels] = useState<AIModelOption[]>([]);
   const [modelId, setModelId] = useState("");
-  const [autoResolveMinutes, setAutoResolveMinutes] = useState<number>((profile as any)?.auto_resolve_after_minutes ?? 0);
+  const [fallbackModelId, setFallbackModelId] = useState("");
+  const [temperature, setTemperature] = useState(() => {
+    const temp = (profile as any)?.temperature ?? 0.3;
+    // Guard: ensure temperature is between 0-1
+    return Math.max(0, Math.min(1, temp));
+  });
+  const [autoResolveMinutesInput, setAutoResolveMinutesInput] = useState<string>("");
   const [enableResolve, setEnableResolve] = useState<boolean>(Boolean((profile as any)?.enable_resolve ?? false));
   // Additional Settings
-  const [historyLimit, setHistoryLimit] = useState<number>((profile as any)?.history_limit ?? 50000);
-  const [readFileLimit, setReadFileLimit] = useState<number>((profile as any)?.read_file_limit ?? 3);
-  const [contextLimit, setContextLimit] = useState<number>((profile as any)?.context_limit ?? 28);
+  const [historyLimitInput, setHistoryLimitInput] = useState<string>("");
+  const [readFileLimit, setReadFileLimit] = useState<number>(() =>
+    clampNumber((profile as any)?.read_file_limit ?? 3, 0, READ_FILE_HARD_MAX)
+  );
+  const [contextLimitInput, setContextLimitInput] = useState<string>("");
   const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
   const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
-  const [messageLimit, setMessageLimit] = useState<number>((profile as any)?.message_limit ?? 1000);
-  
-  // Load available AI models
+  const [messageLimitInput, setMessageLimitInput] = useState<string>("");
+
+  const sanitizeNumericInput = (value: string) => value.replace(/[^0-9]/g, "");
+  const parseNumericInput = (value: string) => {
+    if (!value) return 0;
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Load available AI models (separate regular and fallback)
   useEffect(() => {
     const loadModels = async () => {
       try {
         const { data, error } = await (supabase as any)
           .from('ai_models')
-          .select('id, provider, model_name, display_name, is_active')
+          .select('*')
           .eq('is_active', true)
           .order('display_name', { ascending: true });
         if (error) throw error;
-        const models = (data || []) as any[];
-        setAvailableModels(models as any);
-        setModelId((prev) => prev || (models[0]?.id || ""));
+        const allModels = (data || []) as any[];
+        
+        // Separate regular models from fallback models
+        const regular = allModels.filter((m: any) => (m.display_name || '').toLowerCase() !== 'fallback');
+        const fallback = allModels.filter((m: any) => (m.display_name || '').toLowerCase() === 'fallback');
+        
+        setAvailableModels(regular);
+        setFallbackModels(fallback);
+        
+        // Initialize model IDs if not already set; prefer profile.model_id or initialModelId
+        const preferredPrimary = (profile as any)?.model_id || initialModelId || '';
+        if (!modelId) {
+          if (preferredPrimary && regular.some((m: any) => m.id === preferredPrimary)) {
+            setModelId(preferredPrimary);
+          } else if (regular.length > 0) {
+            setModelId(regular[0]?.id || "");
+          }
+        }
+        if (!fallbackModelId && fallback.length > 0) {
+          setFallbackModelId(fallback[0]?.id || "");
+        }
       } catch (e) {
         console.error('Failed to load ai_models', e);
       }
     };
     loadModels();
-  }, []);
+  }, [profile?.id, initialModelId]);
+
+  // If profile.model_id becomes available later and no selection yet, apply it
+  useEffect(() => {
+    if (!modelId && (profile as any)?.model_id && availableModels.some(m => m.id === (profile as any).model_id)) {
+      setModelId((profile as any).model_id);
+    }
+  }, [availableModels, profile?.model_id]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const resolveMinutes = (profile as any)?.auto_resolve_after_minutes;
+    setAutoResolveMinutesInput(
+      typeof resolveMinutes === 'number' && !Number.isNaN(resolveMinutes)
+        ? resolveMinutes.toString()
+        : '0'
+    );
+    const history = clampNumber((profile as any)?.history_limit ?? HISTORY_PRACTICAL_MAX, 0, HISTORY_HARD_MAX);
+    setHistoryLimitInput(history.toString());
+    const context = clampNumber((profile as any)?.context_limit ?? 28, 0, CONTEXT_PRACTICAL_MAX);
+    setContextLimitInput(context.toString());
+    const message = clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX);
+    setMessageLimitInput(message.toString());
+  }, [profile?.id]);
 
   const selectedModel = availableModels.find(m => m.id === modelId) || null;
+
+  const historyLimitMax = useMemo(() => {
+    const tokens = selectedModel?.max_context_tokens;
+    if (typeof tokens === 'number' && tokens > 0) {
+      return clampNumber(tokens, 0, HISTORY_HARD_MAX);
+    }
+    return HISTORY_HARD_MAX;
+  }, [selectedModel?.max_context_tokens]);
+
+  const contextLimitMax = useMemo(() => {
+    const tokens = selectedModel?.max_context_tokens;
+    if (typeof tokens === 'number' && tokens > 0) {
+      return Math.max(1, Math.floor(tokens / 1000));
+    }
+    return CONTEXT_PRACTICAL_MAX;
+  }, [selectedModel?.max_context_tokens]);
+
+  useEffect(() => {
+    if (!contextLimitInput) return;
+    const numeric = parseInt(contextLimitInput, 10);
+    if (Number.isNaN(numeric)) return;
+    if (numeric > contextLimitMax) {
+      setContextLimitInput(contextLimitMax.toString());
+    }
+  }, [contextLimitInput, contextLimitMax]);
+
+  useEffect(() => {
+    if (!historyLimitInput) return;
+    const numeric = parseInt(historyLimitInput, 10);
+    if (Number.isNaN(numeric)) return;
+    if (numeric > historyLimitMax) {
+      setHistoryLimitInput(historyLimitMax.toString());
+    }
+  }, [historyLimitInput, historyLimitMax]);
+
+  const handleAutoResolveChange = (raw: string) => {
+    const sanitized = sanitizeNumericInput(raw);
+    if (sanitized === "") {
+      setAutoResolveMinutesInput("");
+      return;
+    }
+    const clamped = clampNumber(parseInt(sanitized, 10), 0, AUTO_RESOLVE_MAX_MINUTES);
+    setAutoResolveMinutesInput(clamped.toString());
+  };
+
+  const handleHistoryLimitChange = (raw: string) => {
+    const sanitized = sanitizeNumericInput(raw);
+    if (sanitized === "") {
+      setHistoryLimitInput("");
+      return;
+    }
+    const clamped = clampNumber(parseInt(sanitized, 10), 0, historyLimitMax);
+    setHistoryLimitInput(clamped.toString());
+  };
+
+  const handleContextLimitChange = (raw: string) => {
+    const sanitized = sanitizeNumericInput(raw);
+    if (sanitized === "") {
+      setContextLimitInput("");
+      return;
+    }
+    const clamped = clampNumber(parseInt(sanitized, 10), 0, contextLimitMax);
+    setContextLimitInput(clamped.toString());
+  };
+
+  const handleMessageLimitChange = (raw: string) => {
+    const sanitized = sanitizeNumericInput(raw);
+    if (sanitized === "") {
+      setMessageLimitInput("");
+      return;
+    }
+    const clamped = clampNumber(parseInt(sanitized, 10), 0, MESSAGE_PRACTICAL_MAX);
+    setMessageLimitInput(clamped.toString());
+  };
 
   // Knowledge: Files
   type KnowledgeFileStatus = 'uploading' | 'ready' | 'processing' | 'failed';
@@ -487,7 +651,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       form.append('profile_id', resolvedProfileId);
       form.append('hashFile', contentHash);
 
-      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD), {
+      const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD, {
         method: 'POST',
         body: form,
       });
@@ -748,7 +912,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
       // Call delete webhook if we have a filePath (storage key)
       if (file?.filePath) {
-        const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE), {
+        const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: file.filePath, document_id: (file as any)?.documentId || undefined }),
@@ -810,7 +974,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
         const { orgId, profileId: resolvedProfileId } = await getUploadContext();
         await Promise.all(files.map(async (f) => {
           try {
-            const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE), {
+            const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: f.filePath, document_id: (f as any)?.documentId || undefined })
@@ -913,14 +1077,16 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
       setTransferConditions(profile.transfer_conditions || "");
       setStopAfterHandoff(profile.stop_ai_after_handoff);
       // model is no longer stored on ai_profiles
-      setAutoResolveMinutes((profile as any)?.auto_resolve_after_minutes ?? 0);
+      setAutoResolveMinutesInput(
+        String((profile as any)?.auto_resolve_after_minutes ?? 0)
+      );
       setEnableResolve(Boolean((profile as any)?.enable_resolve ?? false));
-      setHistoryLimit((profile as any)?.history_limit ?? 50000);
-      setReadFileLimit((profile as any)?.read_file_limit ?? 3);
-      setContextLimit((profile as any)?.context_limit ?? 28);
+      setHistoryLimitInput(String(clampNumber((profile as any)?.history_limit ?? HISTORY_PRACTICAL_MAX, 0, HISTORY_HARD_MAX)));
+      setReadFileLimit(clampNumber((profile as any)?.read_file_limit ?? 3, 0, READ_FILE_HARD_MAX));
+      setContextLimitInput(String(clampNumber((profile as any)?.context_limit ?? 28, 0, CONTEXT_PRACTICAL_MAX)));
       setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
       setMessageAwait((profile as any)?.message_await ?? 3);
-      setMessageLimit((profile as any)?.message_limit ?? 1000);
+      setMessageLimitInput(String(clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX)));
       const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
       if (qna && Array.isArray(qna)) {
         const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
@@ -940,11 +1106,17 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
 
   // Save AI profile
   const handleSave = async () => {
+    const autoResolveMinutes = clampNumber(parseNumericInput(autoResolveMinutesInput), 0, AUTO_RESOLVE_MAX_MINUTES);
+    const historyLimit = clampNumber(parseNumericInput(historyLimitInput), 0, historyLimitMax);
+    const contextLimit = clampNumber(parseNumericInput(contextLimitInput), 0, contextLimitMax);
+    const messageLimit = clampNumber(parseNumericInput(messageLimitInput), 0, MESSAGE_PRACTICAL_MAX);
+
     const updateData = {
       system_prompt: systemPrompt,
       welcome_message: welcomeMessage,
       transfer_conditions: transferConditions,
       stop_ai_after_handoff: stopAfterHandoff,
+      model_id: modelId || null,
       name: agentName,
       auto_resolve_after_minutes: autoResolveMinutes,
       enable_resolve: enableResolve,
@@ -1070,6 +1242,142 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                       {isNewAgent ? 'Not saved yet' : `Last Updated: ${profile ? new Date(profile.created_at).toLocaleString() : 'Never'}`}
                     </p>
                   </div>
+                </div>
+              </Card>
+
+              {/* Model Selection */}
+              <Card className="p-4">
+                <div className="space-y-6">
+                  {/* Primary AI Model */}
+                  <div>
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-semibold text-primary">AI Model</h3>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Pilih model AI yang menentukan kecepatan dan kualitas respons.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Choose the balance between speed and intelligence for this agent.
+                        </p>
+                      </div>
+                      {selectedModel && (
+                        <Badge variant="secondary" className="whitespace-nowrap">
+                          {formatProvider((selectedModel as any)?.provider)}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <Select
+                      value={modelId}
+                      onValueChange={setModelId}
+                      disabled={availableModels.length === 0}
+                    >
+                      <SelectTrigger className="w-full py-3">
+                        {selectedModel ? (
+                          <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
+                            <span className="truncate">
+                              {(selectedModel as any)?.display_name || 'Custom'} · {formatCost((selectedModel as any)?.cost_per_1m_tokens)} · {formatProvider((selectedModel as any)?.provider)}
+                            </span>
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="Select an AI model" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent className="bg-background border z-50">
+                        {availableModels.map((model) => {
+                          return (
+                            <SelectItem key={model.id} value={model.id}>
+                              <div className="flex flex-col text-left">
+                                <span className="font-semibold leading-tight">{(model as any)?.display_name || 'Custom'} · {formatCost((model as any)?.cost_per_1m_tokens)}</span>
+                                <span className="text-xs text-muted-foreground leading-tight">
+                                  {(model as any)?.description || 'No description available'}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground font-mono">
+                                  {(model as any)?.model_name} · {formatProvider((model as any)?.provider)}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    {availableModels.length === 0 && (
+                      <p className="text-xs text-destructive mt-2">
+                        No AI models available. Please contact your administrator.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Fallback Model */}
+                  {fallbackModels.length > 0 && (
+                    <div className="border-t pt-6">
+                      <div className="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-semibold text-primary">Fallback Model</h3>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Model yang digunakan secara otomatis jika model utama tidak tersedia.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Automatic backup model used when primary model is unavailable.
+                          </p>
+                        </div>
+                        {fallbackModels.find(m => m.id === fallbackModelId) && (
+                          <Badge variant="secondary" className="whitespace-nowrap">
+                            {formatProvider((fallbackModels.find(m => m.id === fallbackModelId) as any)?.provider)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <Select
+                        value={fallbackModelId}
+                        onValueChange={setFallbackModelId}
+                        disabled={fallbackModels.length === 0}
+                      >
+                        <SelectTrigger className="w-full py-3">
+                          {fallbackModels.find(m => m.id === fallbackModelId) ? (
+                            <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
+                              <span className="truncate">
+                                {(fallbackModels.find(m => m.id === fallbackModelId) as any)?.display_name || 'Custom'} · {formatCost((fallbackModels.find(m => m.id === fallbackModelId) as any)?.cost_per_1m_tokens)} · {formatProvider((fallbackModels.find(m => m.id === fallbackModelId) as any)?.provider)}
+                              </span>
+                            </span>
+                          ) : (
+                            <SelectValue placeholder="Select a fallback model" />
+                          )}
+                        </SelectTrigger>
+                        <SelectContent className="bg-background border z-50">
+                          {fallbackModels.map((model) => {
+                            return (
+                              <SelectItem key={model.id} value={model.id}>
+                                <div className="flex flex-col text-left">
+                                  <span className="font-semibold leading-tight">{(model as any)?.display_name || 'Custom'} · {formatCost((model as any)?.cost_per_1m_tokens)}</span>
+                                  <span className="text-xs text-muted-foreground leading-tight">
+                                    {(model as any)?.description || 'No description available'}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground font-mono">
+                                    {(model as any)?.model_name} · {formatProvider((model as any)?.provider)}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               </Card>
 
@@ -1250,7 +1558,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Enable Auto-resolve</label>
+                      <label className="text-sm font-medium">Enable auto-resolve</label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1266,7 +1574,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   </div>
                   <div className="md:col-span-2">
                     <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Auto-resolve after (minutes)</label>
+                      <label className="text-sm font-medium">Auto-resolve timeout (minutes)</label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1277,13 +1585,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                       </Tooltip>
                     </div>
                     <Input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={autoResolveMinutes}
-                      onChange={(e) =>
-                        setAutoResolveMinutes(Math.max(0, parseInt(e.target.value || '0', 10)))
-                      }
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="e.g. 30"
+                      value={autoResolveMinutesInput}
+                      onChange={(e) => handleAutoResolveChange(e.target.value)}
                       disabled={!enableResolve}
                       className={`mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
                     />
@@ -1293,7 +1600,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">AI History Limit</label>
+                      <label className="text-sm font-medium">Conversation History (tokens)</label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1303,9 +1610,20 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                         </TooltipContent>
                       </Tooltip>
                     </div>
-                    <Input type="number" min={0} value={historyLimit} onChange={(e)=>setHistoryLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder={`Max ${historyLimitMax.toLocaleString()}`}
+                      value={historyLimitInput}
+                      onChange={(e) => handleHistoryLimitChange(e.target.value)}
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {selectedModel?.display_name ? `${selectedModel.display_name} supports up to ${historyLimitMax.toLocaleString()} tokens.` : `Supports up to ${historyLimitMax.toLocaleString()} tokens.`}
+                    </p>
                   </div>
-                  <div>
+                  {/* <div>
                     <div className="flex items-center gap-2">
                       <label className="text-sm font-medium">AI Read File Limit</label>
                       <Tooltip>
@@ -1318,10 +1636,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                       </Tooltip>
                     </div>
                     <Input type="number" min={0} value={readFileLimit} onChange={(e)=>setReadFileLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
-                  </div>
+                  </div> */}
                   <div>
                     <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">AI Context Limit</label>
+                      <label className="text-sm font-medium">Context Window (K tokens)</label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1331,11 +1649,22 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                         </TooltipContent>
                       </Tooltip>
                     </div>
-                    <Input type="number" min={0} value={contextLimit} onChange={(e)=>setContextLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder={`Max ${contextLimitMax}K`}
+                      value={contextLimitInput}
+                      onChange={(e) => handleContextLimitChange(e.target.value)}
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {selectedModel?.display_name ? `${selectedModel.display_name} supports up to ${contextLimitMax}K tokens.` : `Supports up to ${contextLimitMax}K tokens.`}
+                    </p>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">AI Temperature</label>
+                      <label className="text-sm font-medium">Creativity Preset</label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1357,7 +1686,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                   </div> */}
                   <div>
                     <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">AI Message Limit</label>
+                      <label className="text-sm font-medium">AI Message Cap</label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -1367,7 +1696,15 @@ const AIAgentSettings = ({ agentName, onBack, profileId }: AIAgentSettingsProps)
                         </TooltipContent>
                       </Tooltip>
                     </div>
-                    <Input type="number" min={0} value={messageLimit} onChange={(e)=>setMessageLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="e.g. 1000"
+                      value={messageLimitInput}
+                      onChange={(e) => handleMessageLimitChange(e.target.value)}
+                      className="mt-1"
+                    />
                   </div>
                 </div>
                   </CollapsibleContent>
