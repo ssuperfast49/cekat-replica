@@ -69,6 +69,8 @@ const HumanAgents = () => {
   const [tabValue, setTabValue] = useState<'active' | 'pending'>('active');
   const [activeAgentToSuperMap, setActiveAgentToSuperMap] = useState<Record<string, string>>({});
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
+  const [createPermissionKey, setCreatePermissionKey] = useState<string | null>(null);
+  const [checkingCreatePermission, setCheckingCreatePermission] = useState(true);
 
   // Ensure only master agents can create super agents
   useEffect(() => {
@@ -974,6 +976,55 @@ const HumanAgents = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveCreatePermission = async () => {
+      setCheckingCreatePermission(true);
+      try {
+        const { data, error } = await supabase
+          .from('permissions')
+          .select('id, resource, action');
+
+        if (cancelled) return;
+
+        if (error) {
+          console.warn('Failed to fetch permissions table:', error.message || error);
+          setCreatePermissionKey(null);
+          return;
+        }
+
+        console.debug('permissions table entries', data);
+
+        const hasUsersProfileCreate = (data || []).some(
+          (row: any) => String(row?.resource) === 'users_profile' && String(row?.action) === 'create'
+        );
+
+        if (hasUsersProfileCreate) {
+          setCreatePermissionKey('users_profile.create');
+        } else {
+          console.warn('users_profile.create permission not found in permissions table');
+          setCreatePermissionKey(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('Error resolving create agent permission', e);
+          setCreatePermissionKey('super_agents.create');
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingCreatePermission(false);
+        }
+      }
+    };
+
+    resolveCreatePermission();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Compute which agents are visible to the current viewer
   const getVisibleAgents = () => {
     if (hasRole(ROLES.MASTER_AGENT)) return agents;
@@ -1160,19 +1211,25 @@ const HumanAgents = () => {
               </SelectContent>
             </Select>
           </div>
-          <PermissionGate permission={'super_agents.create'}>
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-                  <Plus className="h-4 w-4" />
-                  Create Agent
-                </Button>
-              </DialogTrigger>
-            <DialogContent className="sm:max-w-md bg-background border">
-            <DialogHeader>
-              <DialogTitle>Create New Agent</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
+          {checkingCreatePermission ? (
+            <Button className="gap-2 bg-blue-600 text-white" disabled>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking…
+            </Button>
+          ) : createPermissionKey ? (
+            <PermissionGate permission={createPermissionKey}>
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                    <Plus className="h-4 w-4" />
+                    Create Agent
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md bg-background border">
+                  <DialogHeader>
+                    <DialogTitle>Create New Agent</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="agent-name">Agent Name <span className="text-red-500">*</span></Label>
                 <Input
@@ -1256,29 +1313,44 @@ const HumanAgents = () => {
                 )}
               </div>
               
-              <div className="flex gap-2 pt-4">
-                <Button 
-                  onClick={handleCreateAgent} 
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" 
-                  disabled={creatingAgent || !isFormValid}
-                >
-                  {creatingAgent ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Creating...
-                    </span>
-                  ) : (
-                    "Create Agent"
-                  )}
-                </Button>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="flex-1" disabled={creatingAgent}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-            </DialogContent>
-            </Dialog>
-          </PermissionGate>
+                    <div className="flex gap-2 pt-4">
+                      <Button
+                        onClick={handleCreateAgent}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={creatingAgent || !isFormValid}
+                      >
+                        {creatingAgent ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Creating...
+                          </span>
+                        ) : (
+                          "Create Agent"
+                        )}
+                      </Button>
+                      <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="flex-1" disabled={creatingAgent}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </PermissionGate>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button className="gap-2 bg-blue-600 text-white" disabled>
+                    <Plus className="h-4 w-4" />
+                    Create Agent
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Missing permission: users_profile.create</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
 

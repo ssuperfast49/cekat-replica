@@ -162,6 +162,46 @@ async function checkRateLimit(
 // Track ongoing background refreshes to prevent infinite loops
 const backgroundRefreshes = new Set<string>();
 
+function serializeArg(arg: any): string {
+  if (arg === undefined) return 'u';
+  if (arg === null) return 'n';
+  if (typeof arg === 'function') return 'f';
+  if (typeof arg === 'number' || typeof arg === 'boolean' || typeof arg === 'bigint') {
+    return `p:${String(arg)}`;
+  }
+  if (typeof arg === 'string') return `s:${arg}`;
+  if (arg instanceof Date) return `d:${arg.toISOString()}`;
+  if (Array.isArray(arg)) {
+    return `a:[${arg.map((item) => serializeArg(item)).join(',')}]`;
+  }
+  if (typeof arg === 'object') {
+    const keys = Object.keys(arg).sort();
+    const entries = keys.map((key) => `${key}:${serializeArg((arg as any)[key])}`);
+    return `o:{${entries.join(',')}}`;
+  }
+  return `x:${String(arg)}`;
+}
+
+function serializeArgs(args: any[]): string {
+  if (!args || args.length === 0) {
+    return '';
+  }
+  return args.map((arg) => serializeArg(arg)).join('|');
+}
+
+function hashString(value: string): string {
+  if (!value) {
+    return 'base';
+  }
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    const char = value.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 /**
  * Protected Query Builder Wrapper
  * 
@@ -173,7 +213,8 @@ function wrapQueryBuilder(
   supabaseInstance: SupabaseClient,
   operation: OperationType = 'read',
   endpoint?: string,
-  skipBackgroundRefresh: boolean = false
+  skipBackgroundRefresh: boolean = false,
+  querySignature: string = ''
 ): any {
   // Return a Proxy that intercepts method calls and promise resolution
   return new Proxy(queryBuilder, {
@@ -194,7 +235,8 @@ function wrapQueryBuilder(
         // Wrap with queue, rate limiting, circuit breaker, caching, and metrics
         const protectedPromise = (async () => {
           const startTime = Date.now();
-          const cacheKey = endpoint ? `query:${endpoint}:${currentOperation}` : undefined;
+          const signatureHash = hashString(querySignature);
+          const cacheKey = endpoint ? `query:${endpoint}:${currentOperation}:${signatureHash}` : undefined;
           
           // For read operations, try cache first (before any async calls)
           if (currentOperation === 'read' && cacheKey && !skipBackgroundRefresh) {
@@ -343,9 +385,21 @@ function wrapQueryBuilder(
       if (typeof value === 'function') {
         return (...args: any[]) => {
           const newBuilder = value.apply(target, args);
+          const serializedArgs = serializeArgs(args);
+          const signaturePart = serializedArgs ? `${prop}(${serializedArgs})` : `${prop}()`;
+          const nextSignature = querySignature
+            ? `${querySignature}|${signaturePart}`
+            : signaturePart;
           // Recursively wrap the new builder with updated operation type
           // Preserve skipBackgroundRefresh flag through the chain
-          return wrapQueryBuilder(newBuilder, supabaseInstance, currentOperation, endpoint, skipBackgroundRefresh);
+          return wrapQueryBuilder(
+            newBuilder,
+            supabaseInstance,
+            currentOperation,
+            endpoint,
+            skipBackgroundRefresh,
+            nextSignature
+          );
         };
       }
       

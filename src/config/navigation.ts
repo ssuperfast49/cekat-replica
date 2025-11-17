@@ -3,6 +3,7 @@ import { ROLES } from '@/types/rbac';
 
 export type NavKey = 
   | "chat"
+  | "admin"
   | "analytics"
   | "logs"
   | "contacts"
@@ -36,6 +37,15 @@ export interface NavigationItem {
  * Single source of truth for all navigation items and their permissions
  */
 export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
+  admin: {
+    key: "admin",
+    label: "Admin Panel",
+    icon: SettingsIcon,
+    permissions: ['access_rules.configure'],
+    requireAll: false,
+    requiredRoles: [ROLES.MASTER_AGENT],
+    description: "Master agent control center"
+  },
   chat: {
     key: "chat",
     label: "Chat",
@@ -131,6 +141,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
  * Get navigation items in display order
  */
 export const NAVIGATION_ORDER: NavKey[] = [
+  "admin",
   "chat",
   "analytics", 
   "logs",

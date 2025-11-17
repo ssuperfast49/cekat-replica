@@ -29,7 +29,8 @@ import {
   Send,
   MoreVertical,
   CheckCircle,
-  X
+  X,
+  Trash2
 } from "lucide-react";
 import { useConversations, ConversationWithDetails, MessageWithDetails } from "@/hooks/useConversations";
 import { useContacts } from "@/hooks/useContacts";
@@ -44,6 +45,16 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "
 import { setSendMessageProvider } from "@/config/webhook";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
 import PermissionGate from "@/components/rbac/PermissionGate";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface MessageBubbleProps {
   message: MessageWithDetails;
@@ -147,6 +158,7 @@ export default function ConversationPage() {
     addThreadLabel,
     removeThreadLabel,
     assignThread,
+    deleteThread,
   } = useConversations();
 
   // Use the contacts and human agents hooks
@@ -157,6 +169,9 @@ export default function ConversationPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
   const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
+  const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const canDeleteConversation = hasPermission('contacts.delete');
 
   // Filter conversations based on search query
   const [filters, setFilters] = useState<any>({});
@@ -552,6 +567,36 @@ export default function ConversationPage() {
     }
   };
 
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (!canDeleteConversation) {
+      toast.error('You do not have permission to delete conversations');
+      setDeleteTarget(null);
+      return;
+    }
+    try {
+      setDeleteLoading(true);
+      await deleteThread(deleteTarget.id);
+      toast.success('Conversation deleted');
+      if (selectedThreadId === deleteTarget.id) {
+        setSelectedThreadId(null);
+      }
+      setDeleteTarget(null);
+    } catch (error) {
+      toast.error('Failed to delete conversation');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleOpenDelete = (conversation: ConversationWithDetails) => {
+    if (!canDeleteConversation) {
+      toast.error('You do not have permission to delete conversations');
+      return;
+    }
+    setDeleteTarget(conversation);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -646,30 +691,53 @@ export default function ConversationPage() {
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
                 {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).map(conv => (
-                  <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}> 
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={conv.channel_logo_url || ''} />
-                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
-                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span className="text-xs text-gray-600 truncate">
-                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                            </span>
+                  <div key={conv.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={()=>handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}
+                    > 
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={conv.channel_logo_url || ''} />
+                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
+                            <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
+                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                              <span className="text-xs text-gray-600 truncate">
+                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                              </span>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex flex-col items-end shrink-0 w-[120px]">
+                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                          <div className="mt-1">{renderStatus(conv)}</div>
+                        </div>
                       </div>
-                      <div className="flex flex-col items-end shrink-0 w-[120px]">
-                        <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                        <div className="mt-1">{renderStatus(conv)}</div>
-                      </div>
-                    </div>
-                  </button>
+                    </button>
+                    {!conv.contact_id && canDeleteConversation && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={(event)=>{ event.stopPropagation(); handleOpenDelete(conv); }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete conversation</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
                 ))}
                </div>
             </div>
@@ -678,30 +746,53 @@ export default function ConversationPage() {
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
                 {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).map(conv => (
-                  <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src="" />
-                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                          <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
-                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span className="text-xs text-gray-600 truncate">
-                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                            </span>
+                  <div key={conv.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={()=>handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src="" />
+                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
+                            <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
+                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                              <span className="text-xs text-gray-600 truncate">
+                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                              </span>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex flex-col items-end shrink-0 w-[120px]">
+                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                          <div className="mt-1">{renderStatus(conv)}</div>
+                        </div>
                       </div>
-                      <div className="flex flex-col items-end shrink-0 w-[120px]">
-                        <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                        <div className="mt-1">{renderStatus(conv)}</div>
-                      </div>
-                    </div>
-                  </button>
+                    </button>
+                    {!conv.contact_id && canDeleteConversation && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={(event)=>{ event.stopPropagation(); handleOpenDelete(conv); }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete conversation</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
                 ))}
                </div>
             </div>
@@ -711,35 +802,78 @@ export default function ConversationPage() {
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
                 {filteredConversations.filter(c=>c.status === 'closed').map(conv => (
-                  <button key={conv.id} type="button" onClick={()=>handleConversationSelect(conv.id)} className={`w-full p-3 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src="" />
-                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                          <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
-                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span className="text-xs text-gray-600 truncate">
-                              {conv.channel?.display_name ||  'Unknown'}
-                            </span>
+                  <div key={conv.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={()=>handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src="" />
+                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
+                            <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
+                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                              <span className="text-xs text-gray-600 truncate">
+                                {conv.channel?.display_name ||  'Unknown'}
+                              </span>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex flex-col items-end shrink-0 w-[120px]">
+                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                          <div className="mt-1">{renderStatus(conv)}</div>
+                        </div>
                       </div>
-                      <div className="flex flex-col items-end shrink-0 w-[120px]">
-                        <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                        <div className="mt-1">{renderStatus(conv)}</div>
-                      </div>
-                    </div>
-                  </button>
+                    </button>
+                    {!conv.contact_id && canDeleteConversation && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={(event)=>{ event.stopPropagation(); handleOpenDelete(conv); }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete conversation</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
                 ))}
                </div>
             </div>
           </TabsContent>
         </Tabs>
+        <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This conversation is not linked to a saved contact. Deleting it will remove all associated messages permanently.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={handleConfirmDelete}
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? 'Deleting…' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </aside>
 
       {/* Main Content styled like ChatMock */}

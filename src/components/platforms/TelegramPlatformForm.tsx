@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { callWebhook } from "@/lib/webhookClient";
 import { usePlatforms } from "@/hooks/usePlatforms";
 
 interface TelegramPlatformFormProps {
@@ -129,9 +130,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         platform_type: 'telegram'
       };
 
-      const webhookUrl = WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.CREATE_PLATFORM);
-      
-      const webhookResponse = await fetch(webhookUrl, {
+      const webhookResponse = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.CREATE_PLATFORM, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

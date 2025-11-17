@@ -11,6 +11,7 @@ export interface AIProfile {
   transfer_conditions: string;
   stop_ai_after_handoff: boolean;
   response_temperature?: string | null;
+  model_id?: string | null;
   created_at: string;
   qna?: ({ q: string; a: string } | { question: string; answer: string })[] | null;
   auto_resolve_after_minutes?: number | null;
@@ -164,3 +165,5 @@ export const useAIProfiles = (profileId?: string) => {
     deleteProfile,
   };
 };
+
+export default useAIProfiles;

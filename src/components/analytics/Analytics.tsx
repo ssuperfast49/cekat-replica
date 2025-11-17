@@ -11,7 +11,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase, logAction, protectedSupabase } from "@/lib/supabase";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
 import { HelpCircle, Database, Trash2, AlertTriangle, CheckCircle, Shield } from "lucide-react";
-import CircuitBreakerStatus from "@/components/admin/CircuitBreakerStatus";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { useRBAC } from "@/contexts/RBACContext";
 
@@ -149,17 +148,7 @@ export default function Analytics() {
     cache_hit_percentage: number;
   } | null>(null);
   
-  // Data retention & GDPR state
-  const [retentionDays, setRetentionDays] = useState<number | null>(null);
-  const [showRetentionModal, setShowRetentionModal] = useState(false);
-  const [editRetentionDays, setEditRetentionDays] = useState<number>(90);
-  const [showGdprModal, setShowGdprModal] = useState(false);
-  const [gdprContactId, setGdprContactId] = useState<string>("");
-  const [cleanupResult, setCleanupResult] = useState<any>(null);
-  const [cleanupLoading, setCleanupLoading] = useState(false);
-  const [gdprLoading, setGdprLoading] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string>("");
-  const [errorMessage, setErrorMessage] = useState<string>("");
+  // Data retention & GDPR moved to Admin Panel
 
   const formatHandoverLabel = (reason?: string | null) => {
     if (!reason || reason.trim().length === 0) return '(unspecified)';
@@ -403,169 +392,13 @@ export default function Analytics() {
     }
   };
 
-  // Fetch retention settings
-  const fetchRetentionSettings = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
-      const { data: membership } = await supabase
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-      
-      if (membership?.org_id) {
-        const { data: settings } = await protectedSupabase
-          .from('org_settings')
-          .select('retention_days')
-          .eq('org_id', membership.org_id)
-          .maybeSingle();
-        
-        setRetentionDays(settings?.retention_days ?? 90);
-        setEditRetentionDays(settings?.retention_days ?? 90);
-      }
-    } catch (error) {
-      console.error('Failed to fetch retention settings:', error);
-    }
-  };
-
-  // Save retention settings
-  const saveRetentionDays = async () => {
-    try {
-      setCleanupLoading(true);
-      setErrorMessage("");
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      
-      const { data: membership } = await supabase
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-      
-      if (!membership?.org_id) throw new Error('Organization not found');
-      
-      const { error } = await protectedSupabase
-        .from('org_settings')
-        .upsert({
-          org_id: membership.org_id,
-          retention_days: editRetentionDays,
-        }, {
-          onConflict: 'org_id'
-        });
-      
-      if (error) throw error;
-      
-      setRetentionDays(editRetentionDays);
-      setShowRetentionModal(false);
-      setSuccessMessage(`Retention period updated to ${editRetentionDays} days`);
-      setTimeout(() => setSuccessMessage(""), 5000);
-      
-      try { await logAction({ action: 'retention.update', resource: 'org_settings', context: { retention_days: editRetentionDays } }); } catch {}
-    } catch (error: any) {
-      setErrorMessage(error?.message || 'Failed to update retention settings');
-      setTimeout(() => setErrorMessage(""), 5000);
-    } finally {
-      setCleanupLoading(false);
-    }
-  };
-
-  // Manual cleanup trigger
-  const triggerCleanup = async () => {
-    try {
-      setCleanupLoading(true);
-      setErrorMessage("");
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      
-      const { data: membership } = await supabase
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-      
-      if (!membership?.org_id) throw new Error('Organization not found');
-      
-      const { data, error } = await protectedSupabase.rpc('cleanup_old_chat_data', {
-        p_org_id: membership.org_id
-      });
-      
-      if (error) throw error;
-      
-      setCleanupResult(data);
-      setSuccessMessage(`Cleanup completed: ${data?.threads_deleted || 0} threads, ${data?.messages_deleted || 0} messages deleted`);
-      setTimeout(() => setSuccessMessage(""), 8000);
-      
-      try { await logAction({ action: 'retention.cleanup', resource: 'chat_data', context: data }); } catch {}
-    } catch (error: any) {
-      setErrorMessage(error?.message || 'Failed to run cleanup');
-      setTimeout(() => setErrorMessage(""), 5000);
-    } finally {
-      setCleanupLoading(false);
-    }
-  };
-
-  // GDPR deletion
-  const executeGdprDeletion = async () => {
-    if (!gdprContactId.trim()) {
-      setErrorMessage('Please enter a contact ID');
-      return;
-    }
-    
-    try {
-      setGdprLoading(true);
-      setErrorMessage("");
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      
-      const { data: membership } = await supabase
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-      
-      if (!membership?.org_id) throw new Error('Organization not found');
-      
-      const { data, error } = await protectedSupabase.rpc('gdpr_delete_user_data', {
-        p_contact_id: gdprContactId.trim(),
-        p_org_id: membership.org_id
-      });
-      
-      if (error) throw error;
-      
-      setSuccessMessage(`GDPR deletion completed: ${data?.threads_deleted || 0} threads, ${data?.messages_deleted || 0} messages, ${data?.contact_deleted || 0} contacts deleted`);
-      setShowGdprModal(false);
-      setGdprContactId("");
-      setTimeout(() => setSuccessMessage(""), 8000);
-      
-      try { await logAction({ action: 'gdpr.delete_request', resource: 'contact', resourceId: gdprContactId, context: data }); } catch {}
-      
-      // Refresh metrics
-      fetchMetrics();
-    } catch (error: any) {
-      setErrorMessage(error?.message || 'Failed to execute GDPR deletion');
-      setTimeout(() => setErrorMessage(""), 5000);
-    } finally {
-      setGdprLoading(false);
-    }
-  };
 
   // Single source of truth for fetching; avoids double calls on mount
   useEffect(() => {
     const run = () => {
       fetchMetrics();
       fetchDatabaseStats();
-      if (hasPermission('access_rules.configure')) {
-        fetchRetentionSettings();
-      }
+      // Retention & GDPR moved to Admin Panel
     };
     run();
   }, [from, to, channelFilter]);
@@ -674,19 +507,6 @@ export default function Analytics() {
               </TooltipTrigger>
               <TooltipContent>
                 <p>Lihat statistik penggunaan database dan ukuran tabel</p>
-              </TooltipContent>
-            </Tooltip>
-          </TabsTrigger>
-          <TabsTrigger 
-            value="circuit-breaker"
-            className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>Circuit Breaker</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Lihat status dan metrik circuit breaker untuk perlindungan database</p>
               </TooltipContent>
             </Tooltip>
           </TabsTrigger>
@@ -799,121 +619,7 @@ export default function Analytics() {
             </CardContent>
           </Card>
 
-          {/* Data Retention & GDPR Controls - Admin Only */}
-          <PermissionGate permission="access_rules.configure">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Data Retention Settings */}
-              <Card className="border-orange-200 dark:border-orange-800">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
-                    <Database className="h-5 w-5" />
-                    <LabelWithHelp 
-                      label="Data Retention Policy" 
-                      description="Atur durasi penyimpanan data chat dan media. Data yang lebih tua dari periode retensi akan otomatis dihapus oleh job harian (setiap jam 2 pagi UTC). Default: 90 hari."
-                    />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium">Retention Period (days)</Label>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Input
-                        type="number"
-                        min="1"
-                        max="365"
-                        value={retentionDays ?? 90}
-                        disabled
-                        className="flex-1"
-                      />
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          setEditRetentionDays(retentionDays ?? 90);
-                          setShowRetentionModal(true);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Current: {retentionDays ?? 90} days. Chats older than this will be automatically deleted.
-                    </p>
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={triggerCleanup}
-                    disabled={cleanupLoading}
-                  >
-                    {cleanupLoading ? 'Running Cleanup...' : 'Run Cleanup Now'}
-                  </Button>
-                  {cleanupResult && (
-                    <div className="text-xs bg-muted p-2 rounded">
-                      Last cleanup: {cleanupResult.threads_deleted} threads, {cleanupResult.messages_deleted} messages, {cleanupResult.contacts_deleted} contacts
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* GDPR Deletion */}
-              <Card className="border-red-200 dark:border-red-800">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
-                    <Shield className="h-5 w-5" />
-                    <LabelWithHelp 
-                      label="GDPR/PDPA Right to Erasure" 
-                      description="Hapus semua data pengguna sesuai permintaan GDPR/PDPA. Ini akan menghapus semua thread, pesan, dan kontak untuk ID kontak yang ditentukan. Tindakan ini TIDAK DAPAT DIBATALKAN."
-                    />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium">Contact ID</Label>
-                    <Input
-                      type="text"
-                      placeholder="Enter contact UUID"
-                      value={gdprContactId}
-                      onChange={(e) => setGdprContactId(e.target.value)}
-                      className="mt-2"
-                    />
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Enter the contact ID (UUID) gotten from contact detail to delete all associated data permanently.
-                    </p>
-                  </div>
-                  <Button 
-                    variant="destructive" 
-                    className="w-full"
-                    onClick={() => setShowGdprModal(true)}
-                    disabled={!gdprContactId.trim() || gdprLoading}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete User Data
-                  </Button>
-                  <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded p-2">
-                    <p className="text-xs text-red-700 dark:text-red-300">
-                      <AlertTriangle className="h-3 w-3 inline mr-1" />
-                      <strong>Warning:</strong> This action permanently deletes all data and cannot be undone.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Success/Error Messages */}
-            {successMessage && (
-              <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <p className="text-sm text-green-700 dark:text-green-300">{successMessage}</p>
-              </div>
-            )}
-            {errorMessage && (
-              <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
-              </div>
-            )}
-          </PermissionGate>
+          {/* Admin-only retention & GDPR moved to Admin Panel */}
         </TabsContent>
 
         <TabsContent value="ai-agent" className="space-y-6">
@@ -1495,9 +1201,6 @@ export default function Analytics() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="circuit-breaker" className="space-y-6">
-          <CircuitBreakerStatus />
-        </TabsContent>
       </Tabs>
       <Dialog open={drillOpen} onOpenChange={setDrillOpen}>
         <DialogContent className="max-w-3xl">
@@ -1529,87 +1232,7 @@ export default function Analytics() {
         </DialogContent>
       </Dialog>
 
-      {/* Retention Settings Modal */}
-      <Dialog open={showRetentionModal} onOpenChange={setShowRetentionModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-orange-500" />
-              Configure Data Retention
-            </DialogTitle>
-            <DialogDescription>
-              Set how many days to retain chat data. Data older than this period will be automatically deleted.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div>
-              <Label htmlFor="retention-days">Retention Period (days)</Label>
-              <Input
-                id="retention-days"
-                type="number"
-                min="1"
-                max="365"
-                value={editRetentionDays}
-                onChange={(e) => setEditRetentionDays(parseInt(e.target.value) || 90)}
-                className="mt-2"
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                Minimum: 1 day, Maximum: 365 days. Default: 90 days.
-              </p>
-            </div>
-            <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3">
-              <p className="text-xs text-orange-700 dark:text-orange-300">
-                <AlertTriangle className="h-3 w-3 inline mr-1" />
-                Automatic cleanup runs daily at 2 AM UTC. You can also trigger manual cleanup from the main panel.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRetentionModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={saveRetentionDays} disabled={cleanupLoading}>
-              {cleanupLoading ? 'Saving...' : 'Save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* GDPR Deletion Confirmation Modal */}
-      <Dialog open={showGdprModal} onOpenChange={setShowGdprModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertTriangle className="h-5 w-5" />
-              Confirm GDPR Data Deletion
-            </DialogTitle>
-            <DialogDescription>
-              This action will permanently delete all data associated with contact ID: <code className="bg-muted px-1 rounded">{gdprContactId}</code>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-2">
-              <p className="font-semibold text-sm text-red-800 dark:text-red-200">This will delete:</p>
-              <ul className="text-sm text-red-700 dark:text-red-300 space-y-1 list-disc list-inside">
-                <li>All threads/conversations</li>
-                <li>All messages</li>
-                <li>The contact record</li>
-              </ul>
-              <p className="text-xs text-red-600 dark:text-red-400 mt-3 font-semibold">
-                ⚠️ This action CANNOT be undone!
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowGdprModal(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={executeGdprDeletion} disabled={gdprLoading}>
-              {gdprLoading ? 'Deleting...' : 'Confirm Deletion'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Retention & GDPR modals moved to Admin Panel */}
     </div>
   );
 }

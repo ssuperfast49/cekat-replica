@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { callWebhook } from "@/lib/webhookClient";
 
 interface WhatsAppPlatformFormProps {
   isOpen: boolean;
@@ -92,7 +93,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       setQrImageUrl(null);
       
       // 1) Create a WAHA session first to ensure an empty session exists
-      const createSessionUrl = 'https://primary-production-376c.up.railway.app/webhook/create_session';
+      const createSessionEndpoint = WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.CREATE_SESSION;
       const webhookUrlForWaha = 'https://primary-production-376c.up.railway.app/webhook/2f6f9767-c3cb-4af3-b749-a496eefc2b74/waha';
       const sName = (formData.platformName || 'default').replace(/\s/g, '');
       const sessionPayload = {
@@ -144,7 +145,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       } as const;
 
       try {
-        const createRes = await fetch(createSessionUrl, {
+        const createRes = await callWebhook(createSessionEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(sessionPayload),
@@ -162,7 +163,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       }
 
       // 2) Fetch QR for login
-      const response = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_LOGIN_QR), {
+      const response = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.GET_LOGIN_QR, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

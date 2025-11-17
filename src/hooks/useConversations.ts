@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
+import { defaultFallbackHandler } from '@/lib/fallbackHandler';
 import { waitForAuthReady } from '@/lib/authReady';
 import WEBHOOK_CONFIG from '@/config/webhook';
+import { callWebhook } from '@/lib/webhookClient';
+import { resolveSendMessageEndpoint } from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 
 // Audio notification system with debouncing
@@ -364,10 +367,10 @@ export const useConversations = () => {
     try {
       setError(null);
 
-      // First, get the thread details to extract channel_id and contact_id
+      // First, get the thread details to extract channel_id, contact_id, and provider
       const { data: threadData, error: threadError } = await supabase
         .from('threads')
-        .select('channel_id, contact_id')
+        .select('channel_id, contact_id, channels(provider)')
         .eq('id', threadId)
         .single();
 
@@ -427,8 +430,13 @@ export const useConversations = () => {
         console.warn('Error fetching contact details:', contactError);
       }
 
-      // Send webhook to external service
+      // Resolve endpoint by provider (avoid relying on global mutable state)
       try {
+        // Prefer provider from our in-memory conversations list to avoid extra DB calls
+        const conv = conversations.find(c => c.id === threadId);
+        const provider = (conv?.channel?.provider || (threadData as any)?.channels?.provider) as string | undefined;
+        const endpoint = resolveSendMessageEndpoint(provider);
+
         const webhookPayload = {
           channel_id: threadData.channel_id,
           contact_id: threadData.contact_id,
@@ -440,7 +448,7 @@ export const useConversations = () => {
           role: role
         };
 
-        const webhookResponse = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.MESSAGE.SEND_MESSAGE), {
+        const webhookResponse = await callWebhook(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -732,6 +740,41 @@ export const useConversations = () => {
     }
   };
 
+  const deleteThread = async (threadId: string) => {
+    try {
+      setError(null);
+
+      const { error } = await supabase
+        .from('threads')
+        .delete()
+        .eq('id', threadId);
+
+      if (error) throw error;
+
+      defaultFallbackHandler.invalidatePattern('^query:threads');
+
+      setConversations(prev => {
+        const next = prev.filter(conv => conv.id !== threadId);
+        try { localStorage.setItem('app.cachedConversations', JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      if (selectedThreadId === threadId) {
+        setSelectedThreadId(null);
+        setMessages([]);
+      }
+
+      try { await logAction({ action: 'thread.delete', resource: 'thread', resourceId: threadId }); } catch {}
+
+      await fetchConversations();
+
+    } catch (error) {
+      console.error('Error deleting thread:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete conversation');
+      throw error;
+    }
+  };
+
   // Initial fetch on mount - guard against duplicate calls
   useEffect(() => {
     // Hydrate from cache for instant UI
@@ -926,6 +969,7 @@ export const useConversations = () => {
     removeThreadParticipant,
     addThreadLabel,
     removeThreadLabel,
+    deleteThread,
     // Auto-resolve functionality
     checkAutoResolve,
   };

@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Send } from "lucide-react";
 import WEBHOOK_CONFIG from "@/config/webhook";
+import { callWebhook } from "@/lib/webhookClient";
 import { supabase } from "@/lib/supabase";
 
 declare global {
@@ -473,7 +474,7 @@ export default function LiveChat() {
 
       
       
-      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS), {
+      const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
