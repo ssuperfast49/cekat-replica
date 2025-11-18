@@ -9,6 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { protectedSupabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
+import AiPausedModal from "@/components/AiPausedModal";
 import ConversationPage from "@/components/chat/ConversationPage";
 import Contacts from "@/components/contacts/Contacts";
 import ConnectedPlatforms from "@/components/platforms/ConnectedPlatforms";
@@ -87,7 +90,14 @@ const Index = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { getDefaultNavItem, getNavItem, canAccessNavItem } = useNavigation();
-  const { loading: rbacLoading } = useRBAC();
+  const { loading: rbacLoading, hasRole } = useRBAC();
+
+  // Org-wide AI paused modal state
+  const [showAiPausedModal, setShowAiPausedModal] = useState(false);
+  const [orgAiPaused, setOrgAiPaused] = useState<boolean>(false);
+  const [orgAiPausedAt, setOrgAiPausedAt] = useState<string | null>(null);
+  const [orgAiPausedByName, setOrgAiPausedByName] = useState<string | null>(null);
+  const AI_ACK_KEY = 'synka_ai_paused_ack';
 
   const validMenus: NavKey[] = NAVIGATION_ORDER;
 
@@ -146,6 +156,89 @@ const Index = () => {
       return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     }
     return email.substring(0, 2).toUpperCase();
+  };
+
+  // Fetch org ai_paused status and resolve paused-by name
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const { data: auth } = await supabase.auth.getUser();
+        const userId = auth?.user?.id;
+        if (!userId) return;
+        const { data: membership } = await supabase
+          .from('org_members')
+          .select('org_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        const orgId = membership?.org_id as string | null;
+        if (!orgId) return;
+        const { data: settings, error } = await protectedSupabase
+          .from('org_settings')
+          .select('ai_paused, ai_paused_at, ai_paused_by_user_id')
+          .eq('org_id', orgId)
+          .maybeSingle();
+        if (error) throw error;
+        const aiPaused = !!settings?.ai_paused;
+        setOrgAiPaused(aiPaused);
+        setOrgAiPausedAt(settings?.ai_paused_at ?? null);
+
+        const byId = settings?.ai_paused_by_user_id as string | null;
+        if (byId) {
+          let display: string | null = null;
+          try {
+            const { data: prof } = await protectedSupabase
+              .from('users_profile')
+              .select('user_id, display_name')
+              .eq('user_id', byId)
+              .maybeSingle();
+            display = (prof?.display_name as string | null) ?? null;
+            if (!display) {
+              const { data: vuser } = await protectedSupabase
+                .from('v_users')
+                .select('id, email')
+                .eq('id', byId)
+                .maybeSingle();
+              display = (vuser?.email as string | null) ?? byId;
+            }
+          } catch {
+            display = byId;
+          }
+          setOrgAiPausedByName(display);
+        } else {
+          setOrgAiPausedByName(null);
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    };
+    fetchStatus();
+  }, []);
+
+  // Control modal visibility once per browser session
+  useEffect(() => {
+    if (orgAiPaused) {
+      const ack = localStorage.getItem(AI_ACK_KEY);
+      if (!ack) {
+        setShowAiPausedModal(true);
+      }
+    } else {
+      // Pause lifted, clear ack so next pause will show modal again
+      localStorage.removeItem(AI_ACK_KEY);
+      setShowAiPausedModal(false);
+    }
+  }, [orgAiPaused]);
+
+  const acknowledgeAiPaused = () => {
+    try {
+      localStorage.setItem(AI_ACK_KEY, Date.now().toString());
+    } catch {}
+    setShowAiPausedModal(false);
+  };
+
+  const openAdminPanelFromModal = () => {
+    setActive("admin");
+    updateMenuParam("admin");
   };
 
   // If account is deactivated, don't render the main content to prevent API calls
@@ -378,6 +471,16 @@ const Index = () => {
           </section>
         </main>
       </div>
+
+      {/* Org-wide AI Paused Modal */}
+      <AiPausedModal
+        open={showAiPausedModal}
+        onClose={acknowledgeAiPaused}
+        isMasterAgent={hasRole(ROLES.MASTER_AGENT)}
+        pausedByName={orgAiPausedByName}
+        pausedAt={orgAiPausedAt}
+        onOpenAdminPanel={hasRole(ROLES.MASTER_AGENT) ? openAdminPanelFromModal : undefined}
+      />
     </div>
   );
 };

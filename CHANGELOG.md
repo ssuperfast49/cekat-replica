@@ -1,4 +1,49 @@
 # Change Log
+# [0.0.43] FE WEB CEKAT 2025-11-18
+### AI Pause Notification System
+- **New AI Paused Modal Component**: Created dedicated modal for org-wide AI pause notifications
+  - Modal displays when AI responses are paused across all channels
+  - Shows who paused AI and when (for master agents)
+  - Different messaging for master agents vs regular agents
+  - Master agents can directly navigate to Admin Panel from modal
+  - Modal appears once per browser session (acknowledgment stored in localStorage)
+  - Integrated into main Index page with automatic status checking
+
+- **Org-Wide AI Pause Status Monitoring**: Enhanced AI pause state management
+  - Automatic fetching of org-wide AI pause status on app load
+  - Resolves paused-by user name from profile or email
+  - Modal auto-dismisses when AI pause is lifted
+  - Session-based acknowledgment prevents modal spam
+
+### Conversation Page UI Improvements
+- **Fixed Tab Color Styling**: Resolved issue where selected tab colors were not displaying
+  - Restructured Tooltip/TabsTrigger relationship (Tooltip now inside TabsTrigger)
+  - Assigned tab: Blue background and text when active
+  - Unassigned tab: Red background and text when active
+  - Resolved tab: Green background and text when active
+  - Proper `data-[state=active]` attribute application from Radix UI
+
+- **Improved Conversation Sorting**: Enhanced conversation list sorting logic
+  - Removed unreplied priority sorting (now purely by latest activity)
+  - Conversations sorted by `last_msg_at` timestamp (most recent first)
+  - Fallback to `created_at` if `last_msg_at` unavailable
+  - More intuitive ordering based on actual activity
+
+- **Enhanced Timestamp Display**: Improved date/time formatting in conversation list
+  - Added "Yesterday" display for messages from previous day
+  - Changed date format from `dd/MM/yy` to `MM/dd/yyyy` for better clarity
+  - Better hour-based calculations for relative time display
+  - More accurate time representation
+
+- **TypeScript Fixes**: Resolved type errors
+  - Removed reference to non-existent `updated_at` field on `ConversationWithDetails`
+  - Fixed sorting logic to use only available timestamp fields
+
+### Code Quality Improvements
+- **Conversation Hooks Cleanup**: Minor refactoring in `useConversations` hook
+  - Code cleanup and optimization
+  - Improved type safety
+
 # [0.0.42] FE WEB CEKAT 2025-11-03
 ### Admin Panel & Centralized Management
 - **New Admin Panel Component**: Created centralized admin control center for master agents
