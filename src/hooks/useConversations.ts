@@ -158,15 +158,10 @@ export const useConversations = () => {
         return conv;
       });
       
-      // Re-sort conversations after update (like WhatsApp)
+      // Re-sort conversations after update so newest activity is always first
       const sorted = updated.sort((a, b) => {
-        // First, prioritize unreplied threads
-        if (a.unreplied && !b.unreplied) return -1;
-        if (!a.unreplied && b.unreplied) return 1;
-        
-        // Then sort by last_msg_at (most recent first)
-        const aTime = new Date(a.last_msg_at).getTime();
-        const bTime = new Date(b.last_msg_at).getTime();
+        const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
+        const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
       });
       
@@ -275,16 +270,10 @@ export const useConversations = () => {
         } as ConversationWithDetails;
       });
 
-      // Sort conversations by most recent activity (like WhatsApp)
-      // Priority: 1) Unreplied threads first, 2) Then by last_msg_at (most recent first)
+      // Sort conversations by most recent activity so outbound replies bubble to the top
       const sortedData = transformedData.sort((a, b) => {
-        // First, prioritize unreplied threads
-        if (a.unreplied && !b.unreplied) return -1;
-        if (!a.unreplied && b.unreplied) return 1;
-        
-        // Then sort by last_msg_at (most recent first)
-        const aTime = new Date(a.last_msg_at).getTime();
-        const bTime = new Date(b.last_msg_at).getTime();
+        const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
+        const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
       });
 

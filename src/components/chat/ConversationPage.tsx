@@ -228,12 +228,11 @@ export default function ConversationPage() {
         return ts >= from && ts <= to;
       });
     }
-    // Sort: unreplied first, then by last_msg_at desc
+    // Sort purely by latest activity so most recent conversation (incoming or outgoing) goes to the top
     list = [...list].sort((a, b) => {
-      const aUn = (a as any).unreplied ? 1 : 0;
-      const bUn = (b as any).unreplied ? 1 : 0;
-      if (aUn !== bUn) return bUn - aUn; // true first
-      return new Date(b.last_msg_at).getTime() - new Date(a.last_msg_at).getTime();
+      const aTs = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
+      const bTs = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
+      return bTs - aTs;
     });
     return list;
   }, [conversations, query, filters, contactId]);
@@ -523,20 +522,21 @@ export default function ConversationPage() {
     if (!iso) return '';
     const d = new Date(iso);
     const now = new Date();
-    const sameDay = d.toDateString() === now.toDateString();
     const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (sameDay) {
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours < 24 && diffHours >= 0) {
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    if (diffDays < 7) {
-      return d.toLocaleDateString(undefined, { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+
+    if (diffHours >= 24 && diffHours < 48) {
+      return 'Yesterday';
     }
-    // dd/MM/yy
-    const dd = String(d.getDate()).padStart(2, '0');
+
     const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yy = String(d.getFullYear()).slice(2);
-    return `${dd}/${mm}/${yy}`;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
   };
 
   const renderStatus = (conv: ConversationWithDetails) => {
@@ -635,57 +635,61 @@ export default function ConversationPage() {
         </div>
         <Tabs value={activeTab} onValueChange={(v)=>{ if (v !== activeTab) setActiveTab(v as any); }} className="w-full">
           <TabsList className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <TabsTrigger
-                  value="assigned"
-                  className="text-xs border-b-2 border-transparent data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:border-blue-500"
-                >
-                  Assigned
-                  <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                    {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).length}
-                  </Badge>
-                </TabsTrigger>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Lihat percakapan yang ditugaskan ke agen</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <TabsTrigger
-                  value="unassigned"
-                  className="text-xs border-b-2 border-transparent data-[state=active]:bg-red-50 data-[state=active]:text-red-600 data-[state=active]:border-red-500"
-                >
-                  Unassigned
-                  <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                    {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).length}
-                  </Badge>
-                </TabsTrigger>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Lihat percakapan yang menunggu penugasan</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <TabsTrigger
-                  value="resolved"
-                  className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
-                  aria-label="Resolved"
-                >
+            <TabsTrigger
+              value="assigned"
+              className="text-xs border-b-2 border-transparent data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:border-blue-500"
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex items-center">
+                    Assigned
+                    <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
+                      {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).length}
+                    </Badge>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Lihat percakapan yang ditugaskan ke agen</p>
+                </TooltipContent>
+              </Tooltip>
+            </TabsTrigger>
+            <TabsTrigger
+              value="unassigned"
+              className="text-xs border-b-2 border-transparent data-[state=active]:bg-red-50 data-[state=active]:text-red-600 data-[state=active]:border-red-500"
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex items-center">
+                    Unassigned
+                    <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
+                      {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).length}
+                    </Badge>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Lihat percakapan yang menunggu penugasan</p>
+                </TooltipContent>
+              </Tooltip>
+            </TabsTrigger>
+            <TabsTrigger
+              value="resolved"
+              className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
+              aria-label="Resolved"
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <div className="flex items-center gap-1">
                     <CheckCircle className="h-4 w-4" />
                     <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
                       {filteredConversations.filter(c=>c.status === 'closed').length}
                     </Badge>
                   </div>
-                </TabsTrigger>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Lihat percakapan yang telah diselesaikan</p>
-              </TooltipContent>
-            </Tooltip>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Lihat percakapan yang telah diselesaikan</p>
+                </TooltipContent>
+              </Tooltip>
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="assigned" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">

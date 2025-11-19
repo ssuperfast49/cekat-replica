@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { AlertTriangle, Shield, Users, PlugZap, ClipboardList, BarChart2, Settings, Eraser, Trash2, ShieldCheck, Key } from "lucide-react";
+import { AlertTriangle, Shield, Users, PlugZap, ClipboardList, BarChart2, Settings, Eraser, Trash2, ShieldCheck, Key, PauseCircle, PlayCircle } from "lucide-react";
 import CircuitBreakerStatus from "@/components/admin/CircuitBreakerStatus";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import RoleGate from "@/components/rbac/RoleGate";
@@ -18,6 +18,7 @@ import { useContacts } from "@/hooks/useContacts";
 import { protectedSupabase, logAction } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -33,6 +34,15 @@ export default function AdminPanel() {
   const [cleanupResult, setCleanupResult] = useState<any>(null);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [gdprLoading, setGdprLoading] = useState(false);
+  // AI Auto Response Pause state
+  const [aiPaused, setAiPaused] = useState<boolean | null>(null);
+  const [aiPausedReason, setAiPausedReason] = useState<string | null>(null);
+  const [aiPausedAt, setAiPausedAt] = useState<string | null>(null);
+  const [aiPausedByUserId, setAiPausedByUserId] = useState<string | null>(null);
+  const [aiPausedByName, setAiPausedByName] = useState<string | null>(null);
+  const [aiPauseLoading, setAiPauseLoading] = useState<boolean>(false);
+  const [showAiPauseModal, setShowAiPauseModal] = useState<boolean>(false);
+  const [aiPauseReasonInput, setAiPauseReasonInput] = useState<string>("");
 
   const idsParsed = useMemo(() => {
     return Array.from(new Set(
@@ -58,12 +68,32 @@ export default function AdminPanel() {
     }
   };
 
+  // Resolve current org_id from membership (first org)
+  const resolveCurrentOrgId = async (): Promise<string | null> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data: membership } = await supabase
+        .from('org_members')
+        .select('org_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+      return membership?.org_id ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   // Fetch retention settings
   const fetchRetentionSettings = async () => {
     try {
+      const orgId = await resolveCurrentOrgId();
+      if (!orgId) return;
       const { data: settings, error } = await protectedSupabase
         .from('org_settings')
         .select('retention_days')
+        .eq('org_id', orgId)
         .maybeSingle();
       if (error) throw error;
       setRetentionDays(settings?.retention_days ?? 90);
@@ -73,15 +103,128 @@ export default function AdminPanel() {
     }
   };
 
+  // Fetch AI auto response pause status
+  const fetchAiPauseStatus = async () => {
+    try {
+      const orgId = await resolveCurrentOrgId();
+      if (!orgId) return;
+      const { data: settings, error } = await protectedSupabase
+        .from('org_settings')
+        .select('ai_paused, ai_paused_reason, ai_paused_at, ai_paused_by_user_id')
+        .eq('org_id', orgId)
+        .maybeSingle();
+      if (error) throw error;
+      setAiPaused(!!settings?.ai_paused);
+      setAiPausedReason(settings?.ai_paused_reason ?? null);
+      setAiPausedAt(settings?.ai_paused_at ?? null);
+      const byId = settings?.ai_paused_by_user_id ?? null;
+      setAiPausedByUserId(byId);
+
+      // Resolve display name if available
+      if (byId) {
+        try {
+          const { data: prof } = await protectedSupabase
+            .from('users_profile')
+            .select('user_id, display_name')
+            .eq('user_id', byId)
+            .maybeSingle();
+          if (prof?.display_name) {
+            setAiPausedByName(prof.display_name);
+          } else {
+            const { data: vuser } = await protectedSupabase
+              .from('v_users')
+              .select('id, email')
+              .eq('id', byId)
+              .maybeSingle();
+            setAiPausedByName(vuser?.email ?? byId);
+          }
+        } catch {
+          setAiPausedByName(byId);
+        }
+      } else {
+        setAiPausedByName(null);
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch AI pause status:', error);
+    }
+  };
+
+  const resumeAiResponses = async () => {
+    try {
+      setAiPauseLoading(true);
+      const orgId = await resolveCurrentOrgId();
+      if (!orgId) throw new Error('Unable to resolve organization');
+      const { error } = await protectedSupabase
+        .from('org_settings')
+        .update({
+          ai_paused: false,
+          ai_paused_reason: null,
+          ai_paused_at: null,
+          ai_paused_by_user_id: null,
+        })
+        .eq('org_id', orgId);
+      if (error) throw error;
+      setAiPaused(false);
+      setAiPausedReason(null);
+      setAiPausedAt(null);
+      setAiPausedByUserId(null);
+      setAiPausedByName(null);
+      toast.success('AI auto responses resumed');
+      try { await logAction({ action: 'ai.resume', resource: 'org_settings' }); } catch {}
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to resume AI responses');
+    } finally {
+      setAiPauseLoading(false);
+    }
+  };
+
+  const confirmPauseAiResponses = async () => {
+    try {
+      setAiPauseLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      const byUserId = user?.id ?? null;
+      const orgId = await resolveCurrentOrgId();
+      if (!orgId) throw new Error('Unable to resolve organization');
+      const { error } = await protectedSupabase
+        .from('org_settings')
+        .update({
+          ai_paused: true,
+          ai_paused_reason: aiPauseReasonInput?.trim() || null,
+          ai_paused_at: new Date().toISOString(),
+          ai_paused_by_user_id: byUserId,
+        })
+        .eq('org_id', orgId);
+      if (error) throw error;
+      setAiPaused(true);
+      setAiPausedReason(aiPauseReasonInput?.trim() || null);
+      setAiPausedAt(new Date().toISOString());
+      setAiPausedByUserId(byUserId);
+      setAiPausedByName(null);
+      setShowAiPauseModal(false);
+      toast.success('AI auto responses paused');
+      try { await logAction({ action: 'ai.pause', resource: 'org_settings', context: { reason: aiPauseReasonInput?.trim() || null } }); } catch {}
+      // Refresh pauser display name
+      void fetchAiPauseStatus();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to pause AI responses');
+    } finally {
+      setAiPauseLoading(false);
+      setAiPauseReasonInput("");
+    }
+  };
+
   // Save retention settings
   const saveRetentionDays = async () => {
     try {
       setCleanupLoading(true);
+      const orgId = await resolveCurrentOrgId();
+      if (!orgId) throw new Error('Unable to resolve organization');
       const { error } = await protectedSupabase
         .from('org_settings')
         .update({
           retention_days: editRetentionDays,
-        });
+        })
+        .eq('org_id', orgId);
       if (error) throw error;
       setRetentionDays(editRetentionDays);
       setShowRetentionModal(false);
@@ -137,6 +280,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     fetchRetentionSettings();
+    fetchAiPauseStatus();
   }, []);
 
   const confirmBulkDelete = async () => {
@@ -202,6 +346,51 @@ export default function AdminPanel() {
           </CardHeader>
           <CardContent>
             <CircuitBreakerStatus />
+          </CardContent>
+        </Card>
+
+        {/* AI Auto Responses */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Settings className="h-4 w-4"/> AI Auto Responses</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">Status:</span>
+                  {aiPaused ? (
+                    <Badge className="bg-red-100 text-red-700 border-0">Paused</Badge>
+                  ) : (
+                    <Badge className="bg-emerald-100 text-emerald-700 border-0">Active</Badge>
+                  )}
+                </div>
+                {aiPaused && (
+                  <div className="mt-2 text-xs text-muted-foreground space-y-1">
+                    {aiPausedReason ? <div><span className="font-medium">Reason:</span> {aiPausedReason}</div> : null}
+                    <div>
+                      <span className="font-medium">Paused</span>
+                      {aiPausedByName ? <> by {aiPausedByName}</> : null}
+                      {aiPausedAt ? <> at {new Date(aiPausedAt).toLocaleString()}</> : null}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {aiPaused ? (
+                  <Button onClick={resumeAiResponses} disabled={aiPauseLoading}>
+                    <PlayCircle className="h-4 w-4 mr-2" /> {aiPauseLoading ? 'Resuming...' : 'Resume AI Responses'}
+                  </Button>
+                ) : (
+                  <Button variant="destructive" onClick={() => setShowAiPauseModal(true)} disabled={aiPauseLoading}>
+                    <PauseCircle className="h-4 w-4 mr-2" /> Pause AI Responses
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              When paused, AI will not auto reply across all channels until resumed.
+            </div>
           </CardContent>
         </Card>
 
@@ -305,6 +494,36 @@ export default function AdminPanel() {
               <Button variant="outline" onClick={() => setShowRetentionModal(false)}>Cancel</Button>
               <Button onClick={saveRetentionDays} disabled={cleanupLoading}>
                 {cleanupLoading ? 'Saving...' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Pause AI Confirmation Modal */}
+        <Dialog open={showAiPauseModal} onOpenChange={setShowAiPauseModal}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Pause AI Auto Responses</DialogTitle>
+              <DialogDescription>
+                This will pause all AI auto replies across all platforms. You can resume anytime.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <div>
+                <Label htmlFor="pause-reason">Reason (optional)</Label>
+                <Textarea
+                  id="pause-reason"
+                  placeholder="Enter a reason for pausing (visible to admins)"
+                  value={aiPauseReasonInput}
+                  onChange={(e) => setAiPauseReasonInput(e.target.value)}
+                  className="min-h-[90px]"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAiPauseModal(false)} disabled={aiPauseLoading}>Cancel</Button>
+              <Button variant="destructive" onClick={confirmPauseAiResponses} disabled={aiPauseLoading}>
+                {aiPauseLoading ? 'Pausing...' : 'Confirm Pause'}
               </Button>
             </DialogFooter>
           </DialogContent>
