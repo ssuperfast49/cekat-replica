@@ -1,4 +1,11 @@
 # Change Log
+# [0.0.43] FE WEB CEKAT 2025-11-19
+### Changelog Experience Revamp
+- **Interactive Release Browser**: Introduced a dynamic changelog page with searchable release list, color-coded highlights, and accordion sections for each area of work.
+- **Dual View Modes**: Added interactive and classic tabs so readers can switch between the immersive UI and the original Markdown in one place.
+- **Automatic Highlight Extraction**: Generate summary badges from markdown bullet points to surface the most important updates per release.
+- **Styling Updates**: Applied gradient backgrounds, elevated cards, and refined typography for a colorful, engaging presentation.
+
 # [0.0.42] FE WEB CEKAT 2025-11-03
 ### Admin Panel & Centralized Management
 - **New Admin Panel Component**: Created centralized admin control center for master agents
