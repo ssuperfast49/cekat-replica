@@ -1,10 +1,22 @@
 # Change Log
+# [0.0.45] FE WEB CEKAT 2025-11-23
+### QA Testing Guide Expansion
+- **End-to-End Flow Coverage**: Expanded `DOCUMENTATION.md` with exhaustive step-by-step flows covering login, OTP, password reset, human/AI agent lifecycle, contacts, permissions, admin utilities, analytics, and audit logs so QA can validate every button and path without code access.
+- **Button & Validation Matrix**: Documented the enabled/disabled states, confirmation dialogs, toasts, and edge-case behaviour for all primary actions (create, save, delete, export, toggle) across the application.
+- **Role-Based Walkthroughs**: Added guidance on testing from master, super, and agent perspectives, including navigation expectations and restricted-card behaviour on the dashboard.
+
+### Documentation Quality Improvements
+- **Live Chat & Admin Deep Dives**: Added detailed instructions for conversation tools (notes, tags, canned responses, SLAs), AI pause/resume workflow, circuit breaker monitoring, and platform onboarding (WhatsApp, Telegram, Web).
+- **Human Agent Lifecycle**: Documented invite, resend, cancellation, token limit management, usage analytics, and removal to ensure QA covers onboarding and offboarding scenarios end-to-end.
+- **Changelog & Profile Flows**: Captured interactive changelog behaviour, search/filter expectations, and full profile/session management (2FA toggle, password change, device sign-out).
+
 # [0.0.44] FE WEB CEKAT 2025-11-19
 ### Changelog Experience Revamp
 - **Interactive Release Browser**: Introduced a dynamic changelog page with searchable release list, color-coded highlights, and accordion sections for each area of work.
 - **Dual View Modes**: Added interactive and classic tabs so readers can switch between the immersive UI and the original Markdown in one place.
 - **Automatic Highlight Extraction**: Generate summary badges from markdown bullet points to surface the most important updates per release.
 - **Styling Updates**: Applied gradient backgrounds, elevated cards, and refined typography for a colorful, engaging presentation.
+- **Comprehensive Documentation**: Added `DOCUMENTATION.md` detailing auth flows, feature modules, Supabase schema, and operational processes.
 
 # [0.0.43] FE WEB CEKAT 2025-11-18
 ### AI Pause Notification System

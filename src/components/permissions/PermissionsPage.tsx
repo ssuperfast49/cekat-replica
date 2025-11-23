@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Shield, Settings, Edit, Trash2, Plus, Info } from "lucide-react";
+import { Shield, Settings, Edit, Trash2, Plus, Info, Search } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { NAVIGATION_CONFIG, NavKey } from "@/config/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -100,6 +101,9 @@ const PermissionsPage = () => {
   const [bundles, setBundles] = useState<Array<{ id: string; key: string; name: string; description: string }>>([]);
   const [roleBundles, setRoleBundles] = useState<Record<string, boolean>>({});
   const isMaster = hasRole('master_agent');
+  const [permissionSearch, setPermissionSearch] = useState("");
+  const [permissionResourceFilter, setPermissionResourceFilter] = useState<'all' | string>('all');
+  const [permissionActionFilter, setPermissionActionFilter] = useState<'all' | string>('all');
 
   // Map navigation keys to bundle keys (when bundles are available)
   const NAV_TO_BUNDLE: Record<NavKey, string> = {
@@ -328,38 +332,85 @@ const PermissionsPage = () => {
     }
   };
 
-  // Separate CRUD and special permissions directly from DB actions
-  const crudPermissions = allPermissions.filter(p => 
-    CRUD_ACTIONS.includes(normalizeCrudAction(p.action) as any)
+  const resourceOptions = useMemo(() => {
+    const resources = new Set(allPermissions.map((p) => p.resource));
+    return Array.from(resources).sort((a, b) => a.localeCompare(b));
+  }, [allPermissions]);
+
+  const actionOptions = useMemo(() => {
+    const actions = new Set(allPermissions.map((p) => p.action.toLowerCase()));
+    return Array.from(actions).sort((a, b) => a.localeCompare(b));
+  }, [allPermissions]);
+
+  const normalizedPermissionSearch = permissionSearch.trim().toLowerCase();
+
+  const crudPermissions = useMemo(
+    () =>
+      allPermissions.filter((p) =>
+        CRUD_ACTIONS.includes(normalizeCrudAction(p.action) as any),
+      ),
+    [allPermissions],
   );
-  
-  const specialPermissions = allPermissions
-    .filter(p => !CRUD_ACTIONS.includes(normalizeCrudAction(p.action) as any))
-    .sort((a, b) => {
-      if (a.resource !== b.resource) return a.resource.localeCompare(b.resource);
-      const aa = normalizeCrudAction(a.action);
-      const bb = normalizeCrudAction(b.action);
-      return aa.localeCompare(bb);
+
+  const specialPermissions = useMemo(
+    () =>
+      allPermissions
+        .filter(
+          (p) => !CRUD_ACTIONS.includes(normalizeCrudAction(p.action) as any),
+        )
+        .sort((a, b) => {
+          if (a.resource !== b.resource) return a.resource.localeCompare(b.resource);
+          const aa = normalizeCrudAction(a.action);
+          const bb = normalizeCrudAction(b.action);
+          return aa.localeCompare(bb);
+        }),
+    [allPermissions],
+  );
+
+  const filteredCrudPermissions = useMemo(() => {
+    return crudPermissions.filter((permission) => {
+      if (permissionResourceFilter !== 'all' && permission.resource !== permissionResourceFilter) return false;
+      if (permissionActionFilter !== 'all' && permission.action.toLowerCase() !== permissionActionFilter) return false;
+      if (normalizedPermissionSearch) {
+        const composite = `${permission.resource} ${permission.action} ${permission.name ?? ''}`.toLowerCase();
+        if (!composite.includes(normalizedPermissionSearch)) return false;
+      }
+      return true;
     });
+  }, [crudPermissions, permissionResourceFilter, permissionActionFilter, normalizedPermissionSearch]);
 
-  // Group CRUD permissions by resource for the grid
-  const groupedCrudPermissions = crudPermissions.reduce((acc, permission) => {
-    if (!acc[permission.resource]) {
-      acc[permission.resource] = {};
-    }
-    const actionKey = normalizeCrudAction(permission.action);
-    acc[permission.resource][actionKey] = permission;
-    return acc;
-  }, {} as Record<string, Record<string, Permission>>);
+  const filteredSpecialPermissions = useMemo(() => {
+    return specialPermissions.filter((permission) => {
+      if (permissionResourceFilter !== 'all' && permission.resource !== permissionResourceFilter) return false;
+      if (permissionActionFilter !== 'all' && permission.action.toLowerCase() !== permissionActionFilter) return false;
+      if (normalizedPermissionSearch) {
+        const composite = `${permission.resource} ${permission.action} ${permission.name ?? ''}`.toLowerCase();
+        if (!composite.includes(normalizedPermissionSearch)) return false;
+      }
+      return true;
+    });
+  }, [specialPermissions, permissionResourceFilter, permissionActionFilter, normalizedPermissionSearch]);
 
-  // Group special permissions by resource for clearer sub-sections
-  const groupedSpecialPermissions = specialPermissions.reduce((acc, permission) => {
-    if (!acc[permission.resource]) {
-      acc[permission.resource] = [];
-    }
-    acc[permission.resource].push(permission);
-    return acc;
-  }, {} as Record<string, Permission[]>);
+  const groupedCrudPermissions = useMemo(() => {
+    return filteredCrudPermissions.reduce((acc, permission) => {
+      if (!acc[permission.resource]) {
+        acc[permission.resource] = {};
+      }
+      const actionKey = normalizeCrudAction(permission.action);
+      acc[permission.resource][actionKey] = permission;
+      return acc;
+    }, {} as Record<string, Record<string, Permission>>);
+  }, [filteredCrudPermissions]);
+
+  const groupedSpecialPermissions = useMemo(() => {
+    return filteredSpecialPermissions.reduce((acc, permission) => {
+      if (!acc[permission.resource]) {
+        acc[permission.resource] = [];
+      }
+      acc[permission.resource].push(permission);
+      return acc;
+    }, {} as Record<string, Permission[]>);
+  }, [filteredSpecialPermissions]);
 
   // Get role stats
   const getRoleStats = (roleId: string) => {
@@ -376,6 +427,59 @@ const PermissionsPage = () => {
       .replace(/_/g, ' ')
       .replace(/\b\w/g, l => l.toUpperCase());
   };
+
+  const formatActionLabel = (action: string) => {
+    return action
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const renderPermissionFilters = () => (
+    <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+      <div className="relative flex-1 min-w-[220px] md:w-64">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={permissionSearch}
+          onChange={(e) => setPermissionSearch(e.target.value)}
+          placeholder="Search permissions…"
+          className="pl-9"
+        />
+      </div>
+      <Select
+        value={permissionResourceFilter}
+        onValueChange={(value) => setPermissionResourceFilter(value)}
+      >
+        <SelectTrigger className="w-[170px] bg-background border">
+          <SelectValue placeholder="Resource" />
+        </SelectTrigger>
+        <SelectContent className="bg-background border z-50 max-h-64">
+          <SelectItem value="all">All resources</SelectItem>
+          {resourceOptions.map((resource) => (
+            <SelectItem key={resource} value={resource}>
+              {formatResourceName(resource)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={permissionActionFilter}
+        onValueChange={(value) => setPermissionActionFilter(value)}
+      >
+        <SelectTrigger className="w-[150px] bg-background border">
+          <SelectValue placeholder="Action" />
+        </SelectTrigger>
+        <SelectContent className="bg-background border z-50">
+          <SelectItem value="all">All actions</SelectItem>
+          {actionOptions.map((action) => (
+            <SelectItem key={action} value={action}>
+              {formatActionLabel(action)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 
   const getSpecialPermissionLabel = (permission: Permission) => {
     const name = permission.name || '';
@@ -424,7 +528,7 @@ const PermissionsPage = () => {
         </div>
 
         {/* Roles Table */}
-        <Card>
+        <Card className="pt-2">
           <CardHeader>
             <CardTitle>Roles</CardTitle>
             <CardDescription>
@@ -642,7 +746,7 @@ const PermissionsPage = () => {
         </div>
 
         {/* Menu Access (simple toggles) */}
-        <Card>
+        <Card className="pt-2">
           <CardHeader>
             <CardTitle>Menu Access</CardTitle>
             <CardDescription>Grant access to app sections. These map to underlying permissions.</CardDescription>
@@ -718,17 +822,67 @@ const PermissionsPage = () => {
           </CardContent>
         </Card>
 
+        <div className="grid gap-3 border bg-card/70 rounded-lg p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center md:gap-4 sticky top-[72px] z-20 backdrop-blur supports-backdrop-filter:bg-background/75 shadow-sm">
+          <div className="relative w-full md:w-80">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={permissionSearch}
+              onChange={(e) => setPermissionSearch(e.target.value)}
+              placeholder="Search permissions…"
+              className="pl-9"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={permissionResourceFilter}
+              onValueChange={(value) => setPermissionResourceFilter(value)}
+            >
+              <SelectTrigger className="w-[200px] bg-background border">
+                <SelectValue placeholder="Resource" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border z-50">
+                <SelectItem value="all">All resources</SelectItem>
+                {resourceOptions.map((resource) => (
+                  <SelectItem key={resource} value={resource}>
+                    {formatResourceName(resource)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={permissionActionFilter}
+              onValueChange={(value) => setPermissionActionFilter(value)}
+            >
+              <SelectTrigger className="w-[180px] bg-background border">
+                <SelectValue placeholder="Action" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border z-50">
+                <SelectItem value="all">All actions</SelectItem>
+                {actionOptions.map((action) => (
+                  <SelectItem key={action} value={action}>
+                    {formatActionLabel(action)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         {/* Advanced sections collapsed by default */}
-        <Accordion type="multiple" defaultValue={[]}> 
+        <Accordion type="multiple" defaultValue={[]}>
           <AccordionItem value="crud">
             <AccordionTrigger>Advanced: CRUD Permissions</AccordionTrigger>
             <AccordionContent>
               <Card>
-                <CardHeader>
-                  <CardTitle>CRUD Permissions</CardTitle>
-                  <CardDescription>
-                    Standard Create, Read, Update, and Delete permissions
-                  </CardDescription>
+                <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <CardTitle>CRUD Permissions</CardTitle>
+                    <CardDescription>
+                      Standard Create, Read, Update, and Delete permissions
+                    </CardDescription>
+                  </div>
+                  {renderPermissionFilters()}
                 </CardHeader>
                 <CardContent>
                   <div className="w-full overflow-x-auto rounded-md border">
@@ -742,47 +896,58 @@ const PermissionsPage = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {Object.entries(groupedCrudPermissions).map(([resource, actions]) => (
-                          <TableRow key={resource}>
-                            <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
-                            {CRUD_ACTIONS.map(action => {
-                              const permission = actions[action];
-                              return (
-                                <TableCell key={action} className="text-center">
-                                  {permission ? (
-                                    <div className="inline-flex items-center gap-2">
-                                      <Checkbox
-                                        id={`${resource}-${action}`}
-                                        checked={roleHasPermission(selectedRole.id, permission.id)}
-                                        onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                                        disabled={
-                                          !!saving[`${selectedRole.id}:${permission.id}`] ||
-                                          (
-                                            roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
-                                          )
-                                        }
-                                        title={
-                                          roleHasPermission(selectedRole.id, permission.id)
-                                            ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
-                                            : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
-                                        }
-                                        className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="inline-flex items-center gap-2">
-                                      <Checkbox
-                                        disabled={true}
-                                        checked={false}
-                                        className="border-blue-300 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                                      />
-                                    </div>
-                                  )}
-                                </TableCell>
-                              );
-                            })}
+                        {Object.entries(groupedCrudPermissions).length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={1 + CRUD_ACTIONS.length}
+                              className="text-center text-sm text-muted-foreground py-6"
+                            >
+                              No permissions match your filters.
+                            </TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          Object.entries(groupedCrudPermissions).map(([resource, actions]) => (
+                            <TableRow key={resource}>
+                              <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
+                              {CRUD_ACTIONS.map(action => {
+                                const permission = actions[action];
+                                return (
+                                  <TableCell key={action} className="text-center">
+                                    {permission ? (
+                                      <div className="inline-flex items-center gap-2">
+                                        <Checkbox
+                                          id={`${resource}-${action}`}
+                                          checked={roleHasPermission(selectedRole.id, permission.id)}
+                                          onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
+                                          disabled={
+                                            !!saving[`${selectedRole.id}:${permission.id}`] ||
+                                            (
+                                              roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                                            )
+                                          }
+                                          title={
+                                            roleHasPermission(selectedRole.id, permission.id)
+                                              ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                                              : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                                          }
+                                          className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="inline-flex items-center gap-2">
+                                        <Checkbox
+                                          disabled={true}
+                                          checked={false}
+                                          className="border-blue-300 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                                        />
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </div>
@@ -798,47 +963,56 @@ const PermissionsPage = () => {
             <AccordionContent>
               {/* Special Permissions (grouped by resource) */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Special Permissions</CardTitle>
-                  <CardDescription>
-                    Advanced permissions that don't follow the standard CRUD pattern
-                  </CardDescription>
+                <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <CardTitle>Special Permissions</CardTitle>
+                    <CardDescription>
+                      Advanced permissions that don't follow the standard CRUD pattern
+                    </CardDescription>
+                  </div>
+                  {renderPermissionFilters()}
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {Object.entries(groupedSpecialPermissions).map(([resource, permissions]) => (
-                      <div key={resource} className="space-y-3">
-                        <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground border-b pb-2">
-                          {formatResourceName(resource)}
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {permissions.map(permission => (
-                            <div key={permission.id} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={permission.id}
-                                checked={roleHasPermission(selectedRole.id, permission.id)}
-                                onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                                disabled={
-                                  !!saving[`${selectedRole.id}:${permission.id}`] ||
-                                  (
-                                    roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
-                                  )
-                                }
-                                title={
-                                  roleHasPermission(selectedRole.id, permission.id)
-                                    ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
-                                    : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
-                                }
-                                className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                              />
-                              <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
-                                {getSpecialPermissionLabel(permission)}
-                              </Label>
-                            </div>
-                          ))}
+                      {Object.entries(groupedSpecialPermissions).length === 0 ? (
+                        <div className="text-sm text-muted-foreground col-span-full">
+                          No permissions match your filters.
                         </div>
-                      </div>
-                    ))}
+                      ) : (
+                        Object.entries(groupedSpecialPermissions).map(([resource, permissions]) => (
+                          <div key={resource} className="space-y-3">
+                            <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground border-b pb-2">
+                              {formatResourceName(resource)}
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {permissions.map(permission => (
+                                <div key={permission.id} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={permission.id}
+                                    checked={roleHasPermission(selectedRole.id, permission.id)}
+                                    onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
+                                    disabled={
+                                      !!saving[`${selectedRole.id}:${permission.id}`] ||
+                                      (
+                                        roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                                      )
+                                    }
+                                    title={
+                                      roleHasPermission(selectedRole.id, permission.id)
+                                        ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                                        : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                                    }
+                                    className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                                  />
+                                  <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
+                                    {getSpecialPermissionLabel(permission)}
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
                   </div>
                 </CardContent>
               </Card>

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3, UserPlus, RotateCcw, HelpCircle } from "lucide-react";
+import { ChevronDown, Edit, Trash2, Plus, Users, UserCheck, Loader2, BarChart3, UserPlus, RotateCcw, HelpCircle, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
 import { useAIAgents } from "@/hooks/useAIAgents";
@@ -71,6 +71,16 @@ const HumanAgents = () => {
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
   const [createPermissionKey, setCreatePermissionKey] = useState<string | null>(null);
   const [checkingCreatePermission, setCheckingCreatePermission] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "super_agent" | "agent">("all");
+  const [activeStatusFilter, setActiveStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [pendingStatusFilter, setPendingStatusFilter] = useState<"all" | "invited" | "expired">("all");
+
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
 
   // Ensure only master agents can create super agents
   useEffect(() => {
@@ -78,6 +88,8 @@ const HumanAgents = () => {
       setNewAgent({ ...newAgent, role: 'agent' });
     }
   }, [hasRole, newAgent.role]);
+
+  const escapeIlike = (value: string) => value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
 
   // Form validation
   const isFormValid = newAgent.name.trim() && 
@@ -112,7 +124,23 @@ const HumanAgents = () => {
   };
 
   // Server-side pagination against v_human_agents
-  const fetchHumanAgentsPage = async ({ invited, page, pageSize }: { invited: boolean; page: number; pageSize: number }) => {
+  const fetchHumanAgentsPage = async ({
+    invited,
+    page,
+    pageSize,
+    search,
+    role,
+    activeStatus,
+    pendingStatus,
+  }: {
+    invited: boolean;
+    page: number;
+    pageSize: number;
+    search?: string;
+    role?: "master_agent" | "super_agent" | "agent" | "all";
+    activeStatus?: "all" | "active" | "inactive";
+    pendingStatus?: "all" | "invited" | "expired";
+  }) => {
     try {
       invited ? setLoadingPendingTable(true) : setLoadingActiveTable(true);
       const from = (page - 1) * pageSize;
@@ -123,6 +151,17 @@ const HumanAgents = () => {
         // if (currentOrgId) {
         //   query = query.eq('org_id', currentOrgId);
         // }
+
+      const sanitizedSearch = search ? escapeIlike(search) : "";
+      if (sanitizedSearch) {
+        query = query.or(`agent_name.ilike.%${sanitizedSearch}%,email.ilike.%${sanitizedSearch}%`);
+      }
+
+      if (role && role !== "all") {
+        const rolePattern =
+          role === "master_agent" ? "%master%" : role === "super_agent" ? "%super%" : "%agent%";
+        query = query.ilike('role_name', rolePattern);
+      }
       
       // Restrict visibility based on viewer's role
       const isMaster = hasRole(ROLES.MASTER_AGENT);
@@ -167,14 +206,22 @@ const HumanAgents = () => {
       }
       
       if (invited) {
-        // Pending = anything not accepted (including null/expired/pending)
-        query = query.or('confirmation_status.is.null,confirmation_status.neq.accepted');
+        if (pendingStatus === "expired") {
+          query = query.eq('confirmation_status', 'expired');
+        } else if (pendingStatus === "invited") {
+          query = query.or('confirmation_status.is.null,confirmation_status.eq.invited,confirmation_status.eq.pending');
+        } else {
+          query = query.or('confirmation_status.is.null,confirmation_status.neq.accepted');
+        }
       } else {
         // Active = accepted
         query = query.eq('confirmation_status', 'accepted');
         // if (currentOrgId) {
         //   query = query.eq('org_id', currentOrgId);
         // }
+        if (activeStatus && activeStatus !== "all") {
+          query = query.eq('is_active', activeStatus === 'active');
+        }
       }
       const { data, count, error: qErr } = await query
         .order('agent_name', { ascending: true })
@@ -218,16 +265,44 @@ const HumanAgents = () => {
 
   // Load Active on mount and when paging changes
   useEffect(() => {
-    fetchHumanAgentsPage({ invited: false, page: activePage, pageSize: activePageSize });
+    fetchHumanAgentsPage({
+      invited: false,
+      page: activePage,
+      pageSize: activePageSize,
+      search: debouncedSearch,
+      role: roleFilter,
+      activeStatus: activeStatusFilter,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePage, activePageSize]);
+  }, [activePage, activePageSize, debouncedSearch, roleFilter, activeStatusFilter]);
+
+  useEffect(() => {
+    if (activePage !== 1) {
+      setActivePage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, roleFilter, activeStatusFilter]);
 
   // Load Pending when selected or paging changes
   useEffect(() => {
     if (tabValue !== 'pending') return;
-    fetchHumanAgentsPage({ invited: true, page: pendingPage, pageSize: pendingPageSize });
+    fetchHumanAgentsPage({
+      invited: true,
+      page: pendingPage,
+      pageSize: pendingPageSize,
+      search: debouncedSearch,
+      role: roleFilter,
+      pendingStatus: pendingStatusFilter,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabValue, pendingPage, pendingPageSize]);
+  }, [tabValue, pendingPage, pendingPageSize, debouncedSearch, roleFilter, pendingStatusFilter]);
+
+  useEffect(() => {
+    if (tabValue === 'pending' && pendingPage !== 1) {
+      setPendingPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, roleFilter, pendingStatusFilter, tabValue]);
 
   // Reusable renderer for a paginated table view
   const renderPagedTable = (
@@ -801,13 +876,27 @@ const HumanAgents = () => {
         if (pendingRows.length <= 1 && pendingPage > 1) {
           setPendingPage((p) => Math.max(1, p - 1));
         } else {
-          await fetchHumanAgentsPage({ invited: true, page: pendingPage, pageSize: pendingPageSize });
+          await fetchHumanAgentsPage({
+            invited: true,
+            page: pendingPage,
+            pageSize: pendingPageSize,
+            search: debouncedSearch,
+            role: roleFilter,
+            pendingStatus: pendingStatusFilter,
+          });
         }
       } else {
         if (activeRows.length <= 1 && activePage > 1) {
           setActivePage((p) => Math.max(1, p - 1));
         } else {
-          await fetchHumanAgentsPage({ invited: false, page: activePage, pageSize: activePageSize });
+          await fetchHumanAgentsPage({
+            invited: false,
+            page: activePage,
+            pageSize: activePageSize,
+            search: debouncedSearch,
+            role: roleFilter,
+            activeStatus: activeStatusFilter,
+          });
         }
       }
     } catch (error) {
@@ -1350,6 +1439,55 @@ const HumanAgents = () => {
                 <p>Missing permission: users_profile.create</p>
               </TooltipContent>
             </Tooltip>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3 rounded-lg border bg-card p-4 md:flex md:items-center md:justify-between">
+        <div className="relative w-full md:w-64">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search name or email"
+            className="pl-9"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as "all" | "master_agent" | "super_agent" | "agent")}>
+            <SelectTrigger className="w-[150px] bg-background border">
+              <SelectValue placeholder="Role" />
+            </SelectTrigger>
+            <SelectContent className="bg-background border z-50">
+              <SelectItem value="all">All roles</SelectItem>
+              <SelectItem value="master_agent">Master Agent</SelectItem>
+              <SelectItem value="super_agent">Super Agent</SelectItem>
+              <SelectItem value="agent">Agent</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {tabValue === 'pending' ? (
+            <Select value={pendingStatusFilter} onValueChange={(v) => setPendingStatusFilter(v as "all" | "invited" | "expired")}>
+              <SelectTrigger className="w-[150px] bg-background border">
+                <SelectValue placeholder="Invitation status" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border z-50">
+                <SelectItem value="all">All invitations</SelectItem>
+                <SelectItem value="invited">Invited</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select value={activeStatusFilter} onValueChange={(v) => setActiveStatusFilter(v as "all" | "active" | "inactive")}>
+              <SelectTrigger className="w-[150px] bg-background border">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border z-50">
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
           )}
         </div>
       </div>

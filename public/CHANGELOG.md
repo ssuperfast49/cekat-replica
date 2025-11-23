@@ -1,5 +1,24 @@
 # Change Log
-# [0.0.43] FE WEB CEKAT 2025-11-19
+# [0.0.45] FE WEB CEKAT 2025-11-23
+### QA Testing Guide Expansion
+- Expanded QA documentation with complete step-by-step flows for every menu, including login/OTP, human & AI agents, contacts, permissions, analytics, logs, admin utilities, and platform setup.
+- Captured validation rules, button states, and confirmation behaviours to help testers verify each action without referencing the codebase.
+- Added role-based guidance so QA can confirm navigation and feature access for master, super, and agent personas.
+
+### Documentation Quality Improvements
+- Documented conversation management tools (notes, tags, canned responses, SLAs) and detailed the AI pause/resume plus circuit breaker workflows in the Admin Panel.
+- Added full lifecycle coverage for human agents (invite, resend, cancel, token limits, usage analytics, removal).
+- Recorded interactive changelog behaviour and profile/session management (2FA toggles, password update, device sign-out) for thorough regression.
+
+# [0.0.44] FE WEB CEKAT 2025-11-19
+### Changelog Experience Revamp
+- **Interactive Release Browser**: Introduced a dynamic changelog page with searchable release list, color-coded highlights, and accordion sections for each area of work.
+- **Dual View Modes**: Added interactive and classic tabs so readers can switch between the immersive UI and the original Markdown in one place.
+- **Automatic Highlight Extraction**: Generate summary badges from markdown bullet points to surface the most important updates per release.
+- **Styling Updates**: Applied gradient backgrounds, elevated cards, and refined typography for a colorful, engaging presentation.
+- **Comprehensive Documentation**: Added `DOCUMENTATION.md` covering features, schema, auth, and operations.
+
+# [0.0.43] FE WEB CEKAT 2025-11-18
 ### Changelog Experience Revamp
 - **Interactive Release Browser**: Introduced a dynamic changelog page with searchable release list, color-coded highlights, and accordion sections for each area of work.
 - **Dual View Modes**: Added interactive and classic tabs so readers can switch between the immersive UI and the original Markdown in one place.

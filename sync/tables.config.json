@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Tables to replicate from the source Supabase project to the target project. Adjust primary keys or incremental fields as needed for your schema.",
+  "defaults": {
+    "schema": "public",
+    "realtime": true,
+    "reconcile": true,
+    "incrementalFields": ["updated_at", "created_at"]
+  },
+  "tables": [
+    { "schema": "auth", "name": "users", "primaryKeys": ["id"], "incrementalFields": ["updated_at", "created_at"] },
+    { "schema": "auth", "name": "identities", "primaryKeys": ["id"], "incrementalFields": ["updated_at", "created_at"] },
+    { "name": "orgs", "primaryKeys": ["id"] },
+    { "name": "org_members", "primaryKeys": ["org_id", "user_id"] },
+    { "name": "users_profile", "primaryKeys": ["id"] },
+    { "name": "roles", "primaryKeys": ["id"] },
+    { "name": "permissions", "primaryKeys": ["id"] },
+    { "name": "permission_bundles", "primaryKeys": ["id"] },
+    { "name": "bundle_permissions", "primaryKeys": ["bundle_id", "permission_id"] },
+    { "name": "role_permissions", "primaryKeys": ["role_id", "permission_id"] },
+    { "name": "role_bundles", "primaryKeys": ["role_id", "bundle_id"] },
+    { "name": "super_agent_members", "primaryKeys": ["super_agent_id", "agent_user_id"] },
+    { "name": "channels", "primaryKeys": ["id"] },
+    { "name": "channel_agents", "primaryKeys": ["channel_id", "user_id"] },
+    { "name": "thread_collaborators", "primaryKeys": ["thread_id", "user_id"] },
+    { "name": "threads", "primaryKeys": ["id"], "incrementalFields": ["updated_at", "created_at"] },
+    { "name": "messages", "primaryKeys": ["id"], "incrementalFields": ["updated_at", "created_at"] },
+    { "name": "contacts", "primaryKeys": ["id"] },
+    { "name": "contact_identities", "primaryKeys": ["id"] },
+    { "name": "contact_labels", "primaryKeys": ["contact_id", "label_id"] },
+    { "name": "labels", "primaryKeys": ["id"] },
+    { "name": "csat_responses", "primaryKeys": ["id"] },
+    { "name": "ai_profiles", "primaryKeys": ["id"] },
+    { "name": "ai_models", "primaryKeys": ["id"] },
+    { "name": "ai_sessions", "primaryKeys": ["id"] },
+    { "name": "documents", "primaryKeys": ["id"] },
+    { "name": "files", "primaryKeys": ["id"] },
+    { "name": "token_balances", "primaryKeys": ["org_id"] },
+    { "name": "token_topups", "primaryKeys": ["id"] },
+    { "name": "token_usage_logs", "primaryKeys": ["id"], "incrementalFields": ["logged_at", "created_at"] },
+    { "name": "openai_usage_snapshots", "primaryKeys": ["id"], "incrementalFields": ["captured_at", "created_at"] },
+    { "name": "audit_logs", "primaryKeys": ["id"], "incrementalFields": ["created_at"] },
+    { "name": "alerts", "primaryKeys": ["id"] },
+    { "name": "alert_rules", "primaryKeys": ["id"] },
+    { "name": "n8n_chat_histories", "primaryKeys": ["id"] },
+    { "name": "n8n_webhook_routes", "primaryKeys": ["id"] },
+    { "name": "user_invites", "primaryKeys": ["id"] },
+    { "name": "user_roles", "primaryKeys": ["id"] },
+    { "name": "sync_deletions", "primaryKeys": ["id"], "incrementalFields": ["created_at", "id"], "realtime": false, "reconcile": false }
+  ],
+  "reconciliation": {
+    "batchSize": 500,
+    "intervalMs": 30000,
+    "lookbackMs": 300000,
+    "initialBackfillMs": 86400000
+  }
+}
+

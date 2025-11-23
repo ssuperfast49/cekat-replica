@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Trash2, Plus, Loader2 } from "lucide-react";
+import { Settings, Trash2, Plus, Loader2, Search } from "lucide-react";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
@@ -20,6 +20,8 @@ interface AIAgent {
   description?: string;
   created_at: string;
   modelId?: string | null;
+  modelName?: string | null;
+  provider?: string | null;
 }
 
 // Helpers for model UI
@@ -28,6 +30,8 @@ const formatCost = (v: number | null | undefined) => {
   return `${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:v>=1?2:3}).format(v)} / 1M`;
 };
 const formatProvider = (p: string | null | undefined) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : "Unknown");
+
+const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
 const AIAgentCard = ({ agent, onSettings, onDelete }: { 
   agent: AIAgent; 
@@ -44,6 +48,13 @@ const AIAgentCard = ({ agent, onSettings, onDelete }: {
         <p className="text-sm text-muted-foreground">{agent.creator}</p>
         {agent.description && (
           <p className="text-xs text-muted-foreground mt-1">{agent.description}</p>
+        )}
+        {(agent.modelName || agent.provider) && (
+          <p className="text-xs text-muted-foreground mt-1">
+            {agent.modelName ? `Model: ${agent.modelName}` : null}
+            {agent.modelName && agent.provider ? " · " : ""}
+            {agent.provider ? `Provider: ${formatProvider(agent.provider)}` : null}
+          </p>
         )}
         <p className="text-xs text-muted-foreground mt-1">
           Created: {new Date(agent.created_at).toLocaleDateString()}
@@ -104,6 +115,7 @@ const AIAgents = () => {
   const [selectedAgent, setSelectedAgent] = useState<AIAgent | null>(null);
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
@@ -114,56 +126,186 @@ const AIAgents = () => {
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [selectedFallbackModelId, setSelectedFallbackModelId] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [modelFilter, setModelFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "az">("newest");
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [totalAgents, setTotalAgents] = useState(0);
+  const [lastCreated, setLastCreated] = useState<Date | null>(null);
+  const firstLoadRef = useRef(true);
   
-  // Use the custom hook for AI profile management
-  const { fetchAllProfiles, deleteProfile } = useAIProfiles();
+const escapeIlike = (value: string) =>
+  value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
 
-  // Fetch all AI agents from database
-  const fetchAgents = async () => {
-    try {
+const modelMap = useMemo(() => {
+  const map = new Map<string, { display_name: string | null; model_name: string; provider: string; description?: string | null }>();
+  [...aiModels, ...fallbackModels].forEach((m) => {
+    map.set(m.id, m);
+  });
+  return map;
+}, [aiModels, fallbackModels]);
+
+const { deleteProfile } = useAIProfiles();
+
+const buildAgent = (profile: AIProfile, modelInfo?: { display_name: string | null; model_name: string; provider: string | null | undefined }) => ({
+  id: profile.id,
+  name: profile.name,
+  initials: profile.name.split(" ").map(word => word.charAt(0)).join("").toUpperCase().slice(0, 2),
+  creator: "Admin",
+  description: profile.description || undefined,
+  created_at: profile.created_at,
+  modelId: profile.model_id,
+  modelName: modelInfo?.display_name ?? modelInfo?.model_name ?? null,
+  provider: modelInfo?.provider ?? null,
+});
+
+const fetchStats = useCallback(async () => {
+  try {
+    const { count } = await supabase
+      .from('ai_profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', DEFAULT_ORG_ID);
+    setTotalAgents(count || 0);
+    if ((count || 0) > 0) {
+      const { data: latest } = await supabase
+        .from('ai_profiles')
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .eq('org_id', DEFAULT_ORG_ID)
+        .maybeSingle();
+      setLastCreated(latest ? new Date(latest.created_at) : null);
+    } else {
+      setLastCreated(null);
+    }
+  } catch (err) {
+    console.error('Error fetching AI agent stats:', err);
+  }
+}, []);
+
+const fetchAgents = useCallback(async () => {
+  try {
+    if (firstLoadRef.current) {
       setLoading(true);
-      setError(null);
-      
-      const profiles = await fetchAllProfiles();
-      
-      if (profiles) {
-        const mappedAgents: AIAgent[] = profiles.map((profile: AIProfile) => ({
-          id: profile.id,
-          name: profile.name,
-          initials: profile.name.split(' ').map(word => word.charAt(0)).join('').toUpperCase().slice(0, 2),
-          creator: 'Admin', // Default creator since there's no creator field in the database
-          description: profile.description,
-          created_at: profile.created_at,
-        }));
-        
-        setAgents(mappedAgents);
-      }
-    } catch (error) {
-      console.error('Error fetching agents:', error);
-      setError('Failed to load AI agents');
-      toast.error('Failed to load AI agents');
-    } finally {
-      setLoading(false);
+    } else {
+      setListLoading(true);
     }
-  };
+    setError(null);
 
-  // Delete AI agent
-  const handleDeleteAgent = async (agentId: string) => {
-    const agentToDelete = agents.find(agent => agent.id === agentId);
-    
-    if (window.confirm(`Are you sure you want to delete "${agentToDelete?.name}"? This action cannot be undone.`)) {
-      try {
-        await deleteProfile(agentId);
-        // Refresh the agents list after deletion
-        await fetchAgents();
-        toast.success(`"${agentToDelete?.name}" has been deleted successfully`);
-      } catch (error) {
-        console.error('Error deleting agent:', error);
-        setError('Failed to delete AI agent');
-        toast.error('Failed to delete AI agent');
+    let query = supabase
+      .from('ai_profiles')
+      .select('*, ai_models:ai_models!ai_profiles_model_id_fkey(id, display_name, model_name, provider)', { count: 'exact' })
+      .eq('org_id', DEFAULT_ORG_ID);
+
+    if (debouncedSearch) {
+      const sanitized = escapeIlike(debouncedSearch);
+      query = query.or(`name.ilike.%${sanitized}%,description.ilike.%${sanitized}%`);
+    }
+
+    if (modelFilter !== "all") {
+      query = query.eq('model_id', modelFilter);
+    }
+
+    if (providerFilter !== "all") {
+      if (providerFilter === "unknown") {
+        query = query.or('model_id.is.null,ai_models.provider.is.null');
+      } else {
+        query = query.eq('ai_models.provider', providerFilter);
       }
     }
-  };
+
+    if (sortOrder === "az") {
+      query = query.order('name', { ascending: true, nullsFirst: false });
+    } else if (sortOrder === "oldest") {
+      query = query.order('created_at', { ascending: true });
+    } else {
+      query = query.order('created_at', { ascending: false });
+    }
+
+    const { data, error: queryError, count } = await query;
+    if (queryError) throw queryError;
+
+    setFilteredCount(count || 0);
+    const mapped = (data as (AIProfile & { ai_models?: { display_name: string | null; model_name: string; provider: string | null | undefined } | null })[] || []).map(
+      (profile) => buildAgent(profile, profile.ai_models || (profile.model_id ? modelMap.get(profile.model_id) : undefined))
+    );
+    setAgents(mapped);
+  } catch (err) {
+    console.error('Error fetching AI agents:', err);
+    setError('Failed to load AI agents');
+    toast.error('Failed to load AI agents');
+    setAgents([]);
+    setFilteredCount(0);
+  } finally {
+    if (firstLoadRef.current) {
+      firstLoadRef.current = false;
+      setLoading(false);
+    } else {
+      setListLoading(false);
+    }
+  }
+}, [debouncedSearch, modelFilter, providerFilter, sortOrder, modelMap]);
+
+const providerOptions = useMemo(() => {
+  const providers = new Set<string>();
+  [...aiModels, ...fallbackModels].forEach((m) => {
+    if (m.provider) providers.add(m.provider);
+  });
+  providers.add("unknown");
+  return Array.from(providers).sort((a, b) => a.localeCompare(b));
+}, [aiModels, fallbackModels]);
+
+const modelOptions = useMemo(() => {
+  const models = new Map<string, string>();
+  [...aiModels, ...fallbackModels].forEach((m) => {
+    models.set(m.id, m.display_name || m.model_name || "Unnamed");
+  });
+  return Array.from(models.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+}, [aiModels, fallbackModels]);
+
+useEffect(() => {
+  const handler = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 250);
+  return () => clearTimeout(handler);
+}, [searchTerm]);
+
+useEffect(() => {
+  fetchAgents();
+}, [fetchAgents]);
+
+useEffect(() => {
+  fetchStats();
+}, [fetchStats]);
+
+useEffect(() => {
+  if (providerFilter !== "all" && !providerOptions.includes(providerFilter)) {
+    setProviderFilter("all");
+  }
+}, [providerFilter, providerOptions]);
+
+useEffect(() => {
+  if (modelFilter !== "all" && !modelOptions.some(([id]) => id === modelFilter)) {
+    setModelFilter("all");
+  }
+}, [modelFilter, modelOptions]);
+
+// Delete AI agent
+const handleDeleteAgent = async (agentId: string) => {
+  const agentToDelete = agents.find(agent => agent.id === agentId);
+
+  if (window.confirm(`Are you sure you want to delete "${agentToDelete?.name}"? This action cannot be undone.`)) {
+    try {
+      await deleteProfile(agentId);
+      await Promise.all([fetchAgents(), fetchStats()]);
+      toast.success(`"${agentToDelete?.name}" has been deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting agent:', error);
+      setError('Failed to delete AI agent');
+      toast.error('Failed to delete AI agent');
+    }
+  }
+};
 
   // Open create dialog
   const handleCreateNew = () => {
@@ -189,6 +331,8 @@ const AIAgents = () => {
       creator: 'Admin',
       created_at: new Date().toISOString(),
       modelId: selectedModelId,
+      modelName: aiModels.find((m) => m.id === selectedModelId)?.display_name || undefined,
+      provider: aiModels.find((m) => m.id === selectedModelId)?.provider || null,
     };
     
     setSelectedAgent(newAgent);
@@ -198,46 +342,48 @@ const AIAgents = () => {
     toast.info('Creating new AI agent...');
   };
 
-  // Load AI models (separate regular and fallback)
-  useEffect(() => {
-    const loadModels = async () => {
-      try {
-        setModelsLoading(true);
-        setModelsError(null);
-        const { data, error } = await supabase
-          .from('ai_models')
-          .select('id, display_name, model_name, provider, cost_per_1m_tokens, is_active')
-          .eq('is_active', true)
-          .order('display_name', { ascending: true });
-        
-        if (error) throw error;
-        
-        const allModels = (data || []) as Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean }>;
-        
-        // Separate regular models from fallback models
-        const regular = allModels.filter(m => (m.display_name || '').toLowerCase() !== 'fallback');
-        const fallback = allModels.filter(m => (m.display_name || '').toLowerCase() === 'fallback');
-        
-        setAiModels(regular);
-        setFallbackModels(fallback);
-        
-        // Auto-select first model if available
-        if (regular.length > 0 && !selectedModelId) {
-          setSelectedModelId(regular[0].id);
+  const modelsInitializedRef = useRef(false);
+
+  const fetchModels = useCallback(async () => {
+    try {
+      setModelsLoading(true);
+      setModelsError(null);
+      const { data, error } = await supabase
+        .from('ai_models')
+        .select('id, display_name, model_name, provider, cost_per_1m_tokens, is_active')
+        .eq('is_active', true)
+        .order('display_name', { ascending: true });
+
+      if (error) throw error;
+
+      const allModels = (data || []) as Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean }>;
+      const regular = allModels.filter(m => (m.display_name || '').toLowerCase() !== 'fallback');
+      const fallback = allModels.filter(m => (m.display_name || '').toLowerCase() === 'fallback');
+
+      setAiModels(regular);
+      setFallbackModels(fallback);
+
+      if (!modelsInitializedRef.current) {
+        if (regular.length > 0) {
+          setSelectedModelId((prev) => prev || regular[0].id);
         }
-        if (fallback.length > 0 && !selectedFallbackModelId) {
-          setSelectedFallbackModelId(fallback[0].id);
+        if (fallback.length > 0) {
+          setSelectedFallbackModelId((prev) => prev || fallback[0].id);
         }
-      } catch (err) {
-        console.error('Error loading AI models:', err);
-        setModelsError('Failed to load AI models');
-        toast.error('Failed to load AI models');
-      } finally {
-        setModelsLoading(false);
+        modelsInitializedRef.current = true;
       }
-    };
-    loadModels();
+    } catch (err) {
+      console.error('Error loading AI models:', err);
+      setModelsError('Failed to load AI models');
+      toast.error('Failed to load AI models');
+    } finally {
+      setModelsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchModels();
+  }, [fetchModels]);
 
   // Load agents on component mount
   useEffect(() => {
@@ -250,7 +396,8 @@ const AIAgents = () => {
         agentName={selectedAgent.name}
         onBack={() => {
           setSelectedAgent(null);
-          fetchAgents(); // Refresh the list when returning
+          fetchAgents();
+          fetchStats();
         }}
         profileId={selectedAgent.id === 'new' ? undefined : selectedAgent.id}
         initialModelId={selectedAgent.modelId || undefined}
@@ -266,6 +413,9 @@ const AIAgents = () => {
       </div>
     );
   }
+
+  const filteredAgentsCount = agents.length;
+  const providerSelectOptions = providerOptions.length ? providerOptions : [];
 
   return (
     <div className="space-y-6">
@@ -292,21 +442,84 @@ const AIAgents = () => {
         </div>
       )}
 
+      <div className="grid gap-3 rounded-lg border bg-card p-4 md:flex md:items-center md:justify-between">
+        <div className="relative w-full md:w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search AI agents..."
+            className="pl-9"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={providerFilter} onValueChange={setProviderFilter}>
+            <SelectTrigger className="w-[160px] bg-background border">
+              <SelectValue placeholder="Provider" />
+            </SelectTrigger>
+            <SelectContent className="bg-background border z-50">
+              <SelectItem value="all">All providers</SelectItem>
+              {providerSelectOptions.map((provider) => (
+                <SelectItem key={provider} value={provider}>
+                  {provider === "unknown" ? "Unknown" : formatProvider(provider)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={modelFilter} onValueChange={setModelFilter}>
+            <SelectTrigger className="w-[160px] bg-background border">
+              <SelectValue placeholder="AI model" />
+            </SelectTrigger>
+            <SelectContent className="bg-background border z-50">
+              <SelectItem value="all">All models</SelectItem>
+              {modelOptions.map(([id, label]) => (
+                <SelectItem key={id} value={id}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={sortOrder} onValueChange={(value: "newest" | "oldest" | "az") => setSortOrder(value)}>
+            <SelectTrigger className="w-[150px] bg-background border">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent className="bg-background border z-50">
+              <SelectItem value="newest">Newest first</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+              <SelectItem value="az">Name A–Z</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="text-sm text-muted-foreground">
+        Showing {filteredAgentsCount} of {totalAgents} agents
+      </div>
+
+  {listLoading && !loading && (
+    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      <span>Updating list…</span>
+    </div>
+  )}
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Card className="p-4 text-center">
+        <div className="text-2xl font-bold text-primary">{totalAgents}</div>
+        <div className="text-sm text-muted-foreground">Total AI Agents</div>
+      </Card>
         <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-primary">{agents.length}</div>
-          <div className="text-sm text-muted-foreground">Total AI Agents</div>
-        </Card>
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-green-600">
-            {agents.filter(agent => agent.creator === 'Hanna').length}
-          </div>
-          <div className="text-sm text-muted-foreground">Active Agents</div>
+        <div className="text-2xl font-bold text-green-600">
+          {filteredAgentsCount}
+        </div>
+        <div className="text-sm text-muted-foreground">Matching Filters</div>
         </Card>
         <Card className="p-4 text-center">
           <div className="text-2xl font-bold text-blue-600">
-            {agents.length > 0 ? new Date(Math.max(...agents.map(a => new Date(a.created_at).getTime()))).toLocaleDateString() : 'N/A'}
+          {lastCreated ? lastCreated.toLocaleDateString() : 'N/A'}
           </div>
           <div className="text-sm text-muted-foreground">Last Created</div>
         </Card>
@@ -327,7 +540,7 @@ const AIAgents = () => {
       </div>
 
       {/* Empty State */}
-      {agents.length === 0 && !loading && (
+      {filteredAgentsCount === 0 && !loading && totalAgents === 0 && (
         <div className="text-center py-12">
           <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
             <Plus className="w-12 h-12 text-muted-foreground" />
@@ -340,6 +553,12 @@ const AIAgents = () => {
             <Plus className="w-4 h-4 mr-2" />
             Create Your First AI Agent
           </Button>
+        </div>
+      )}
+
+      {filteredAgentsCount === 0 && !loading && totalAgents > 0 && (
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          No AI agents match your current filters. Try adjusting the search or filter settings above.
         </div>
       )}
 

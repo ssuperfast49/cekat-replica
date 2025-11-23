@@ -1,2 +1,5 @@
 .env
+.env.sync
+.env.sync.local
+sync/.sync-state.json
 node_modules
