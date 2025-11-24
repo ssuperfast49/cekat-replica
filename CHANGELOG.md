@@ -1,4 +1,15 @@
 # Change Log
+# [0.0.47] FE WEB CEKAT 2025-11-25
+### Supabase Baseline Refresh
+- **Single Source Migration**: Replaced the entire migrations stack with `20251124230847_baseline.sql`, capturing today’s production schema so every environment can rebuild from a single, clean baseline.
+- **Vector Extension Guardrails**: Ensured the baseline creates the `vector` extension in the `public` schema and updates every dependent function/column to reference the schema-qualified type.
+- **Config Hardening**: Explicitly pins Supabase Storage to `v1.31.1` in `supabase/config.toml`, preventing CLI diffs from failing on missing storage migrations.
+
+### Branch & Data Maintenance
+- **Development Branch Reset**: Repaired Supabase migration history, reapplied the new baseline, and reset the `development` branch so it replays the trimmed migration set without legacy drift.
+- **Main ↔ Dev Data Parity**: Dumped production `public` + `auth` data and restored it into the development branch, then pruned historic test accounts to keep both environments aligned.
+- **Backup Hygiene**: Ran the same user cleanup on the backup project (`igtizjvhxgajijjjxnzi`) to ensure the automated sync worker starts from a consistent dataset.
+
 # [0.0.46] FE WEB CEKAT 2025-11-24
 ### Database Migration Hardening
 - **Legacy Platform Support**: Updated the `20250828000000_merge_platforms_into_channels.sql` migration to add any missing `platforms` columns (`display_name`, `website_url`, `status`, `secret_token`, `profile_photo_url`, `ai_profile_id`) on the fly so historical environments can replay migrations without schema drift.
