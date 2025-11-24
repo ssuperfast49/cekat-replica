@@ -11,6 +11,7 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "extensions";
 
 CREATE SCHEMA IF NOT EXISTS "public";
 
