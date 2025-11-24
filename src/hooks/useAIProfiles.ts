@@ -12,6 +12,7 @@ export interface AIProfile {
   stop_ai_after_handoff: boolean;
   response_temperature?: string | null;
   model_id?: string | null;
+  super_agent_id?: string | null;
   created_at: string;
   qna?: ({ q: string; a: string } | { question: string; answer: string })[] | null;
   auto_resolve_after_minutes?: number | null;

@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { waitForAuthReady } from '@/lib/authReady';
-import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRBAC } from '@/contexts/RBACContext';
 
 export interface AIAgent {
   id: string;
   org_id: string;
   name: string;
   description?: string;
+  super_agent_id?: string | null;
   system_prompt?: string;
   welcome_message?: string;
   transfer_conditions?: string;
@@ -25,6 +27,15 @@ export const useAIAgents = () => {
   const [error, setError] = useState<string | null>(null);
   const [filterBySuper, setFilterBySuper] = useState<string | null>(null);
   const inFlightKeyRef = useState<{ current: string | null }>({ current: null })[0];
+  const { user } = useAuth();
+  const { hasRole } = useRBAC();
+
+  // Automatically scope super agents to their own AI agents
+  useEffect(() => {
+    if (hasRole?.('super_agent') && user?.id && filterBySuper !== user.id) {
+      setFilterBySuper(user.id);
+    }
+  }, [hasRole, user?.id, filterBySuper]);
 
   const fetchAIAgents = async () => {
     try {
@@ -38,8 +49,12 @@ export const useAIAgents = () => {
       await waitForAuthReady();
       let query = supabase
         .from('ai_profiles')
-        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve')
+        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve, super_agent_id')
         .order('created_at', { ascending: false }) as any;
+
+      if (filterBySuper) {
+        query = query.eq('super_agent_id', filterBySuper);
+      }
       const { data: aiAgentsData, error: aiAgentsError } = await query;
 
       

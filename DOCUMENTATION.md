@@ -143,6 +143,7 @@ Menus hide automatically if the user lacks permission. QA should confirm that li
 - Settings:
   - Update prompt, welcome message, handover rules, limits.
   - Toggle auto-resolve / AI pause per agent.
+  - Assign a **single super agent**. Super agents only see and manage their own AI agents; master agents can reassign via dropdown, while super agents default to themselves.
 - Delete agent: confirm dialog, toast success, card removed.
 - Buttons & validation:
   - **Create AI agent** disabled until name and model selected.
@@ -302,6 +303,7 @@ Menus hide automatically if the user lacks permission. QA should confirm that li
 2. Click `Create AI agent`.
    - Complete: name, select model/provider, optional fallback. Submit (button enables when valid).
 3. In the settings page verify sections:
+   - Assign the owning **super agent** (required). Super agents only see their cluster; master agents pick from the dropdown, while super agents default to themselves.
    - Update prompt/system message ⇒ hit `Save` and expect success toast.
    - Toggle auto-resolve limits and confirm warning dialogs appear.
    - Manage knowledge base uploads: add file (shows progress), delete file (confirmation dialog).
@@ -352,7 +354,8 @@ Menus hide automatically if the user lacks permission. QA should confirm that li
 2. Click `Add platform`/`Connect` → choose provider (`WhatsApp`, `Telegram`, `Web`).
 3. Complete setup form:
    - Required fields: display name, AI agent, (for WhatsApp) phone number.
-   - Attach branding image (<5 MB) and pick optional human agents.
+   - Super agent is auto-filled from the selected AI agent; choose a different AI agent to change ownership.
+   - Attach branding image (<5 MB) and pick optional human agents (list filtered to the AI agent's super agent).
 4. Submit: expect `Creating...` state then success toast; new platform appears in list.
 5. For WhatsApp:
    - Click `Connect session` to generate QR code; scan with device.

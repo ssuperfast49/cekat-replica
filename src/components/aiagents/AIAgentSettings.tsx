@@ -16,6 +16,7 @@ import WEBHOOK_CONFIG from "@/config/webhook";
 import { callWebhook } from "@/lib/webhookClient";
 import { supabase } from "@/integrations/supabase/client";
 import { useRBAC } from "@/contexts/RBACContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { getTemperatureValue } from '@/lib/temperatureUtils';
 
 interface AIAgentSettingsProps {
@@ -31,6 +32,8 @@ interface ChatMessage {
   sender: 'user' | 'ai';
   timestamp: Date;
 }
+
+const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
 const ChatPreview = ({ 
   welcomeMessage, 
@@ -360,7 +363,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   };
   
   const isNewAgent = !profileId;
-  const { hasPermission } = useRBAC();
+  const { hasPermission, hasRole } = useRBAC();
+  const { user } = useAuth();
+  const isMasterAgent = hasRole?.('master_agent');
+  const isSuperAgent = hasRole?.('super_agent');
   const canUploadAgentFiles = hasPermission('ai_agent_files.manage') || hasPermission('ai_agent_files.create');
   
   const clampNumber = (value: number, minVal: number, maxVal: number) => {
@@ -377,6 +383,64 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   
   // Use the custom hook for AI profile management
   const { profile, loading, saving, error, saveProfile } = useAIProfiles(profileId);
+  const [superAgentId, setSuperAgentId] = useState<string | null>(profile?.super_agent_id ?? null);
+  const [superAgents, setSuperAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingSuperAgents, setLoadingSuperAgents] = useState(false);
+  const [superAgentsError, setSuperAgentsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (profile?.super_agent_id) {
+      setSuperAgentId(profile.super_agent_id);
+    } else if (isSuperAgent && user?.id) {
+      setSuperAgentId(user.id);
+    } else if (!profile?.super_agent_id) {
+      setSuperAgentId(null);
+    }
+  }, [profile?.super_agent_id, isSuperAgent, user?.id]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadSuperAgents = async () => {
+      try {
+        setLoadingSuperAgents(true);
+        setSuperAgentsError(null);
+        const { data, error } = await supabase
+          .from('v_human_agents')
+          .select('user_id, agent_name, email, role_name')
+          .eq('org_id', profile?.org_id ?? DEFAULT_ORG_ID)
+          .ilike('role_name', '%super%');
+
+        if (error) throw error;
+        if (isCancelled) return;
+
+        const options = (data || []).map((row: any) => ({
+          id: row.user_id as string,
+          name: (row.agent_name as string) || (row.email as string) || String(row.user_id).slice(0, 8),
+        }));
+        setSuperAgents(options);
+
+        if (!profile?.super_agent_id) {
+          if (isSuperAgent && user?.id) {
+            setSuperAgentId(user.id);
+          } else if (options.length === 1 && !isSuperAgent && isMasterAgent) {
+            setSuperAgentId(options[0].id);
+          }
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setSuperAgentsError(err instanceof Error ? err.message : 'Failed to load super agents');
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoadingSuperAgents(false);
+        }
+      }
+    };
+    loadSuperAgents();
+    return () => {
+      isCancelled = true;
+    };
+  }, [profile?.org_id, profile?.super_agent_id, isSuperAgent, isMasterAgent, user?.id]);
   
   // Form state - initialize with helpful placeholders for new agents or profile data
   const [systemPrompt, setSystemPrompt] = useState(
@@ -1106,6 +1170,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
   // Save AI profile
   const handleSave = async () => {
+    if (!superAgentId) {
+      toast.error('Please assign a super agent before saving this AI agent.');
+      return;
+    }
+
     const autoResolveMinutes = clampNumber(parseNumericInput(autoResolveMinutesInput), 0, AUTO_RESOLVE_MAX_MINUTES);
     const historyLimit = clampNumber(parseNumericInput(historyLimitInput), 0, historyLimitMax);
     const contextLimit = clampNumber(parseNumericInput(contextLimitInput), 0, contextLimitMax);
@@ -1126,6 +1195,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       response_temperature: responseTemperature,
       message_await: messageAwait,
       message_limit: messageLimit,
+      super_agent_id: superAgentId,
       // Persist Q&A pairs into ai_profiles.qna JSONB
       // Store compact q/a pairs for space efficiency
       qna: qaPairs
@@ -1242,6 +1312,43 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       {isNewAgent ? 'Not saved yet' : `Last Updated: ${profile ? new Date(profile.created_at).toLocaleString() : 'Never'}`}
                     </p>
                   </div>
+                </div>
+                <div className="space-y-2 pt-4">
+                  <span className="text-sm font-medium">Assigned Super Agent</span>
+                  {loadingSuperAgents ? (
+                    <div className="text-sm text-muted-foreground">Loading super agents...</div>
+                  ) : superAgentsError ? (
+                    <div className="text-sm text-destructive">{superAgentsError}</div>
+                  ) : isSuperAgent && user?.id ? (
+                    <div className="inline-flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
+                      <span>👤 {superAgents.find((option) => option.id === user.id)?.name || user.email || 'You'}</span>
+                      <Badge variant="secondary">Your account</Badge>
+                    </div>
+                  ) : superAgents.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      No super agents available. Create a super agent first before assigning this AI agent.
+                    </div>
+                  ) : (
+                    <Select
+                      value={superAgentId || ''}
+                      onValueChange={(value) => setSuperAgentId(value)}
+                      disabled={!isMasterAgent}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choose a super agent" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background border z-50">
+                        {superAgents.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            👤 {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Only the assigned super agent and their human agents can view and use this AI agent.
+                  </p>
                 </div>
               </Card>
 

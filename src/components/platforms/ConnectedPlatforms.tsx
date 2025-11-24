@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -144,7 +143,6 @@ const ConnectedPlatforms = () => {
   const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
   const assignedHumanAgents = selectedPlatformData?.human_agents || [];
   const canEditAgents = hasRole('master_agent') || hasRole('super_agent');
-  const canEditSuperAgent = hasRole('master_agent');
   const availableAgentsToAdd = humanAgents.filter(a => a.primaryRole === 'agent' && !assignedHumanAgents.some(x => x.user_id === a.user_id));
   const multiSelectOptions: MultiSelectOption[] = availableAgentsToAdd.map(a => ({ value: a.user_id, label: a.display_name || a.email || a.user_id.slice(0,8) }));
 
@@ -212,42 +210,19 @@ const ConnectedPlatforms = () => {
             const superAgentId = (selectedPlatformData as any)?.super_agent_id || null;
             const allAgents = humanAgents || [];
             const superAgent = allAgents.find(a => a.user_id === superAgentId && a.primaryRole === 'super_agent') || null;
-            const superAgentsOnly = allAgents.filter(a => a.primaryRole === 'super_agent');
-            if (!canEditSuperAgent) {
-              return (
-                <div className="text-sm">
-                  {superAgent ? (
-                    <div className="inline-flex items-center gap-2 bg-muted px-3 py-1 rounded-md">👤 {superAgent.display_name || superAgent.email}</div>
-                  ) : (
-                    <span className="text-muted-foreground">No super agent assigned</span>
-                  )}
-                </div>
-              );
-            }
             return (
-              <PermissionGate permission={'channels.update'}>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={superAgentId || ""}
-                    onValueChange={async (val) => {
-                      if (!selectedPlatformData) return;
-                      await updatePlatform(selectedPlatformData.id, { super_agent_id: val || undefined });
-                    }}
-                  >
-                    <SelectTrigger className="w-64">
-                      <SelectValue placeholder="Assign super agent" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {superAgentsOnly.map(sa => (
-                        <SelectItem key={sa.user_id} value={sa.user_id}>
-                          👤 {sa.display_name || sa.email || sa.user_id.slice(0,8)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs text-muted-foreground">(master agent only)</span>
-                </div>
-              </PermissionGate>
+              <div className="text-sm space-y-2">
+                {superAgent ? (
+                  <div className="inline-flex items-center gap-2 bg-muted px-3 py-1 rounded-md">
+                    👤 {superAgent.display_name || superAgent.email || superAgent.user_id.slice(0, 8)}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">No super agent assigned. Select an AI agent to link a super agent.</span>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Super agent assignment follows the selected AI agent. To change ownership, switch the AI agent for this platform.
+                </p>
+              </div>
             );
           })()}
         </CardContent>
@@ -447,7 +422,6 @@ const ConnectedPlatforms = () => {
         ai_profile_id: formData.selectedAIAgent || undefined,
         provider: selectedPlatformType || 'web',
         human_agent_ids: formData.selectedHumanAgents,
-        super_agent_id: formData.selectedSuperAgentId || undefined
       };
 
       const created = await createPlatform(platformData);

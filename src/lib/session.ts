@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-const STORAGE_KEY = 'sb-tgrmxlbnutxpewfmofdx-auth-token';
+const STORAGE_KEY = 'sb-yoekcpoppfudmqtvjcby-auth-token';
 
 export async function restoreSupabaseSessionFromLocalStorage(): Promise<void> {
   try {

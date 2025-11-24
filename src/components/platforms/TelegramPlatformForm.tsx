@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,7 @@ interface TelegramPlatformFormProps {
 const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: TelegramPlatformFormProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { aiAgents, loading: aiAgentsLoading, setFilterBySuper } = useAIAgents();
+  const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   const { uploadChannelAvatar } = usePlatforms();
 
@@ -42,6 +42,17 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [submitting, setSubmitting] = useState(false);
   const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
 
+  const resolveSuperAgentForAI = (aiProfileId: string): string | null => {
+    if (!aiProfileId) return null;
+    const agent = aiAgents.find((ai) => ai.id === aiProfileId);
+    return agent?.super_agent_id || null;
+  };
+
+  const selectedSuperAgent = useMemo(() => {
+    if (!selectedSuperAgentId) return null;
+    return humanAgents.find((a) => a.primaryRole === 'super_agent' && a.user_id === selectedSuperAgentId) || null;
+  }, [selectedSuperAgentId, humanAgents]);
+
 
   const handleHumanAgentToggle = (agentId: string) => {
     setFormData(prev => ({
@@ -51,14 +62,6 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         : [...prev.selectedHumanAgents, agentId]
     }));
   };
-
-  const handleSuperAgentSelect = (userId: string) => {
-    setSelectedSuperAgentId(userId);
-    setFormData(prev => ({ ...prev, selectedHumanAgents: [] }));
-  };
-
-  // Filter AI Agents by selected super agent
-  useEffect(() => { try { setFilterBySuper(selectedSuperAgentId || null as any); } catch {} }, [selectedSuperAgentId]);
 
   const isFormValid = formData.displayName && 
     formData.selectedAIAgent &&
@@ -406,7 +409,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             </p>
           </div>
 
-          {/* Super Agent (dropdown) above AI Agent */}
+          {/* Super Agent (read-only) above AI Agent */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Label>Super Agent *</Label>
@@ -427,20 +430,18 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                 </TooltipContent>
               </Tooltip>
             </div>
-            {humanAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading...</div>
-            ) : (
-              <Select value={selectedSuperAgentId || ''} onValueChange={(v)=>handleSuperAgentSelect(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a Super Agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  {humanAgents.filter(a=>a.primaryRole==='super_agent').map(sa => (
-                    <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <div className="rounded-md border bg-muted px-3 py-2 text-sm">
+              {humanAgentsLoading ? (
+                'Loading super agents...'
+              ) : selectedSuperAgentId ? (
+                <>👤 {selectedSuperAgent?.display_name || selectedSuperAgent?.email || selectedSuperAgentId.slice(0, 8)}</>
+              ) : (
+                'Pilih AI agent untuk melihat super agent yang terkait.'
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Super agent mengikuti konfigurasi AI agent yang dipilih.
+            </p>
           </div>
 
           {/* Select AI Agent (filtered by selected Super Agent) */}
@@ -469,18 +470,45 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             ) : (
               <Select 
                 value={formData.selectedAIAgent} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, selectedAIAgent: value }))}
-                disabled={!selectedSuperAgentId}
+                onValueChange={(value) => {
+                  const superId = resolveSuperAgentForAI(value);
+                  if (!superId) {
+                    toast({
+                      title: "AI agent missing super agent",
+                      description: "Please assign a super agent to this AI agent before using it to create a platform.",
+                      variant: "destructive",
+                    });
+                    setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
+                    setSelectedSuperAgentId(null);
+                    return;
+                  }
+                  setSelectedSuperAgentId(superId);
+                  setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
+                }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
+                  <SelectValue placeholder="Choose an AI agent" />
                 </SelectTrigger>
-                <SelectContent>
-                  {aiAgents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
-                  ))}
+                <SelectContent className="bg-background border z-50">
+                  {aiAgents.map((agent) => {
+                    const disabled = !agent.super_agent_id;
+                    return (
+                      <SelectItem key={agent.id} value={agent.id} disabled={disabled}>
+                        {agent.name}
+                        {disabled && <span className="ml-2 text-xs text-muted-foreground">(Assign super agent first)</span>}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+            )}
+            {selectedSuperAgentId && (
+              <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-xs text-muted-foreground">
+                <span>Super Agent:</span>
+                <span className="font-medium">
+                  {selectedSuperAgent?.display_name || selectedSuperAgent?.email || selectedSuperAgentId.slice(0, 8)}
+                </span>
+              </div>
             )}
           </div>
 
@@ -509,9 +537,9 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               <div className="text-sm text-muted-foreground">Loading human agents...</div>
             ) : (
               (() => {
-                const available = humanAgents
-                  .filter(a => a.primaryRole === 'agent')
-                  .filter(a => !!selectedSuperAgentId && (!a.super_agent_id || a.super_agent_id === selectedSuperAgentId));
+                    const available = humanAgents
+                      .filter(a => a.primaryRole === 'agent')
+                      .filter(a => !!selectedSuperAgentId && a.super_agent_id === selectedSuperAgentId);
                 const options = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0,8)}` }));
                 return (
                   <div className="flex items-center gap-2">
@@ -520,7 +548,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                       value={formData.selectedHumanAgents}
                       onValueChange={(vals)=>setFormData(prev=>({ ...prev, selectedHumanAgents: vals }))}
                       disabled={!selectedSuperAgentId}
-                      placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select a Super Agent first'}
+                      placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select an AI agent first'}
                     />
                     <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: options.map((o:any)=>o.value) }))}>Select All</Button>
                     <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>

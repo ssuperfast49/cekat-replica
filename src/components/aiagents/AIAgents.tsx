@@ -11,6 +11,8 @@ import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRBAC } from "@/contexts/RBACContext";
 
 interface AIAgent {
   id: string;
@@ -22,6 +24,8 @@ interface AIAgent {
   modelId?: string | null;
   modelName?: string | null;
   provider?: string | null;
+  superAgentId?: string | null;
+  superAgentName?: string | null;
 }
 
 // Helpers for model UI
@@ -56,9 +60,14 @@ const AIAgentCard = ({ agent, onSettings, onDelete }: {
             {agent.provider ? `Provider: ${formatProvider(agent.provider)}` : null}
           </p>
         )}
-        <p className="text-xs text-muted-foreground mt-1">
-          Created: {new Date(agent.created_at).toLocaleDateString()}
-        </p>
+        <div className="space-y-1 mt-1">
+          <p className="text-xs text-muted-foreground">
+            Created: {new Date(agent.created_at).toLocaleDateString()}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Super Agent: {agent.superAgentName ?? 'Unassigned'}
+          </p>
+        </div>
       </div>
     </div>
     <div className="flex gap-2 justify-center">
@@ -135,6 +144,8 @@ const AIAgents = () => {
   const [totalAgents, setTotalAgents] = useState(0);
   const [lastCreated, setLastCreated] = useState<Date | null>(null);
   const firstLoadRef = useRef(true);
+  const { user } = useAuth();
+  const { hasRole } = useRBAC();
   
 const escapeIlike = (value: string) =>
   value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
@@ -149,7 +160,11 @@ const modelMap = useMemo(() => {
 
 const { deleteProfile } = useAIProfiles();
 
-const buildAgent = (profile: AIProfile, modelInfo?: { display_name: string | null; model_name: string; provider: string | null | undefined }) => ({
+const buildAgent = (
+  profile: AIProfile,
+  modelInfo?: { display_name: string | null; model_name: string; provider: string | null | undefined },
+  superAgentName?: string | null
+) => ({
   id: profile.id,
   name: profile.name,
   initials: profile.name.split(" ").map(word => word.charAt(0)).join("").toUpperCase().slice(0, 2),
@@ -159,23 +174,36 @@ const buildAgent = (profile: AIProfile, modelInfo?: { display_name: string | nul
   modelId: profile.model_id,
   modelName: modelInfo?.display_name ?? modelInfo?.model_name ?? null,
   provider: modelInfo?.provider ?? null,
+  superAgentId: (profile as any)?.super_agent_id ?? null,
+  superAgentName: superAgentName ?? null,
 });
 
 const fetchStats = useCallback(async () => {
   try {
-    const { count } = await supabase
+    let statsQuery = supabase
       .from('ai_profiles')
       .select('id', { count: 'exact', head: true })
       .eq('org_id', DEFAULT_ORG_ID);
+
+    if (hasRole?.('super_agent') && user?.id) {
+      statsQuery = statsQuery.eq('super_agent_id', user.id);
+    }
+
+    const { count } = await statsQuery;
     setTotalAgents(count || 0);
     if ((count || 0) > 0) {
-      const { data: latest } = await supabase
+      let latestQuery = supabase
         .from('ai_profiles')
         .select('created_at')
         .order('created_at', { ascending: false })
         .limit(1)
-        .eq('org_id', DEFAULT_ORG_ID)
-        .maybeSingle();
+        .eq('org_id', DEFAULT_ORG_ID);
+
+      if (hasRole?.('super_agent') && user?.id) {
+        latestQuery = latestQuery.eq('super_agent_id', user.id);
+      }
+
+      const { data: latest } = await latestQuery.maybeSingle();
       setLastCreated(latest ? new Date(latest.created_at) : null);
     } else {
       setLastCreated(null);
@@ -183,7 +211,7 @@ const fetchStats = useCallback(async () => {
   } catch (err) {
     console.error('Error fetching AI agent stats:', err);
   }
-}, []);
+}, [hasRole, user?.id]);
 
 const fetchAgents = useCallback(async () => {
   try {
@@ -198,6 +226,10 @@ const fetchAgents = useCallback(async () => {
       .from('ai_profiles')
       .select('*, ai_models:ai_models!ai_profiles_model_id_fkey(id, display_name, model_name, provider)', { count: 'exact' })
       .eq('org_id', DEFAULT_ORG_ID);
+
+    if (hasRole?.('super_agent') && user?.id) {
+      query = query.eq('super_agent_id', user.id);
+    }
 
     if (debouncedSearch) {
       const sanitized = escapeIlike(debouncedSearch);
@@ -227,9 +259,34 @@ const fetchAgents = useCallback(async () => {
     const { data, error: queryError, count } = await query;
     if (queryError) throw queryError;
 
+    const superIds = Array.from(
+      new Set(
+        (data as (AIProfile & { super_agent_id?: string | null })[] | [])
+          .map((profile) => (profile as any)?.super_agent_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+
+    let superAgentNameMap = new Map<string, string>();
+    if (superIds.length) {
+      const { data: superRows } = await supabase
+        .from('v_human_agents')
+        .select('user_id, agent_name, email')
+        .in('user_id', superIds);
+      superRows?.forEach((row: any) => {
+        const label = row.agent_name || row.email || String(row.user_id).slice(0, 8);
+        superAgentNameMap.set(row.user_id, label);
+      });
+    }
+
     setFilteredCount(count || 0);
     const mapped = (data as (AIProfile & { ai_models?: { display_name: string | null; model_name: string; provider: string | null | undefined } | null })[] || []).map(
-      (profile) => buildAgent(profile, profile.ai_models || (profile.model_id ? modelMap.get(profile.model_id) : undefined))
+      (profile) =>
+        buildAgent(
+          profile,
+          profile.ai_models || (profile.model_id ? modelMap.get(profile.model_id) : undefined),
+          superAgentNameMap.get((profile as any)?.super_agent_id ?? '') ?? null
+        )
     );
     setAgents(mapped);
   } catch (err) {
@@ -246,7 +303,7 @@ const fetchAgents = useCallback(async () => {
       setListLoading(false);
     }
   }
-}, [debouncedSearch, modelFilter, providerFilter, sortOrder, modelMap]);
+}, [debouncedSearch, modelFilter, providerFilter, sortOrder, modelMap, hasRole, user?.id]);
 
 const providerOptions = useMemo(() => {
   const providers = new Set<string>();

@@ -201,7 +201,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         // Prefer LocalStorage first to avoid flicker/empty state on refresh
         try {
-          const raw = localStorage.getItem('sb-tgrmxlbnutxpewfmofdx-auth-token');
+          const raw = localStorage.getItem('sb-yoekcpoppfudmqtvjcby-auth-token');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed?.access_token && parsed?.user) {
@@ -209,6 +209,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
               setUser(parsed.user as User);
             }
           }
+          // Clean up any cached session from the old project ref to avoid loading stale tokens
+          localStorage.removeItem('sb-tgrmxlbnutxpewfmofdx-auth-token');
         } catch {}
 
         const { data: { session: initialSession } } = await supabase.auth.getSession();

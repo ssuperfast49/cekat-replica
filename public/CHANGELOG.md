@@ -10,6 +10,12 @@
 - Added full lifecycle coverage for human agents (invite, resend, cancel, token limits, usage analytics, removal).
 - Recorded interactive changelog behaviour and profile/session management (2FA toggles, password update, device sign-out) for thorough regression.
 
+### Super Agent Clustering
+- AI agents now carry a required `super_agent_id`, enforced via new policies so super agents only see their own profiles. Platform creation/editing auto-fills the channel super agent from the selected AI agent.
+
+### Platform Assignment Guard
+- Human-agent dropdowns in WhatsApp, Telegram, and Web platform setup now list only the agents that report to the selected super agent, preventing cross-cluster assignments.
+
 # [0.0.44] FE WEB CEKAT 2025-11-19
 ### Changelog Experience Revamp
 - **Interactive Release Browser**: Introduced a dynamic changelog page with searchable release list, color-coded highlights, and accordion sections for each area of work.

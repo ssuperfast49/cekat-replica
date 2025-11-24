@@ -1,4 +1,10 @@
 # Change Log
+# [0.0.46] FE WEB CEKAT 2025-11-24
+### Database Migration Hardening
+- **Legacy Platform Support**: Updated the `20250828000000_merge_platforms_into_channels.sql` migration to add any missing `platforms` columns (`display_name`, `website_url`, `status`, `secret_token`, `profile_photo_url`, `ai_profile_id`) on the fly so historical environments can replay migrations without schema drift.
+- **Main Branch Hotfix Migration**: Applied Supabase migration `20250827950000_fix_platforms_schema` on production to backfill those columns immediately, unblocking rebase operations across environments.
+- **Rebase Reliability**: Re-ran the Supabase rebase workflow to verify the new safeguards; future branch syncs no longer fail on missing column errors when promoting channels data.
+
 # [0.0.45] FE WEB CEKAT 2025-11-23
 ### QA Testing Guide Expansion
 - **End-to-End Flow Coverage**: Expanded `DOCUMENTATION.md` with exhaustive step-by-step flows covering login, OTP, password reset, human/AI agent lifecycle, contacts, permissions, admin utilities, analytics, and audit logs so QA can validate every button and path without code access.
@@ -9,6 +15,14 @@
 - **Live Chat & Admin Deep Dives**: Added detailed instructions for conversation tools (notes, tags, canned responses, SLAs), AI pause/resume workflow, circuit breaker monitoring, and platform onboarding (WhatsApp, Telegram, Web).
 - **Human Agent Lifecycle**: Documented invite, resend, cancellation, token limit management, usage analytics, and removal to ensure QA covers onboarding and offboarding scenarios end-to-end.
 - **Changelog & Profile Flows**: Captured interactive changelog behaviour, search/filter expectations, and full profile/session management (2FA toggle, password change, device sign-out).
+
+### Super Agent Clustering
+- **AI Agent Ownership**: Introduced `super_agent_id` on `ai_profiles`, enforced via migrations and new RLS policies. Super agents only see/manage their own AI agents; master agents can reassign via settings.
+- **Auto-Inherited Platform Ownership**: Platform creation/editing now derives `channels.super_agent_id` from the selected AI agent, eliminating manual super agent selection while keeping human-agent assignment intact.
+- **Scoped Listings**: AI agent lists, stats, and platform forms filter to the current super agent automatically; agents without clusters are prevented from being used until assigned.
+
+### Platform Assignment Guard
+- **Scoped Agent Dropdowns**: When creating WhatsApp, Telegram, or Web platforms as a master agent, the human-agent selector now lists only agents assigned to the chosen super agent—preventing unassigned agents from appearing in the multi-select.
 
 # [0.0.44] FE WEB CEKAT 2025-11-19
 ### Changelog Experience Revamp

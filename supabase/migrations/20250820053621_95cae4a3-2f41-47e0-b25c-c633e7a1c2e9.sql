@@ -4,8 +4,12 @@ CREATE TABLE public.platforms (
   org_id UUID NOT NULL,
   business_category TEXT,
   whatsapp_display_name TEXT,
+  display_name TEXT,
+  website_url TEXT,
+  status TEXT,
   profile_photo_url TEXT,
   whatsapp_number TEXT,
+  secret_token TEXT,
   ai_profile_id UUID,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()

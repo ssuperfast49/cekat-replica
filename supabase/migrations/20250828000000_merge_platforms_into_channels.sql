@@ -10,6 +10,14 @@ alter table public.channels
   add column if not exists ai_profile_id uuid,
   add column if not exists secret_token text;
 
+-- Ensure legacy platforms schema has the columns we rely on before migration
+alter table if exists public.platforms add column if not exists display_name text;
+alter table if exists public.platforms add column if not exists website_url text;
+alter table if exists public.platforms add column if not exists status text;
+alter table if exists public.platforms add column if not exists secret_token text;
+alter table if exists public.platforms add column if not exists profile_photo_url text;
+alter table if exists public.platforms add column if not exists ai_profile_id uuid;
+
 -- Migrate platforms into channels
 insert into public.channels (
   id, org_id, type, provider, credentials, display_name, is_active, created_at, external_id, secret_token, profile_photo_url, ai_profile_id

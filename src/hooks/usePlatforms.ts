@@ -36,7 +36,6 @@ export interface CreatePlatformData {
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   provider: 'whatsapp' | 'web' | 'telegram';
   human_agent_ids?: string[];
-  super_agent_id?: string;
 }
 
 export const usePlatforms = () => {
@@ -227,6 +226,26 @@ export const usePlatforms = () => {
         throw new Error('User not found in any organization');
       }
 
+      if (!platformData.ai_profile_id) {
+        throw new Error('AI agent is required when creating a platform');
+      }
+
+      // Resolve super agent from selected AI profile
+      const { data: aiProfile, error: aiProfileError } = await supabase
+        .from('ai_profiles')
+        .select('super_agent_id')
+        .eq('id', platformData.ai_profile_id)
+        .single();
+
+      if (aiProfileError) {
+        throw aiProfileError;
+      }
+
+      const channelSuperAgentId = aiProfile?.super_agent_id;
+      if (!channelSuperAgentId) {
+        throw new Error('Selected AI agent does not have a super agent assigned. Please update the AI agent first.');
+      }
+
       // Create channel (formerly platform)
       const { data: newChannel, error: platformError } = await supabase
         .from('channels')
@@ -238,7 +257,7 @@ export const usePlatforms = () => {
           type: 'inbox',
           profile_photo_url: platformData.profile_photo_url,
           ai_profile_id: platformData.ai_profile_id,
-          super_agent_id: platformData.super_agent_id,
+          super_agent_id: channelSuperAgentId,
           is_active: true,
         })
         .select()
@@ -258,7 +277,14 @@ export const usePlatforms = () => {
       // Refresh platforms list
       await fetchPlatforms();
 
-      try { await logAction({ action: 'channel.create', resource: 'channel', resourceId: (newChannel as any)?.id ?? null, context: platformData as any }); } catch {}
+      try {
+        await logAction({
+          action: 'channel.create',
+          resource: 'channel',
+          resourceId: (newChannel as any)?.id ?? null,
+          context: { ...platformData, super_agent_id: channelSuperAgentId } as any,
+        });
+      } catch {}
 
       return newChannel;
     } catch (error: any) {
@@ -268,7 +294,7 @@ export const usePlatforms = () => {
     }
   };
 
-  const updatePlatform = async (platformId: string, updates: Partial<CreatePlatformData & { super_agent_id?: string }>) => {
+  const updatePlatform = async (platformId: string, updates: Partial<CreatePlatformData>) => {
     try {
       setError(null);
 
@@ -276,27 +302,27 @@ export const usePlatforms = () => {
       const channelUpdates: Record<string, any> = {};
       if (typeof updates.display_name !== 'undefined') channelUpdates.display_name = updates.display_name;
       if (typeof updates.profile_photo_url !== 'undefined') channelUpdates.profile_photo_url = updates.profile_photo_url;
-      if (typeof updates.ai_profile_id !== 'undefined') channelUpdates.ai_profile_id = updates.ai_profile_id;
-      if (typeof updates.provider !== 'undefined') channelUpdates.provider = updates.provider;
-      if (typeof updates.super_agent_id !== 'undefined') channelUpdates.super_agent_id = updates.super_agent_id;
-
-      // Strict clustering: prevent changing super_agent_id once set (except from undefined -> value)
-      if (typeof updates.super_agent_id !== 'undefined') {
-        try {
-          const { data: existing } = await supabase
-            .from('channels')
+      if (typeof updates.ai_profile_id !== 'undefined') {
+        channelUpdates.ai_profile_id = updates.ai_profile_id;
+        if (updates.ai_profile_id) {
+          const { data: aiProfile, error: aiProfileError } = await supabase
+            .from('ai_profiles')
             .select('super_agent_id')
-            .eq('id', platformId)
+            .eq('id', updates.ai_profile_id)
             .single();
-          const currentSid = (existing as any)?.super_agent_id || null;
-          const nextSid = updates.super_agent_id ?? null;
-          if (currentSid && nextSid && currentSid !== nextSid) {
-            throw new Error('Strict clustering: channel cannot be reassigned to a different Super Agent');
+
+          if (aiProfileError) {
+            throw aiProfileError;
           }
-        } catch (guardErr: any) {
-          throw guardErr;
+
+          const derivedSuperAgentId = aiProfile?.super_agent_id;
+          if (!derivedSuperAgentId) {
+            throw new Error('Selected AI agent does not have a super agent assigned. Please update the AI agent first.');
+          }
+          channelUpdates.super_agent_id = derivedSuperAgentId;
         }
       }
+      if (typeof updates.provider !== 'undefined') channelUpdates.provider = updates.provider;
 
       if (Object.keys(channelUpdates).length > 0) {
         const { error: platformError } = await supabase
