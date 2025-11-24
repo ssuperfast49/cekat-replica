@@ -23,6 +23,8 @@ SET row_security = off;
 
 CREATE SCHEMA IF NOT EXISTS public;
 
+CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA public;
+
 
 --
 -- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -

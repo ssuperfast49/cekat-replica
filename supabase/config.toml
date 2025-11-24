@@ -4,3 +4,6 @@ project_id = "tgrmxlbnutxpewfmofdx"
 # [functions.schedules]
 # cron = "* * * * *" # every minute
 # endpoint = "/openai-usage"
+
+[storage]
+enabled = false
