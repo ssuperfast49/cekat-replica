@@ -278,6 +278,18 @@ export const useHumanAgents = () => {
     try {
       setError(null);
 
+      const { data: agentInfo, error: lookupError } = await supabase
+        .from('v_human_agents')
+        .select('role_name')
+        .eq('user_id', agentId)
+        .maybeSingle();
+
+      if (lookupError) throw lookupError;
+
+      if (agentInfo?.role_name && String(agentInfo.role_name).toLowerCase().includes('master')) {
+        throw new Error('Master agent tidak dapat dihapus.');
+      }
+
       // Call admin function to hard delete auth user and related rows
       const { error: fnErr } = await supabase.functions.invoke('admin-delete-user', {
         body: { user_id: agentId },

@@ -1,4 +1,11 @@
 # Change Log
+# [0.1.1] FE WEB CEKAT 2025-11-27
+### Permissions Console
+- **Regression Fix**: Reintroduced missing permission search and filter state in `PermissionsPage`; restores the role configuration screen and avoids the `permissionSearch is not defined` runtime error.
+- **Master Agent Safety Rail**: Hard-blocked deletion of the Master Agent from both UI and API helpers; delete buttons are disabled with guidance and back-end guards stop any direct calls.
+### UI Localization
+- **Master Agent Deletion Message**: Updated the modal tooltip and toast that appear when attempting to delete a master agent; the copy now follows the latest localization requirements.
+
 # [0.1.0] FE WEB CEKAT 2025-11-27
 ### FINALIZED FOR PRODUCTION
 ### Agent Creation UX
