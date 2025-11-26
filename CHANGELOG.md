@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.0] FE WEB CEKAT 2025-11-27
+### FINALIZED FOR PRODUCTION
+### Agent Creation UX
+- **Modal-Friendly Errors**: Duplicate-email validation now surfaces purely as a toast; the “Create Agent” dialog stays open and no longer renders the full-page error banner, making it easy to adjust the address and resubmit.
+
 # [0.0.49] FE WEB CEKAT 2025-11-27
 ### Human Agents Roster
 - **Duplicate Entry Cleanup**: Adjusted role grouping logic so master agents no longer appear in both the master and agent sections of the Human Agents table; prevents a single email from showing twice and keeps assignment status accurate.
