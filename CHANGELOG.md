@@ -1,4 +1,30 @@
 # Change Log
+# [0.0.48] FE WEB CEKAT 2025-11-26
+### RBAC & Permissions System Enhancements
+- **Master Agent Root Role Treatment**: Master Agent is now treated as root role with full system privileges
+  - Master Agent role is designated as root role with unrestricted access across the system
+  - Permission matrix editing is disabled for Master Agent to prevent accidental permission removal
+  - Root role status ensures Master Agent maintains full privileges regardless of permission configuration
+
+- **Permission Matrix UI Updates**: Disabled permission matrix editing for Master Agent role
+  - Added root role detection in PermissionsPage component (`isRootSelected` check)
+  - Permission matrix sections (Menu Access, CRUD Permissions, Special Permissions) are disabled when configuring Master Agent
+  - Added informational "Root Role" card explaining Master Agent's full privilege status
+  - All permission checkboxes and bundle toggles are disabled with helpful tooltips ("Master Agent is root; matrix disabled")
+  - Clear visual indication that Master Agent has full privileges and doesn't require permission configuration
+  - Prevents accidental permission removal for root role through UI safeguards
+  - Early return guards prevent any permission toggle operations when Master Agent is selected
+
+### Technical Improvements
+- **PermissionsPage Component**: Enhanced role configuration logic
+  - Added `isRootSelected` state check based on role name comparison
+  - Conditional rendering of root role information card
+  - Disabled state applied to all permission matrix controls for Master Agent
+  - Improved tooltip messaging for disabled root role controls
+- **Open Conversation Navigation Fix**: Ensured contacts page button opens chat inbox
+  - `Open conversation` now routes to chat inbox with `menu=chat`
+  - Automatically selects the relevant contact thread when available
+
 # [0.0.47] FE WEB CEKAT 2025-11-25
 ### Supabase Baseline Refresh
 - **Single Source Migration**: Replaced the entire migrations stack with `20251124230847_baseline.sql`, capturing today’s production schema so every environment can rebuild from a single, clean baseline.

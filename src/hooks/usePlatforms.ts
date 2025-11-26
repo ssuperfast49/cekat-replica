@@ -375,29 +375,7 @@ export const usePlatforms = () => {
     }
   };
 
-  const deletePlatform = async (platformId: string) => {
-    try {
-      setError(null);
-
-      const { error } = await supabase
-        .from('channels')
-        .delete()
-        .eq('id', platformId);
-
-      if (error) {
-        throw error;
-      }
-
-      // Refresh platforms list
-      await fetchPlatforms();
-
-      try { await logAction({ action: 'channel.delete', resource: 'channel', resourceId: platformId }); } catch {}
-    } catch (error: any) {
-      console.error('Error deleting platform:', error);
-      setError(error.message || 'Failed to delete platform');
-      throw error;
-    }
-  };
+  // deletePlatform removed - deletion is handled by external workflow
 
   // Upload a channel avatar to the canonical storage path and update logo_url
   const uploadChannelAvatar = async (
@@ -561,7 +539,6 @@ export const usePlatforms = () => {
     fetchPlatforms,
     createPlatform,
     updatePlatform,
-    deletePlatform,
     uploadChannelAvatar
     , deleteChannelAvatar
   };

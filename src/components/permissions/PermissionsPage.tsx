@@ -101,9 +101,7 @@ const PermissionsPage = () => {
   const [bundles, setBundles] = useState<Array<{ id: string; key: string; name: string; description: string }>>([]);
   const [roleBundles, setRoleBundles] = useState<Record<string, boolean>>({});
   const isMaster = hasRole('master_agent');
-  const [permissionSearch, setPermissionSearch] = useState("");
-  const [permissionResourceFilter, setPermissionResourceFilter] = useState<'all' | string>('all');
-  const [permissionActionFilter, setPermissionActionFilter] = useState<'all' | string>('all');
+  const isRootSelected = selectedRole?.name === 'master_agent';
 
   // Map navigation keys to bundle keys (when bundles are available)
   const NAV_TO_BUNDLE: Record<NavKey, string> = {
@@ -745,8 +743,20 @@ const PermissionsPage = () => {
           </div>
         </div>
 
+        {/* Root role notice */}
+        {isRootSelected && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Root Role</CardTitle>
+              <CardDescription>
+                Master Agent is a root role with full privileges across the system. The permission matrix is disabled for this role.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        )}
+
         {/* Menu Access (simple toggles) */}
-        <Card className="pt-2">
+        <Card>
           <CardHeader>
             <CardTitle>Menu Access</CardTitle>
             <CardDescription>Grant access to app sections. These map to underlying permissions.</CardDescription>
@@ -793,6 +803,7 @@ const PermissionsPage = () => {
                       <Checkbox
                         checked={assigned}
                         onCheckedChange={async () => {
+                          if (isRootSelected) return;
                           try {
                             if (roleBundles[bundle.id]) {
                               await supabase.rpc('revoke_role_bundle', { p_role: selectedRole.id, p_bundle: bundle.id });
@@ -804,14 +815,19 @@ const PermissionsPage = () => {
                             await refreshRBAC();
                           } catch {}
                         }}
+                        disabled={isRootSelected}
                         className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                       />
                     ) : (
                       <Checkbox
                         checked={assigned}
-                        onCheckedChange={() => { if (permRow) toggleRolePermission(selectedRole.id, permRow.id); }}
-                        disabled={!permRow || (!!permRow && (assigned ? !canRevokeRolePerm : !canGrantRolePerm))}
-                        title={!permRow ? 'Permission not found in DB' : assigned ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined) : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)}
+                        onCheckedChange={() => { if (isRootSelected) return; if (permRow) toggleRolePermission(selectedRole.id, permRow.id); }}
+                        disabled={isRootSelected || !permRow || (!!permRow && (assigned ? !canRevokeRolePerm : !canGrantRolePerm))}
+                        title={
+                          isRootSelected
+                            ? 'Master Agent is root; matrix disabled'
+                            : (!permRow ? 'Permission not found in DB' : assigned ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined) : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined))
+                        }
                         className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
                       />
                     )}
@@ -896,58 +912,50 @@ const PermissionsPage = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {Object.entries(groupedCrudPermissions).length === 0 ? (
-                          <TableRow>
-                            <TableCell
-                              colSpan={1 + CRUD_ACTIONS.length}
-                              className="text-center text-sm text-muted-foreground py-6"
-                            >
-                              No permissions match your filters.
-                            </TableCell>
+                        {Object.entries(groupedCrudPermissions).map(([resource, actions]) => (
+                          <TableRow key={resource}>
+                            <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
+                            {CRUD_ACTIONS.map(action => {
+                              const permission = actions[action];
+                              return (
+                                <TableCell key={action} className="text-center">
+                                  {permission ? (
+                                    <div className="inline-flex items-center gap-2">
+                                      <Checkbox
+                                        id={`${resource}-${action}`}
+                                        checked={roleHasPermission(selectedRole.id, permission.id)}
+                                    onCheckedChange={() => { if (isRootSelected) return; toggleRolePermission(selectedRole.id, permission.id); }}
+                                        disabled={
+                                      isRootSelected ||
+                                      !!saving[`${selectedRole.id}:${permission.id}`] ||
+                                          (
+                                            roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                                          )
+                                        }
+                                        title={
+                                      isRootSelected
+                                        ? 'Master Agent is root; matrix disabled'
+                                        : roleHasPermission(selectedRole.id, permission.id)
+                                            ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                                            : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                                        }
+                                        className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="inline-flex items-center gap-2">
+                                      <Checkbox
+                                        disabled={true}
+                                        checked={false}
+                                        className="border-blue-300 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                                      />
+                                    </div>
+                                  )}
+                                </TableCell>
+                              );
+                            })}
                           </TableRow>
-                        ) : (
-                          Object.entries(groupedCrudPermissions).map(([resource, actions]) => (
-                            <TableRow key={resource}>
-                              <TableCell className="font-medium">{formatResourceName(resource)}</TableCell>
-                              {CRUD_ACTIONS.map(action => {
-                                const permission = actions[action];
-                                return (
-                                  <TableCell key={action} className="text-center">
-                                    {permission ? (
-                                      <div className="inline-flex items-center gap-2">
-                                        <Checkbox
-                                          id={`${resource}-${action}`}
-                                          checked={roleHasPermission(selectedRole.id, permission.id)}
-                                          onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                                          disabled={
-                                            !!saving[`${selectedRole.id}:${permission.id}`] ||
-                                            (
-                                              roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
-                                            )
-                                          }
-                                          title={
-                                            roleHasPermission(selectedRole.id, permission.id)
-                                              ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
-                                              : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
-                                          }
-                                          className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                                        />
-                                      </div>
-                                    ) : (
-                                      <div className="inline-flex items-center gap-2">
-                                        <Checkbox
-                                          disabled={true}
-                                          checked={false}
-                                          className="border-blue-300 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                                        />
-                                      </div>
-                                    )}
-                                  </TableCell>
-                                );
-                              })}
-                            </TableRow>
-                          ))
-                        )}
+                        ))}
                       </TableBody>
                     </Table>
                   </div>
@@ -974,45 +982,42 @@ const PermissionsPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {Object.entries(groupedSpecialPermissions).length === 0 ? (
-                        <div className="text-sm text-muted-foreground col-span-full">
-                          No permissions match your filters.
-                        </div>
-                      ) : (
-                        Object.entries(groupedSpecialPermissions).map(([resource, permissions]) => (
-                          <div key={resource} className="space-y-3">
-                            <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground border-b pb-2">
-                              {formatResourceName(resource)}
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                              {permissions.map(permission => (
-                                <div key={permission.id} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={permission.id}
-                                    checked={roleHasPermission(selectedRole.id, permission.id)}
-                                    onCheckedChange={() => toggleRolePermission(selectedRole.id, permission.id)}
-                                    disabled={
-                                      !!saving[`${selectedRole.id}:${permission.id}`] ||
-                                      (
-                                        roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
-                                      )
-                                    }
-                                    title={
-                                      roleHasPermission(selectedRole.id, permission.id)
-                                        ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
-                                        : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
-                                    }
-                                    className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
-                                  />
-                                  <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
-                                    {getSpecialPermissionLabel(permission)}
-                                  </Label>
-                                </div>
-                              ))}
+                    {Object.entries(groupedSpecialPermissions).map(([resource, permissions]) => (
+                      <div key={resource} className="space-y-3">
+                        <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground border-b pb-2">
+                          {formatResourceName(resource)}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {permissions.map(permission => (
+                            <div key={permission.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={permission.id}
+                                checked={roleHasPermission(selectedRole.id, permission.id)}
+                                onCheckedChange={() => { if (isRootSelected) return; toggleRolePermission(selectedRole.id, permission.id); }}
+                                disabled={
+                                  isRootSelected ||
+                                  !!saving[`${selectedRole.id}:${permission.id}`] ||
+                                  (
+                                    roleHasPermission(selectedRole.id, permission.id) ? !canRevokeRolePerm : !canGrantRolePerm
+                                  )
+                                }
+                                title={
+                                  isRootSelected
+                                    ? 'Master Agent is root; matrix disabled'
+                                    : roleHasPermission(selectedRole.id, permission.id)
+                                    ? (!canRevokeRolePerm ? 'No permission: role_permissions.delete' : undefined)
+                                    : (!canGrantRolePerm ? 'No permission: role_permissions.create' : undefined)
+                                }
+                                className="border-blue-300 focus-visible:ring-blue-400 data-[state=checked]:bg-blue-100 data-[state=checked]:border-blue-400 data-[state=checked]:text-blue-600"
+                              />
+                              <Label htmlFor={permission.id} className="text-sm font-normal cursor-pointer">
+                                {getSpecialPermissionLabel(permission)}
+                              </Label>
                             </div>
-                          </div>
-                        ))
-                      )}
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
