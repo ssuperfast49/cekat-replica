@@ -440,7 +440,24 @@ const HumanAgents = () => {
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
                                 <PermissionGate permission={'super_agents.delete'}>
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span>
+                                          <Button
+                                            size="sm"
+                                            className="h-8 w-8 p-0 bg-red-200 text-red-500 cursor-not-allowed"
+                                            disabled
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Master agent tidak dapat dihapus</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </PermissionGate>
                               </div>
                             </div>
@@ -884,6 +901,16 @@ const HumanAgents = () => {
 
   const handleDeleteAgent = async (id: string) => {
     try {
+      if (agentPendingDelete?.primaryRole === 'master_agent' || (activeRows.find((r: any) => String(r.user_id) === id)?.role_name?.toLowerCase?.().includes('master'))) {
+        toast({
+          title: "Error",
+          description: "Master agent tidak dapat dihapus.",
+          variant: "destructive",
+        });
+        setConfirmDeleteOpen(false);
+        setAgentPendingDelete(null);
+        return;
+      }
       setDeletingAgent(true);
       await deleteAgent(id);
       toast({ title: "Success", description: "Agent deleted successfully" });
