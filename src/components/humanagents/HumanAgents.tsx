@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,6 +54,7 @@ const HumanAgents = () => {
   const [deletingAgent, setDeletingAgent] = useState(false);
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentWithDetails | null>(null);
   const { toast } = useToast();
+  const lastErrorRef = useRef<string | null>(null);
   const { hasPermission, hasRole } = useRBAC();
   // Pagination and Pending tab state backed by v_human_agents
   const [activeRows, setActiveRows] = useState<any[]>([]);
@@ -112,6 +113,20 @@ const HumanAgents = () => {
     // removeAgentFromTeam,
     setEnable2FAFlagForCreate
   } = useHumanAgents();
+
+  useEffect(() => {
+    if (error && error !== lastErrorRef.current) {
+      toast({
+        title: "Error",
+        description: error,
+        variant: "destructive",
+      });
+      lastErrorRef.current = error;
+    }
+    if (!error) {
+      lastErrorRef.current = null;
+    }
+  }, [error, toast]);
 
   // Normalize role names coming from the DB view
   const normalizeRoleName = (name: string | null | undefined): "master_agent" | "super_agent" | "agent" | null => {
@@ -1252,34 +1267,6 @@ const HumanAgents = () => {
     if (role === "agent") return "bg-gray-100 text-gray-700";
     return "bg-gray-100 text-gray-700";
   };
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Human Agent Settings</h1>
-            <p className="text-muted-foreground">Manage your human agents and teams</p>
-          </div>
-        </div>
-        <div className="rounded-lg border bg-red-50 p-6">
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0">
-              <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>{error}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
