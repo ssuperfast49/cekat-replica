@@ -845,6 +845,18 @@ export const useConversations = () => {
           // Immediately update the conversation preview and re-sort
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(200); // Also do a full refresh for consistency
+        } else if (
+          // Also react to outgoing agent/assistant messages created outside this client
+          // so newly created/AI-started conversations bubble to the top
+          message &&
+          message.direction === 'out' &&
+          (message.role === 'agent' || message.role === 'assistant') &&
+          document.visibilityState === 'visible'
+        ) {
+          // No sound for outgoing
+          updateConversationPreview(message.thread_id, message);
+          // Light refresh to keep ordering accurate
+          scheduleConversationsRefresh(200);
         } else if (message && message.role === 'agent' && message.direction === 'out' && document.visibilityState === 'visible') {
           // AI responded, auto-resolve timer will be set by database trigger
           // Check for any threads that might be ready for auto-resolve

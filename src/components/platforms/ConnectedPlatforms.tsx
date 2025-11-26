@@ -31,7 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
-  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, deletePlatform, fetchPlatforms, updatePlatform, uploadChannelAvatar, deleteChannelAvatar } = usePlatforms();
+  const { platforms, loading: platformsLoading, error: platformsError, createPlatform, fetchPlatforms, updatePlatform, uploadChannelAvatar, deleteChannelAvatar } = usePlatforms();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
@@ -662,6 +662,46 @@ const ConnectedPlatforms = () => {
     }
   };
 
+  // Centralized delete handler per provider
+  const deleteChannelByProvider = async (channel: any) => {
+    if (!channel) throw new Error('Missing channel');
+    const provider = getPlatformType(channel);
+    // Route per provider
+    if (provider === 'telegram') {
+      const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel_id: channel.id,
+          org_id: channel.org_id,
+          bot_token: (channel as any)?.external_id || null
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(detail || `Telegram delete failed (${res.status})`);
+      }
+      return;
+    }
+    if (provider === 'whatsapp') {
+      // Normalize session name from display name (same rule used elsewhere)
+      const sessionName = String(channel?.display_name || '').toLowerCase().replace(/\s/g, '');
+      const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_name: sessionName }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(detail || `WhatsApp delete failed (${res.status})`);
+      }
+      return;
+    }
+    // Web (and any other) - delete channel record directly
+    const { error: delErr } = await supabase.from('channels').delete().eq('id', channel.id);
+    if (delErr) throw delErr;
+  };
+
   const disconnectWhatsAppSession = async (sessionName: string) => {
     if (!sessionName) return;
     setLoggingOutSessions((prev) => new Set(prev).add(sessionName));
@@ -971,24 +1011,10 @@ const ConnectedPlatforms = () => {
                       if (!selectedPlatformData) return;
                       try {
                         setIsDeletingChannel(true);
-                        // Call provider-specific webhook cleanup before deleting
-                        const provider = getPlatformType(selectedPlatformData);
-                        if (provider === 'telegram') {
-                          await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ channel_id: selectedPlatformData.id })
-                          });
-                        }
-                        if (provider === 'whatsapp') {
-                          const sessionName = (selectedPlatformData.display_name || '').replace(/\s/g, '');
-                          await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ session_name: sessionName })
-                          });
-                        }
-                        await deletePlatform(selectedPlatformData.id);
+                        await deleteChannelByProvider(selectedPlatformData);
+                        toast({ title: 'Deleted', description: 'Channel has been deleted.' });
+                        setSelectedPlatform(null);
+                        await fetchPlatforms();
                       } catch (e: any) {
                         toast({ title: 'Error', description: e?.message || 'Failed to delete channel', variant: 'destructive' });
                       } finally {
@@ -1393,24 +1419,10 @@ const ConnectedPlatforms = () => {
                               if (!selectedPlatformData) return;
                               try {
                                 setIsDeletingChannel(true);
-                                const provider = getPlatformType(selectedPlatformData);
-                                if (provider === 'whatsapp') {
-                                  const sessionName = (selectedPlatformData.display_name || '').replace(/\s/g, '');
-                                  await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ session_name: sessionName })
-                                  });
-                                } else if (provider === 'telegram') {
-                                  await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.DELETE_WEBHOOK, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ channel_id: selectedPlatformData.id })
-                                  });
-                                }
-                                await deletePlatform(selectedPlatformData.id);
+                                await deleteChannelByProvider(selectedPlatformData);
                                 toast({ title: "Deleted", description: "Channel has been deleted." });
                                 setSelectedPlatform(null);
+                                await fetchPlatforms();
                               } catch (e: any) {
                                 toast({ title: "Error", description: e?.message || "Failed to delete channel", variant: "destructive" });
                               } finally {

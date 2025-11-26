@@ -108,9 +108,13 @@ export default function Contacts() {
   };
 
   const handleViewConversation = (contact: ContactWithDetails) => {
-    // Navigate to chat page with contact filter
-    navigate(`/chat?contact=${contact.id}`);
-    toast.success(`Opening conversation with ${contact.name || 'contact'}`);
+    const params = new URLSearchParams({
+      menu: "chat",
+      contact: contact.id,
+    });
+
+    navigate({ pathname: "/chat", search: params.toString() });
+    toast.success(`Opening conversation with ${contact.name || "contact"}`);
   };
 
   const handleViewDetails = (contact: ContactWithDetails) => {
