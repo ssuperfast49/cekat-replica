@@ -353,7 +353,10 @@ const HumanAgents = () => {
                     const toLower = (v: any) => String(v || '').toLowerCase();
                     const isMaster = (r: any) => toLower(r.role_name).includes('master');
                     const isSuper = (r: any) => toLower(r.role_name).includes('super');
-                    const isAgentOnly = (r: any) => toLower(r.role_name) === 'agent' || (toLower(r.role_name).includes('agent') && !toLower(r.role_name).includes('super'));
+                    const isAgentOnly = (r: any) => {
+                      const role = toLower(r.role_name);
+                      return role === 'agent' || role === 'agent_only';
+                    };
 
                     const masters = rows.filter(isMaster);
                     const supers = rows.filter(isSuper);

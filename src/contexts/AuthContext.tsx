@@ -187,11 +187,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  const evaluateOtpWithGuard = (promise: Promise<unknown>) => {
+    let settled = false;
+    const guardId = window.setTimeout(() => {
+      if (!settled) {
+        setOtpEvaluated(true);
+      }
+    }, 5000);
+    return promise.finally(() => {
+      settled = true;
+      window.clearTimeout(guardId);
+      setOtpEvaluated(true);
+    });
+  };
+
   useEffect(() => {
     // Get initial session, then compute OTP requirement before finishing loading
     const init = async () => {
       setLoading(true);
       setOtpEvaluated(false);
+      let loadingGuardTriggered = false;
+      const loadingGuard = window.setTimeout(() => {
+        loadingGuardTriggered = true;
+        setLoading(false);
+        setOtpEvaluated(true);
+      }, 5000);
       try {
         // Purge legacy keys from older builds to avoid stale gating
         try {
@@ -213,11 +233,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
           localStorage.removeItem('sb-tgrmxlbnutxpewfmofdx-auth-token');
         } catch {}
 
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession().catch(() => ({ data: { session: null } })),
+          new Promise<{ data: { session: Session | null } }>((resolve) => {
+            setTimeout(() => resolve({ data: { session: null } }), 4000);
+          })
+        ]);
+        const initialSession = sessionResult?.data?.session ?? null;
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         // Validate that the persisted session actually has a valid user
-        const { data: { user: validUser } } = await supabase.auth.getUser();
+        const userResult = await Promise.race([
+          supabase.auth.getUser().catch(() => ({ data: { user: null } })),
+          new Promise<{ data: { user: User | null } }>((resolve) => {
+            setTimeout(() => resolve({ data: { user: null } }), 4000);
+          })
+        ]);
+        const validUser = userResult?.data?.user ?? null;
         if (!validUser) {
           // Clear any stale auth state and OTP flags, treat as signed out
           setSession(null);
@@ -229,7 +261,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
         if (initialSession) {
           // Check account status first before setting user as signed in
-          const isAccountActive = await checkAccountStatus(initialSession);
+          const isAccountActive = await Promise.race([
+            checkAccountStatus(initialSession),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 3000))
+          ]);
           if (!isAccountActive) {
             // Account is deactivated, show modal but keep session for now
             setSession(initialSession);
@@ -244,15 +279,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setSession(initialSession);
           setUser(initialSession.user);
           // Defer OTP decision until profile evaluation completes to avoid flicker
-          setLoading(false);
+          if (!loadingGuardTriggered) {
+            window.clearTimeout(loadingGuard);
+            setLoading(false);
+          }
           // Evaluate in background
-          updateOtpRequirementFromProfile(initialSession)
+          evaluateOtpWithGuard(
+            updateOtpRequirementFromProfile(initialSession)
             .then((enabled) => {
               // On hard refresh, preserve any existing OTP verification state.
               // Only set whether OTP is required; do not reset verification here.
               setOtpRequired(!!enabled);
             })
-            .finally(() => setOtpEvaluated(true));
+          );
           return;
         } else {
           setOtpRequired(false);
@@ -260,7 +299,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setOtpEvaluated(true);
         }
       } finally {
-        setLoading(false);
+        if (!loadingGuardTriggered) {
+          window.clearTimeout(loadingGuard);
+          setLoading(false);
+        }
       }
     };
 
@@ -289,7 +331,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
             }
             
             // Check account status first before setting user as signed in
-            const isAccountActive = await checkAccountStatus(nextSession);
+            const isAccountActive = await Promise.race([
+              checkAccountStatus(nextSession),
+              new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 3000))
+            ]);
             if (!isAccountActive) {
               // Account is deactivated, show modal but keep session for now
               setSession(nextSession);
@@ -330,7 +375,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setOtpEvaluated(false);
             setLoading(false);
             
-            updateOtpRequirementFromProfile(nextSession)
+            evaluateOtpWithGuard(
+              updateOtpRequirementFromProfile(nextSession)
               .then((enabled) => {
                 if (enabled && !persistedVerified) {
                   const currentUserId = nextSession?.user?.id || null;
@@ -346,7 +392,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 }
                 setOtpRequired(!!enabled);
               })
-              .finally(() => setOtpEvaluated(true));
+            );
             // Persist last login payload for immediate reuse on next refresh
             try { localStorage.setItem('app.lastAuthEvent', JSON.stringify({ event, at: Date.now(), user: nextSession?.user || null })); } catch {}
             return; // early exit; we've already set loading state
@@ -355,16 +401,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (event === 'PASSWORD_RECOVERY') {
             try { localStorage.setItem('auth.intent', 'recovery'); } catch {}
             setOtpEvaluated(false);
-            try {
-              const enabled = await updateOtpRequirementFromProfile(nextSession);
-              setOtpRequired(!!enabled);
-              if (enabled) setOtpVerified(false);
-            } catch {
-              // On errors during recovery, prefer not to block with OTP
-              setOtpRequired(false);
-            } finally {
-              setOtpEvaluated(true);
-            }
+            evaluateOtpWithGuard(
+              (async () => {
+                try {
+                  const enabled = await updateOtpRequirementFromProfile(nextSession);
+                  setOtpRequired(!!enabled);
+                  if (enabled) setOtpVerified(false);
+                } catch {
+                  // On errors during recovery, prefer not to block with OTP
+                  setOtpRequired(false);
+                }
+              })()
+            );
             return;
           }
           // Ignore refresh-related events for logging to reduce noise

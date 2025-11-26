@@ -1,4 +1,12 @@
 # Change Log
+# [0.0.48] FE WEB CEKAT 2025-11-26
+### Human Agents Roster
+- **Duplicate Entry Cleanup**: Adjusted role grouping logic so master agents no longer appear in both the master and agent sections of the Human Agents table; prevents a single email from showing twice and keeps assignment status accurate.
+
+### Login & Session Guardrails
+- **Refresh Spinner Fix**: Added watchdog timers around Supabase session/bootstrap calls so a stalled `auth.getSession()` or 2FA profile check can’t trap users behind the infinite “Loading…” screen; stale sessions now fall back to the login view within a few seconds.
+- **Account Status Timeouts**: Soft-capped the account status RPC to keep token refreshes responsive even if the database briefly stops responding.
+
 # [0.0.47] FE WEB CEKAT 2025-11-25
 ### Supabase Baseline Refresh
 - **Single Source Migration**: Replaced the entire migrations stack with `20251124230847_baseline.sql`, capturing today’s production schema so every environment can rebuild from a single, clean baseline.

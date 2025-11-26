@@ -72,7 +72,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
   }, [user, loading, otpEvaluated, otpRequired, otpVerified, location.pathname, navigate]);
 
-  if (loading || !otpEvaluated) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex items-center space-x-2">
