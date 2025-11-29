@@ -201,16 +201,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         // Prefer LocalStorage first to avoid flicker/empty state on refresh
         try {
-          const raw = localStorage.getItem('sb-yoekcpoppfudmqtvjcby-auth-token');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed?.access_token && parsed?.user) {
-              setSession(parsed as any);
-              setUser(parsed.user as User);
-            }
+          // Scan for any Supabase auth token key and hydrate the most recent-looking one
+          const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+          for (const key of keys) {
+            try {
+              const raw = localStorage.getItem(key);
+              if (!raw) continue;
+              const parsed = JSON.parse(raw);
+              if (parsed?.access_token && parsed?.user) {
+                setSession(parsed as any);
+                setUser(parsed.user as User);
+                break;
+              }
+            } catch {}
           }
-          // Clean up any cached session from the old project ref to avoid loading stale tokens
+          // Clean up any obviously stale project refs we used previously
           localStorage.removeItem('sb-tgrmxlbnutxpewfmofdx-auth-token');
+          localStorage.removeItem('sb-yoekcpoppfudmqtvjcby-auth-token');
         } catch {}
 
         const { data: { session: initialSession } } = await supabase.auth.getSession();

@@ -12,6 +12,8 @@ import { useAIAgents } from "@/hooks/useAIAgents";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRBAC } from "@/contexts/RBACContext";
+import { ROLES } from "@/types/rbac";
 import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { callWebhook } from "@/lib/webhookClient";
@@ -26,6 +28,7 @@ interface WhatsAppPlatformFormProps {
 const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: WhatsAppPlatformFormProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { hasRole } = useRBAC();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
@@ -48,6 +51,21 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [isCancelling, setIsCancelling] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
+
+  // Check if current user is a super agent
+  const isCurrentUserSuperAgent = hasRole(ROLES.SUPER_AGENT);
+  
+  // Prefill super agent field if current user is a super agent
+  useEffect(() => {
+    if (isOpen && isCurrentUserSuperAgent && user?.id && humanAgents.length > 0) {
+      const currentUserSuperAgent = humanAgents.find(
+        (a) => a.primaryRole === 'super_agent' && a.user_id === user.id
+      );
+      if (currentUserSuperAgent) {
+        setSelectedSuperAgentId(user.id);
+      }
+    }
+  }, [isOpen, isCurrentUserSuperAgent, user?.id, humanAgents]);
 
   const resolveSuperAgentForAI = (aiProfileId: string): string | null => {
     if (!aiProfileId) return null;
@@ -315,7 +333,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       setIsFetchingQR(false);
       setQrImageUrl(null);
       setQrError(null);
-      setSelectedSuperAgentId(null);
+      if (!isCurrentUserSuperAgent) {
+        setSelectedSuperAgentId(null);
+      }
       onClose();
     }
   };
@@ -367,7 +387,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         selectedHumanAgents: [],
         profilePhoto: null,
       });
-      setSelectedSuperAgentId(null);
+      if (!isCurrentUserSuperAgent) {
+        setSelectedSuperAgentId(null);
+      }
     } catch (error: any) {
       console.error('Error submitting form:', error);
       toast({
@@ -526,7 +548,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                 </TooltipContent>
               </Tooltip>
             </div>
-            <div className="rounded-md border bg-muted px-3 py-2 text-sm">
+            <div className={`rounded-md border bg-muted px-3 py-2 text-sm ${isCurrentUserSuperAgent ? 'opacity-75' : ''}`}>
               {humanAgentsLoading ? (
                 'Loading super agents...'
               ) : selectedSuperAgentId ? (
@@ -536,7 +558,9 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Super agent ditentukan langsung oleh AI agent terpilih.
+              {isCurrentUserSuperAgent 
+                ? 'Super agent ditentukan berdasarkan akun Anda sebagai super agent.'
+                : 'Super agent ditentukan langsung oleh AI agent terpilih.'}
             </p>
           </div>
 
@@ -575,10 +599,23 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                       variant: "destructive",
                     });
                     setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
-                    setSelectedSuperAgentId(null);
+                    if (!isCurrentUserSuperAgent) {
+                      setSelectedSuperAgentId(null);
+                    }
                     return;
                   }
-                  setSelectedSuperAgentId(superId);
+                  // If current user is super agent, only allow selecting AI agents that belong to them
+                  if (isCurrentUserSuperAgent && superId !== user?.id) {
+                    toast({
+                      title: "Invalid AI agent",
+                      description: "You can only select AI agents that belong to your super agent account.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (!isCurrentUserSuperAgent) {
+                    setSelectedSuperAgentId(superId);
+                  }
                   setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
                 }}
               >
@@ -586,15 +623,23 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                   <SelectValue placeholder="Choose an AI agent" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border z-50">
-                  {aiAgents.map((agent) => {
-                    const disabled = !agent.super_agent_id;
-                    return (
-                      <SelectItem key={agent.id} value={agent.id} disabled={disabled}>
-                        {agent.name}
-                        {disabled && <span className="ml-2 text-xs text-muted-foreground">(Assign super agent first)</span>}
-                      </SelectItem>
-                    );
-                  })}
+                  {aiAgents
+                    .filter((agent) => {
+                      // If current user is super agent, only show AI agents that belong to them
+                      if (isCurrentUserSuperAgent && user?.id) {
+                        return agent.super_agent_id === user.id;
+                      }
+                      return true;
+                    })
+                    .map((agent) => {
+                      const disabled = !agent.super_agent_id;
+                      return (
+                        <SelectItem key={agent.id} value={agent.id} disabled={disabled}>
+                          {agent.name}
+                          {disabled && <span className="ml-2 text-xs text-muted-foreground">(Assign super agent first)</span>}
+                        </SelectItem>
+                      );
+                    })}
                 </SelectContent>
               </Select>
             )}

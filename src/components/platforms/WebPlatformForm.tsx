@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,8 @@ import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRBAC } from "@/contexts/RBACContext";
+import { ROLES } from "@/types/rbac";
 import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
 
@@ -25,6 +27,7 @@ interface WebPlatformFormProps {
 const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: WebPlatformFormProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { hasRole } = useRBAC();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
@@ -39,6 +42,21 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
   });
   const [submitting, setSubmitting] = useState(false);
   const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
+
+  // Check if current user is a super agent
+  const isCurrentUserSuperAgent = hasRole(ROLES.SUPER_AGENT);
+  
+  // Prefill super agent field if current user is a super agent
+  useEffect(() => {
+    if (isOpen && isCurrentUserSuperAgent && user?.id && humanAgents.length > 0) {
+      const currentUserSuperAgent = humanAgents.find(
+        (a) => a.primaryRole === 'super_agent' && a.user_id === user.id
+      );
+      if (currentUserSuperAgent) {
+        setSelectedSuperAgentId(user.id);
+      }
+    }
+  }, [isOpen, isCurrentUserSuperAgent, user?.id, humanAgents]);
 
   const resolveSuperAgentForAI = (aiProfileId: string): string | null => {
     if (!aiProfileId) return null;
@@ -110,7 +128,9 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
         selectedHumanAgents: [],
         profilePhoto: null,
       });
-      setSelectedSuperAgentId(null);
+      if (!isCurrentUserSuperAgent) {
+        setSelectedSuperAgentId(null);
+      }
       onClose();
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -130,16 +150,9 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
       selectedHumanAgents: [],
       profilePhoto: null,
     });
-    setFormData({
-      description: "",
-      displayName: "",
-      websiteUrl: "",
-      businessCategory: "",
-      selectedAIAgent: "",
-      selectedHumanAgents: [],
-      profilePhoto: null,
-    });
-    setSelectedSuperAgentId(null);
+    if (!isCurrentUserSuperAgent) {
+      setSelectedSuperAgentId(null);
+    }
     onClose();
   };
 
@@ -322,7 +335,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
                 </TooltipContent>
               </Tooltip>
             </div>
-            <div className="rounded-md border bg-muted px-3 py-2 text-sm">
+            <div className={`rounded-md border bg-muted px-3 py-2 text-sm ${isCurrentUserSuperAgent ? 'opacity-75' : ''}`}>
               {humanAgentsLoading ? (
                 'Loading super agents...'
               ) : selectedSuperAgentId ? (
@@ -332,7 +345,9 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Super agent ditentukan secara otomatis berdasarkan AI agent yang dipilih.
+              {isCurrentUserSuperAgent 
+                ? 'Super agent ditentukan berdasarkan akun Anda sebagai super agent.'
+                : 'Super agent ditentukan secara otomatis berdasarkan AI agent yang dipilih.'}
             </p>
           </div>
 
@@ -371,10 +386,23 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
                       variant: "destructive",
                     });
                     setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
-                    setSelectedSuperAgentId(null);
+                    if (!isCurrentUserSuperAgent) {
+                      setSelectedSuperAgentId(null);
+                    }
                     return;
                   }
-                  setSelectedSuperAgentId(superId);
+                  // If current user is super agent, only allow selecting AI agents that belong to them
+                  if (isCurrentUserSuperAgent && superId !== user?.id) {
+                    toast({
+                      title: "Invalid AI agent",
+                      description: "You can only select AI agents that belong to your super agent account.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (!isCurrentUserSuperAgent) {
+                    setSelectedSuperAgentId(superId);
+                  }
                   setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
                 }}
               >
@@ -382,15 +410,23 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
                   <SelectValue placeholder="Choose an AI agent" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border z-50">
-                  {aiAgents.map((agent) => {
-                    const disabled = !agent.super_agent_id;
-                    return (
-                      <SelectItem key={agent.id} value={agent.id} disabled={disabled}>
-                        {agent.name}
-                        {disabled && <span className="ml-2 text-xs text-muted-foreground">(Assign super agent first)</span>}
-                      </SelectItem>
-                    );
-                  })}
+                  {aiAgents
+                    .filter((agent) => {
+                      // If current user is super agent, only show AI agents that belong to them
+                      if (isCurrentUserSuperAgent && user?.id) {
+                        return agent.super_agent_id === user.id;
+                      }
+                      return true;
+                    })
+                    .map((agent) => {
+                      const disabled = !agent.super_agent_id;
+                      return (
+                        <SelectItem key={agent.id} value={agent.id} disabled={disabled}>
+                          {agent.name}
+                          {disabled && <span className="ml-2 text-xs text-muted-foreground">(Assign super agent first)</span>}
+                        </SelectItem>
+                      );
+                    })}
                 </SelectContent>
               </Select>
             )}

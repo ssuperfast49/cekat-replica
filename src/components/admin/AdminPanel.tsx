@@ -15,10 +15,9 @@ import { ROLES } from "@/types/rbac";
 import { toast } from "@/components/ui/sonner";
 import { defaultFallbackHandler } from "@/lib/fallbackHandler";
 import { useContacts } from "@/hooks/useContacts";
-import { protectedSupabase, logAction } from "@/lib/supabase";
+import { protectedSupabase, logAction, supabase } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminPanel() {
   const [searchParams, setSearchParams] = useSearchParams();

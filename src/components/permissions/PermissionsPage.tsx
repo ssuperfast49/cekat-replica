@@ -103,8 +103,14 @@ const PermissionsPage = () => {
   const isMaster = hasRole('master_agent');
   const isRootSelected = selectedRole?.name === 'master_agent';
 
+  // Filters for permission matrix
+  const [permissionSearch, setPermissionSearch] = useState("");
+  const [permissionResourceFilter, setPermissionResourceFilter] = useState<'all' | string>('all');
+  const [permissionActionFilter, setPermissionActionFilter] = useState<'all' | string>('all');
+
   // Map navigation keys to bundle keys (when bundles are available)
   const NAV_TO_BUNDLE: Record<NavKey, string> = {
+    admin: 'admin.view',
     chat: 'chat.view',
     contacts: 'contacts.view',
     platforms: 'platforms.view',

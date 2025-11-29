@@ -1,4 +1,31 @@
 # Change Log
+# [0.0.49] FE WEB CEKAT 2025-11-26
+### Platform Form Enhancements for Super Agents
+- **Super Agent Field Auto-Prefill**: All platform creation forms (Telegram, WhatsApp, Web) now automatically prefill the super agent field when the current user is a super agent
+  - Super agent field is automatically populated with the current user's super agent username/ID when form opens
+  - Field becomes readonly (visual indication with reduced opacity) when user is a super agent
+  - Helper text updated to indicate super agent is determined by current user's account for super agent users
+  - Prevents super agent users from changing their own super agent assignment
+
+- **AI Agent Filtering for Super Agents**: Enhanced platform forms to filter AI agents based on super agent role
+  - Super agent users only see AI agents that belong to their account in the AI agent dropdown
+  - Validation prevents selecting AI agents that don't belong to the super agent's account
+  - Error toast notification shown when attempting to select invalid AI agents
+  - Master agents continue to see all AI agents as before
+
+- **Role-Based Form Behavior**: Implemented role-aware form logic across all platform types
+  - Added `useRBAC()` hook integration to check for `ROLES.SUPER_AGENT` role
+  - Automatic super agent ID detection from `humanAgents` list when form opens
+  - Form reset logic preserves super agent ID for super agent users
+  - Consistent behavior across Telegram, WhatsApp, and Web platform forms
+
+### Technical Improvements
+- **Component Updates**: Enhanced platform form components with role-based logic
+  - Added `useEffect` hooks to prefill super agent field on form open
+  - Integrated `useRBAC` context for role checking
+  - Added conditional rendering and validation based on user role
+  - Improved form state management to preserve super agent selection for super agent users
+
 # [0.0.48] FE WEB CEKAT 2025-11-26
 ### RBAC & Permissions System Enhancements
 - **Master Agent Root Role Treatment**: Master Agent is now treated as root role with full system privileges

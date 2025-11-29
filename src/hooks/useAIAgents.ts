@@ -47,17 +47,38 @@ export const useAIAgents = () => {
 
       // Fetch all AI profiles for selection
       await waitForAuthReady();
-      let query = supabase
-        .from('ai_profiles')
-        .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve, super_agent_id')
-        .order('created_at', { ascending: false }) as any;
+      const SELECT_COLUMNS = 'id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve';
+
+      // Attempt filtered query first (if supported); gracefully fall back if column is missing
+      let aiAgentsData: any[] | null = null;
+      let aiAgentsError: any = null;
 
       if (filterBySuper) {
-        query = query.eq('super_agent_id', filterBySuper);
-      }
-      const { data: aiAgentsData, error: aiAgentsError } = await query;
+        const { data, error } = await supabase
+          .from('ai_profiles')
+          .select(SELECT_COLUMNS)
+          .eq('super_agent_id', filterBySuper as any) // may fail if column doesn't exist
+          .order('created_at', { ascending: false });
+        aiAgentsData = data;
+        aiAgentsError = error;
 
-      
+        // If column does not exist in this environment, fall back to unfiltered fetch
+        if (aiAgentsError?.code === '42703') {
+          const fallback = await supabase
+            .from('ai_profiles')
+            .select(SELECT_COLUMNS)
+            .order('created_at', { ascending: false });
+          aiAgentsData = fallback.data;
+          aiAgentsError = fallback.error;
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('ai_profiles')
+          .select(SELECT_COLUMNS)
+          .order('created_at', { ascending: false });
+        aiAgentsData = data;
+        aiAgentsError = error;
+      }
 
       if (aiAgentsError) {
         console.error('Error fetching AI agents:', aiAgentsError);
@@ -66,7 +87,6 @@ export const useAIAgents = () => {
         return;
       }
 
-      
       setAIAgents(aiAgentsData || []);
       try { localStorage.setItem('app.cachedAIAgents', JSON.stringify(aiAgentsData || [])); } catch {}
     } catch (error) {
