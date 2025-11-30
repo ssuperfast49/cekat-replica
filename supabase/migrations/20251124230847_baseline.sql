@@ -3683,7 +3683,18 @@ CREATE POLICY "Allow anonymous read access to messages" ON "public"."messages" F
 
 
 
-CREATE POLICY "Allow authenticated access to ai_profiles" ON "public"."ai_profiles" TO "authenticated" USING (true);
+CREATE POLICY "Allow authenticated access to ai_profiles" ON "public"."ai_profiles" TO "authenticated" USING ((((EXISTS ( SELECT 1
+   FROM ("public"."user_roles" "ur"
+     JOIN "public"."roles" "r" ON (("r"."id" = "ur"."role_id")))
+  WHERE (("ur"."user_id" = "auth"."uid"()) AND ("lower"("r"."name") = 'master_agent'::"text")))) OR (EXISTS ( SELECT 1
+   FROM ("public"."user_roles" "ur2"
+     JOIN "public"."roles" "r2" ON (("r2"."id" = "ur2"."role_id")))
+  WHERE (("ur2"."user_id" = "auth"."uid"()) AND ("lower"("r2"."name") NOT IN (ARRAY['master_agent'::"text", 'super_agent'::"text", 'agent'::"text'])))))) OR (((EXISTS ( SELECT 1
+   FROM ("public"."user_roles" "ur3"
+     JOIN "public"."roles" "r3" ON (("r3"."id" = "ur3"."role_id")))
+  WHERE (("ur3"."user_id" = "auth"."uid"()) AND ("lower"("r3"."name") = 'super_agent'::"text")))) AND ("ai_profiles"."super_agent_id" = "auth"."uid"()))) OR (EXISTS ( SELECT 1
+   FROM "public"."super_agent_members" "sam"
+  WHERE (("sam"."agent_user_id" = "auth"."uid"()) AND ("sam"."super_agent_id" = "ai_profiles"."super_agent_id")))));
 
 
 

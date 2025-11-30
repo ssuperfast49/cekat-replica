@@ -1,4 +1,11 @@
 # Change Log
+# [0.1.2] FE WEB CEKAT 2025-11-28
+### AI Agent Visibility
+- Agents now only see AI agents owned by their assigned super agent; a new `useSuperAgentScope` hook drives consistent filtering across dashboards, dropdowns, and cached data.
+- The AI Agents list and helpers surface localized messaging when an agent has no supervising cluster, preventing stale cross-team data from leaking through local storage.
+### Database Access Control
+- Tightened the `ai_profiles` RLS guard so master agents retain full visibility, super agents stay scoped to their own records, and agents inherit their supervising super agent’s access.
+
 # [0.1.1] FE WEB CEKAT 2025-11-27
 ### Permissions Console
 - **Regression Fix**: Reintroduced missing permission search and filter state in `PermissionsPage`; restores the role configuration screen and avoids the `permissionSearch is not defined` runtime error.

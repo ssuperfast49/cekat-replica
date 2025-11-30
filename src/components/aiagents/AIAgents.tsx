@@ -12,7 +12,7 @@ import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRBAC } from "@/contexts/RBACContext";
+import { useSuperAgentScope } from "@/hooks/useSuperAgentScope";
 
 interface AIAgent {
   id: string;
@@ -145,7 +145,7 @@ const AIAgents = () => {
   const [lastCreated, setLastCreated] = useState<Date | null>(null);
   const firstLoadRef = useRef(true);
   const { user } = useAuth();
-  const { hasRole } = useRBAC();
+  const { mode: scopeMode, superAgentId, loading: scopeLoading, error: scopeError } = useSuperAgentScope();
   
 const escapeIlike = (value: string) =>
   value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
@@ -179,14 +179,27 @@ const buildAgent = (
 });
 
 const fetchStats = useCallback(async () => {
+  if (scopeLoading) return;
+
+  if (scopeMode === 'none') {
+    setTotalAgents(0);
+    setLastCreated(null);
+    return;
+  }
+
   try {
     let statsQuery = supabase
       .from('ai_profiles')
       .select('id', { count: 'exact', head: true })
       .eq('org_id', DEFAULT_ORG_ID);
 
-    if (hasRole?.('super_agent') && user?.id) {
-      statsQuery = statsQuery.eq('super_agent_id', user.id);
+    if ((scopeMode === 'super' || scopeMode === 'agent')) {
+      if (!superAgentId) {
+        setTotalAgents(0);
+        setLastCreated(null);
+        return;
+      }
+      statsQuery = statsQuery.eq('super_agent_id', superAgentId);
     }
 
     const { count } = await statsQuery;
@@ -199,8 +212,8 @@ const fetchStats = useCallback(async () => {
         .limit(1)
         .eq('org_id', DEFAULT_ORG_ID);
 
-      if (hasRole?.('super_agent') && user?.id) {
-        latestQuery = latestQuery.eq('super_agent_id', user.id);
+      if ((scopeMode === 'super' || scopeMode === 'agent') && superAgentId) {
+        latestQuery = latestQuery.eq('super_agent_id', superAgentId);
       }
 
       const { data: latest } = await latestQuery.maybeSingle();
@@ -211,9 +224,14 @@ const fetchStats = useCallback(async () => {
   } catch (err) {
     console.error('Error fetching AI agent stats:', err);
   }
-}, [hasRole, user?.id]);
+}, [scopeMode, superAgentId, scopeLoading]);
 
 const fetchAgents = useCallback(async () => {
+  if (scopeLoading) {
+    setLoading(true);
+    return;
+  }
+
   try {
     if (firstLoadRef.current) {
       setLoading(true);
@@ -222,13 +240,32 @@ const fetchAgents = useCallback(async () => {
     }
     setError(null);
 
+    if (scopeMode === 'none') {
+      firstLoadRef.current = false;
+      setAgents([]);
+      setFilteredCount(0);
+      setLoading(false);
+      setListLoading(false);
+      setError(scopeError ?? 'Tidak ada agen AI yang tersedia untuk akun ini.');
+      return;
+    }
+
     let query = supabase
       .from('ai_profiles')
       .select('*, ai_models:ai_models!ai_profiles_model_id_fkey(id, display_name, model_name, provider)', { count: 'exact' })
       .eq('org_id', DEFAULT_ORG_ID);
 
-    if (hasRole?.('super_agent') && user?.id) {
-      query = query.eq('super_agent_id', user.id);
+    if ((scopeMode === 'super' || scopeMode === 'agent')) {
+      if (!superAgentId) {
+        firstLoadRef.current = false;
+        setAgents([]);
+        setFilteredCount(0);
+        setLoading(false);
+        setListLoading(false);
+        setError(scopeError ?? 'Tidak ada agen AI yang tersedia untuk akun ini.');
+        return;
+      }
+      query = query.eq('super_agent_id', superAgentId);
     }
 
     if (debouncedSearch) {
@@ -303,7 +340,7 @@ const fetchAgents = useCallback(async () => {
       setListLoading(false);
     }
   }
-}, [debouncedSearch, modelFilter, providerFilter, sortOrder, modelMap, hasRole, user?.id]);
+}, [debouncedSearch, modelFilter, providerFilter, sortOrder, modelMap, scopeMode, superAgentId, scopeLoading, scopeError]);
 
 const providerOptions = useMemo(() => {
   const providers = new Set<string>();

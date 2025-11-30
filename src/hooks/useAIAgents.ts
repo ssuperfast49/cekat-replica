@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { waitForAuthReady } from '@/lib/authReady';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRBAC } from '@/contexts/RBACContext';
+import { useSuperAgentScope } from './useSuperAgentScope';
 
 export interface AIAgent {
   id: string;
@@ -25,25 +25,35 @@ export const useAIAgents = () => {
   const [aiAgents, setAIAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterBySuper, setFilterBySuper] = useState<string | null>(null);
   const inFlightKeyRef = useState<{ current: string | null }>({ current: null })[0];
   const { user } = useAuth();
-  const { hasRole } = useRBAC();
+  const { mode: scopeMode, superAgentId, loading: scopeLoading, error: scopeError } = useSuperAgentScope();
 
-  // Automatically scope super agents to their own AI agents
-  useEffect(() => {
-    if (hasRole?.('super_agent') && user?.id && filterBySuper !== user.id) {
-      setFilterBySuper(user.id);
+  const cacheKey = useMemo(() => {
+    const uid = user?.id ?? 'anon';
+    if (scopeMode === 'all') {
+      return `app.cachedAIAgents:${uid}:all`;
     }
-  }, [hasRole, user?.id, filterBySuper]);
+    if (scopeMode === 'none') {
+      return `app.cachedAIAgents:${uid}:none`;
+    }
+    return `app.cachedAIAgents:${uid}:${superAgentId ?? 'none'}`;
+  }, [scopeMode, superAgentId, user?.id]);
 
   const fetchAIAgents = async () => {
+    if (scopeLoading) return;
     try {
-      const key = String(filterBySuper || '__ALL__');
-      if (inFlightKeyRef.current === key) return; // de-dupe concurrent/strict-mode fetches
-      inFlightKeyRef.current = key;
+      const scopeSignature = `${scopeMode}:${superAgentId ?? 'null'}`;
+      if (inFlightKeyRef.current === scopeSignature) return; // de-dupe concurrent/strict-mode fetches
+      inFlightKeyRef.current = scopeSignature;
       setLoading(true);
-      setError(null);
+      setError(scopeError ?? null);
+
+      if (scopeMode === 'none') {
+        setAIAgents([]);
+        try { localStorage.setItem(cacheKey, JSON.stringify([])); } catch {}
+        return;
+      }
 
       // Fetch all AI profiles for selection
       await waitForAuthReady();
@@ -52,12 +62,15 @@ export const useAIAgents = () => {
         .select('id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve, super_agent_id')
         .order('created_at', { ascending: false }) as any;
 
-      if (filterBySuper) {
-        query = query.eq('super_agent_id', filterBySuper);
+      if ((scopeMode === 'super' || scopeMode === 'agent')) {
+        if (!superAgentId) {
+          setAIAgents([]);
+          try { localStorage.setItem(cacheKey, JSON.stringify([])); } catch {}
+          return;
+        }
+        query = query.eq('super_agent_id', superAgentId);
       }
       const { data: aiAgentsData, error: aiAgentsError } = await query;
-
-      
 
       if (aiAgentsError) {
         console.error('Error fetching AI agents:', aiAgentsError);
@@ -66,9 +79,8 @@ export const useAIAgents = () => {
         return;
       }
 
-      
       setAIAgents(aiAgentsData || []);
-      try { localStorage.setItem('app.cachedAIAgents', JSON.stringify(aiAgentsData || [])); } catch {}
+      try { localStorage.setItem(cacheKey, JSON.stringify(aiAgentsData || [])); } catch {}
     } catch (error) {
       console.error('Error fetching AI agents:', error);
       setError('Failed to fetch AI agents');
@@ -81,13 +93,24 @@ export const useAIAgents = () => {
 
   // Hydrate from cache, then always fetch from network
   useEffect(() => {
+    if (scopeLoading) {
+      setLoading(true);
+      return;
+    }
+
+    if (scopeMode === 'none') {
+      setAIAgents([]);
+      setError(scopeError ?? 'Tidak ada agen AI yang tersedia untuk akun ini.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const raw = localStorage.getItem('app.cachedAIAgents');
+      const raw = localStorage.getItem(cacheKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           setAIAgents(parsed);
-          // do not early-return; continue to fetch fresh below
         }
       }
     } catch {}
@@ -95,13 +118,14 @@ export const useAIAgents = () => {
     // Slight debounce to coalesce StrictMode double-invocation
     const t = setTimeout(run, 50);
     return () => clearTimeout(t);
-  }, [filterBySuper]);
+  }, [scopeLoading, scopeMode, scopeError, cacheKey]);
 
   return {
     aiAgents,
-    loading,
+    loading: loading || scopeLoading,
     error,
     fetchAIAgents,
-    setFilterBySuper
+    scopeMode,
+    superAgentId
   };
 };
