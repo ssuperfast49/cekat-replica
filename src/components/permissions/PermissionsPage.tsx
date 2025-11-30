@@ -100,9 +100,6 @@ const PermissionsPage = () => {
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [bundles, setBundles] = useState<Array<{ id: string; key: string; name: string; description: string }>>([]);
   const [roleBundles, setRoleBundles] = useState<Record<string, boolean>>({});
-  const [permissionSearch, setPermissionSearch] = useState("");
-  const [permissionResourceFilter, setPermissionResourceFilter] = useState<string>('all');
-  const [permissionActionFilter, setPermissionActionFilter] = useState<string>('all');
   const isMaster = hasRole('master_agent');
   const isRootSelected = selectedRole?.name === 'master_agent';
 

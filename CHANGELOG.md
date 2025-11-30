@@ -1,4 +1,11 @@
 # Change Log
+# [0.1.4] FE WEB CEKAT 2025-11-28
+### Bug Fixes
+- **PermissionsPage Duplicate Declaration Fix**: Resolved "Identifier 'permissionSearch' has already been declared" syntax error
+  - Removed duplicate state declarations for `permissionSearch`, `permissionResourceFilter`, and `permissionActionFilter`
+  - Kept the properly typed versions of these state variables
+  - Fixed runtime error that prevented the Permissions page from loading
+
 # [0.1.3] FE WEB CEKAT 2025-11-28
 ### AI Agent Visibility
 - Agents now only see AI agents owned by their assigned super agent; a new `useSuperAgentScope` hook drives consistent filtering across dashboards, dropdowns, and cached data.
