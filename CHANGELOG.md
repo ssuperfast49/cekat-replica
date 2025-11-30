@@ -1,10 +1,37 @@
 # Change Log
-# [0.1.2] FE WEB CEKAT 2025-11-28
+# [0.1.3] FE WEB CEKAT 2025-11-28
 ### AI Agent Visibility
 - Agents now only see AI agents owned by their assigned super agent; a new `useSuperAgentScope` hook drives consistent filtering across dashboards, dropdowns, and cached data.
 - The AI Agents list and helpers surface localized messaging when an agent has no supervising cluster, preventing stale cross-team data from leaking through local storage.
 ### Database Access Control
 - Tightened the `ai_profiles` RLS guard so master agents retain full visibility, super agents stay scoped to their own records, and agents inherit their supervising super agent’s access.
+
+# [0.1.2] FE WEB CEKAT 2025-11-26
+### Platform Form Enhancements for Super Agents
+- **Super Agent Field Auto-Prefill**: All platform creation forms (Telegram, WhatsApp, Web) now automatically prefill the super agent field when the current user is a super agent
+  - Super agent field is automatically populated with the current user's super agent username/ID when form opens
+  - Field becomes readonly (visual indication with reduced opacity) when user is a super agent
+  - Helper text updated to indicate super agent is determined by current user's account for super agent users
+  - Prevents super agent users from changing their own super agent assignment
+
+- **AI Agent Filtering for Super Agents**: Enhanced platform forms to filter AI agents based on super agent role
+  - Super agent users only see AI agents that belong to their account in the AI agent dropdown
+  - Validation prevents selecting AI agents that don't belong to the super agent's account
+  - Error toast notification shown when attempting to select invalid AI agents
+  - Master agents continue to see all AI agents as before
+
+- **Role-Based Form Behavior**: Implemented role-aware form logic across all platform types
+  - Added `useRBAC()` hook integration to check for `ROLES.SUPER_AGENT` role
+  - Automatic super agent ID detection from `humanAgents` list when form opens
+  - Form reset logic preserves super agent ID for super agent users
+  - Consistent behavior across Telegram, WhatsApp, and Web platform forms
+
+### Technical Improvements
+- **Component Updates**: Enhanced platform form components with role-based logic
+  - Added `useEffect` hooks to prefill super agent field on form open
+  - Integrated `useRBAC` context for role checking
+  - Added conditional rendering and validation based on user role
+  - Improved form state management to preserve super agent selection for super agent users
 
 # [0.1.1] FE WEB CEKAT 2025-11-27
 ### Permissions Console
