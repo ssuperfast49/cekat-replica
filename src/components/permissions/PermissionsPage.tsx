@@ -100,14 +100,17 @@ const PermissionsPage = () => {
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [bundles, setBundles] = useState<Array<{ id: string; key: string; name: string; description: string }>>([]);
   const [roleBundles, setRoleBundles] = useState<Record<string, boolean>>({});
-  const [permissionSearch, setPermissionSearch] = useState("");
-  const [permissionResourceFilter, setPermissionResourceFilter] = useState<string>('all');
-  const [permissionActionFilter, setPermissionActionFilter] = useState<string>('all');
   const isMaster = hasRole('master_agent');
   const isRootSelected = selectedRole?.name === 'master_agent';
 
+  // Filters for permission matrix
+  const [permissionSearch, setPermissionSearch] = useState("");
+  const [permissionResourceFilter, setPermissionResourceFilter] = useState<'all' | string>('all');
+  const [permissionActionFilter, setPermissionActionFilter] = useState<'all' | string>('all');
+
   // Map navigation keys to bundle keys (when bundles are available)
   const NAV_TO_BUNDLE: Record<NavKey, string> = {
+    admin: 'admin.view',
     chat: 'chat.view',
     contacts: 'contacts.view',
     platforms: 'platforms.view',

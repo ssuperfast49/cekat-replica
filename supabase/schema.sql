@@ -11,661 +11,37 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
-CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
-
-CREATE SCHEMA IF NOT EXISTS "public";
-
-
-ALTER SCHEMA "public" OWNER TO "pg_database_owner";
-
 
 COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
-CREATE TYPE "public"."channel_type" AS ENUM (
-    'whatsapp',
-    'web',
-    'telegram'
-);
+CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
 
 
-ALTER TYPE "public"."channel_type" OWNER TO "postgres";
 
 
-CREATE TYPE "public"."label_scope" AS ENUM (
-    'contact',
-    'thread'
-);
 
 
-ALTER TYPE "public"."label_scope" OWNER TO "postgres";
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
 
 
-CREATE TYPE "public"."message_direction" AS ENUM (
-    'in',
-    'out'
-);
 
 
-ALTER TYPE "public"."message_direction" OWNER TO "postgres";
 
 
-CREATE TYPE "public"."message_role" AS ENUM (
-    'user',
-    'assistant',
-    'agent',
-    'system'
-);
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
 
 
-ALTER TYPE "public"."message_role" OWNER TO "postgres";
 
 
-CREATE TYPE "public"."message_type" AS ENUM (
-    'text',
-    'image',
-    'file',
-    'voice',
-    'event',
-    'note'
-);
 
 
-ALTER TYPE "public"."message_type" OWNER TO "postgres";
+CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
 
 
-CREATE TYPE "public"."thread_status" AS ENUM (
-    'open',
-    'pending',
-    'closed'
-);
-
-
-ALTER TYPE "public"."thread_status" OWNER TO "postgres";
-
-
-CREATE TYPE "public"."user_role" AS ENUM (
-    'agent',
-    'supervisor',
-    'super_agent'
-);
-
-
-ALTER TYPE "public"."user_role" OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."add_default_collaborators"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE v_super uuid;
-BEGIN
-  IF new.assignee_user_id IS NOT NULL THEN
-    INSERT INTO public.thread_collaborators(thread_id, user_id)
-    VALUES (new.id, new.assignee_user_id)
-    ON CONFLICT DO NOTHING;
-  END IF;
-
-  -- Try to resolve super agent
-  BEGIN
-    SELECT (new.additional_data->>'super_agent_id')::uuid INTO v_super;
-    IF v_super IS NULL THEN
-      SELECT (ch.credentials->>'super_agent_id')::uuid INTO v_super FROM public.channels ch WHERE ch.id = new.channel_id;
-    END IF;
-    IF v_super IS NOT NULL THEN
-      INSERT INTO public.thread_collaborators(thread_id, user_id)
-      VALUES (new.id, v_super)
-      ON CONFLICT DO NOTHING;
-    END IF;
-  EXCEPTION WHEN OTHERS THEN
-    NULL;
-  END;
-
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."add_default_collaborators"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."after_token_log_refresh_daily_monthly"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-  PERFORM public.refresh_daily_monthly_tokens();
-  RETURN NULL;
-END $$;
-
-
-ALTER FUNCTION "public"."after_token_log_refresh_daily_monthly"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."after_token_log_refresh_used_tokens"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-begin
-  perform public.refresh_used_tokens_for_super_agents(null, null);
-  return null;
-end $$;
-
-
-ALTER FUNCTION "public"."after_token_log_refresh_used_tokens"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."auto_close_due_threads"() RETURNS integer
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-declare
-  v_count integer := 0;
-begin
-  update public.threads t
-     set status = 'closed',
-         resolved_at = now()
-   where t.auto_resolve_at is not null
-     and t.auto_resolve_at <= now()
-     and t.status is distinct from 'closed';
-
-  get diagnostics v_count = row_count;
-  return v_count;
-end $$;
-
-
-ALTER FUNCTION "public"."auto_close_due_threads"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."auto_resolve_threads"() RETURNS "void"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-  -- Update threads that should be auto-resolved
-  UPDATE public.threads 
-  SET 
-    status = 'resolved',
-    resolved_at = now(),
-    resolved_by_user_id = null, -- Auto-resolved by system
-    end_reason = 'auto_resolve'
-  WHERE 
-    status = 'open'
-    AND ai_access_enabled = true
-    AND auto_resolve_at IS NOT NULL
-    AND auto_resolve_at <= now()
-    AND EXISTS (
-      SELECT 1 
-      FROM public.channels ch
-      JOIN public.ai_profiles ap ON ap.id = ch.ai_profile_id
-      WHERE ch.id = threads.channel_id
-        AND ap.enable_resolve = true
-        AND ap.auto_resolve_after_minutes > 0
-    );
-END;
-$$;
-
-
-ALTER FUNCTION "public"."auto_resolve_threads"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."can_read_thread"("p_thread_id" "uuid") RETURNS boolean
-    LANGUAGE "sql"
-    AS $$
-  with me as (
-    select auth.uid() as uid
-  ),
-  my_roles as (
-    select r.name from public.user_roles ur join public.roles r on r.id = ur.role_id where ur.user_id = (select uid from me)
-  )
-  select exists (
-    select 1 from my_roles where name = 'master_agent'
-  )
-  or exists (
-    select 1 from public.thread_collaborators tc where tc.thread_id = p_thread_id and tc.user_id = (select uid from me)
-  )
-  or exists (
-    select 1
-    from public.threads t
-    left join public.channels ch on ch.id = t.channel_id
-    left join public.super_agent_members sam on sam.org_id = t.org_id and sam.super_agent_id = (select uid from me)
-    where t.id = p_thread_id
-      and (
-        sam.agent_user_id is not null
-        or (ch.super_agent_id = (select uid from me))
-      )
-  );
-$$;
-
-
-ALTER FUNCTION "public"."can_read_thread"("p_thread_id" "uuid") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."cancel_auto_resolve_on_user_message"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-  -- If this is a user message (direction = 'in'), cancel auto-resolve
-  IF NEW.direction = 'in' THEN
-    UPDATE public.threads 
-    SET auto_resolve_at = null
-    WHERE id = NEW.thread_id;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."cancel_auto_resolve_on_user_message"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."check_and_auto_resolve_threads"() RETURNS TABLE("resolved_thread_id" "uuid", "thread_contact_name" "text", "auto_resolve_reason" "text")
-    LANGUAGE "plpgsql"
-    AS $$
-DECLARE
-  thread_record RECORD;
-BEGIN
-  -- Find threads that should be auto-resolved
-  FOR thread_record IN
-    SELECT 
-      t.id,
-      t.contact_id,
-      c.name as contact_name,
-      ap.auto_resolve_after_minutes,
-      t.auto_resolve_at
-    FROM public.threads t
-    JOIN public.channels ch ON ch.id = t.channel_id
-    JOIN public.ai_profiles ap ON ap.id = ch.ai_profile_id
-    JOIN public.contacts c ON c.id = t.contact_id
-    WHERE 
-      t.status = 'open'
-      AND t.ai_access_enabled = true
-      AND ap.enable_resolve = true
-      AND ap.auto_resolve_after_minutes > 0
-      AND t.auto_resolve_at IS NOT NULL
-      AND t.auto_resolve_at <= now()
-  LOOP
-    -- Auto-resolve this thread (use 'closed' instead of 'resolved')
-    UPDATE public.threads 
-    SET 
-      status = 'closed',
-      resolved_at = now(),
-      resolved_by_user_id = null,
-      end_reason = 'auto_resolve',
-      resolution = 'Conversation auto-resolved after ' || thread_record.auto_resolve_after_minutes || ' minutes of inactivity'
-    WHERE id = thread_record.id;
-    
-    -- Return the resolved thread info
-    resolved_thread_id := thread_record.id;
-    thread_contact_name := thread_record.contact_name;
-    auto_resolve_reason := 'Auto-resolved after ' || thread_record.auto_resolve_after_minutes || ' minutes of inactivity';
-    RETURN NEXT;
-  END LOOP;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."check_and_auto_resolve_threads"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."cleanup_old_chat_data"("p_org_id" "uuid" DEFAULT NULL::"uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-declare
-  v_org_id uuid;
-  v_retention_days integer;
-  v_cutoff_date timestamptz;
-  v_deleted_threads integer := 0;
-  v_deleted_messages integer := 0;
-  v_deleted_contacts integer := 0;
-  v_org_count integer := 0;
-  v_result jsonb;
-begin
-  -- If org_id provided, clean only that org; otherwise clean all orgs
-  if p_org_id is not null then
-    v_org_id := p_org_id;
-    
-    -- Get retention days for this org (default 90 if not set)
-    select coalesce(retention_days, 90)
-    into v_retention_days
-    from org_settings
-    where org_id = v_org_id;
-    
-    if v_retention_days is null then
-      v_retention_days := 90;
-    end if;
-    
-    v_cutoff_date := now() - make_interval(days => v_retention_days);
-    
-    -- Delete old messages first (due to foreign key)
-    with deleted as (
-      delete from public.messages m
-      using public.threads t
-      where m.thread_id = t.id
-        and t.org_id = v_org_id
-        and t.created_at < v_cutoff_date
-      returning m.id
-    )
-    select count(*) into v_deleted_messages from deleted;
-    
-    -- Delete old threads
-    with deleted as (
-      delete from public.threads
-      where org_id = v_org_id
-        and created_at < v_cutoff_date
-      returning id
-    )
-    select count(*) into v_deleted_threads from deleted;
-    
-    -- Delete orphaned contacts (no threads referencing them)
-    -- Only delete if they're older than retention period
-    with deleted as (
-      delete from public.contacts c
-      where c.org_id = v_org_id
-        and c.created_at < v_cutoff_date
-        and not exists (
-          select 1 from public.threads t
-          where t.contact_id = c.id
-        )
-      returning c.id
-    )
-    select count(*) into v_deleted_contacts from deleted;
-    
-    v_org_count := 1;
-    
-  else
-    -- Process all orgs
-    for v_org_id, v_retention_days in
-      select os.org_id, coalesce(os.retention_days, 90)
-      from org_settings os
-    loop
-      v_cutoff_date := now() - make_interval(days => v_retention_days);
-      
-      -- Delete messages
-      with deleted as (
-        delete from public.messages m
-        using public.threads t
-        where m.thread_id = t.id
-          and t.org_id = v_org_id
-          and t.created_at < v_cutoff_date
-        returning m.id
-      )
-      select count(*) into v_deleted_messages from deleted;
-      
-      -- Delete threads
-      with deleted as (
-        delete from public.threads
-        where org_id = v_org_id
-          and created_at < v_cutoff_date
-        returning id
-      )
-      select count(*) into v_deleted_threads from deleted;
-      
-      -- Delete orphaned contacts
-      with deleted as (
-        delete from public.contacts c
-        where c.org_id = v_org_id
-          and c.created_at < v_cutoff_date
-          and not exists (
-            select 1 from public.threads t
-            where t.contact_id = c.id
-          )
-        returning c.id
-      )
-      select count(*) into v_deleted_contacts from deleted;
-      
-      v_org_count := v_org_count + 1;
-    end loop;
-  end if;
-  
-  v_result := jsonb_build_object(
-    'orgs_processed', v_org_count,
-    'threads_deleted', v_deleted_threads,
-    'messages_deleted', v_deleted_messages,
-    'contacts_deleted', v_deleted_contacts,
-    'cutoff_date', v_cutoff_date
-  );
-  
-  return v_result;
-end $$;
-
-
-ALTER FUNCTION "public"."cleanup_old_chat_data"("p_org_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."cleanup_old_chat_data"("p_org_id" "uuid") IS 'Delete chats, messages, and contacts older than retention_days (default 90) for an org or all orgs. Respects org_settings.retention_days.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."cleanup_old_metrics"() RETURNS "void"
-    LANGUAGE "sql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-  DELETE FROM public.circuit_breaker_metrics
-  WHERE created_at < now() - INTERVAL '30 days';
-$$;
-
-
-ALTER FUNCTION "public"."cleanup_old_metrics"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."create_email_2fa_challenge"("p_user" "uuid", "p_ttl_seconds" integer DEFAULT 600) RETURNS TABLE("challenge_id" "uuid", "code_plain" "text")
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public', 'extensions'
-    AS $$declare
-  v_code text;
-  v_hash text;
-  v_id uuid;
-  v_expires timestamptz := now() + make_interval(secs => p_ttl_seconds);
-begin
-  -- OPTIONAL rate-limit: refuse if one was sent in the last 30s
-  if exists (
-    select 1
-    from public.twofa_challenges
-    where user_id = p_user
-      and sent_at > now() - interval '30 seconds'
-      and consumed_at is null
-  ) then
-    raise exception 'Please wait before requesting another code' using errcode = 'P0001';
-  end if;
-
-  -- Generate a 6-digit code
-  v_code := lpad((floor(random()*1000000))::int::text, 6, '0');
-  v_hash := crypt(v_code, gen_salt('bf'));
-
-  insert into public.twofa_challenges (user_id, code_hash, expires_at, channel)
-  values (p_user, v_hash, v_expires, 'email')
-  returning id into v_id;
-
-  challenge_id := v_id;
-  code_plain   := v_code;
-  return next;
-end;$$;
-
-
-ALTER FUNCTION "public"."create_email_2fa_challenge"("p_user" "uuid", "p_ttl_seconds" integer) OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."delete_auth_user"("user_uuid" "uuid") RETURNS "void"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
-BEGIN
-  DELETE FROM auth.users WHERE id = user_uuid;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."delete_auth_user"("user_uuid" "uuid") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."enforce_handover_reason"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-declare
-  became_handover boolean := false;
-begin
-  if TG_OP = 'INSERT' then
-    became_handover := (new.ai_handoff_at is not null) or (new.assignee_user_id is not null) or (new.assigned_by_user_id is not null);
-  else
-    became_handover := (
-      (new.ai_handoff_at is not null and (old.ai_handoff_at is null or new.ai_handoff_at <> old.ai_handoff_at)) or
-      (new.assignee_user_id is not null and new.assignee_user_id is distinct from old.assignee_user_id) or
-      (new.assigned_by_user_id is not null and new.assigned_by_user_id is distinct from old.assigned_by_user_id)
-    );
-  end if;
-
-  if became_handover and (new.handover_reason is null or length(trim(new.handover_reason)) = 0) then
-    raise exception 'handover_reason is required when a handover occurs';
-  end if;
-  return new;
-end;
-$$;
-
-
-ALTER FUNCTION "public"."enforce_handover_reason"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."gdpr_delete_user_data"("p_contact_id" "uuid", "p_org_id" "uuid" DEFAULT NULL::"uuid") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-declare
-  v_org_id uuid;
-  v_contact_id uuid := p_contact_id;
-  v_deleted_threads integer := 0;
-  v_deleted_messages integer := 0;
-  v_deleted_contact integer := 0;
-  v_result jsonb;
-begin
-  -- Verify org_id matches if provided
-  if p_org_id is not null then
-    v_org_id := p_org_id;
-    
-    -- Verify contact belongs to org
-    if not exists (
-      select 1 from public.contacts
-      where id = v_contact_id and org_id = v_org_id
-    ) then
-      raise exception 'Contact not found in specified organization';
-    end if;
-  else
-    -- Get org_id from contact
-    select org_id into v_org_id
-    from public.contacts
-    where id = v_contact_id;
-    
-    if v_org_id is null then
-      raise exception 'Contact not found';
-    end if;
-  end if;
-  
-  -- Delete all messages for threads belonging to this contact
-  with deleted as (
-    delete from public.messages m
-    using public.threads t
-    where m.thread_id = t.id
-      and t.contact_id = v_contact_id
-      and t.org_id = v_org_id
-    returning m.id
-  )
-  select count(*) into v_deleted_messages from deleted;
-  
-  -- Delete all threads for this contact
-  with deleted as (
-    delete from public.threads
-    where contact_id = v_contact_id
-      and org_id = v_org_id
-    returning id
-  )
-  select count(*) into v_deleted_threads from deleted;
-  
-  -- Delete the contact itself
-  with deleted as (
-    delete from public.contacts
-    where id = v_contact_id
-      and org_id = v_org_id
-    returning id
-  )
-  select count(*) into v_deleted_contact from deleted;
-  
-  v_result := jsonb_build_object(
-    'contact_id', v_contact_id,
-    'org_id', v_org_id,
-    'threads_deleted', v_deleted_threads,
-    'messages_deleted', v_deleted_messages,
-    'contact_deleted', v_deleted_contact,
-    'success', true
-  );
-  
-  return v_result;
-end $$;
-
-
-ALTER FUNCTION "public"."gdpr_delete_user_data"("p_contact_id" "uuid", "p_org_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."gdpr_delete_user_data"("p_contact_id" "uuid", "p_org_id" "uuid") IS 'GDPR/PDPA compliant deletion of all user data for a specific contact. Deletes all threads, messages, and the contact record.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."get_agent_kpis"("p_from" timestamp with time zone, "p_to" timestamp with time zone, "p_super_agent_id" "uuid" DEFAULT NULL::"uuid") RETURNS TABLE("agent_user_id" "uuid", "agent_name" "text", "resolved_count" bigint, "avg_resolution_minutes" numeric)
-    LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-  with scoped as (
-    select * from public.threads t
-    where t.created_at >= p_from and t.created_at < p_to
-      and t.org_id in (select org_id from public.org_members where user_id = auth.uid())
-  ), agents as (
-    select t.id, t.resolved_by_user_id, t.assignee_user_id, t.assigned_at, t.resolved_at
-    from scoped t
-    where t.resolved_by_user_id is not null
-  ), clusters as (
-    select a.*, sam.super_agent_id
-    from agents a
-    left join public.super_agent_members sam on sam.agent_user_id = a.resolved_by_user_id
-  )
-  select a.resolved_by_user_id as agent_user_id,
-         up.display_name as agent_name,
-         count(*)::bigint as resolved_count,
-         avg(extract(epoch from (a.resolved_at - a.assigned_at)) / 60.0) as avg_resolution_minutes
-  from clusters a
-  left join public.users_profile up on up.user_id = a.resolved_by_user_id
-  where (p_super_agent_id is null or a.super_agent_id = p_super_agent_id)
-  group by a.resolved_by_user_id, up.display_name;
-$$;
-
-
-ALTER FUNCTION "public"."get_agent_kpis"("p_from" timestamp with time zone, "p_to" timestamp with time zone, "p_super_agent_id" "uuid") OWNER TO "postgres";
-
-SET default_tablespace = '';
-
-SET default_table_access_method = "heap";
-
-
-CREATE TABLE IF NOT EXISTS "public"."audit_logs" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "org_id" "uuid" NOT NULL,
-    "user_id" "uuid",
-    "action" "text" NOT NULL,
-    "resource" "text" NOT NULL,
-    "resource_id" "text",
-    "context" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
-    "ip" "text",
-    "user_agent" "text",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
-);
-
-
-ALTER TABLE "public"."audit_logs" OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."get_audit_logs"("p_user_id" "uuid" DEFAULT NULL::"uuid", "p_action" "text" DEFAULT NULL::"text", "p_from" timestamp with time zone DEFAULT NULL::timestamp with time zone, "p_to" timestamp with time zone DEFAULT NULL::timestamp with time zone, "p_limit" integer DEFAULT 50, "p_offset" integer DEFAULT 0) RETURNS SETOF "public"."audit_logs"
-    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-declare
+supabase db diff -f 20251130_rls_changes
+clare
   v_is_master boolean;
 begin
   -- Only master_agent can read org-wide; others restricted to own user_id
@@ -1807,6 +1183,28 @@ end $$;
 ALTER FUNCTION "public"."set_thread_auto_resolve_after_message"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sync_users_profile_from_auth"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+begin
+  -- Only touch fields we actually mirror from auth.users
+  update public.users_profile
+  set
+    invited_at      = NEW.invited_at,
+    confirmed_at    = NEW.confirmed_at,
+    last_sign_in_at = NEW.last_sign_in_at
+  where user_id = NEW.id;
+
+  -- If there is no profile yet, you *can* insert one here if you want.
+  -- For now we just ignore that case.
+  return NEW;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."sync_users_profile_from_auth"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."takeover_thread"("p_thread_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql"
     AS $$
@@ -1935,6 +1333,7 @@ CREATE TABLE IF NOT EXISTS "public"."ai_profiles" (
     "message_limit" integer DEFAULT 1000 NOT NULL,
     "message_await" integer DEFAULT 3 NOT NULL,
     "model_id" "uuid" DEFAULT '6f96bba6-bf86-4608-8718-f33dc8956d33'::"uuid" NOT NULL,
+    "super_agent_id" "uuid",
     CONSTRAINT "ai_profiles_qna_is_array" CHECK (("jsonb_typeof"("qna") = 'array'::"text")),
     CONSTRAINT "ai_profiles_response_temperature_check" CHECK ((("response_temperature" IS NULL) OR ("response_temperature" = ANY (ARRAY['Conservative'::"text", 'Balanced'::"text", 'Creative'::"text"]))))
 );
@@ -2614,7 +2013,12 @@ CREATE TABLE IF NOT EXISTS "public"."users_profile" (
     "monthly_used_tokens" bigint DEFAULT 0 NOT NULL,
     "daily_reset_at" timestamp with time zone,
     "monthly_reset_at" timestamp with time zone,
-    "password_set" boolean DEFAULT false
+    "password_set" boolean DEFAULT false,
+    "email" "text",
+    "org_id" "uuid",
+    "invited_at" timestamp with time zone,
+    "confirmed_at" timestamp with time zone,
+    "last_sign_in_at" timestamp with time zone
 );
 
 
@@ -2655,21 +2059,20 @@ UNION
 ALTER VIEW "public"."v_current_user_permissions" OWNER TO "postgres";
 
 
-CREATE OR REPLACE VIEW "public"."v_human_agents" AS
+CREATE OR REPLACE VIEW "public"."v_human_agents" WITH ("security_invoker"='true') AS
  WITH "base" AS (
-         SELECT "u"."id" AS "user_id",
-            (("u"."raw_app_meta_data" ->> 'org_id'::"text"))::"uuid" AS "org_id",
-            "u"."email",
-            "u"."invited_at",
-            "u"."confirmed_at",
-            "u"."last_sign_in_at"
-           FROM "auth"."users" "u"
-          WHERE ("u"."deleted_at" IS NULL)
+         SELECT "up_1"."user_id",
+            "up_1"."org_id",
+            "up_1"."email",
+            "up_1"."invited_at",
+            "up_1"."confirmed_at",
+            "up_1"."last_sign_in_at"
+           FROM "public"."users_profile" "up_1"
         )
  SELECT "b"."org_id",
     "b"."user_id",
     "b"."email",
-    COALESCE("up"."display_name", "split_part"(("b"."email")::"text", '@'::"text", 1)) AS "agent_name",
+    COALESCE("up"."display_name", "split_part"("b"."email", '@'::"text", 1)) AS "agent_name",
     "up"."avatar_url",
     "up"."is_active",
     "r"."id" AS "role_id",
@@ -3356,6 +2759,11 @@ ALTER TABLE ONLY "public"."ai_profiles"
 
 
 
+ALTER TABLE ONLY "public"."ai_profiles"
+    ADD CONSTRAINT "ai_profiles_super_agent_id_fkey" FOREIGN KEY ("super_agent_id") REFERENCES "public"."users_profile"("user_id") ON DELETE RESTRICT;
+
+
+
 ALTER TABLE ONLY "public"."alert_rules"
     ADD CONSTRAINT "alert_rules_org_id_fkey" FOREIGN KEY ("org_id") REFERENCES "public"."orgs"("id") ON DELETE CASCADE;
 
@@ -3683,18 +3091,7 @@ CREATE POLICY "Allow anonymous read access to messages" ON "public"."messages" F
 
 
 
-CREATE POLICY "Allow authenticated access to ai_profiles" ON "public"."ai_profiles" TO "authenticated" USING ((((EXISTS ( SELECT 1
-   FROM ("public"."user_roles" "ur"
-     JOIN "public"."roles" "r" ON (("r"."id" = "ur"."role_id")))
-  WHERE (("ur"."user_id" = "auth"."uid"()) AND ("lower"("r"."name") = 'master_agent'::"text")))) OR (EXISTS ( SELECT 1
-   FROM ("public"."user_roles" "ur2"
-     JOIN "public"."roles" "r2" ON (("r2"."id" = "ur2"."role_id")))
-  WHERE (("ur2"."user_id" = "auth"."uid"()) AND ("lower"("r2"."name") NOT IN (ARRAY['master_agent'::"text", 'super_agent'::"text", 'agent'::"text'])))))) OR (((EXISTS ( SELECT 1
-   FROM ("public"."user_roles" "ur3"
-     JOIN "public"."roles" "r3" ON (("r3"."id" = "ur3"."role_id")))
-  WHERE (("ur3"."user_id" = "auth"."uid"()) AND ("lower"("r3"."name") = 'super_agent'::"text")))) AND ("ai_profiles"."super_agent_id" = "auth"."uid"()))) OR (EXISTS ( SELECT 1
-   FROM "public"."super_agent_members" "sam"
-  WHERE (("sam"."agent_user_id" = "auth"."uid"()) AND ("sam"."super_agent_id" = "ai_profiles"."super_agent_id")))));
+CREATE POLICY "Allow authenticated access to ai_profiles" ON "public"."ai_profiles" TO "authenticated" USING (true);
 
 
 
@@ -4390,16 +3787,444 @@ ALTER TABLE "public"."twofa_challenges" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."twofa_sessions" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."user_invites" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."user_roles" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."users_profile" ENABLE ROW LEVEL SECURITY;
 
 
+
+
+ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
+
+
+
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4433,6 +4258,20 @@ GRANT ALL ON FUNCTION "public"."auto_resolve_threads"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."can_read_thread"("p_thread_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."can_read_thread"("p_thread_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."can_read_thread"("p_thread_id" "uuid") TO "service_role";
@@ -4463,7 +4302,30 @@ GRANT ALL ON FUNCTION "public"."cleanup_old_metrics"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."create_email_2fa_challenge"("p_user" "uuid", "p_ttl_seconds" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_email_2fa_challenge"("p_user" "uuid", "p_ttl_seconds" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."create_email_2fa_challenge"("p_user" "uuid", "p_ttl_seconds" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_email_2fa_challenge"("p_user" "uuid", "p_ttl_seconds" integer) TO "service_role";
 
 
@@ -4619,6 +4481,132 @@ GRANT ALL ON FUNCTION "public"."grant_role_permission"("p_role" "uuid", "p_perm"
 
 
 
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "postgres";
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "anon";
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."handle_user_delete"() TO "anon";
 GRANT ALL ON FUNCTION "public"."handle_user_delete"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_user_delete"() TO "service_role";
@@ -4627,6 +4615,7 @@ GRANT ALL ON FUNCTION "public"."handle_user_delete"() TO "supabase_auth_admin";
 
 
 REVOKE ALL ON FUNCTION "public"."has_active_2fa"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."has_active_2fa"() TO "anon";
 GRANT ALL ON FUNCTION "public"."has_active_2fa"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."has_active_2fa"() TO "service_role";
 
@@ -4635,6 +4624,55 @@ GRANT ALL ON FUNCTION "public"."has_active_2fa"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."has_perm"("p_action" "text", "p_resource" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."has_perm"("p_action" "text", "p_resource" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."has_perm"("p_action" "text", "p_resource" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "service_role";
 
 
 
@@ -4674,6 +4712,34 @@ GRANT ALL ON FUNCTION "public"."is_super_agent_for_channel"("target_org" "uuid",
 
 
 
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "postgres";
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "anon";
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."jakarta_day_start_utc"("p_now" timestamp with time zone) TO "anon";
 GRANT ALL ON FUNCTION "public"."jakarta_day_start_utc"("p_now" timestamp with time zone) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."jakarta_day_start_utc"("p_now" timestamp with time zone) TO "service_role";
@@ -4683,6 +4749,83 @@ GRANT ALL ON FUNCTION "public"."jakarta_day_start_utc"("p_now" timestamp with ti
 GRANT ALL ON FUNCTION "public"."jakarta_month_start_utc"("p_now" timestamp with time zone) TO "anon";
 GRANT ALL ON FUNCTION "public"."jakarta_month_start_utc"("p_now" timestamp with time zone) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."jakarta_month_start_utc"("p_now" timestamp with time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "service_role";
 
 
 
@@ -4777,6 +4920,89 @@ GRANT ALL ON FUNCTION "public"."set_thread_auto_resolve_after_message"() TO "ser
 
 
 
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_users_profile_from_auth"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_users_profile_from_auth"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_users_profile_from_auth"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."takeover_thread"("p_thread_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."takeover_thread"("p_thread_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."takeover_thread"("p_thread_id" "uuid") TO "service_role";
@@ -4795,9 +5021,192 @@ GRANT ALL ON FUNCTION "public"."validate_handover_reason"("new_handover" boolean
 
 
 
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."verify_email_2fa"("p_user" "uuid", "p_code" "text", "p_session_minutes" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."verify_email_2fa"("p_user" "uuid", "p_code" "text", "p_session_minutes" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."verify_email_2fa"("p_user" "uuid", "p_code" "text", "p_session_minutes" integer) TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "service_role";
+
+
+
+
+
+
 
 
 
@@ -4807,21 +5216,25 @@ GRANT ALL ON TABLE "public"."ai_models" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."ai_profiles" TO "anon";
 GRANT ALL ON TABLE "public"."ai_profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."ai_profiles" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."ai_sessions" TO "anon";
 GRANT ALL ON TABLE "public"."ai_sessions" TO "authenticated";
 GRANT ALL ON TABLE "public"."ai_sessions" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."alert_rules" TO "anon";
 GRANT ALL ON TABLE "public"."alert_rules" TO "authenticated";
 GRANT ALL ON TABLE "public"."alert_rules" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."alerts" TO "anon";
 GRANT ALL ON TABLE "public"."alerts" TO "authenticated";
 GRANT ALL ON TABLE "public"."alerts" TO "service_role";
 
@@ -4833,14 +5246,15 @@ GRANT ALL ON TABLE "public"."bundle_permissions" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."channel_agents" TO "anon";
 GRANT ALL ON TABLE "public"."channel_agents" TO "authenticated";
 GRANT ALL ON TABLE "public"."channel_agents" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."channels" TO "anon";
 GRANT ALL ON TABLE "public"."channels" TO "authenticated";
 GRANT ALL ON TABLE "public"."channels" TO "service_role";
-GRANT SELECT ON TABLE "public"."channels" TO "anon";
 
 
 
@@ -4856,22 +5270,25 @@ GRANT ALL ON SEQUENCE "public"."circuit_breaker_metrics_id_seq" TO "service_role
 
 
 
+GRANT ALL ON TABLE "public"."contact_identities" TO "anon";
 GRANT ALL ON TABLE "public"."contact_identities" TO "authenticated";
 GRANT ALL ON TABLE "public"."contact_identities" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."contact_labels" TO "anon";
 GRANT ALL ON TABLE "public"."contact_labels" TO "authenticated";
 GRANT ALL ON TABLE "public"."contact_labels" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."contacts" TO "anon";
 GRANT ALL ON TABLE "public"."contacts" TO "authenticated";
 GRANT ALL ON TABLE "public"."contacts" TO "service_role";
-GRANT SELECT,INSERT ON TABLE "public"."contacts" TO "anon";
 
 
 
+GRANT ALL ON TABLE "public"."csat_responses" TO "anon";
 GRANT ALL ON TABLE "public"."csat_responses" TO "authenticated";
 GRANT ALL ON TABLE "public"."csat_responses" TO "service_role";
 
@@ -4895,27 +5312,31 @@ GRANT ALL ON TABLE "public"."files" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."labels" TO "anon";
 GRANT ALL ON TABLE "public"."labels" TO "authenticated";
 GRANT ALL ON TABLE "public"."labels" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."messages" TO "anon";
 GRANT ALL ON TABLE "public"."messages" TO "authenticated";
 GRANT ALL ON TABLE "public"."messages" TO "service_role";
-GRANT SELECT,INSERT ON TABLE "public"."messages" TO "anon";
 
 
 
+GRANT ALL ON SEQUENCE "public"."messages_seq_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."messages_seq_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."messages_seq_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."n8n_chat_histories" TO "anon";
 GRANT ALL ON TABLE "public"."n8n_chat_histories" TO "authenticated";
 GRANT ALL ON TABLE "public"."n8n_chat_histories" TO "service_role";
 
 
 
+GRANT ALL ON SEQUENCE "public"."n8n_chat_histories_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."n8n_chat_histories_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."n8n_chat_histories_id_seq" TO "service_role";
 
@@ -4939,17 +5360,20 @@ GRANT ALL ON SEQUENCE "public"."openai_usage_snapshots_id_seq" TO "service_role"
 
 
 
+GRANT ALL ON TABLE "public"."org_members" TO "anon";
 GRANT ALL ON TABLE "public"."org_members" TO "authenticated";
 GRANT ALL ON TABLE "public"."org_members" TO "service_role";
 GRANT DELETE ON TABLE "public"."org_members" TO "supabase_auth_admin";
 
 
 
+GRANT ALL ON TABLE "public"."org_settings" TO "anon";
 GRANT ALL ON TABLE "public"."org_settings" TO "authenticated";
 GRANT ALL ON TABLE "public"."org_settings" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."orgs" TO "anon";
 GRANT ALL ON TABLE "public"."orgs" TO "authenticated";
 GRANT ALL ON TABLE "public"."orgs" TO "service_role";
 
@@ -4961,6 +5385,7 @@ GRANT ALL ON TABLE "public"."permission_bundles" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."permissions" TO "anon";
 GRANT ALL ON TABLE "public"."permissions" TO "authenticated";
 GRANT ALL ON TABLE "public"."permissions" TO "service_role";
 
@@ -4978,11 +5403,13 @@ GRANT ALL ON TABLE "public"."role_bundles" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."role_permissions" TO "anon";
 GRANT ALL ON TABLE "public"."role_permissions" TO "authenticated";
 GRANT ALL ON TABLE "public"."role_permissions" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."roles" TO "anon";
 GRANT ALL ON TABLE "public"."roles" TO "authenticated";
 GRANT ALL ON TABLE "public"."roles" TO "service_role";
 
@@ -5006,29 +5433,45 @@ GRANT ALL ON SEQUENCE "public"."sync_deletions_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."thread_collaborators" TO "anon";
 GRANT ALL ON TABLE "public"."thread_collaborators" TO "authenticated";
 GRANT ALL ON TABLE "public"."thread_collaborators" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."threads" TO "anon";
 GRANT ALL ON TABLE "public"."threads" TO "authenticated";
 GRANT ALL ON TABLE "public"."threads" TO "service_role";
-GRANT SELECT,INSERT ON TABLE "public"."threads" TO "anon";
 
 
 
+GRANT ALL ON TABLE "public"."token_balances" TO "anon";
 GRANT ALL ON TABLE "public"."token_balances" TO "authenticated";
 GRANT ALL ON TABLE "public"."token_balances" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."token_topups" TO "anon";
 GRANT ALL ON TABLE "public"."token_topups" TO "authenticated";
 GRANT ALL ON TABLE "public"."token_topups" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."token_usage_logs" TO "anon";
 GRANT ALL ON TABLE "public"."token_usage_logs" TO "authenticated";
 GRANT ALL ON TABLE "public"."token_usage_logs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."twofa_challenges" TO "anon";
+GRANT ALL ON TABLE "public"."twofa_challenges" TO "authenticated";
+GRANT ALL ON TABLE "public"."twofa_challenges" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."twofa_sessions" TO "anon";
+GRANT ALL ON TABLE "public"."twofa_sessions" TO "authenticated";
+GRANT ALL ON TABLE "public"."twofa_sessions" TO "service_role";
 
 
 
@@ -5038,6 +5481,7 @@ GRANT ALL ON TABLE "public"."user_invites" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."user_roles" TO "anon";
 GRANT ALL ON TABLE "public"."user_roles" TO "authenticated";
 GRANT ALL ON TABLE "public"."user_roles" TO "service_role";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,UPDATE ON TABLE "public"."user_roles" TO "supabase_auth_admin";
@@ -5045,10 +5489,10 @@ GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,UPDATE ON TABLE "public"."user_rol
 
 
 
+GRANT ALL ON TABLE "public"."users_profile" TO "anon";
 GRANT ALL ON TABLE "public"."users_profile" TO "authenticated";
 GRANT ALL ON TABLE "public"."users_profile" TO "service_role";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,UPDATE ON TABLE "public"."users_profile" TO "supabase_auth_admin";
-GRANT ALL ON TABLE "public"."users_profile" TO "anon";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,UPDATE ON TABLE "public"."users_profile" TO "supabase_admin";
 
 
@@ -5071,8 +5515,15 @@ GRANT ALL ON TABLE "public"."v_super_agent_token_usage" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."v_users" TO "anon";
 GRANT ALL ON TABLE "public"."v_users" TO "authenticated";
 GRANT ALL ON TABLE "public"."v_users" TO "service_role";
+
+
+
+
+
+
 
 
 
@@ -5100,6 +5551,30 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
