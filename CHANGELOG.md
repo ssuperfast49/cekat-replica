@@ -1,4 +1,10 @@
 # Change Log
+# [0.1.5] FE WEB CEKAT 2025-11-30
+### Webhook & Supabase URL Consistency
+- **Single Source for Supabase URL**: Exported a shared `SUPABASE_URL` constant from the Supabase client so all front-end integrations reference the same base URL (`https://api.cssuper.com`) instead of duplicating it.
+- **Proxy Edge Function Alignment**: Updated `WEBHOOK_CONFIG` to derive the proxy base (`/functions/v1/proxy-n8n`) from the shared `SUPABASE_URL`, removing the old hardcoded Supabase project host and keeping proxy routing aligned with the active project.
+- **WhatsApp WAHA Webhook Normalization**: Swapped the hardcoded Railway webhook host in `WhatsAppPlatformForm` for `WEBHOOK_CONFIG.BASE_URL`, ensuring WAHA sessions always post back into the currently configured webhook environment.
+
 # [0.1.4] FE WEB CEKAT 2025-11-28
 ### Bug Fixes
 - **PermissionsPage Duplicate Declaration Fix**: Resolved "Identifier 'permissionSearch' has already been declared" syntax error
