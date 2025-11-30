@@ -154,6 +154,40 @@ export const useHumanAgents = () => {
   }) => {
     try {
       setError(null);
+
+      const normalizedEmail = agentData.email.trim().toLowerCase();
+
+      if (agentData.role === 'agent' && !agentData.super_agent_id) {
+        throw new Error('Agents must be assigned to a super agent before they can be created.');
+      }
+
+      const { data: existingAgent, error: existingLookupError } = await supabase
+        .from('v_human_agents')
+        .select('user_id, confirmation_status')
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+
+      if (existingLookupError) {
+        throw existingLookupError;
+      }
+
+      if (existingAgent) {
+        const statusLabel = (() => {
+          switch (existingAgent.confirmation_status) {
+            case 'accepted':
+              return 'assigned to an active member';
+            case 'waiting':
+              return 'pending for an existing invite';
+            case 'expired':
+              return 'associated with an expired invite';
+            default:
+              return 'in use';
+          }
+        })();
+
+        throw new Error(`The email ${normalizedEmail} is already ${statusLabel}. Choose a different email or manage the existing user instead.`);
+      }
+
       // Call edge function to create auth user + profile + role
       const { data, error } = await supabase.functions.invoke('admin-create-user', {
         headers: {
@@ -161,7 +195,7 @@ export const useHumanAgents = () => {
           'x-client-origin': typeof window !== 'undefined' ? window.location.origin : ''
         },
         body: {
-          email: agentData.email,
+          email: normalizedEmail,
           full_name: agentData.full_name,
           role: agentData.role,
           super_agent_id: agentData.super_agent_id ?? null,
@@ -243,6 +277,18 @@ export const useHumanAgents = () => {
   const deleteAgent = async (agentId: string) => {
     try {
       setError(null);
+
+      const { data: agentInfo, error: lookupError } = await supabase
+        .from('v_human_agents')
+        .select('role_name')
+        .eq('user_id', agentId)
+        .maybeSingle();
+
+      if (lookupError) throw lookupError;
+
+      if (agentInfo?.role_name && String(agentInfo.role_name).toLowerCase().includes('master')) {
+        throw new Error('Master agent tidak dapat dihapus.');
+      }
 
       // Call admin function to hard delete auth user and related rows
       const { error: fnErr } = await supabase.functions.invoke('admin-delete-user', {

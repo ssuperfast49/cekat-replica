@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,6 +54,7 @@ const HumanAgents = () => {
   const [deletingAgent, setDeletingAgent] = useState(false);
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentWithDetails | null>(null);
   const { toast } = useToast();
+  const lastErrorRef = useRef<string | null>(null);
   const { hasPermission, hasRole } = useRBAC();
   // Pagination and Pending tab state backed by v_human_agents
   const [activeRows, setActiveRows] = useState<any[]>([]);
@@ -112,6 +113,20 @@ const HumanAgents = () => {
     // removeAgentFromTeam,
     setEnable2FAFlagForCreate
   } = useHumanAgents();
+
+  useEffect(() => {
+    if (error && error !== lastErrorRef.current) {
+      toast({
+        title: "Error",
+        description: error,
+        variant: "destructive",
+      });
+      lastErrorRef.current = error;
+    }
+    if (!error) {
+      lastErrorRef.current = null;
+    }
+  }, [error, toast]);
 
   // Normalize role names coming from the DB view
   const normalizeRoleName = (name: string | null | undefined): "master_agent" | "super_agent" | "agent" | null => {
@@ -353,7 +368,10 @@ const HumanAgents = () => {
                     const toLower = (v: any) => String(v || '').toLowerCase();
                     const isMaster = (r: any) => toLower(r.role_name).includes('master');
                     const isSuper = (r: any) => toLower(r.role_name).includes('super');
-                    const isAgentOnly = (r: any) => toLower(r.role_name) === 'agent' || (toLower(r.role_name).includes('agent') && !toLower(r.role_name).includes('super'));
+                    const isAgentOnly = (r: any) => {
+                      const role = toLower(r.role_name);
+                      return role === 'agent' || role === 'agent_only';
+                    };
 
                     const masters = rows.filter(isMaster);
                     const supers = rows.filter(isSuper);
@@ -422,7 +440,24 @@ const HumanAgents = () => {
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
                                 <PermissionGate permission={'super_agents.delete'}>
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span>
+                                          <Button
+                                            size="sm"
+                                            className="h-8 w-8 p-0 bg-red-200 text-red-500 cursor-not-allowed"
+                                            disabled
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Master agent tidak dapat dihapus</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </PermissionGate>
                               </div>
                             </div>
@@ -866,6 +901,16 @@ const HumanAgents = () => {
 
   const handleDeleteAgent = async (id: string) => {
     try {
+      if (agentPendingDelete?.primaryRole === 'master_agent' || (activeRows.find((r: any) => String(r.user_id) === id)?.role_name?.toLowerCase?.().includes('master'))) {
+        toast({
+          title: "Error",
+          description: "Master agent tidak dapat dihapus.",
+          variant: "destructive",
+        });
+        setConfirmDeleteOpen(false);
+        setAgentPendingDelete(null);
+        return;
+      }
       setDeletingAgent(true);
       await deleteAgent(id);
       toast({ title: "Success", description: "Agent deleted successfully" });
@@ -1249,34 +1294,6 @@ const HumanAgents = () => {
     if (role === "agent") return "bg-gray-100 text-gray-700";
     return "bg-gray-100 text-gray-700";
   };
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Human Agent Settings</h1>
-            <p className="text-muted-foreground">Manage your human agents and teams</p>
-          </div>
-        </div>
-        <div className="rounded-lg border bg-red-50 p-6">
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0">
-              <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>{error}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
