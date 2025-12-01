@@ -1,10 +1,62 @@
 # Change Log
+# [0.1.6] FE WEB CEKAT 2025-11-30
+### Super Agent Data Isolation & Access Control
+- **Direct Super Agent Connections**: Added `super_agent_id` columns to `contacts` and `threads` tables for direct ownership tracking
+  - All contacts and threads are now directly linked to their super agent via `super_agent_id` column
+  - Automatic triggers ensure new contacts/threads are automatically assigned to the correct super agent based on channel ownership
+  - Triggers update contacts/threads when channels are reassigned to different super agents
+
+- **Enhanced RLS Policies**: Implemented comprehensive Row Level Security policies for strict data isolation
+  - **Super Agents**: Can only see contacts, threads, messages, and channels where `super_agent_id = their_user_id`
+  - **Agents**: Can only see data from their assigned super agent (via `super_agent_members` relationship)
+  - **Master Agents**: Retain full access to all data in their organization (via `org_id` check)
+  - All policies use direct `super_agent_id` checks for better performance and reliability
+  - Removed overly permissive generic policies that could leak data between super agents
+
+- **Master Agent Access Fix**: Fixed master agent policies to ensure full access to all contacts and threads
+  - Removed restrictive `users_profile.is_active` check from `threads_master_read` policy
+  - Master agents can now see all data in their organization regardless of `super_agent_id` values
+  - Policies correctly check `org_id` membership for master agent access
+
+- **Data Assignment**: All existing contacts and threads assigned to super agent `pouloinoketroi-6559@yopmail.com`
+  - Migration automatically connects all contacts and threads to the specified super agent
+  - Ensures consistent data ownership and access control
+
+### Cache Management & Session Reliability
+- **Comprehensive Cache Clearing on Logout**: Enhanced logout functionality to clear all cached data
+  - Clears all localStorage items (including `app.cached*`, `app.currentUserId`, etc.)
+  - Clears all sessionStorage items
+  - Clears all Supabase auth tokens
+  - Prevents stale data from persisting after logout
+  - Applied to both `AuthContext.signOut()` and `Logout.tsx` page
+
+- **localStorage-Based User ID Storage**: Improved session reliability by storing user ID in localStorage
+  - User ID and email stored in localStorage as `app.currentUserId` and `app.currentUserEmail` on login
+  - Added `getCurrentUserId()` helper function that prefers localStorage over Supabase session
+  - Updated `logAction()` to use localStorage user_id first, then fallback to Supabase session
+  - Ensures consistent user identification even when Supabase session is temporarily unavailable
+
+### Database Migrations
+- **20251130000000_super_agent_data_isolation.sql**: Initial RLS policies for channels, contacts, and messages
+- **20251130000001_fix_threads_isolation.sql**: Fixed threads isolation with strict super agent checks
+- **20251130000002_drop_all_permissive_policies.sql**: Removed overly permissive anonymous and generic authenticated policies
+- **20251130000003_drop_auth_write_policies.sql**: Removed generic `auth insert/update/delete` policies
+- **20251130000004_fix_master_agent_access.sql**: Fixed master agent read policies (removed `public` role, fixed `authenticated` role)
+- **20251130000005_add_super_agent_direct_connections.sql**: Added `super_agent_id` columns and automatic triggers
+- **20251130000006_fix_agent_and_master_policies.sql**: Updated all policies to use direct `super_agent_id` checks
+- **20251130000007_fix_master_agent_and_assign_super_agent.sql**: Fixed master agent access and assigned all data to super agent
+- **20251130000008_verify_and_ensure_policy_enforcement.sql**: Final verification and policy enforcement
+
+### Bug Fixes
+- **Merge Conflict Resolution**: Resolved merge conflict in `useAIAgents.ts` by combining `scopeMode` and `superAgentId` logic
+- **Policy Role Fix**: Fixed `threads_master_read` policy to use `authenticated` role instead of `public` role
+- **Cache Persistence**: Fixed issue where cached data persisted after logout, causing users to see unauthorized data
+
 # [0.1.5] FE WEB CEKAT 2025-11-30
 ### Webhook & Supabase URL Consistency
 - **Single Source for Supabase URL**: Exported a shared `SUPABASE_URL` constant from the Supabase client so all front-end integrations reference the same base URL sinstead of duplicating it.
 - **Proxy Edge Function Alignment**: Updated `WEBHOOK_CONFIG` to derive the proxy base (`/functions/v1/proxy-n8n`) from the shared `SUPABASE_URL`, removing the old hardcoded Supabase project host and keeping proxy routing aligned with the active project.
 - **WhatsApp WAHA Webhook Normalization**: Swapped the hardcoded Railway webhook host in `WhatsAppPlatformForm` for `WEBHOOK_CONFIG.BASE_URL`, ensuring WAHA sessions always post back into the currently configured webhook environment.
-
 
 # [0.1.4] FE WEB CEKAT 2025-11-28
 ### Bug Fixes
