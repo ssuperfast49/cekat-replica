@@ -1,12 +1,11 @@
 // Webhook Configuration with proxy-aware routing
+import { SUPABASE_URL } from "@/integrations/supabase/client";
 const env = (import.meta as any).env ?? {};
 
 const LEGACY_BASE_URL = (env?.VITE_WEBHOOK_BASE_URL || "https://primary-production-376c.up.railway.app/webhook").replace(/\/$/, "");
-// HARD-CODED to ensure correct project during debugging. Revert to env-based later.
-// const SUPABASE_URL = (env?.VITE_SUPABASE_URL || "https://yoekcpoppfudmqtvjcby.supabase.co").replace(/\/$/, "");
-// const PROXY_FUNCTION_SLUG = (env?.VITE_WEBHOOK_PROXY_SLUG || 'proxy-n8n');
-// const PROXY_BASE_URL = `${SUPABASE_URL}/functions/v1/${PROXY_FUNCTION_SLUG}`.replace(/\/$/, "");
-const PROXY_BASE_URL = "https://yoekcpoppfudmqtvjcby.supabase.co/functions/v1/proxy-n8n";
+// Build proxy base URL from the shared Supabase base URL
+const PROXY_FUNCTION_SLUG = (env?.VITE_WEBHOOK_PROXY_SLUG || 'proxy-n8n');
+const PROXY_BASE_URL = `${SUPABASE_URL}/functions/v1/${PROXY_FUNCTION_SLUG}`.replace(/\/$/, "");
 
 const ROUTE_PREFIX = "route:";
 

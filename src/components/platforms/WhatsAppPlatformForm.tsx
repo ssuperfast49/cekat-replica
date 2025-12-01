@@ -111,7 +111,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       
       // 1) Create a WAHA session first to ensure an empty session exists
       const createSessionEndpoint = WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.CREATE_SESSION;
-      const webhookUrlForWaha = 'https://primary-production-376c.up.railway.app/webhook/2f6f9767-c3cb-4af3-b749-a496eefc2b74/waha';
+      const webhookUrlForWaha = `${WEBHOOK_CONFIG.BASE_URL}/2f6f9767-c3cb-4af3-b749-a496eefc2b74/waha`;
       const sName = (formData.platformName || 'default').replace(/\s/g, '');
       const sessionPayload = {
         name: sName,
