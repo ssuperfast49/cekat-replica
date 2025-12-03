@@ -1,5 +1,5 @@
 # Change Log
-# [0.1.6] FE WEB CEKAT 2025-12-03
+# [0.1.7] FE WEB CEKAT 2025-12-03
 ### RBAC & Permissions (Finalized Alignment)
 - Standardized PERMISSIONS_SCHEMA to match production backend exactly:
   analytics, ai_profiles, ai_sessions, channels, contacts, contact_identities, threads, messages, ai_agent_files, admin_panel, roles, audit_logs, alerts.
@@ -33,12 +33,31 @@
 - Added contact_identities to schema.
 - Consistency/cleanup across labels, ordering, and spacing in Permission Matrix.
 
+# [0.1.6] FE WEB CEKAT 2025-11-30
+### Cache Management & Session Reliability
+- **Comprehensive Cache Clearing on Logout**: Enhanced logout functionality to clear all cached data
+  - Clears all localStorage items (including `app.cached*`, `app.currentUserId`, etc.)
+  - Clears all sessionStorage items
+  - Clears all Supabase auth tokens
+  - Prevents stale data from persisting after logout
+  - Applied to both `AuthContext.signOut()` and `Logout.tsx` page
+
+- **localStorage-Based User ID Storage**: Improved session reliability by storing user ID in localStorage
+  - User ID and email stored in localStorage as `app.currentUserId` and `app.currentUserEmail` on login
+  - Added `getCurrentUserId()` helper function that prefers localStorage over Supabase session
+  - Updated `logAction()` to use localStorage user_id first, then fallback to Supabase session
+  - Ensures consistent user identification even when Supabase session is temporarily unavailable
+
+### Bug Fixes
+- **Merge Conflict Resolution**: Resolved merge conflict in `useAIAgents.ts` by combining `scopeMode` and `superAgentId` logic
+- **Policy Role Fix**: Fixed `threads_master_read` policy to use `authenticated` role instead of `public` role
+- **Cache Persistence**: Fixed issue where cached data persisted after logout, causing users to see unauthorized data
+
 # [0.1.5] FE WEB CEKAT 2025-11-30
 ### Webhook & Supabase URL Consistency
 - **Single Source for Supabase URL**: Exported a shared `SUPABASE_URL` constant from the Supabase client so all front-end integrations reference the same base URL sinstead of duplicating it.
 - **Proxy Edge Function Alignment**: Updated `WEBHOOK_CONFIG` to derive the proxy base (`/functions/v1/proxy-n8n`) from the shared `SUPABASE_URL`, removing the old hardcoded Supabase project host and keeping proxy routing aligned with the active project.
 - **WhatsApp WAHA Webhook Normalization**: Swapped the hardcoded Railway webhook host in `WhatsAppPlatformForm` for `WEBHOOK_CONFIG.BASE_URL`, ensuring WAHA sessions always post back into the currently configured webhook environment.
-
 
 # [0.1.4] FE WEB CEKAT 2025-11-28
 ### Bug Fixes

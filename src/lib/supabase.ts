@@ -11,6 +11,28 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 import { createProtectedSupabaseClient } from './supabaseProtected';
 export const protectedSupabase = createProtectedSupabaseClient(supabase);
 
+/**
+ * Get current user ID from localStorage (more reliable than Supabase session)
+ * Falls back to Supabase session if localStorage is not available
+ */
+export async function getCurrentUserId(): Promise<string | null> {
+  try {
+    // First try localStorage (more reliable)
+    const storedUserId = typeof localStorage !== 'undefined' 
+      ? localStorage.getItem('app.currentUserId') 
+      : null;
+    if (storedUserId) {
+      return storedUserId;
+    }
+    
+    // Fallback to Supabase session
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function logAction(params: {
   action: string;
   resource: string;
@@ -24,8 +46,23 @@ export async function logAction(params: {
   try {
     const { action, resource, resourceId = null, context = {}, ip = null, userAgent = null } = params;
     // Resolve user and org if not supplied
-    const { data: authData } = await supabase.auth.getUser();
-    const resolvedUserId = params.userId ?? authData?.user?.id ?? null;
+    // Prefer localStorage user_id (more reliable) over Supabase session
+    let resolvedUserId = params.userId ?? null;
+    if (!resolvedUserId) {
+      try {
+        const storedUserId = typeof localStorage !== 'undefined' 
+          ? localStorage.getItem('app.currentUserId') 
+          : null;
+        if (storedUserId) {
+          resolvedUserId = storedUserId;
+        }
+      } catch {}
+    }
+    // Fallback to Supabase session if localStorage doesn't have it
+    if (!resolvedUserId) {
+      const { data: authData } = await supabase.auth.getUser();
+      resolvedUserId = authData?.user?.id ?? null;
+    }
     let resolvedOrgId = params.orgId ?? null;
     
     // Only try to resolve org if we have a valid user and session
