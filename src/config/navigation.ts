@@ -1,5 +1,6 @@
 import { LucideIcon, MessageSquare, BarChart2, Users, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, Shield, ClipboardList } from 'lucide-react';
 import { ROLES } from '@/types/rbac';
+import { PERMISSIONS_SCHEMA } from '@/config/permissions';
 
 export type NavKey = 
   | "chat"
@@ -32,6 +33,13 @@ export interface NavigationItem {
   requiredRoles?: string[];
 }
 
+// Helper: build list of read permissions for a resource from PERMISSIONS_SCHEMA
+const readPerms = (resource: keyof typeof PERMISSIONS_SCHEMA): string[] => {
+  return PERMISSIONS_SCHEMA[resource]
+    .filter((a) => a === 'read' || a.startsWith('read_'))
+    .map((a) => `${resource}.${a}`);
+};
+
 /**
  * Centralized navigation configuration
  * Single source of truth for all navigation items and their permissions
@@ -41,7 +49,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "admin",
     label: "Admin Panel",
     icon: SettingsIcon,
-    permissions: ['access_rules.configure'],
+    permissions: ['admin_panel.read'],
     requireAll: false,
     requiredRoles: [ROLES.MASTER_AGENT],
     description: "Master agent control center"
@@ -50,8 +58,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "chat",
     label: "Chat",
     icon: MessageSquare,
-    permissions: ['threads.read'],
-    requireAll: true,
+    permissions: readPerms('threads'),
+    requireAll: false,
     description: "View and manage conversations"
   },
   
@@ -59,9 +67,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "analytics",
     label: "Analytics",
     icon: BarChart2,
-    // Use a single canonical permission for menu access
-    permissions: ['analytics.view_kpi'],
-    requireAll: true,
+    permissions: readPerms('analytics'),
+    requireAll: false,
     description: "View performance metrics and insights"
   },
 
@@ -78,8 +85,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "contacts",
     label: "Contacts",
     icon: Users,
-    permissions: ['contacts.read'],
-    requireAll: true,
+    permissions: readPerms('contacts'),
+    requireAll: false,
     description: "Manage customer contacts and identities"
   },
   
@@ -87,10 +94,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "platforms",
     label: "Connected Platforms",
     icon: PlugZap,
-    // Show menu only if user has channels.read
-    permissions: ['channels.read'],
-    requireAll: true,
-    // resourceAny removed to strictly require channels.read
+    permissions: readPerms('channels'),
+    requireAll: false,
     description: "Manage connected channels and integrations"
   },
   
@@ -98,8 +103,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "aiagents",
     label: "AI Agents",
     icon: Bot,
-    permissions: ['ai_profiles.read'],
-    requireAll: true,
+    permissions: readPerms('ai_profiles'),
+    requireAll: false,
     description: "Configure and manage AI agents"
   },
   
@@ -116,7 +121,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "permissions",
     label: "Permissions",
     icon: Shield,
-    permissions: ['access_rules.configure'],
+    permissions: ['roles.read'],
     requireAll: true,
     requiredRoles: [ROLES.MASTER_AGENT],
     description: "Manage roles and permissions"

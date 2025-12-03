@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { supabase } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { PERMISSIONS_SCHEMA } from '@/config/permissions';
 import type { 
   Role, 
   Permission, 
@@ -141,6 +142,9 @@ export function RBACProvider({ children }: RBACProviderProps) {
   const hasPermission = (permission: PermissionName | string): boolean => {
     if (!permission) return false;
 
+    // Master Agent Bypass: Always allow master_agent
+    if (userRoles.some(r => r.name === 'master_agent')) return true;
+
     const normalizedInput = String(permission).trim().toLowerCase();
 
     // 1) Direct match against human-readable name (e.g., "Messages: Read")
@@ -162,6 +166,9 @@ export function RBACProvider({ children }: RBACProviderProps) {
         remove: ['delete'],
         delete: ['remove'],
         send: ['create'],
+        // Read synonyms: treat any read_* as satisfying generic read and vice versa
+        read: ['read_all', 'read_own', 'read_channel_owned', 'read_collaborator'],
+        read_all: ['read'],
       };
       const alts = synonymMap[action] || [];
       if (alts.length > 0) {
@@ -214,7 +221,14 @@ export function RBACProvider({ children }: RBACProviderProps) {
     if (!resource || actions.length === 0) return false;
     return actions.every(a => hasPermission(`${resource}.${a}`));
   };
-  const canRead = (resource: string) => hasPermission(`${resource}.read`);
+  // canRead checks if user has ANY read capability for the resource based on the schema
+  const canRead = (resource: string) => {
+    const actions = (PERMISSIONS_SCHEMA as any)[resource] as string[] | undefined;
+    if (!Array.isArray(actions)) return false;
+    const readActions = actions.filter(a => a === 'read' || a.startsWith('read_'));
+    if (readActions.length === 0) return false;
+    return readActions.some(a => hasPermission(`${resource}.${a}`));
+  };
   const canCreate = (resource: string) => hasPermission(`${resource}.create`);
   const canUpdate = (resource: string) => hasPermission(`${resource}.update`);
   const canDelete = (resource: string) => hasPermission(`${resource}.delete`);

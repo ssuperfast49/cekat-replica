@@ -1,4 +1,38 @@
 # Change Log
+# [0.1.6] FE WEB CEKAT 2025-12-03
+### RBAC & Permissions (Finalized Alignment)
+- Standardized PERMISSIONS_SCHEMA to match production backend exactly:
+  analytics, ai_profiles, ai_sessions, channels, contacts, contact_identities, threads, messages, ai_agent_files, admin_panel, roles, audit_logs, alerts.
+- Permission Matrix UX revamp (purely permission-driven):
+  - Card sections enforced per resource: Manage (create/update/delete), Access Level (read variants), Special Actions (send/ack).
+  - Mutually exclusive Access Level pills; Threads uses “My Channels” (read_channel_owned), “Collaborator”, “All”.
+  - Special actions exposed as toggles: messages.send (Send), alerts.ack (Acknowledge).
+  - “Select All” sets Manage + Special Actions ON and selects the most permissive single read level; “Unselect All” resets to None.
+  - Labels updated (“Update Settings” for admin_panel.update); consistent wording across cards.
+  - Added concise tooltips for threads/messages read scopes and alerts.ack.
+- Removed bundle-based “Menu Access” from PermissionsPage; no more ghost toggles or bundles.
+- Fixed toggle handler so switches reflect intended state; role permission grant/revoke now gated by roles.update.
+- Debounced RBAC refresh during bulk edits to prevent UI lag.
+
+### Navigation & Visibility (Policy-First)
+- Menu visibility now depends on DB has_perm checks; items are hidden if the user lacks any read scope for that section.
+- Updated gating keys to align with schema:
+  - Admin Panel: admin_panel.read (menu), admin_panel.update (controls)
+  - Permissions: roles.read
+  - Chat: threads.read_* (any of read_all/read_channel_owned/read_collaborator)
+  - Analytics: analytics.read
+  - Contacts: contacts.read_*; Platforms: channels.read_*; AI Agents: ai_profiles.read_*; Logs: audit_logs.read
+- Sidebar renders only items from getAccessibleNavItems(); fixed ReferenceError by properly destructuring the hook return.
+- Reduced has_perm spam: policy checks recompute only when RBAC roles/permissions change.
+
+### Admin Panel
+- Replaced legacy access_rules.configure gates:
+  - Controls now use admin_panel.update; navigation uses admin_panel.read.
+
+### Misc
+- Added contact_identities to schema.
+- Consistency/cleanup across labels, ordering, and spacing in Permission Matrix.
+
 # [0.1.5] FE WEB CEKAT 2025-11-30
 ### Webhook & Supabase URL Consistency
 - **Single Source for Supabase URL**: Exported a shared `SUPABASE_URL` constant from the Supabase client so all front-end integrations reference the same base URL sinstead of duplicating it.

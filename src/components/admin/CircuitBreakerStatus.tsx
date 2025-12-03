@@ -74,7 +74,7 @@ export default function CircuitBreakerStatus() {
     auth: defaultAdaptiveRateLimiter.getMultiplier('auth'),
   });
 
-  const isAdmin = hasPermission('access_rules.configure'); // Using same permission as permissions page
+  const isAdmin = hasPermission('admin_panel.update'); // Admins can update panel settings
 
   useEffect(() => {
     // Update stats periodically
@@ -593,7 +593,7 @@ export default function CircuitBreakerStatus() {
       )}
 
       {/* Admin Controls */}
-      <PermissionGate permission="access_rules.configure">
+      <PermissionGate permission="admin_panel.update">
         {/* Limit Configuration */}
         <Card className="mb-4">
           <CardHeader>

@@ -237,14 +237,27 @@ export default function ConversationPage() {
     return list;
   }, [conversations, query, filters, contactId]);
 
-  // If there are only resolved (closed) conversations, switch to the Resolved tab automatically
+  // Smart Tab Switching: If the current tab is empty but another tab has data (based on RLS results), switch to it.
   useEffect(() => {
-    const hasNonClosed = filteredConversations.some(c => c.status !== 'closed');
-    const hasClosed = filteredConversations.some(c => c.status === 'closed');
-    if (!hasNonClosed && hasClosed && activeTab !== 'resolved') {
-      setActiveTab('resolved');
+    if (loading || conversations.length === 0) return;
+
+    // Calculate counts based on the raw (RLS-filtered) data
+    const assignedCount = conversations.filter(c => c.status !== 'closed' && c.assigned).length;
+    const unassignedCount = conversations.filter(c => c.status !== 'closed' && !c.assigned).length;
+    const resolvedCount = conversations.filter(c => c.status === 'closed').length;
+
+    // If we are on 'assigned' but it's empty, and we have unassigned chats, switch.
+    if (activeTab === 'assigned' && assignedCount === 0 && unassignedCount > 0) {
+      setActiveTab('unassigned');
+      return;
     }
-  }, [filteredConversations, activeTab]);
+
+    // If we are on 'assigned' or 'unassigned' but both are empty, and we have resolved chats, switch.
+    if ((activeTab === 'assigned' || activeTab === 'unassigned') && assignedCount === 0 && unassignedCount === 0 && resolvedCount > 0) {
+      setActiveTab('resolved');
+      return;
+    }
+  }, [conversations, loading, activeTab]);
 
   // Keep URL in sync with current tab for deep-linkability (write-only)
   useEffect(() => {
