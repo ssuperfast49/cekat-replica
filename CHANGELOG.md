@@ -1,4 +1,11 @@
 # Change Log
+# [0.1.9] FE WEB CEKAT 2025-12-03
+### AI Agents
+- Replaced the browser `confirm()` with a first-class modal when deleting AI agents.
+  - Uses the shared `AlertDialog` component with explicit cancel/confirm controls.
+  - Shows the agent name inside the confirmation copy and blocks dismissal while the request is in flight.
+  - Surfaces loader feedback and only closes when the Supabase delete succeeds.
+
 # [0.1.8] FE WEB CEKAT 2025-12-03
 ### Platform Forms: Super Agent Management & Scoping
 - **Explicit Super Agent Selection**: All platform forms (WhatsApp, Telegram, Web) now require explicit Super Agent selection before AI Agent selection

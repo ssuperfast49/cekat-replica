@@ -210,7 +210,23 @@ export const useConversations = () => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 8000);
       });
 
-      const { data, error } = await Promise.race([selectPromise as any, timeoutPromise]) as any;
+      const labelJoin = filters.label?.length ? `
+        thread_labels!inner (
+          labels(name)
+        )
+      ` : 'thread_labels(labels(name))';
+
+      const { data, error } = await Promise.race([
+        selectPromise
+          .select(`
+            *,
+            contacts(name, phone, email),
+            channels(display_name, type, provider, external_id, logo_url, profile_photo_url),
+            messages(id, body, role, direction, created_at, seq),
+            ${labelJoin}
+          `) as any,
+        timeoutPromise,
+      ]) as any;
 
       if (error) throw error;
 

@@ -8,6 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { Settings, Trash2, Plus, Loader2, Search } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
@@ -146,6 +156,8 @@ const AIAgents = () => {
   const [filteredCount, setFilteredCount] = useState(0);
   const [totalAgents, setTotalAgents] = useState(0);
   const [lastCreated, setLastCreated] = useState<Date | null>(null);
+  const [agentPendingDelete, setAgentPendingDelete] = useState<AIAgent | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const firstLoadRef = useRef(true);
   const { user } = useAuth();
   const { mode: scopeMode, superAgentId, loading: scopeLoading, error: scopeError } = useSuperAgentScope();
@@ -391,19 +403,26 @@ useEffect(() => {
 }, [modelFilter, modelOptions]);
 
 // Delete AI agent
-const handleDeleteAgent = async (agentId: string) => {
+const handleDeleteAgent = (agentId: string) => {
   const agentToDelete = agents.find(agent => agent.id === agentId);
+  if (!agentToDelete) return;
+  setAgentPendingDelete(agentToDelete);
+};
 
-  if (window.confirm(`Are you sure you want to delete "${agentToDelete?.name}"? This action cannot be undone.`)) {
-    try {
-      await deleteProfile(agentId);
-      await Promise.all([fetchAgents(), fetchStats()]);
-      toast.success(`"${agentToDelete?.name}" has been deleted successfully`);
-    } catch (error) {
-      console.error('Error deleting agent:', error);
-      setError('Failed to delete AI agent');
-      toast.error('Failed to delete AI agent');
-    }
+const confirmDeleteAgent = async () => {
+  if (!agentPendingDelete) return;
+  try {
+    setDeleteLoading(true);
+    await deleteProfile(agentPendingDelete.id);
+    await Promise.all([fetchAgents(), fetchStats()]);
+    toast.success(`"${agentPendingDelete.name}" has been deleted successfully`);
+    setAgentPendingDelete(null);
+  } catch (error) {
+    console.error('Error deleting agent:', error);
+    setError('Failed to delete AI agent');
+    toast.error('Failed to delete AI agent');
+  } finally {
+    setDeleteLoading(false);
   }
 };
 
@@ -556,7 +575,8 @@ const handleDeleteAgent = async (agentId: string) => {
   const providerSelectOptions = providerOptions.length ? providerOptions : [];
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold">AI Agents</h1>
         <div className="text-muted-foreground max-w-2xl mx-auto">
@@ -867,6 +887,44 @@ const handleDeleteAgent = async (agentId: string) => {
         </Dialog>
       </PermissionGate>
     </div>
+
+      <AlertDialog
+        open={!!agentPendingDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) {
+            setAgentPendingDelete(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete AI Agent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {agentPendingDelete
+                ? `Are you sure you want to delete "${agentPendingDelete.name}"? This action cannot be undone.`
+                : "Are you sure you want to delete this AI agent?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteAgent}
+              disabled={deleteLoading}
+              className="bg-destructive hover:bg-destructive/90 focus:ring-destructive/50"
+            >
+              {deleteLoading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Deleting...
+                </span>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 

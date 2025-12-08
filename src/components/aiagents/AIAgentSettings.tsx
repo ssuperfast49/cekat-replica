@@ -1269,29 +1269,39 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <TabsTrigger value="general" className="gap-2">
-                <Settings className="w-4 h-4" />
-                General
-              </TabsTrigger>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Konfigurasi pengaturan umum agen AI</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <TabsTrigger value="knowledge" className="gap-2">
-                <BookOpen className="w-4 h-4" />
-                Knowledge Sources
-              </TabsTrigger>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Kelola sumber pengetahuan dan pasangan T&J</p>
-            </TooltipContent>
-          </Tooltip>
+        <TabsList className="grid w-full grid-cols-2 bg-muted/60 p-1 rounded-lg">
+          <TabsTrigger
+            value="general"
+            className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-muted/40 transition-colors"
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  <span>General</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Konfigurasi pengaturan umum agen AI</p>
+              </TooltipContent>
+            </Tooltip>
+          </TabsTrigger>
+          <TabsTrigger
+            value="knowledge"
+            className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-muted/40 transition-colors"
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  <span>Knowledge Sources</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Kelola sumber pengetahuan dan pasangan T&J</p>
+              </TooltipContent>
+            </Tooltip>
+          </TabsTrigger>
           {/* <TabsTrigger value="integrations" className="gap-2">
             <Zap className="w-4 h-4" />
             Integrations

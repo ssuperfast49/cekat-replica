@@ -48,8 +48,8 @@ export const WEBHOOK_CONFIG = {
     },
     // Knowledgebase endpoints
     KNOWLEDGE: {
-      FILE_UPLOAD: "/knowledge/file-upload",
-      FILE_DELETE: "/knowledge/file-delete",
+      FILE_UPLOAD: "/knowledge/file-upload-dev",
+      FILE_DELETE: "/knowledge/file-delete-dev",
     },
     
     // Message endpoints
