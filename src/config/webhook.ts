@@ -75,6 +75,13 @@ export const WEBHOOK_CONFIG = {
       return `${PROXY_BASE_URL}/${routeKey}`;
     }
 
+    // When forcing legacy, convert route:foo.bar → /foo.bar
+    if (opts.forceLegacy && isProxyEndpoint(endpoint)) {
+      const routeKey = extractRouteKey(endpoint);
+      if (!routeKey) throw new Error("Invalid proxy route key");
+      return `${LEGACY_BASE_URL}/${routeKey}`;
+    }
+
     return `${LEGACY_BASE_URL}${ensureLeadingSlash(endpoint)}`;
   },
   

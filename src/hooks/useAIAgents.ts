@@ -30,14 +30,15 @@ export const useAIAgents = () => {
   const { mode: scopeMode, superAgentId, loading: scopeLoading, error: scopeError } = useSuperAgentScope();
 
   const cacheKey = useMemo(() => {
+    const VER = 'v2';
     const uid = user?.id ?? 'anon';
     if (scopeMode === 'all') {
-      return `app.cachedAIAgents:${uid}:all`;
+      return `app.cachedAIAgents:${VER}:${uid}:all`;
     }
     if (scopeMode === 'none') {
-      return `app.cachedAIAgents:${uid}:none`;
+      return `app.cachedAIAgents:${VER}:${uid}:none`;
     }
-    return `app.cachedAIAgents:${uid}:${superAgentId ?? 'none'}`;
+    return `app.cachedAIAgents:${VER}:${uid}:${superAgentId ?? 'none'}`;
   }, [scopeMode, superAgentId, user?.id]);
 
   const fetchAIAgents = async () => {
@@ -57,7 +58,7 @@ export const useAIAgents = () => {
 
       // Fetch all AI profiles for selection
       await waitForAuthReady();
-      const SELECT_COLUMNS = 'id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve';
+      const SELECT_COLUMNS = 'id, org_id, name, description, system_prompt, welcome_message, transfer_conditions, stop_ai_after_handoff, response_temperature, created_at, auto_resolve_after_minutes, enable_resolve, super_agent_id';
 
       // Attempt filtered query first (if supported); gracefully fall back if column is missing
       let aiAgentsData: any[] | null = null;

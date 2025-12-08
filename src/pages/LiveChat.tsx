@@ -217,7 +217,7 @@ export default function LiveChat() {
   }, [threadId]);
 
   // Attach to existing thread for this platform and current username, and subscribe to realtime
-  // Fetch AI profile ID from channel/platform
+  // Fetch AI profile ID from channel/platform (best-effort; webhook can resolve server-side)
   useEffect(() => {
     const fetchAiProfileId = async () => {
       try {
@@ -226,16 +226,12 @@ export default function LiveChat() {
           .from('channels')
           .select('ai_profile_id')
           .eq('id', pid)
-          .single();
+          .maybeSingle();
         
-        if (error) {
-          console.error('Error fetching channel:', error);
-        } else {
+        if (!error && channel?.ai_profile_id) {
           
-          if (channel?.ai_profile_id) {
-            setAiProfileId(channel.ai_profile_id);
-            
-          }
+          setAiProfileId(channel.ai_profile_id);
+          
         }
       } catch (error) {
         console.error('Error fetching AI profile ID:', error);
@@ -474,11 +470,20 @@ export default function LiveChat() {
 
       
       
+      // For public/live widget, fall back to legacy webhook when no Supabase session
+      let useLegacy = false;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        useLegacy = !session;
+      } catch {
+        useLegacy = true;
+      }
+
       const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-      });
+      }, { forceLegacy: useLegacy });
       
       
       

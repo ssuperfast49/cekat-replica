@@ -398,6 +398,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     }
   }, [profile?.super_agent_id, isSuperAgent, user?.id]);
 
+  // If creating a new agent and a super agent was chosen in the creation dialog, apply it
+  useEffect(() => {
+    if (isNewAgent && !superAgentId) {
+      try {
+        const fromCreate = localStorage.getItem('ai.new.super_agent_id');
+        if (fromCreate) {
+          setSuperAgentId(fromCreate);
+          localStorage.removeItem('ai.new.super_agent_id');
+        }
+      } catch {}
+    }
+  }, [isNewAgent, superAgentId]);
+
   useEffect(() => {
     let isCancelled = false;
     const loadSuperAgents = async () => {

@@ -1,4 +1,62 @@
 # Change Log
+# [0.1.8] FE WEB CEKAT 2025-12-03
+### Platform Forms: Super Agent Management & Scoping
+- **Explicit Super Agent Selection**: All platform forms (WhatsApp, Telegram, Web) now require explicit Super Agent selection before AI Agent selection
+  - Super Agent field is now a required, selectable dropdown (previously derived from AI Agent)
+  - Field appears above AI Agent selection with clear labeling and tooltips
+  - Form validation prevents submission without Super Agent selection
+  - Helper text explains that Super Agent can be changed independently of AI Agent
+
+- **AI Agent Filtering by Super Agent**: Enhanced AI Agent selection with strict scoping
+  - AI Agent dropdown only shows agents belonging to the selected Super Agent
+  - Validation prevents selecting AI agents that don't belong to the selected Super Agent
+  - Error toast notifications when attempting invalid selections
+  - Form automatically resets AI Agent selection when Super Agent changes
+  - Warning message displayed if selected AI Agent lacks a Super Agent assignment
+
+- **Human Agent Scoping**: Improved human agent assignment with role-based filtering
+  - Human Agent multi-select only shows agents assigned to the selected Super Agent
+  - "Select All" and "Unselect All" buttons for quick agent assignment
+  - Multi-select disabled until Super Agent is selected
+  - Clear placeholder text indicating selection requirements
+  - Consistent behavior across all platform types (WhatsApp, Telegram, Web)
+
+- **AI Agent Creation Enhancement**: Super Agent assignment during creation
+  - Super Agent selection required in AI Agent creation dialog
+  - Searchable dropdown for Super Agent selection
+  - Super Agent information displayed in AI Agent cards
+  - Validation ensures Super Agent is selected before agent creation
+
+### Navigation & Permissions Updates
+- **Navigation Configuration**: Updated navigation items and permission mappings
+  - Refined permission checks for navigation visibility
+  - Enhanced role-based access control for navigation items
+  - Improved database permission checks in useNavigation hook
+
+- **Permission Schema**: Updated permissions configuration
+  - Aligned permission schema with backend requirements
+  - Enhanced permission categorization and validation
+
+### Live Chat Improvements
+- **Message Handling**: Enhanced message synchronization and streaming
+  - Improved realtime message updates
+  - Better handling of streaming responses
+  - Optimized message deduplication logic
+  - Enhanced user message timeout handling
+
+### Webhook Configuration
+- **Webhook Routing**: Updated webhook endpoint configuration
+  - Enhanced proxy-aware routing
+  - Improved endpoint resolution for different providers
+  - Better error handling for webhook calls
+
+### Technical Improvements
+- **Hooks Enhancement**: Improved data fetching and scoping
+  - Enhanced useAIAgents hook with better super agent scoping
+  - Improved useNavigation hook with database permission checks
+  - Better error handling and loading states
+  - Optimized cache management
+
 # [0.1.7] FE WEB CEKAT 2025-12-03
 ### RBAC & Permissions (Finalized Alignment)
 - Standardized PERMISSIONS_SCHEMA to match production backend exactly:

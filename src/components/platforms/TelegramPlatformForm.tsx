@@ -13,7 +13,6 @@ import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRBAC } from "@/contexts/RBACContext";
-import { ROLES } from "@/types/rbac";
 import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { callWebhook } from "@/lib/webhookClient";
@@ -29,7 +28,7 @@ interface TelegramPlatformFormProps {
 const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: TelegramPlatformFormProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { hasRole } = useRBAC();
+  const { hasPermission } = useRBAC();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   const { uploadChannelAvatar } = usePlatforms();
@@ -45,20 +44,8 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [submitting, setSubmitting] = useState(false);
   const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
 
-  // Check if current user is a super agent
-  const isCurrentUserSuperAgent = hasRole(ROLES.SUPER_AGENT);
-  
-  // Prefill super agent field if current user is a super agent
-  useEffect(() => {
-    if (isOpen && isCurrentUserSuperAgent && user?.id && humanAgents.length > 0) {
-      const currentUserSuperAgent = humanAgents.find(
-        (a) => a.primaryRole === 'super_agent' && a.user_id === user.id
-      );
-      if (currentUserSuperAgent) {
-        setSelectedSuperAgentId(user.id);
-      }
-    }
-  }, [isOpen, isCurrentUserSuperAgent, user?.id, humanAgents]);
+  // Permission-based gating: user must have channels.create
+  const canCreateChannel = hasPermission('channels.create');
 
   const resolveSuperAgentForAI = (aiProfileId: string): string | null => {
     if (!aiProfileId) return null;
@@ -84,7 +71,8 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const isFormValid = formData.displayName && 
     formData.selectedAIAgent &&
     formData.telegramBotToken &&
-    selectedSuperAgentId;
+    selectedSuperAgentId &&
+    canCreateChannel;
 
   const getUserOrgId = async () => {
     if (!user) return null;
@@ -102,6 +90,11 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     try {
       if (submitting) return;
       setSubmitting(true);
+      if (!canCreateChannel) {
+        toast({ title: 'Permission denied', description: 'You do not have permission to create channels.', variant: 'destructive' });
+        setSubmitting(false);
+        return;
+      }
       if (!selectedSuperAgentId || !formData.selectedAIAgent) {
         toast({ title: 'Missing required fields', description: 'Please select a Super Agent and an AI Agent.', variant: 'destructive' });
         setSubmitting(false);
@@ -218,9 +211,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         selectedHumanAgents: [],
         profilePhoto: null,
       });
-      if (!isCurrentUserSuperAgent) {
-        setSelectedSuperAgentId(null);
-      }
+      setSelectedSuperAgentId(null);
     } catch (error: any) {
       console.error('Error submitting form:', error);
       toast({
@@ -450,19 +441,33 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                 </TooltipContent>
               </Tooltip>
             </div>
-            <div className={`rounded-md border bg-muted px-3 py-2 text-sm ${isCurrentUserSuperAgent ? 'opacity-75' : ''}`}>
-              {humanAgentsLoading ? (
-                'Loading super agents...'
-              ) : selectedSuperAgentId ? (
-                <>👤 {selectedSuperAgent?.display_name || selectedSuperAgent?.email || selectedSuperAgentId.slice(0, 8)}</>
-              ) : (
-                'Pilih AI agent untuk melihat super agent yang terkait.'
-              )}
-            </div>
+            {humanAgentsLoading ? (
+              <div className="rounded-md border bg-muted px-3 py-2 text-sm">Loading super agents...</div>
+            ) : (
+              <Select
+                value={selectedSuperAgentId || ''}
+                onValueChange={(value) => {
+                  setSelectedSuperAgentId(value);
+                  // Reset AI/human agent selections to respect new super agent scope
+                  setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a Super Agent" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border z-50">
+                  {humanAgents
+                    .filter((a) => a.primaryRole === 'super_agent')
+                    .map((sa) => (
+                      <SelectItem key={sa.user_id} value={sa.user_id}>
+                        {sa.display_name || sa.email || sa.user_id.slice(0, 8)}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            )}
             <p className="text-xs text-muted-foreground">
-              {isCurrentUserSuperAgent 
-                ? 'Super agent ditentukan berdasarkan akun Anda sebagai super agent.'
-                : 'Super agent mengikuti konfigurasi AI agent yang dipilih.'}
+              {'Default mengikuti super agent pada AI agent terpilih. Anda bisa mengubahnya di sini.'}
             </p>
           </div>
 
@@ -493,55 +498,29 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               <Select 
                 value={formData.selectedAIAgent} 
                 onValueChange={(value) => {
-                  const superId = resolveSuperAgentForAI(value);
-                  if (!superId) {
-                    toast({
-                      title: "AI agent missing super agent",
-                      description: "Please assign a super agent to this AI agent before using it to create a platform.",
-                      variant: "destructive",
-                    });
-                    setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
-                    if (!isCurrentUserSuperAgent) {
-                      setSelectedSuperAgentId(null);
-                    }
+                  const agent = aiAgents.find(a => a.id === value);
+                  if (!selectedSuperAgentId) {
+                    toast({ title: "Select a Super Agent first", description: "Pilih super agent terlebih dahulu, lalu pilih AI agent.", variant: "destructive" });
                     return;
                   }
-                  // If current user is super agent, only allow selecting AI agents that belong to them
-                  if (isCurrentUserSuperAgent && superId !== user?.id) {
-                    toast({
-                      title: "Invalid AI agent",
-                      description: "You can only select AI agents that belong to your super agent account.",
-                      variant: "destructive",
-                    });
+                  if (!agent || agent.super_agent_id !== selectedSuperAgentId) {
+                    toast({ title: "AI agent tidak sesuai", description: "AI agent yang dipilih tidak berada di bawah super agent terpilih.", variant: "destructive" });
                     return;
-                  }
-                  if (!isCurrentUserSuperAgent) {
-                    setSelectedSuperAgentId(superId);
                   }
                   setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose an AI agent" />
+                  <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
                 </SelectTrigger>
                 <SelectContent className="bg-background border z-50">
                   {aiAgents
-                    .filter((agent) => {
-                      // If current user is super agent, only show AI agents that belong to them
-                      if (isCurrentUserSuperAgent && user?.id) {
-                        return agent.super_agent_id === user.id;
-                      }
-                      return true;
-                    })
-                    .map((agent) => {
-                      const disabled = !agent.super_agent_id;
-                      return (
-                        <SelectItem key={agent.id} value={agent.id} disabled={disabled}>
-                          {agent.name}
-                          {disabled && <span className="ml-2 text-xs text-muted-foreground">(Assign super agent first)</span>}
-                        </SelectItem>
-                      );
-                    })}
+                    .filter(agent => selectedSuperAgentId ? agent.super_agent_id === selectedSuperAgentId : false)
+                    .map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             )}
@@ -554,6 +533,11 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               </div>
             )}
           </div>
+          {formData.selectedAIAgent && !selectedSuperAgentId && (
+            <p className="text-xs text-amber-600">
+              AI agent terpilih belum memiliki super agent. Tetapkan super agent di halaman AI Agents terlebih dahulu.
+            </p>
+          )}
 
           {/* Select Human Agents (MultiSelect + Select All) */}
           <div className="space-y-2">
@@ -603,7 +587,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={()=>{ if (submitting) return; setFormData({ displayName: "", description: "", telegramBotToken: "", selectedAIAgent: "", selectedHumanAgents: [] as string[], profilePhoto: null }); if (!isCurrentUserSuperAgent) { setSelectedSuperAgentId(null); } onClose(); }} disabled={isSubmitting || submitting}>
+          <Button variant="outline" onClick={()=>{ if (submitting) return; setFormData({ displayName: "", description: "", telegramBotToken: "", selectedAIAgent: "", selectedHumanAgents: [] as string[], profilePhoto: null }); setSelectedSuperAgentId(null); onClose(); }} disabled={isSubmitting || submitting}>
             Cancel
           </Button>
           <Button 

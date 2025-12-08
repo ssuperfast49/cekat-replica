@@ -112,8 +112,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "humanagents",
     label: "Human Agents",
     icon: ShieldCheck,
-    permissions: ['super_agents.read'],
-    requireAll: true,
+    permissions: readPerms('human_agents'),
+    requireAll: false,
     description: "Manage human agent assignments and roles"
   },
 

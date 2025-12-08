@@ -9,6 +9,7 @@ export const PERMISSIONS_SCHEMA = {
   "messages": ["create", "update", "delete", "send", "read_all", "read_collaborator"],
   "ai_agent_files": ["create", "read", "delete"],
   "admin_panel": ["read", "update"],
+  "human_agents": ["create", "update", "delete", "read_all", "read_own"],
   "roles": ["create", "read", "update", "delete"],
   "audit_logs": ["read"],
   "alerts": ["read", "ack"]

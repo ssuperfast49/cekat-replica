@@ -57,10 +57,10 @@ export function useNavigation() {
     const navItem = NAVIGATION_CONFIG[navKey];
     if (!navItem) return false;
 
-    // Prefer DB-evaluated access (policies first) when available
-    if (dbAccessMap[navKey] !== undefined) {
-      return dbAccessMap[navKey];
-    }
+    // Prefer DB-evaluated access (policies first) when it grants access.
+    // If DB check denies (false), fall back to client-side evaluation to allow
+    // master-agent bypass and non-DB-derived permission logic for navigation visibility.
+    if (dbAccessMap[navKey] === true) return true;
 
     // Fallback to in-memory permissions if DB result not ready
     const permsOk = navItem.requireAll
