@@ -9,7 +9,10 @@ export const PERMISSIONS_SCHEMA = {
   "messages": ["create", "update", "delete", "send", "read_all", "read_collaborator"],
   "ai_agent_files": ["create", "read", "delete"],
   "admin_panel": ["read", "update"],
-  "human_agents": ["create", "update", "delete", "read_all", "read_own"],
+  // Permissions for managing Super Agents / Human Agents
+  // DB permissions: create, update, delete, read_all, read_own
+  "super_agents": ["create", "update", "delete", "read_all", "read_own"],
+  "users_profile": ["create", "update", "delete", "read"],
   "roles": ["create", "read", "update", "delete"],
   "audit_logs": ["read"],
   "alerts": ["read", "ack"]

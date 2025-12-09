@@ -1,4 +1,18 @@
 # Change Log
+# [0.1.10] FE WEB CEKAT 2025-12-09
+### Human Agents & Permissions
+- **Create Agent Permission Gate**: Simplified and hardened the Create Agent button on the Human Agents page.
+  - Button is now directly gated by `users_profile.create` via `PermissionGate`, following the same pattern as other RBAC-protected actions.
+  - When the user lacks permission, the button stays visible but disabled with a clear tooltip (“You do not have permission to create agents.”).
+  - Removed the extra client-side lookup against the `permissions` table and associated state (`createPermissionKey`, `checkingCreatePermission`) to reduce complexity and runtime edge cases.
+
+### Navigation & RBAC Consistency
+- **Super Agents Schema Alignment**: Updated `PERMISSIONS_SCHEMA` to include the full `super_agents` action set (`create`, `update`, `delete`, `read_all`, `read_own`), matching the backend `permissions` table.
+- **Navigation Read-Gates**: Centralized navigation gating to use read scopes consistently:
+  - Added a defensive `readPerms(resource)` helper that safely derives `resource.read*` keys from `PERMISSIONS_SCHEMA`.
+  - Human Agents sidebar item now depends on any `super_agents` read scope (e.g. `super_agents.read_all` / `super_agents.read_own`), keeping menu visibility aligned with DB permissions.
+- **useNavigation Stability**: Adjusted `useNavigation` to skip DB permission recomputation while RBAC is still loading, preventing transient context errors during hot reloads while keeping the existing has_perm-first behavior.
+
 # [0.1.9] FE WEB CEKAT 2025-12-03
 ### AI Agents
 - Replaced the browser `confirm()` with a first-class modal when deleting AI agents.

@@ -7,12 +7,23 @@ import { NAVIGATION_CONFIG, NAVIGATION_ORDER, NavKey } from '@/config/navigation
  * Now uses centralized navigation configuration
  */
 export function useNavigation() {
-  const { hasAnyPermission, hasAllPermissions, hasAnyRole, hasPermissionDB, userRoles, userPermissions } = useRBAC() as any;
+  const { 
+    hasAnyPermission, 
+    hasAllPermissions, 
+    hasAnyRole, 
+    hasPermissionDB, 
+    userRoles, 
+    userPermissions,
+    loading: rbacLoading 
+  } = useRBAC();
 
   // Cache DB-computed access per nav key to reflect table policies first
   const [dbAccessMap, setDbAccessMap] = useState<Record<NavKey, boolean>>({} as Record<NavKey, boolean>);
 
   useEffect(() => {
+    // Skip computation if RBAC is still loading to prevent errors during hot reload
+    if (rbacLoading) return;
+    
     let cancelled = false;
     const compute = async () => {
       const entries = await Promise.all(
@@ -48,7 +59,7 @@ export function useNavigation() {
       cancelled = true;
     };
   // Recompute when roles/permissions change; avoid depending on function identity
-  }, [hasAnyRole, userRoles, userPermissions]);
+  }, [hasAnyRole, userRoles, userPermissions, rbacLoading]);
 
   /**
    * Check if user can access a navigation item
