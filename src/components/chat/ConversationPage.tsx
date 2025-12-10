@@ -10,18 +10,18 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ChatFilter } from "./ChatFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  MessageSquare, 
-  Phone, 
-  Mail, 
-  CheckCheck, 
-  Loader2, 
-  RefreshCw, 
-  Search, 
-  Filter, 
-  Plus, 
-  List, 
-  Users, 
+import {
+  MessageSquare,
+  Phone,
+  Mail,
+  CheckCheck,
+  Loader2,
+  RefreshCw,
+  Search,
+  Filter,
+  Plus,
+  List,
+  Users,
   ChevronDown,
   Tag,
   UserPlus,
@@ -67,7 +67,7 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
   const isSystem = message.role === 'system' || message.type === 'event' || message.type === 'note';
   const isHumanAgent = message.role === 'assistant';
   const isAiAgent = message.role === 'agent';
-  
+
   if (isSystem) {
     return (
       <div className="flex justify-center my-4">
@@ -76,9 +76,9 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
             {message.body || 'System event'}
           </div>
           <div className="flex items-center justify-center gap-2 mt-1 text-xs text-muted-foreground">
-            <span>{new Date(message.created_at).toLocaleTimeString([], { 
-              hour: "2-digit", 
-              minute: "2-digit" 
+            <span>{new Date(message.created_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit"
             })}</span>
             <span>•</span>
             <span>system</span>
@@ -97,23 +97,21 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
             {isAgent ? 'A' : message.contact_avatar}
           </AvatarFallback>
         </Avatar>
-        
+
         <div
-          className={`rounded-lg px-3 py-2 text-sm shadow-sm ${
-            isAiAgent
+          className={`rounded-lg px-3 py-2 text-sm shadow-sm ${isAiAgent
               ? "bg-blue-600 text-white"
               : isHumanAgent
                 ? "bg-blue-100 text-blue-900"
                 : "bg-muted text-foreground"
-          } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
+            } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
         >
           <p className="whitespace-pre-wrap">{message.body}</p>
-          <div className={`mt-1 flex items-center gap-1 text-[10px] ${
-            isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
-          }`}>
-            <span>{new Date(message.created_at).toLocaleTimeString([], { 
-              hour: "2-digit", 
-              minute: "2-digit" 
+          <div className={`mt-1 flex items-center gap-1 text-[10px] ${isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
+            }`}>
+            <span>{new Date(message.created_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit"
             })}</span>
             {isAgent && (
               message._status === 'pending' ? (
@@ -175,7 +173,7 @@ export default function ConversationPage() {
 
   // Filter conversations based on search query
   const [filters, setFilters] = useState<any>({});
-  
+
   // Get contact ID and tab from URL parameters
   const contactId = searchParams.get('contact');
   const tabParam = searchParams.get('tab');
@@ -190,20 +188,16 @@ export default function ConversationPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabParam]);
-  
+
   const filteredConversations = useMemo(() => {
     let list = conversations.filter((conv) =>
       `${conv.contact_name} ${conv.last_message_preview}`.toLowerCase().includes(query.toLowerCase())
     );
-    
+
     // Do not filter list by contactId; we only use it to auto-select
-    
+
     if (filters.status && filters.status !== 'all') {
-      if (filters.status === 'resolved') {
-        list = list.filter(c => c.status === 'closed');
-      } else {
-        list = list.filter(c => c.status === filters.status);
-      }
+      list = list.filter(c => c.status === filters.status);
     }
     if (filters.agent && filters.agent !== 'all') {
       list = list.filter(c => c.assignee_user_id === filters.agent);
@@ -277,20 +271,20 @@ export default function ConversationPage() {
     if (!contactId) return;
     if (selectedThreadId) return; // user has already selected a thread; don't override
     if (filteredConversations.length === 0) return;
-      const target = filteredConversations.find(c => c.contact_id === contactId);
-      if (!target) return;
-        setSelectedThreadId(target.id);
-      // Ensure tab reflects the selected conversation
-      if (target.status === 'closed') {
-        setActiveTab('resolved');
-      } else {
-        setActiveTab(target.assigned ? 'assigned' : 'unassigned');
-      }
-      // Fetch messages and set provider when auto-selecting
-      void fetchMessages(target.id);
-      if (target.channel?.provider) {
-        setSendMessageProvider(target.channel.provider);
-      }
+    const target = filteredConversations.find(c => c.contact_id === contactId);
+    if (!target) return;
+    setSelectedThreadId(target.id);
+    // Ensure tab reflects the selected conversation
+    if (target.status === 'closed') {
+      setActiveTab('resolved');
+    } else {
+      setActiveTab(target.assigned ? 'assigned' : 'unassigned');
+    }
+    // Fetch messages and set provider when auto-selecting
+    void fetchMessages(target.id);
+    if (target.channel?.provider) {
+      setSendMessageProvider(target.channel.provider);
+    }
   }, [contactId, filteredConversations]);
 
   // Get selected conversation
@@ -388,7 +382,7 @@ export default function ConversationPage() {
         next.delete('contact');
         setSearchParams(next, { replace: true });
       }
-    } catch {}
+    } catch { }
     await fetchMessages(threadId);
   };
 
@@ -396,18 +390,18 @@ export default function ConversationPage() {
   const handleSendMessage = async () => {
     const text = draft.trim();
     if (!text || !selectedThreadId) return;
-    
+
     try {
       // Check AI message limit before sending (for AI responses)
       const { checkAIMessageLimit, autoAssignToSuperAgent } = await import('@/lib/aiMessageLimit');
       // @ts-ignore - protectedSupabase is compatible with the function signature
       const limitInfo = await checkAIMessageLimit(protectedSupabase as any, selectedThreadId);
-      
+
       if (limitInfo.isExceeded && limitInfo.superAgentId) {
         // Auto-assign to super agent
         // @ts-ignore - protectedSupabase is compatible with the function signature
         const assignResult = await autoAssignToSuperAgent(protectedSupabase as any, selectedThreadId, limitInfo.superAgentId);
-        
+
         if (assignResult.success) {
           toast.error(
             `Batas pesan AI telah tercapai (${limitInfo.currentCount}/${limitInfo.limit}). ` +
@@ -521,7 +515,7 @@ export default function ConversationPage() {
   // Add participant to thread
   const handleAddParticipant = async (userId: string) => {
     if (!selectedThreadId) return;
-    
+
     try {
       await addThreadParticipant(selectedThreadId, userId);
       toast.success("Participant added successfully");
@@ -571,7 +565,7 @@ export default function ConversationPage() {
   // Remove participant from thread
   const handleRemoveParticipant = async (userId: string) => {
     if (!selectedThreadId) return;
-    
+
     try {
       await removeThreadParticipant(selectedThreadId, userId);
       toast.success("Participant removed successfully");
@@ -644,9 +638,9 @@ export default function ConversationPage() {
         </div>
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search..." value={query} onChange={(e)=>setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
+          <Input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
         </div>
-        <Tabs value={activeTab} onValueChange={(v)=>{ if (v !== activeTab) setActiveTab(v as any); }} className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => { if (v !== activeTab) setActiveTab(v as any); }} className="w-full">
           <TabsList className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
             <TabsTrigger
               value="assigned"
@@ -657,7 +651,7 @@ export default function ConversationPage() {
                   <span className="flex items-center">
                     Assigned
                     <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).length}
+                      {filteredConversations.filter(c => c.status !== 'closed' && c.assigned).length}
                     </Badge>
                   </span>
                 </TooltipTrigger>
@@ -675,7 +669,7 @@ export default function ConversationPage() {
                   <span className="flex items-center">
                     Unassigned
                     <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).length}
+                      {filteredConversations.filter(c => c.status !== 'closed' && !c.assigned).length}
                     </Badge>
                   </span>
                 </TooltipTrigger>
@@ -694,7 +688,7 @@ export default function ConversationPage() {
                   <div className="flex items-center gap-1">
                     <CheckCircle className="h-4 w-4" />
                     <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c=>c.status === 'closed').length}
+                      {filteredConversations.filter(c => c.status === 'closed').length}
                     </Badge>
                   </div>
                 </TooltipTrigger>
@@ -707,13 +701,13 @@ export default function ConversationPage() {
           <TabsContent value="assigned" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
-                {filteredConversations.filter(c=>c.status !== 'closed' && c.assigned).map(conv => (
+                {filteredConversations.filter(c => c.status !== 'closed' && c.assigned).map(conv => (
                   <div key={conv.id} className="relative">
                     <button
                       type="button"
-                      onClick={()=>handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}
-                    > 
+                      onClick={() => handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-2 flex-1 min-w-0">
                           <Avatar className="h-6 w-6">
@@ -744,7 +738,7 @@ export default function ConversationPage() {
                             variant="ghost"
                             size="icon"
                             className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event)=>{ event.stopPropagation(); handleOpenDelete(conv); }}
+                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -756,18 +750,18 @@ export default function ConversationPage() {
                     )}
                   </div>
                 ))}
-               </div>
+              </div>
             </div>
           </TabsContent>
           <TabsContent value="unassigned" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
-                {filteredConversations.filter(c=>c.status !== 'closed' && !c.assigned).map(conv => (
+                {filteredConversations.filter(c => c.status !== 'closed' && !c.assigned).map(conv => (
                   <div key={conv.id} className="relative">
                     <button
                       type="button"
-                      onClick={()=>handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}
+                      onClick={() => handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -799,7 +793,7 @@ export default function ConversationPage() {
                             variant="ghost"
                             size="icon"
                             className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event)=>{ event.stopPropagation(); handleOpenDelete(conv); }}
+                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -811,19 +805,19 @@ export default function ConversationPage() {
                     )}
                   </div>
                 ))}
-               </div>
+              </div>
             </div>
           </TabsContent>
 
           <TabsContent value="resolved" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
-                {filteredConversations.filter(c=>c.status === 'closed').map(conv => (
+                {filteredConversations.filter(c => c.status === 'closed').map(conv => (
                   <div key={conv.id} className="relative">
                     <button
                       type="button"
-                      onClick={()=>handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId===conv.id?'bg-blue-50 border border-blue-200':'hover:bg-gray-50'}`}
+                      onClick={() => handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -837,7 +831,7 @@ export default function ConversationPage() {
                             <div className="mt-1 flex items-center gap-1.5 min-w-0">
                               <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                               <span className="text-xs text-gray-600 truncate">
-                                {conv.channel?.display_name ||  'Unknown'}
+                                {conv.channel?.display_name || 'Unknown'}
                               </span>
                             </div>
                           </div>
@@ -855,7 +849,7 @@ export default function ConversationPage() {
                             variant="ghost"
                             size="icon"
                             className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event)=>{ event.stopPropagation(); handleOpenDelete(conv); }}
+                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -867,7 +861,7 @@ export default function ConversationPage() {
                     )}
                   </div>
                 ))}
-               </div>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
@@ -899,43 +893,43 @@ export default function ConversationPage() {
           <>
             {/* Chat Header */}
             <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src="" />
-                    <AvatarFallback className="text-sm">
-                      {selectedConversation.contact_name.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h2 className="text-base font-semibold leading-tight">
-                      {selectedConversation.contact_name}
-                    </h2>
-                    {selectedConversation.contact_phone && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {selectedConversation.contact_phone}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input value={messageSearch} onChange={(e)=>setMessageSearch(e.target.value)} placeholder="Search messages" className="pl-7 h-8 w-44 text-xs" />
-                  </div>
-                  {selectedConversation.status !== 'closed' &&
-                    <Button
-                      size="sm"
-                      className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                      onClick={async()=>{ if(selectedConversation.status==='closed') return; const { error } = await protectedSupabase.from('threads').update({ status:'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if(error){ toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); }} }
-                    >
-                      Resolve
-                    </Button>
-                  }
-                  <Badge className={selectedConversation.assigned ? "bg-success text-success-foreground hover:bg-success" : "bg-secondary text-secondary-foreground hover:bg-secondary"}>
-                    {selectedConversation.assigned ? 'Assigned' : 'Unassigned'}
-                  </Badge>
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src="" />
+                  <AvatarFallback className="text-sm">
+                    {selectedConversation.contact_name.charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h2 className="text-base font-semibold leading-tight">
+                    {selectedConversation.contact_name}
+                  </h2>
+                  {selectedConversation.contact_phone && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {selectedConversation.contact_phone}
+                    </p>
+                  )}
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input value={messageSearch} onChange={(e) => setMessageSearch(e.target.value)} placeholder="Search messages" className="pl-7 h-8 w-44 text-xs" />
+                </div>
+                {selectedConversation.status !== 'closed' &&
+                  <Button
+                    size="sm"
+                    className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
+                    onClick={async () => { if (selectedConversation.status === 'closed') return; const { error } = await protectedSupabase.from('threads').update({ status: 'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if (error) { toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); } }}
+                  >
+                    Resolve
+                  </Button>
+                }
+                <Badge className={selectedConversation.assigned ? "bg-success text-success-foreground hover:bg-success" : "bg-secondary text-secondary-foreground hover:bg-secondary"}>
+                  {selectedConversation.assigned ? 'Assigned' : 'Unassigned'}
+                </Badge>
+              </div>
+            </div>
 
             {/* Chat Messages */}
             <ScrollArea className="flex-1 p-4">
@@ -971,10 +965,10 @@ export default function ConversationPage() {
                     className="flex-1"
                     disabled={!hasPermission('messages.create')}
                   />
-                  <Button 
-                    type="button" 
-                    onClick={handleSendMessage} 
-                    disabled={!draft.trim() || !hasPermission('messages.create')} 
+                  <Button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={!draft.trim() || !hasPermission('messages.create')}
                     title={!hasPermission('messages.create') ? 'No permission to send messages' : 'Send message'}
                     aria-label="Send message"
                   >
@@ -983,10 +977,10 @@ export default function ConversationPage() {
                 </div>
               ) : (
                 <PermissionGate permission={'threads.update'}>
-                  <Button 
+                  <Button
                     type="button"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
-                    onClick={handleTakeoverChat} 
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleTakeoverChat}
                     disabled={!user?.id}
                   >
                     Takeover Chat
@@ -1052,7 +1046,7 @@ export default function ConversationPage() {
                     <CommandEmpty>No agent found.</CommandEmpty>
                     <CommandGroup>
                       {humanAgents.map((agent) => (
-                        <CommandItem key={agent.user_id} onSelect={async()=>{ if(!selectedConversation) return; await assignThread(selectedConversation.id, agent.user_id); setAssignOpen(false); }}>
+                        <CommandItem key={agent.user_id} onSelect={async () => { if (!selectedConversation) return; await assignThread(selectedConversation.id, agent.user_id); setAssignOpen(false); }}>
                           {agent.display_name || 'Agent'}
                         </CommandItem>
                       ))}
@@ -1077,7 +1071,7 @@ export default function ConversationPage() {
                     <CommandEmpty>No agent found.</CommandEmpty>
                     <CommandGroup>
                       {humanAgents.map((agent) => (
-                        <CommandItem key={agent.user_id} onSelect={async()=>{ if(!selectedConversation) return; await handleAddParticipant(agent.user_id); setCollabOpen(false); }}>
+                        <CommandItem key={agent.user_id} onSelect={async () => { if (!selectedConversation) return; await handleAddParticipant(agent.user_id); setCollabOpen(false); }}>
                           {agent.display_name || 'Agent'}
                         </CommandItem>
                       ))}

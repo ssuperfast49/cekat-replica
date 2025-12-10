@@ -103,7 +103,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
         <DialogHeader>
           <DialogTitle>Filter</DialogTitle>
         </DialogHeader>
-        
+
         <div className="grid gap-6 py-4">
           {/* Date Range */}
           <div className="grid grid-cols-2 gap-4">
@@ -199,7 +199,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
               <Popover open={resolvedOpen} onOpenChange={setResolvedOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="w-full justify-between">
-                    {humanAgents.find(a=>a.user_id===filters.resolvedBy)?.display_name || 'Choose Agent'}
+                    {humanAgents.find(a => a.user_id === filters.resolvedBy)?.display_name || 'Choose Agent'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[320px] p-0">
@@ -226,7 +226,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
               <Popover open={agentOpen} onOpenChange={setAgentOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="w-full justify-between">
-                    {humanAgents.find(a=>a.user_id===filters.agent)?.display_name || 'Choose Agent'}
+                    {humanAgents.find(a => a.user_id === filters.agent)?.display_name || 'Choose Agent'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[320px] p-0">
@@ -264,7 +264,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Channel Type</label>
-              <Select value={filters.channelType} onValueChange={(value:any) => handleFilterChange('channelType', value)}>
+              <Select value={filters.channelType} onValueChange={(value: any) => handleFilterChange('channelType', value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Channels" />
                 </SelectTrigger>
@@ -290,7 +290,6 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="open">Open</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
                   <SelectItem value="closed">Closed</SelectItem>
                 </SelectContent>
               </Select>

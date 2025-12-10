@@ -1,4 +1,10 @@
 # Change Log
+# [0.1.10] FE WEB CEKAT 2025-12-10
+### Conversation Management
+- **Status Filter Cleanup**: Removed the redundant "Resolved" option from the conversation status filter.
+  - The "Closed" status now serves as the single source of truth for completed conversations.
+  - Simplified the filtering logic to remove unnecessary status checks.
+
 # [0.1.9] FE WEB CEKAT 2025-12-03
 ### AI Agents
 - Replaced the browser `confirm()` with a first-class modal when deleting AI agents.

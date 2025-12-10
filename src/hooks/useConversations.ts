@@ -19,20 +19,20 @@ const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
 
     // Only play sounds when the tab is visible
     if (document.visibilityState !== 'visible') {
-      
+
       return;
     }
 
     // Debounce notifications to prevent duplicate sounds
     const now = Date.now();
     if (now - lastNotificationTime < NOTIFICATION_DEBOUNCE_MS) {
-      
+
       return;
     }
     lastNotificationTime = now;
 
     const audio = new Audio();
-    
+
     if (type === 'incoming') {
       // Use the message pop alert for incoming messages
       audio.src = '/tones/mixkit-message-pop-alert-2354.mp3';
@@ -40,10 +40,10 @@ const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
       // Use the long pop for outgoing messages (optional)
       audio.src = '/tones/mixkit-long-pop-2358.wav';
     }
-    
+
     audio.volume = 0.7; // Set a reasonable volume
-    audio.play().catch(() => {});
-  } catch {}
+    audio.play().catch(() => { });
+  } catch { }
 };
 
 export interface Thread {
@@ -83,7 +83,7 @@ export interface Message {
   created_at: string;
 }
 
-  export interface ConversationWithDetails extends Thread {
+export interface ConversationWithDetails extends Thread {
   // Additional fields for display
   contact_name: string;
   contact_phone: string;
@@ -91,15 +91,15 @@ export interface Message {
   channel_name: string;
   channel_type: string;
   channel_provider?: string;
-    channel?: {
-      provider?: string;
-      type?: string;
-      display_name?: string;
-      external_id?: string;
-      logo_url?: string | null;
-      profile_photo_url?: string | null;
-    };
-    channel_logo_url?: string | null;
+  channel?: {
+    provider?: string;
+    type?: string;
+    display_name?: string;
+    external_id?: string;
+    logo_url?: string | null;
+    profile_photo_url?: string | null;
+  };
+  channel_logo_url?: string | null;
   last_message_preview: string;
   last_message_direction?: 'in' | 'out' | null;
   last_message_role?: 'user' | 'assistant' | 'agent' | 'system' | null;
@@ -129,7 +129,7 @@ export const useConversations = () => {
   const conversationsRefreshTimer = useRef<number | null>(null);
 
   const scheduleConversationsRefresh = (delayMs: number = 400) => {
-    try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch {}
+    try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     conversationsRefreshTimer.current = window.setTimeout(() => {
       // Only refresh if the document is visible to prevent unnecessary fetches when tab is hidden
       if (document.visibilityState === 'visible') {
@@ -157,14 +157,14 @@ export const useConversations = () => {
         }
         return conv;
       });
-      
+
       // Re-sort conversations after update so newest activity is always first
       const sorted = updated.sort((a, b) => {
         const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
         const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
       });
-      
+
       console.log('Re-sorted conversations after message update');
       return sorted;
     });
@@ -182,7 +182,7 @@ export const useConversations = () => {
         setLoading(false);
         return true;
       }
-    } catch {}
+    } catch { }
     return false;
   };
 
@@ -210,20 +210,13 @@ export const useConversations = () => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 8000);
       });
 
-      const labelJoin = filters.label?.length ? `
-        thread_labels!inner (
-          labels(name)
-        )
-      ` : 'thread_labels(labels(name))';
-
       const { data, error } = await Promise.race([
         selectPromise
           .select(`
             *,
             contacts(name, phone, email),
             channels(display_name, type, provider, external_id, logo_url, profile_photo_url),
-            messages(id, body, role, direction, created_at, seq),
-            ${labelJoin}
+            messages(id, body, role, direction, created_at, seq)
           `) as any,
         timeoutPromise,
       ]) as any;
@@ -252,9 +245,9 @@ export const useConversations = () => {
         const lastDir = last?.direction ?? null;
         const lastRole = last?.role ?? null;
         const unreplied = lastDir === 'in' || lastRole === 'user';
-        
+
         // Log to verify we're getting the latest message timestamp
-        
+
         return {
           ...thread,
           contact_name: thread.contacts?.name || 'Unknown Contact',
@@ -293,10 +286,10 @@ export const useConversations = () => {
         return bTime - aTime;
       });
 
-      
+
       setConversations(sortedData);
       // Cache for next refresh
-      try { localStorage.setItem('app.cachedConversations', JSON.stringify(sortedData)); } catch {}
+      try { localStorage.setItem('app.cachedConversations', JSON.stringify(sortedData)); } catch { }
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -309,7 +302,7 @@ export const useConversations = () => {
   // Fetch messages for a specific thread
   const fetchMessages = async (threadId: string) => {
     try {
-      
+
       setError(null);
 
       const { data, error } = await supabase
@@ -353,7 +346,7 @@ export const useConversations = () => {
         contact_avatar: contactName[0]?.toUpperCase() || 'U'
       }));
 
-      
+
       setMessages(transformedData);
       setSelectedThreadId(threadId);
 
@@ -471,7 +464,7 @@ export const useConversations = () => {
 
       // Replace optimistic pending with fresh list including the inserted message
       await fetchMessages(threadId);
-      
+
       // Update conversation preview locally to avoid unnecessary refresh
       updateConversationPreview(threadId, {
         body: messageText,
@@ -488,7 +481,7 @@ export const useConversations = () => {
           resourceId: (data as any)?.id ?? null,
           context: { thread_id: threadId, role }
         });
-      } catch {}
+      } catch { }
 
       return data;
     } catch (error) {
@@ -537,7 +530,7 @@ export const useConversations = () => {
       // Audit log
       try {
         await logAction({ action: 'thread.create', resource: 'thread', resourceId: (data as any)?.id ?? null, context: { contact_id: contactId, channel_id: channelId } });
-      } catch {}
+      } catch { }
 
       return data;
     } catch (error) {
@@ -563,7 +556,7 @@ export const useConversations = () => {
       await fetchConversations();
 
       // Audit log
-      try { await logAction({ action: 'thread.update_status', resource: 'thread', resourceId: threadId, context: { status } }); } catch {}
+      try { await logAction({ action: 'thread.update_status', resource: 'thread', resourceId: threadId, context: { status } }); } catch { }
 
     } catch (error) {
       console.error('Error updating thread status:', error);
@@ -617,7 +610,7 @@ export const useConversations = () => {
       }
 
       // Ensure AI access is disabled even if already assigned
-      try { await protectedSupabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch {}
+      try { await protectedSupabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch { }
 
       // Create a system event message noting the takeover
       try {
@@ -652,7 +645,7 @@ export const useConversations = () => {
       await fetchMessages(threadId);
 
       // Audit log
-      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: _userId } }); } catch {}
+      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: _userId } }); } catch { }
 
     } catch (error) {
       console.error('Error assigning thread:', error);
@@ -672,7 +665,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.add_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch {}
+      try { await logAction({ action: 'thread.add_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch { }
 
     } catch (error) {
       console.error('Error adding thread participant:', error);
@@ -694,7 +687,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.remove_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch {}
+      try { await logAction({ action: 'thread.remove_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch { }
 
     } catch (error) {
       console.error('Error removing thread participant:', error);
@@ -714,7 +707,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.add_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch {}
+      try { await logAction({ action: 'thread.add_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch { }
 
     } catch (error) {
       console.error('Error adding thread label:', error);
@@ -736,7 +729,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.remove_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch {}
+      try { await logAction({ action: 'thread.remove_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch { }
 
     } catch (error) {
       console.error('Error removing thread label:', error);
@@ -760,7 +753,7 @@ export const useConversations = () => {
 
       setConversations(prev => {
         const next = prev.filter(conv => conv.id !== threadId);
-        try { localStorage.setItem('app.cachedConversations', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('app.cachedConversations', JSON.stringify(next)); } catch { }
         return next;
       });
 
@@ -769,7 +762,7 @@ export const useConversations = () => {
         setMessages([]);
       }
 
-      try { await logAction({ action: 'thread.delete', resource: 'thread', resourceId: threadId }); } catch {}
+      try { await logAction({ action: 'thread.delete', resource: 'thread', resourceId: threadId }); } catch { }
 
       await fetchConversations();
 
@@ -796,9 +789,9 @@ export const useConversations = () => {
         console.error('Auto-resolve check failed:', error);
         return;
       }
-      
+
       if (data && data.length > 0) {
-        
+
         // Refresh conversations to show updated status
         fetchConversations();
       }
@@ -830,7 +823,7 @@ export const useConversations = () => {
       .subscribe();
 
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try { supabase.removeChannel(channel); } catch { }
     };
   }, []);
 
@@ -839,10 +832,10 @@ export const useConversations = () => {
   useEffect(() => {
     const channel = supabase
       .channel('messages-realtime-for-convlist')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages' 
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages'
       }, (payload) => {
         // Only refresh for incoming messages or system messages
         // Skip outgoing messages (direction: 'out') to avoid refresh when sending
@@ -880,20 +873,20 @@ export const useConversations = () => {
         }
         // Skip outgoing messages (direction: 'out') - these are handled by the sendMessage function
       })
-      .on('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'messages' 
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages'
       }, () => {
         // Only refresh on message updates that might affect conversation preview
         if (document.visibilityState === 'visible') {
           scheduleConversationsRefresh(500);
         }
       })
-      .on('postgres_changes', { 
-        event: 'DELETE', 
-        schema: 'public', 
-        table: 'messages' 
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'messages'
       }, () => {
         // Refresh on message deletion as it affects conversation state
         if (document.visibilityState === 'visible') {
@@ -903,51 +896,51 @@ export const useConversations = () => {
       .subscribe();
 
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
-      try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch {}
+      try { supabase.removeChannel(channel); } catch { }
+      try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     };
   }, []);
 
   // Realtime: keep messages in sync for the selected thread
   useEffect(() => {
     if (!selectedThreadId) return;
-    
-    
-    
+
+
+
     // Set up a periodic refresh as a fallback (every 30 seconds)
     const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 30000);
-    
+
     const channel = supabase
       .channel(`messages-${selectedThreadId}`)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `thread_id=eq.${selectedThreadId}` 
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `thread_id=eq.${selectedThreadId}`
       }, (payload) => {
         // Play notification sound for incoming messages
         const message = payload.new;
         if (message && message.direction === 'in') {
           playNotificationSound('incoming');
         }
-        
+
         // Immediately fetch fresh messages
         fetchMessages(selectedThreadId);
       })
-      .on('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `thread_id=eq.${selectedThreadId}` 
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `thread_id=eq.${selectedThreadId}`
       }, () => {
         // Fetch fresh messages for updates
         fetchMessages(selectedThreadId);
       })
-      .on('postgres_changes', { 
-        event: 'DELETE', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `thread_id=eq.${selectedThreadId}` 
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'messages',
+        filter: `thread_id=eq.${selectedThreadId}`
       }, () => {
         // Fetch fresh messages for deletions
         fetchMessages(selectedThreadId);
@@ -958,10 +951,10 @@ export const useConversations = () => {
           setTimeout(() => { fetchMessages(selectedThreadId); }, 1000);
         }
       });
-      
+
     return () => {
       clearInterval(refreshInterval);
-      try { supabase.removeChannel(channel); } catch {}
+      try { supabase.removeChannel(channel); } catch { }
     };
   }, [selectedThreadId]);
 
