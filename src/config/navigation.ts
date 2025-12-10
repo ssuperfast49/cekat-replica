@@ -35,7 +35,9 @@ export interface NavigationItem {
 
 // Helper: build list of read permissions for a resource from PERMISSIONS_SCHEMA
 const readPerms = (resource: keyof typeof PERMISSIONS_SCHEMA): string[] => {
-  return PERMISSIONS_SCHEMA[resource]
+  const actions = PERMISSIONS_SCHEMA[resource] as readonly string[] | undefined;
+  if (!Array.isArray(actions)) return [];
+  return actions
     .filter((a) => a === 'read' || a.startsWith('read_'))
     .map((a) => `${resource}.${a}`);
 };
@@ -112,7 +114,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     key: "humanagents",
     label: "Human Agents",
     icon: ShieldCheck,
-    permissions: readPerms('human_agents'),
+    // Gate Human Agents nav by Super Agents read permission
+    permissions: readPerms('super_agents'),
     requireAll: false,
     description: "Manage human agent assignments and roles"
   },
@@ -162,3 +165,5 @@ export const NAVIGATION_ORDER: NavKey[] = [
  * Get all valid navigation keys
  */
 export const VALID_NAV_KEYS = Object.keys(NAVIGATION_CONFIG) as NavKey[];
+
+

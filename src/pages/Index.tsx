@@ -88,8 +88,8 @@ const Index = () => {
   const { user, signOut, setAccountDeactivated, accountDeactivated } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { getDefaultNavItem, getNavItem, canAccessNavItem, getAccessibleNavItems } = useNavigation();
   const { loading: rbacLoading, hasRole } = useRBAC();
+  const { getDefaultNavItem, getNavItem, canAccessNavItem, getAccessibleNavItems } = useNavigation();
 
   // Org-wide AI paused modal state
   const [showAiPausedModal, setShowAiPausedModal] = useState(false);

@@ -70,8 +70,6 @@ const HumanAgents = () => {
   const [tabValue, setTabValue] = useState<'active' | 'pending'>('active');
   const [activeAgentToSuperMap, setActiveAgentToSuperMap] = useState<Record<string, string>>({});
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
-  const [createPermissionKey, setCreatePermissionKey] = useState<string | null>(null);
-  const [checkingCreatePermission, setCheckingCreatePermission] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "super_agent" | "agent">("all");
@@ -1110,55 +1108,6 @@ const HumanAgents = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const resolveCreatePermission = async () => {
-      setCheckingCreatePermission(true);
-      try {
-        const { data, error } = await supabase
-          .from('permissions')
-          .select('id, resource, action');
-
-        if (cancelled) return;
-
-        if (error) {
-          console.warn('Failed to fetch permissions table:', error.message || error);
-          setCreatePermissionKey(null);
-          return;
-        }
-
-        console.debug('permissions table entries', data);
-
-        const hasUsersProfileCreate = (data || []).some(
-          (row: any) => String(row?.resource) === 'users_profile' && String(row?.action) === 'create'
-        );
-
-        if (hasUsersProfileCreate) {
-          setCreatePermissionKey('users_profile.create');
-        } else {
-          console.warn('users_profile.create permission not found in permissions table');
-          setCreatePermissionKey(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          console.warn('Error resolving create agent permission', e);
-          setCreatePermissionKey('super_agents.create');
-        }
-      } finally {
-        if (!cancelled) {
-          setCheckingCreatePermission(false);
-        }
-      }
-    };
-
-    resolveCreatePermission();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Compute which agents are visible to the current viewer
   const getVisibleAgents = () => {
     if (hasRole(ROLES.MASTER_AGENT)) return agents;
@@ -1317,21 +1266,32 @@ const HumanAgents = () => {
               </SelectContent>
             </Select>
           </div>
-          {checkingCreatePermission ? (
-            <Button className="gap-2 bg-blue-600 text-white" disabled>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Checking…
-            </Button>
-          ) : createPermissionKey ? (
-            <PermissionGate permission={createPermissionKey}>
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-                    <Plus className="h-4 w-4" />
-                    Create Agent
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md bg-background border">
+          <PermissionGate
+            permission={'users_profile.create'}
+            fallback={(
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button className="gap-2 bg-blue-600 text-white" disabled>
+                      <Plus className="h-4 w-4" />
+                      Create Agent
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>You do not have permission to create agents.</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          >
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                  <Plus className="h-4 w-4" />
+                  Create Agent
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md bg-background border">
                   <DialogHeader>
                     <DialogTitle>Create New Agent</DialogTitle>
                   </DialogHeader>
@@ -1441,22 +1401,7 @@ const HumanAgents = () => {
                   </div>
                 </DialogContent>
               </Dialog>
-            </PermissionGate>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button className="gap-2 bg-blue-600 text-white" disabled>
-                    <Plus className="h-4 w-4" />
-                    Create Agent
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Missing permission: users_profile.create</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          </PermissionGate>
         </div>
       </div>
 
