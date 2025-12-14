@@ -418,10 +418,10 @@ const HumanAgents = () => {
                               <div className="flex items-center gap-2">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                    <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                                       <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                                       <span className="text-xs">{stub.status}</span>
-                                      <ChevronDown className="h-3 w-3" />
+                                      {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent className="bg-background border z-50">
@@ -437,26 +437,11 @@ const HumanAgents = () => {
                                 {hasRole(ROLES.MASTER_AGENT) && (
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
-                                <PermissionGate permission={'super_agents.delete'}>
-                                  <TooltipProvider delayDuration={200}>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span>
-                                          <Button
-                                            size="sm"
-                                            className="h-8 w-8 p-0 bg-red-200 text-red-500 cursor-not-allowed"
-                                            disabled
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                          </Button>
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>Master agent tidak dapat dihapus</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                </PermissionGate>
+                                {stub.primaryRole !== 'master_agent' && (
+                                  <PermissionGate permission={'super_agents.delete'}>
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  </PermissionGate>
+                                )}
                               </div>
                             </div>
                           );
@@ -492,10 +477,10 @@ const HumanAgents = () => {
                                 <div className="flex items-center gap-2">
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                      <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                                         <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                                         <span className="text-xs">{stub.status}</span>
-                                        <ChevronDown className="h-3 w-3" />
+                                        {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent className="bg-background border z-50">
@@ -511,9 +496,11 @@ const HumanAgents = () => {
                                   {hasRole(ROLES.MASTER_AGENT) && (
                                     <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                   )}
-                                  <PermissionGate permission={'super_agents.delete'}>
-                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                  </PermissionGate>
+                                  {stub.primaryRole !== 'master_agent' && (
+                                    <PermissionGate permission={'super_agents.delete'}>
+                                      <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                    </PermissionGate>
+                                  )}
                                 </div>
                               </div>
 
@@ -546,10 +533,10 @@ const HumanAgents = () => {
                                     <div className="flex items-center gap-2">
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                          <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={child.primaryRole === 'master_agent'}>
                                             <div className={`h-2 w-2 rounded-full ${getStatusColor(child.status)}`} />
                                             <span className="text-xs">{child.status}</span>
-                                            <ChevronDown className="h-3 w-3" />
+                                            {child.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent className="bg-background border z-50">
@@ -565,9 +552,11 @@ const HumanAgents = () => {
                                       {hasRole(ROLES.MASTER_AGENT) && (
                                         <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(child)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                       )}
-                                      <PermissionGate permission={'super_agents.delete'}>
-                                        <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                      </PermissionGate>
+                                      {child.primaryRole !== 'master_agent' && (
+                                        <PermissionGate permission={'super_agents.delete'}>
+                                          <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                        </PermissionGate>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -604,10 +593,10 @@ const HumanAgents = () => {
                               <div className="flex items-center gap-2">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                    <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                                       <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                                       <span className="text-xs">{stub.status}</span>
-                                      <ChevronDown className="h-3 w-3" />
+                                      {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent className="bg-background border z-50">
@@ -623,9 +612,11 @@ const HumanAgents = () => {
                                 {hasRole(ROLES.MASTER_AGENT) && (
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
-                                <PermissionGate permission={'super_agents.delete'}>
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                </PermissionGate>
+                                {stub.primaryRole !== 'master_agent' && (
+                                  <PermissionGate permission={'super_agents.delete'}>
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  </PermissionGate>
+                                )}
                               </div>
                             </div>
                           );
@@ -671,12 +662,12 @@ const HumanAgents = () => {
                       {isPending ? (
                         <Badge className={`text-xs leading-none h-6 px-2 inline-flex items-center ${isExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{isExpired ? 'Expired' : 'Invited'}</Badge>
                       ) : (
-                        <DropdownMenu>
+                                  <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="gap-2 h-8">
+                            <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                               <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                               <span className="text-xs">{stub.status}</span>
-                              <ChevronDown className="h-3 w-3" />
+                              {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="bg-background border z-50">
@@ -743,6 +734,20 @@ const HumanAgents = () => {
                               </Button>
                             </PermissionGate>
                           )}
+                          {stub.primaryRole !== 'master_agent' && (
+                            <PermissionGate permission={'super_agents.delete'}>
+                              <Button 
+                                size="sm" 
+                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
+                          )}
+                        </>
+                      ) : (
+                        stub.primaryRole !== 'master_agent' && (
                           <PermissionGate permission={'super_agents.delete'}>
                             <Button 
                               size="sm" 
@@ -752,17 +757,7 @@ const HumanAgents = () => {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </PermissionGate>
-                        </>
-                      ) : (
-                        <PermissionGate permission={'super_agents.delete'}>
-                          <Button 
-                            size="sm" 
-                            className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                            onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </PermissionGate>
+                        )
                       )}
                     </div>
                   </div>

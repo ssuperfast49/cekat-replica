@@ -402,7 +402,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 if (enabled && !persistedVerified) {
                   const currentUserId = nextSession?.user?.id || null;
                   if (currentUserId && sent2faForUserIdRef.current !== currentUserId) {
-                    supabase.functions.invoke('send-2fa-email', {
+                    supabase.functions.invoke('send-2fa-login-email', {
                       headers: nextSession?.access_token ? { Authorization: `Bearer ${nextSession.access_token}` } : undefined,
                     }).then(() => {
                       sent2faForUserIdRef.current = currentUserId;

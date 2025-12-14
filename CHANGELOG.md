@@ -1,4 +1,18 @@
 # Change Log
+# [0.1.12] FE WEB CEKAT 2025-12-14
+### Human Agents UI Protection
+- **Master Agent UI Safeguards**: Enhanced protection for master agent accounts in the Human Agents interface.
+  - Status dropdown button is now disabled for master agents across all sections (master agents, super agents, regular agents, and pending invitations).
+  - Chevron dropdown icon is conditionally hidden for master agents to provide clear visual indication that status cannot be changed.
+  - Delete button is completely hidden for master agents (replacing the previous disabled button with tooltip approach) across all agent sections.
+  - Applied consistent protection logic using `primaryRole === 'master_agent'` checks throughout the component.
+  - Provides cleaner UI experience by removing non-functional controls rather than showing disabled states.
+
+### Authentication & OTP
+- **2FA Email Edge Function Update**: Updated edge function reference for login-specific 2FA emails.
+  - Changed edge function call from `send-2fa-email` to `send-2fa-login-email` in `AuthContext.tsx` and `Otp.tsx`.
+  - Aligns with backend function naming convention for better clarity and separation of login vs other 2FA email flows.
+
 # [0.1.11] FE WEB CEKAT 2025-12-10
 ### Conversation Management
 - **Status Filter Cleanup**: Removed the redundant "Resolved" option from the conversation status filter.
