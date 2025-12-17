@@ -6,6 +6,7 @@ import WEBHOOK_CONFIG from '@/config/webhook';
 import { callWebhook } from '@/lib/webhookClient';
 import { resolveSendMessageEndpoint } from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { startOfDay, endOfDay } from 'date-fns';
 
 // Audio notification system with debouncing
 let lastNotificationTime = 0;
@@ -119,6 +120,21 @@ export interface MessageWithDetails extends Message {
   _status?: 'pending' | 'sent' | 'error';
 }
 
+export interface ThreadFilters {
+  dateRange?: {
+    from?: Date;
+    to?: Date;
+  };
+  inbox?: string;
+  label?: string[];
+  agent?: string;
+  status?: string;
+  resolvedBy?: string;
+  aiAgent?: string;
+  pipelineStatus?: string;
+  channelType?: string;
+}
+
 export const useConversations = () => {
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [messages, setMessages] = useState<MessageWithDetails[]>([]);
@@ -126,6 +142,8 @@ export const useConversations = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const filtersRef = useRef<ThreadFilters>({});
+  const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
 
   const scheduleConversationsRefresh = (delayMs: number = 400) => {
@@ -187,14 +205,20 @@ export const useConversations = () => {
   };
 
   // Fetch conversations with contact and channel details
-  const fetchConversations = async () => {
+  const fetchConversations = async (overrideFilters?: ThreadFilters) => {
     try {
       if (!hydrated) setLoading(true);
       setError(null);
       // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
 
-      const selectPromise = protectedSupabase
+      const filtersToUse = overrideFilters ?? filtersRef.current;
+      if (overrideFilters) {
+        filtersRef.current = overrideFilters;
+        setActiveFilters(overrideFilters);
+      }
+
+      let query = protectedSupabase
         .from('threads')
         .select(`
           *,
@@ -206,18 +230,43 @@ export const useConversations = () => {
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
 
+      const { dateRange, status, agent, resolvedBy, inbox, channelType, pipelineStatus } = filtersToUse;
+
+      /* Client-side filtering implemented below for consistency
+      if (dateRange?.from) {
+        const fromIso = startOfDay(dateRange.from).toISOString();
+        query = query.gte('last_msg_at', fromIso);
+      }
+      if (dateRange?.to) {
+        const toIso = endOfDay(dateRange.to).toISOString();
+        query = query.lte('last_msg_at', toIso);
+      }
+      */
+      if (status && status !== 'all' && status !== '') {
+        query = query.eq('status', status);
+      }
+      if (agent && agent !== 'all' && agent !== '') {
+        query = query.eq('assignee_user_id', agent);
+      }
+      if (resolvedBy && resolvedBy !== 'all' && resolvedBy !== '') {
+        query = query.eq('resolved_by_user_id', resolvedBy);
+      }
+      if (inbox && inbox !== 'all' && inbox !== '') {
+        query = query.eq('channels.provider', inbox);
+      }
+      if (channelType && channelType !== 'all' && channelType !== '') {
+        query = query.eq('channels.type', channelType);
+      }
+      if (pipelineStatus && pipelineStatus !== 'all' && pipelineStatus !== '') {
+        query = query.eq('pipeline_status', pipelineStatus);
+      }
+
       const timeoutPromise = new Promise<never>((_, reject) => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 8000);
       });
 
       const { data, error } = await Promise.race([
-        selectPromise
-          .select(`
-            *,
-            contacts(name, phone, email),
-            channels(display_name, type, provider, external_id, logo_url, profile_photo_url),
-            messages(id, body, role, direction, created_at, seq)
-          `) as any,
+        query as any,
         timeoutPromise,
       ]) as any;
 
@@ -279,8 +328,19 @@ export const useConversations = () => {
         } as ConversationWithDetails;
       });
 
+      // Filter data client-side for consistent date handling
+      let filteredData = transformedData;
+      if (dateRange?.from) {
+        const fromTime = startOfDay(dateRange.from).getTime();
+        filteredData = filteredData.filter(t => new Date(t.last_msg_at).getTime() >= fromTime);
+      }
+      if (dateRange?.to) {
+        const toTime = endOfDay(dateRange.to).getTime();
+        filteredData = filteredData.filter(t => new Date(t.last_msg_at).getTime() <= toTime);
+      }
+
       // Sort conversations by most recent activity so outbound replies bubble to the top
-      const sortedData = transformedData.sort((a, b) => {
+      const sortedData = filteredData.sort((a, b) => {
         const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
         const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
@@ -982,5 +1042,6 @@ export const useConversations = () => {
     deleteThread,
     // Auto-resolve functionality
     checkAutoResolve,
+    activeFilters,
   };
 };

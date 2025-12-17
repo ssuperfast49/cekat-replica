@@ -1,13 +1,52 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Loader2, Lock, Eye, EyeOff, ArrowLeft, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/sonner';
+
+type PasswordRequirement = {
+  id: string;
+  test: (value: string) => boolean;
+  message: string;
+};
+
+const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
+  {
+    id: 'lowercase',
+    test: (value) => /[a-z]/.test(value),
+    message: 'Minimal 1 huruf kecil (a-z)',
+  },
+  {
+    id: 'uppercase',
+    test: (value) => /[A-Z]/.test(value),
+    message: 'Minimal 1 huruf besar (A-Z)',
+  },
+  {
+    id: 'number',
+    test: (value) => /[0-9]/.test(value),
+    message: 'Minimal 1 angka (0-9)',
+  },
+  {
+    id: 'symbol',
+    test: (value) => /[^A-Za-z0-9]/.test(value),
+    message: 'Minimal 1 simbol (contoh: !@#$)',
+  },
+  {
+    id: 'length',
+    test: (value) => value.length >= 8,
+    message: 'Minimal 8 karakter',
+  },
+];
+
+const getUnmetPasswordRequirements = (value: string) =>
+  PASSWORD_REQUIREMENTS.filter((requirement) => !requirement.test(value)).map(
+    (requirement) => requirement.message,
+  );
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
@@ -16,6 +55,7 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -44,17 +84,26 @@ export default function ResetPassword() {
     setLoading(true);
     setError(null);
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (!password) {
+      setError('Kata sandi baru belum diisi.');
+      setPasswordTouched(true);
       setLoading(false);
       return;
     }
 
-    // if (password.length < 6) {
-    //   setError('Password must be at least 6 characters long');
-    //   setLoading(false);
-    //   return;
-    // }
+    const unmetRequirements = getUnmetPasswordRequirements(password);
+    if (unmetRequirements.length > 0) {
+      setError('Pastikan kata sandi memenuhi semua persyaratan.');
+      setPasswordTouched(true);
+      setLoading(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Konfirmasi kata sandi tidak sama.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const { error } = await supabase.auth.updateUser({
@@ -96,12 +145,20 @@ export default function ResetPassword() {
       }, 1500);
     } catch (error) {
       console.error('Password reset error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to update password');
-      toast.error('Failed to update password');
+      setError(error instanceof Error ? error.message : 'Gagal memperbarui kata sandi.');
+      toast.error('Gagal memperbarui kata sandi.');
     } finally {
       setLoading(false);
     }
   };
+
+  const shouldShowPasswordHints = passwordTouched && password.length > 0;
+  const passwordHintMessages = useMemo(() => {
+    if (!shouldShowPasswordHints) {
+      return [];
+    }
+    return getUnmetPasswordRequirements(password);
+  }, [password, shouldShowPasswordHints]);
 
   if (success) {
     return (
@@ -162,10 +219,15 @@ export default function ResetPassword() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter new password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    if (!passwordTouched) {
+                      setPasswordTouched(true);
+                    }
+                    setPassword(e.target.value);
+                  }}
                   className="pl-10 pr-10"
                   required
-                  minLength={6}
+                  minLength={8}
                 />
                 <Button
                   type="button"
@@ -181,6 +243,16 @@ export default function ResetPassword() {
                   )}
                 </Button>
               </div>
+              {passwordHintMessages.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {passwordHintMessages.map((message) => (
+                    <p key={message} className="flex items-center gap-2 text-xs text-red-600">
+                      <AlertCircle className="h-3 w-3" />
+                      {message}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -195,6 +267,7 @@ export default function ResetPassword() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="pl-10"
                   required
+                  minLength={8}
                 />
               </div>
             </div>

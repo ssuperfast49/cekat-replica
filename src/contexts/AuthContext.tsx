@@ -421,6 +421,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // If user is in password recovery, only require OTP if enabled in profile
           if (event === 'PASSWORD_RECOVERY') {
             try { localStorage.setItem('auth.intent', 'recovery'); } catch {}
+            // Strip Supabase hash fragments so router can navigate cleanly
+            try {
+              if (window.location.hash) {
+                const url = new URL(window.location.href);
+                url.hash = '';
+                window.history.replaceState({}, document.title, url.toString());
+              }
+            } catch {}
+            // Ensure we land on the dedicated reset password page
+            if (window.location.pathname !== '/reset-password') {
+              navigate('/reset-password', { replace: true });
+            }
             setOtpEvaluated(false);
             evaluateOtpWithGuard(
               (async () => {

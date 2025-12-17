@@ -23,6 +23,7 @@ import {
   List,
   Users,
   ChevronDown,
+  ChevronUp,
   Tag,
   UserPlus,
   UserMinus,
@@ -32,7 +33,7 @@ import {
   X,
   Trash2
 } from "lucide-react";
-import { useConversations, ConversationWithDetails, MessageWithDetails } from "@/hooks/useConversations";
+import { useConversations, ConversationWithDetails, MessageWithDetails, type ThreadFilters } from "@/hooks/useConversations";
 import { useContacts } from "@/hooks/useContacts";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
 import { toast } from "sonner";
@@ -56,17 +57,70 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+interface MatchPosition {
+  start: number;
+  length: number;
+}
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 interface MessageBubbleProps {
   message: MessageWithDetails;
   isLastMessage: boolean;
   highlighted?: boolean;
+  matches?: MatchPosition[];
+  activeMatchOrder?: number;
 }
 
-const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageBubbleProps) => {
+interface MessageSearchMatch extends MatchPosition {
+  messageId: string;
+  order: number;
+}
+
+const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = [], activeMatchOrder = -1 }: MessageBubbleProps) => {
   const isAgent = message.role === 'assistant' || message.role === 'agent' || message.direction === 'out';
   const isSystem = message.role === 'system' || message.type === 'event' || message.type === 'note';
   const isHumanAgent = message.role === 'assistant';
   const isAiAgent = message.role === 'agent';
+
+  const renderBodyWithHighlights = () => {
+    const body = message.body || '';
+    if (!body || matches.length === 0) {
+      return body;
+    }
+
+    const sortedMatches = [...matches].sort((a, b) => a.start - b.start);
+    const segments: (string | { type: 'highlight'; content: string; index: number })[] = [];
+    let cursor = 0;
+
+    sortedMatches.forEach(({ start, length }, idx) => {
+      if (start > cursor) {
+        segments.push(body.slice(cursor, start));
+      }
+      const highlightedText = body.slice(start, start + length);
+      segments.push({ type: 'highlight', content: highlightedText, index: idx });
+      cursor = start + length;
+    });
+
+    if (cursor < body.length) {
+      segments.push(body.slice(cursor));
+    }
+
+    return segments.map((segment, idx) => {
+      if (typeof segment === 'string') {
+        return <span key={`seg-${idx}`}>{segment}</span>;
+      }
+      const isActive = segment.index === activeMatchOrder;
+      return (
+        <mark
+          key={`highlight-${segment.index}`}
+          className={`rounded-sm px-0.5 text-current text-black ${isActive ? 'bg-orange-300' : 'bg-yellow-200'}`}
+        >
+          {segment.content}
+        </mark>
+      );
+    });
+  };
 
   if (isSystem) {
     return (
@@ -106,7 +160,9 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false }: MessageB
                 : "bg-muted text-foreground"
             } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
         >
-          <p className="whitespace-pre-wrap">{message.body}</p>
+          <p className="whitespace-pre-wrap">
+            {renderBodyWithHighlights()}
+          </p>
           <div className={`mt-1 flex items-center gap-1 text-[10px] ${isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
             }`}>
             <span>{new Date(message.created_at).toLocaleTimeString([], {
@@ -137,9 +193,11 @@ export default function ConversationPage() {
   const [showLabels, setShowLabels] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
-  const searchTimeout = useRef<number | null>(null);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const trimmedSearch = messageSearch.trim();
 
   // Use the conversations hook
   const {
@@ -171,8 +229,100 @@ export default function ConversationPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const canDeleteConversation = hasPermission('contacts.delete');
 
-  // Filter conversations based on search query
-  const [filters, setFilters] = useState<any>({});
+  const messageMatches = useMemo<MessageSearchMatch[]>(() => {
+    if (!trimmedSearch) {
+      return [];
+    }
+
+    const safeTerm = escapeRegExp(trimmedSearch);
+    if (!safeTerm) {
+      return [];
+    }
+
+    return messages.flatMap((msg) => {
+      const body = msg.body || "";
+      if (!body) {
+        return [];
+      }
+      const regex = new RegExp(safeTerm, "gi");
+      const matches: MessageSearchMatch[] = [];
+      let perMessageIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(body)) !== null) {
+        matches.push({
+          messageId: msg.id,
+          start: match.index,
+          length: match[0].length,
+          order: perMessageIndex,
+        });
+        perMessageIndex += 1;
+
+        if (match.index === regex.lastIndex) {
+          regex.lastIndex++;
+        }
+      }
+      return matches;
+    });
+  }, [trimmedSearch, messages]);
+
+  const matchesByMessage = useMemo<Record<string, MatchPosition[]>>(() => {
+    if (messageMatches.length === 0) {
+      return {};
+    }
+    const map = messageMatches.reduce<Record<string, MatchPosition[]>>((acc, match) => {
+      if (!acc[match.messageId]) {
+        acc[match.messageId] = [];
+      }
+      acc[match.messageId].push({ start: match.start, length: match.length });
+      return acc;
+    }, {});
+
+    Object.values(map).forEach((positions) => {
+      positions.sort((a, b) => a.start - b.start);
+    });
+
+    return map;
+  }, [messageMatches]);
+
+  const matchCount = messageMatches.length;
+  const activeMatch = matchCount > 0 ? messageMatches[currentMatchIndex] : null;
+
+  const handleFilterChange = (nextFilters: ThreadFilters) => {
+    void fetchConversations(nextFilters);
+  };
+
+  useEffect(() => {
+    setCurrentMatchIndex(0);
+  }, [trimmedSearch]);
+
+  useEffect(() => {
+    if (matchCount > 0 && currentMatchIndex >= matchCount) {
+      setCurrentMatchIndex(0);
+    }
+  }, [currentMatchIndex, matchCount]);
+
+  useEffect(() => {
+    if (!trimmedSearch || !activeMatch) {
+      setHighlightMessageId(null);
+      return;
+    }
+
+    setHighlightMessageId(activeMatch.messageId);
+    const el = messageRefs.current[activeMatch.messageId];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [trimmedSearch, activeMatch]);
+
+  const handleNextMatch = () => {
+    if (matchCount === 0) return;
+    setCurrentMatchIndex((prev) => (prev + 1) % matchCount);
+  };
+
+  const handlePrevMatch = () => {
+    if (matchCount === 0) return;
+    setCurrentMatchIndex((prev) => (prev - 1 + matchCount) % matchCount);
+  };
 
   // Get contact ID and tab from URL parameters
   const contactId = searchParams.get('contact');
@@ -190,46 +340,15 @@ export default function ConversationPage() {
   }, [tabParam]);
 
   const filteredConversations = useMemo(() => {
-    let list = conversations.filter((conv) =>
+    const list = conversations.filter((conv) =>
       `${conv.contact_name} ${conv.last_message_preview}`.toLowerCase().includes(query.toLowerCase())
     );
-
-    // Do not filter list by contactId; we only use it to auto-select
-
-    if (filters.status && filters.status !== 'all') {
-      list = list.filter(c => c.status === filters.status);
-    }
-    if (filters.agent && filters.agent !== 'all') {
-      list = list.filter(c => c.assignee_user_id === filters.agent);
-    }
-    if (filters.resolvedBy && filters.resolvedBy !== 'all') {
-      list = list.filter(c => (c as any).resolved_by_user_id === filters.resolvedBy);
-    }
-    if (filters.inbox && filters.inbox !== 'all') {
-      list = list.filter(c => c.channel_type === filters.inbox);
-    }
-    if ((filters as any).channelType && (filters as any).channelType !== 'all') {
-      const m: any = { whatsapp: 'whatsapp', telegram: 'telegram', web: 'web' };
-      const wanted = m[(filters as any).channelType];
-      if (wanted) list = list.filter(c => (c.channel?.provider || c.channel_type) === wanted);
-    }
-    // Date range filter
-    if (filters.dateRange?.from || filters.dateRange?.to) {
-      const from = filters.dateRange.from ? new Date(filters.dateRange.from).getTime() : -Infinity;
-      const to = filters.dateRange.to ? new Date(filters.dateRange.to).getTime() : Infinity;
-      list = list.filter(c => {
-        const ts = new Date(c.created_at).getTime();
-        return ts >= from && ts <= to;
-      });
-    }
-    // Sort purely by latest activity so most recent conversation (incoming or outgoing) goes to the top
-    list = [...list].sort((a, b) => {
+    return [...list].sort((a, b) => {
       const aTs = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
       const bTs = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
       return bTs - aTs;
     });
-    return list;
-  }, [conversations, query, filters, contactId]);
+  }, [conversations, query]);
 
   // Smart Tab Switching: If the current tab is empty but another tab has data (based on RLS results), switch to it.
   useEffect(() => {
@@ -476,35 +595,6 @@ export default function ConversationPage() {
     }
   };
 
-  // Debounced search over messages list
-  useEffect(() => {
-    if (searchTimeout.current) {
-      window.clearTimeout(searchTimeout.current);
-    }
-    if (!messageSearch.trim()) {
-      setHighlightMessageId(null);
-      return;
-    }
-    searchTimeout.current = window.setTimeout(() => {
-      const term = messageSearch.toLowerCase();
-      const match = messages.find(m => (m.body || '').toLowerCase().includes(term));
-      if (match) {
-        setHighlightMessageId(match.id);
-        const el = messageRefs.current[match.id];
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      } else {
-        setHighlightMessageId(null);
-      }
-    }, 500);
-    return () => {
-      if (searchTimeout.current) {
-        window.clearTimeout(searchTimeout.current);
-      }
-    };
-  }, [messageSearch, messages]);
-
   // Update webhook provider whenever selected conversation changes
   useEffect(() => {
     if (selectedConversation?.channel?.provider) {
@@ -618,7 +708,7 @@ export default function ConversationPage() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <p className="text-red-600 mb-2">Error: {error}</p>
-          <Button onClick={fetchConversations} variant="outline">
+          <Button onClick={() => { void fetchConversations(); }} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry
           </Button>
@@ -633,7 +723,7 @@ export default function ConversationPage() {
         <div className="mb-3 pb-2 border-b flex items-center justify-between">
           <h2 className="text-sm font-medium">Conversations</h2>
           <div className="flex items-center gap-1">
-            <ChatFilter onFilterChange={setFilters} />
+            <ChatFilter onFilterChange={handleFilterChange} />
           </div>
         </div>
         <div className="relative mb-3">
@@ -912,9 +1002,45 @@ export default function ConversationPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input value={messageSearch} onChange={(e) => setMessageSearch(e.target.value)} placeholder="Search messages" className="pl-7 h-8 w-44 text-xs" />
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      value={messageSearch}
+                      onChange={(e) => setMessageSearch(e.target.value)}
+                      placeholder="Search messages"
+                      className="pl-7 h-8 w-44 text-xs"
+                    />
+                  </div>
+                  {trimmedSearch && (
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <span className="text-xs font-medium min-w-[48px] text-right">
+                        {matchCount > 0 ? `${currentMatchIndex + 1}/${matchCount}` : "0/0"}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={handlePrevMatch}
+                        disabled={matchCount === 0}
+                        aria-label="Temukan sebelumnya"
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={handleNextMatch}
+                        disabled={matchCount === 0}
+                        aria-label="Temukan berikutnya"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {selectedConversation.status !== 'closed' &&
                   <Button
@@ -945,6 +1071,8 @@ export default function ConversationPage() {
                         message={message}
                         isLastMessage={index === messages.length - 1}
                         highlighted={highlightMessageId === message.id}
+                        matches={matchesByMessage[message.id] ?? []}
+                        activeMatchOrder={activeMatch?.messageId === message.id ? activeMatch.order : -1}
                       />
                     </div>
                   ))

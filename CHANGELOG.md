@@ -1,4 +1,10 @@
 # Change Log
+# [0.1.13] FE WEB CEKAT 2025-12-17
+### Conversation Management
+- **Date Filter Fix**: Resolved an issue where the date filter in the conversations menu would incorrectly exclude valid conversations.
+  - Switched from server-side filtering on `created_at`/`last_msg_at` (which could be stale) to client-side filtering using the computed last message time.
+  - Ensures the filter now perfectly matches the dates displayed in the UI, correctly showing threads active within the selected range.
+
 # [0.1.12] FE WEB CEKAT 2025-12-14
 ### Human Agents UI Protection
 - **Master Agent UI Safeguards**: Enhanced protection for master agent accounts in the Human Agents interface.
