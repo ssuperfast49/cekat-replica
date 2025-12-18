@@ -36,9 +36,9 @@ export const WEBHOOK_CONFIG = {
     // Telegram endpoints
     TELEGRAM: {
       CREATE_PLATFORM: `${ROUTE_PREFIX}telegram.create_platform`,
-      // Provider-specific send endpoint
       SEND_MESSAGE: `${ROUTE_PREFIX}telegram.send_message`,
       DELETE_WEBHOOK: `${ROUTE_PREFIX}telegram.delete_webhook`,
+      VERIFY_TOKEN: `${SUPABASE_URL}/functions/v1/telegram-verify-token`,
     },
     
     // AI Agent endpoints

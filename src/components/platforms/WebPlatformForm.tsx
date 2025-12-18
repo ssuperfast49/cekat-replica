@@ -155,7 +155,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-6">
+          <div className="mt-6 space-y-6">
           {/* Removed brand/org name in favor of Display Name */}
 
           {/* Description */}

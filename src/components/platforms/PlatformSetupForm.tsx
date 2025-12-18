@@ -68,7 +68,7 @@ const PlatformSetupForm = ({ isOpen, onClose, platformType, onSubmit, isSubmitti
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-6">
+        <div className="mt-6 space-y-6">
           <div className="space-y-2">
             <Label htmlFor="brandName">Brand / Org Name *</Label>
             <Input

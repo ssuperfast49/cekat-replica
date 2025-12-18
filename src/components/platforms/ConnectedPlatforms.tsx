@@ -738,9 +738,6 @@ const ConnectedPlatforms = () => {
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Platforms</h2>
-            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-              <Plus className="h-4 w-4" />
-            </Button>
           </div>
           <p className="text-sm text-muted-foreground mb-6">
             This is where you can connect all your platforms

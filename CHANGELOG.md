@@ -1,4 +1,14 @@
 # Change Log
+# [0.1.14] FE WEB CEKAT 2025-12-18
+### Platform Forms (WhatsApp / Telegram / Web)
+- **Top Spacing Layout Fix**: Standardized form spacing under dialog headers for a cleaner, consistent layout across all platform setup forms.
+
+### Telegram Platform
+- **Bot Token Validation (Required)**: Added a **Validate** button beside the Telegram Bot Token field and made validation mandatory before creating a Telegram platform.
+  - Create is blocked with an error until the token has been validated.
+- **Token Verification via Supabase Edge Function**: Token verification now calls the Supabase Edge Function endpoint (`/functions/v1/telegram-verify-token`) with a strict response contract (`{ valid: boolean }`).
+  - `callWebhook()` now auto-attaches Supabase auth headers for Supabase Edge Function URLs.
+
 # [0.1.13] FE WEB CEKAT 2025-12-17
 ### Conversation Management
 - **Date Filter Fix**: Resolved an issue where the date filter in the conversations menu would incorrectly exclude valid conversations.

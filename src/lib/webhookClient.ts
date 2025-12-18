@@ -1,5 +1,6 @@
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { supabase } from "@/lib/supabase";
+import { SUPABASE_URL } from "@/integrations/supabase/client";
 
 type CallWebhookOptions = {
   forceLegacy?: boolean;
@@ -16,7 +17,8 @@ export async function callWebhook(endpoint: string, init: RequestInit = {}, opti
 
   const url = WEBHOOK_CONFIG.buildUrl(endpoint, { forceLegacy });
   const headers = new Headers(init.headers as HeadersInit | undefined);
-  const requiresAuth = !forceLegacy && WEBHOOK_CONFIG.isProxyEndpoint(endpoint);
+  const isSupabaseFunctionUrl = url.startsWith(SUPABASE_URL) && url.includes("/functions/v1/");
+  const requiresAuth = (!forceLegacy && WEBHOOK_CONFIG.isProxyEndpoint(endpoint)) || isSupabaseFunctionUrl;
 
   if (requiresAuth && !skipAuth && !headers.has("Authorization")) {
     const { data: { session } } = await supabase.auth.getSession();

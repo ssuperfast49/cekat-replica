@@ -44,6 +44,13 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   const [submitting, setSubmitting] = useState(false);
   const [selectedSuperAgentId, setSelectedSuperAgentId] = useState<string | null>(null);
 
+  // Track Telegram bot token validation state
+  const [isValidatingToken, setIsValidatingToken] = useState(false);
+  const [validatedToken, setValidatedToken] = useState<string | null>(null);
+
+  const normalizedToken = (formData.telegramBotToken || "").trim();
+  const hasValidatedCurrentToken = !!validatedToken && validatedToken === normalizedToken;
+
   // Permission-based gating: user must have channels.create
   const canCreateChannel = hasPermission('channels.create');
 
@@ -68,11 +75,14 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     }));
   };
 
-  const isFormValid = formData.displayName && 
+  const isFormValid = Boolean(
+    formData.displayName &&
     formData.selectedAIAgent &&
     formData.telegramBotToken &&
     selectedSuperAgentId &&
-    canCreateChannel;
+    canCreateChannel &&
+    hasValidatedCurrentToken
+  );
 
   const getUserOrgId = async () => {
     if (!user) return null;
@@ -86,6 +96,84 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     return userOrgMember?.org_id || null;
   };
 
+  const handleValidateToken = async () => {
+    const token = (formData.telegramBotToken || "").trim();
+
+    if (!token) {
+      toast({
+        title: "Telegram bot token required",
+        description: "Enter your BotFather token before validating.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsValidatingToken(true);
+
+      const orgId = await getUserOrgId();
+
+      const payload: Record<string, any> = {
+        telegram_bot_token: token,
+      };
+      if (orgId) {
+        payload.org_id = orgId;
+      }
+
+      const response = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.TELEGRAM.VERIFY_TOKEN, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      let data: any = null;
+      try {
+        const raw = await response.text();
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        throw new Error("Token is invalid");
+      }
+
+      if (!response.ok) {
+        throw new Error("Token is invalid");
+      }
+
+      if (data === null || typeof data !== "object" || Array.isArray(data)) {
+        throw new Error("Token is invalid");
+      }
+
+      const validValue = (data as any).valid;
+      if (typeof validValue !== "boolean") {
+        throw new Error("Token is invalid");
+      }
+      if (validValue !== true) {
+        throw new Error("Token is invalid");
+      }
+
+      setValidatedToken(token);
+      toast({
+        title: "Token validated",
+        description: "Telegram bot token has been successfully verified.",
+      });
+    } catch (error: any) {
+      console.error("Telegram token validation failed:", error);
+      setValidatedToken(null);
+      const errorMsg = error && typeof error.message === "string" ? error.message : "";
+      const errorLower = String(errorMsg).toLowerCase();
+      toast({
+        title: "Validation failed",
+        description: errorLower.includes("empty") || errorLower.includes("required")
+          ? (errorMsg || "Telegram bot token is required")
+          : "Token is invalid",
+        variant: "destructive",
+      });
+    } finally {
+      setIsValidatingToken(false);
+    }
+  };
+
   const handleSubmit = async () => {
     try {
       if (submitting) return;
@@ -97,6 +185,15 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       }
       if (!selectedSuperAgentId || !formData.selectedAIAgent) {
         toast({ title: 'Missing required fields', description: 'Please select a Super Agent and an AI Agent.', variant: 'destructive' });
+        setSubmitting(false);
+        return;
+      }
+      if (!hasValidatedCurrentToken) {
+        toast({
+          title: "Token validation required",
+          description: "You must validate the Telegram bot token before creating this platform.",
+          variant: "destructive",
+        });
         setSubmitting(false);
         return;
       }
@@ -235,7 +332,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-6">
+          <div className="mt-6 space-y-6">
           {/* Display Name */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -408,16 +505,44 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                 </TooltipContent>
               </Tooltip>
             </div>
-            <Input
-              id="telegramBotToken"
-              type="password"
-              placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-              value={formData.telegramBotToken}
-              onChange={(e) => setFormData(prev => ({ ...prev, telegramBotToken: e.target.value }))}
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                id="telegramBotToken"
+                type="password"
+                placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                value={formData.telegramBotToken}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setFormData(prev => ({ ...prev, telegramBotToken: value }));
+                  setValidatedToken(null);
+                }}
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant={hasValidatedCurrentToken ? "outline" : "default"}
+                className={hasValidatedCurrentToken ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50" : ""}
+                onClick={handleValidateToken}
+                disabled={isValidatingToken || !formData.telegramBotToken}
+              >
+                {isValidatingToken ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Validating
+                  </span>
+                ) : (
+                  "Validate"
+                )}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
               Get this token from @BotFather on Telegram. Format: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
             </p>
+            {hasValidatedCurrentToken && (
+              <p className="text-xs text-emerald-600">
+                Bot token validated. You can now create this Telegram platform.
+              </p>
+            )}
           </div>
 
           {/* Super Agent (read-only) above AI Agent */}
