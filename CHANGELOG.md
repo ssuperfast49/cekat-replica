@@ -1,5 +1,5 @@
 # Change Log
-# [0.1.14] FE WEB CEKAT 2025-12-18
+# [0.1.15] FE WEB CEKAT 2025-12-19
 ### Database & Policies
 - **Threads Update Policy**: Master agents can now resolve conversations across all environments.
   - Updated the `threads update perm update_own` policy to allow updates when `is_master_agent_in_org(org_id)` is true.
@@ -16,6 +16,16 @@
 - **Export to CSV**: Added a one-click export that downloads the current contact dataset (with latest thread info) as a CSV.
   - Includes contact fields (name, phone, email, notes, created_at) and latest thread metadata (status, handled by, channel).
 - **Toolbar Cleanup**: Removed the unused “Customize Columns” button for a leaner toolbar experience.
+
+# [0.1.14] FE WEB CEKAT 2025-12-18
+### Platform Forms (WhatsApp / Telegram / Web)
+- **Top Spacing Layout Fix**: Standardized form spacing under dialog headers for a cleaner, consistent layout across all platform setup forms.
+
+### Telegram Platform
+- **Bot Token Validation (Required)**: Added a **Validate** button beside the Telegram Bot Token field and made validation mandatory before creating a Telegram platform.
+  - Create is blocked with an error until the token has been validated.
+- **Token Verification via Supabase Edge Function**: Token verification now calls the Supabase Edge Function endpoint (`/functions/v1/telegram-verify-token`) with a strict response contract (`{ valid: boolean }`).
+  - `callWebhook()` now auto-attaches Supabase auth headers for Supabase Edge Function URLs.
 
 # [0.1.13] FE WEB CEKAT 2025-12-17
 ### Conversation Management

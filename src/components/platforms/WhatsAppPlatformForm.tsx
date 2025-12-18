@@ -401,7 +401,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-6">
+          <div className="mt-6 space-y-6">
           {/* Platform Name */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
