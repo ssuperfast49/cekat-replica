@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Plus, Settings, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
+import { Plus, HelpCircle,  X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader as DangerHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 // Removed tabs; rendering is based on provider
 import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
@@ -27,7 +24,6 @@ import { callWebhook } from "@/lib/webhookClient";
 import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
@@ -40,7 +36,6 @@ const ConnectedPlatforms = () => {
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [providerTab, setProviderTab] = useState<'whatsapp' | 'telegram' | 'web'>('whatsapp');
   const [selectedAgent, setSelectedAgent] = useState<string>("");
-  const [selectedHumanAgent, setSelectedHumanAgent] = useState<string>("");
 
   // Platform selection and setup state
   const [isPlatformSelectionOpen, setIsPlatformSelectionOpen] = useState(false);
@@ -738,9 +733,6 @@ const ConnectedPlatforms = () => {
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Platforms</h2>
-            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-              <Plus className="h-4 w-4" />
-            </Button>
           </div>
           <p className="text-sm text-muted-foreground mb-6">
             This is where you can connect all your platforms

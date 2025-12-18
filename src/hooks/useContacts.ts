@@ -51,7 +51,12 @@ export const useContacts = () => {
       setError(null);
 
       // Determine whether we need to inner-join threads based on filters
-      const needsThreadInnerJoin = !!(filters?.chatStatus || filters?.handledBy || filters?.dateRange?.from || filters?.dateRange?.to);
+      const needsThreadInnerJoin = !!(
+        filters?.chatStatus ||
+        filters?.dateRange?.from ||
+        filters?.dateRange?.to ||
+        filters?.handledBy === 'assigned'
+      );
 
       let query = protectedSupabase
         .from('contacts')
@@ -59,7 +64,7 @@ export const useContacts = () => {
           `
           id, org_id, name, email, phone, locale, notes, created_at,
           threads${needsThreadInnerJoin ? '!inner' : ''}(
-            status, created_at, assignee_user_id,
+            id, status, created_at, assignee_user_id,
             channels(display_name, provider, type)
           )
           `,
@@ -77,10 +82,7 @@ export const useContacts = () => {
         if (filters.chatStatus) {
           query = query.eq('threads.status', filters.chatStatus);
         }
-        if (filters.handledBy === 'unassigned') {
-          // contacts whose latest thread has no assignee
-          query = query.is('threads.assignee_user_id', null);
-        } else if (filters.handledBy === 'assigned') {
+        if (filters.handledBy === 'assigned') {
           query = query.not('threads.assignee_user_id', 'is', null as any);
         }
         if (filters.dateRange?.from) {
@@ -153,10 +155,7 @@ export const useContacts = () => {
 
           // Handled By filter
           if (filters.handledBy) {
-            if (filters.handledBy === 'unassigned' && contact.handledBy !== '') {
-              return false;
-            }
-            if (filters.handledBy !== 'unassigned' && contact.handledBy !== filters.handledBy) {
+            if (contact.handledBy !== filters.handledBy) {
               return false;
             }
           }

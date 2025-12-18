@@ -1083,37 +1083,39 @@ export default function ConversationPage() {
 
             {/* Message Input or Takeover / Join */}
             <div className="border-t p-3">
-              {selectedConversation.assigned ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder={`Message ${selectedConversation.contact_name}...`}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    className="flex-1"
-                    disabled={!hasPermission('messages.create')}
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleSendMessage}
-                    disabled={!draft.trim() || !hasPermission('messages.create')}
-                    title={!hasPermission('messages.create') ? 'No permission to send messages' : 'Send message'}
-                    aria-label="Send message"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <PermissionGate permission={'threads.update'}>
-                  <Button
-                    type="button"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                    onClick={handleTakeoverChat}
-                    disabled={!user?.id}
-                  >
-                    Takeover Chat
-                  </Button>
-                </PermissionGate>
+              {selectedConversation.status !== 'closed' && (
+                selectedConversation.assigned ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder={`Message ${selectedConversation.contact_name}...`}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={handleKeyPress}
+                      className="flex-1"
+                      disabled={!hasPermission('messages.create')}
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleSendMessage}
+                      disabled={!draft.trim() || !hasPermission('messages.create')}
+                      title={!hasPermission('messages.create') ? 'No permission to send messages' : 'Send message'}
+                      aria-label="Send message"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <PermissionGate permission={'threads.update'}>
+                    <Button
+                      type="button"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handleTakeoverChat}
+                      disabled={!user?.id}
+                    >
+                      Takeover Chat
+                    </Button>
+                  </PermissionGate>
+                )
               )}
             </div>
           </>
@@ -1210,12 +1212,12 @@ export default function ConversationPage() {
             </div>
 
             {/* Notes */}
-            <div>
+            {/* <div>
               <h3 className="text-sm font-medium mb-2">Notes</h3>
               <div className="flex items-center gap-2">
                 <Input placeholder="Add a note..." />
               </div>
-            </div>
+            </div> */}
 
             {/* AI Summary */}
             {/* <div>

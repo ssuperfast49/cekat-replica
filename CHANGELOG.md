@@ -1,4 +1,22 @@
 # Change Log
+# [0.1.14] FE WEB CEKAT 2025-12-18
+### Database & Policies
+- **Threads Update Policy**: Master agents can now resolve conversations across all environments.
+  - Updated the `threads update perm update_own` policy to allow updates when `is_master_agent_in_org(org_id)` is true.
+  - Applied the policy change to main, development, and backup Supabase projects and added a migration for consistency.
+
+### Conversation Management
+- **Resolved Thread Cleanup**: UI now hides take-over controls once a thread is closed.
+  - Removed the takeover button and composer input when `status === 'closed'`, preventing accidental actions on resolved chats.
+
+### Contacts
+- **Unassigned Filter Accuracy**: Ensured the contacts list reflects only unassigned records without altering assigned data.
+  - Adjusted Supabase querying and client filtering so contacts with no assigned agent (or no thread yet) display correctly.
+  - Total counters and pagination now show filtered counts (e.g. `12 of 16`) when a handled-by filter is active.
+- **Export to CSV**: Added a one-click export that downloads the current contact dataset (with latest thread info) as a CSV.
+  - Includes contact fields (name, phone, email, notes, created_at) and latest thread metadata (status, handled by, channel).
+- **Toolbar Cleanup**: Removed the unused “Customize Columns” button for a leaner toolbar experience.
+
 # [0.1.13] FE WEB CEKAT 2025-12-17
 ### Conversation Management
 - **Date Filter Fix**: Resolved an issue where the date filter in the conversations menu would incorrectly exclude valid conversations.
