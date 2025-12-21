@@ -35,6 +35,12 @@
   - Caches user labels to avoid redundant API calls.
   - Provides fallback display names when profile data is unavailable.
 
+### Bug Fixes
+- **Fixed Handled By State Leak**: Resolved critical bug where assigning a thread to an agent would incorrectly show that agent as assigned to all other threads.
+  - Scoped `handledByOverride` state to specific thread IDs instead of using global state.
+  - Optimistic UI updates now only apply to the thread being assigned, preventing state leakage when navigating between conversations.
+  - Fixed issue where changing "Handled By" for one thread would temporarily display the same value for all threads until server refresh.
+
 # [0.1.15] FE WEB CEKAT 2025-12-19
 ### Database & Policies
 - **Threads Update Policy**: Master agents can now resolve conversations across all environments.

@@ -227,7 +227,9 @@ export default function ConversationPage() {
   const canDeleteConversation = hasPermission('contacts.delete');
   
   const [collaborators, setCollaborators] = useState<string[]>([]);
-  const [handledByOverride, setHandledByOverride] = useState<string | null>(null);
+  // Optimistic "handled by" value while an assignment request is in-flight.
+  // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
+  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string } | null>(null);
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
   
@@ -253,7 +255,11 @@ export default function ConversationPage() {
     return (t?.assignee_user_id as string | null) ?? null;
   }, [selectedThreadId, conversations]);
 
-  const handledById = handledByOverride ?? derivedHandledById;
+  const handledById = useMemo(() => {
+    if (!selectedThreadId) return null;
+    if (handledByOverride?.threadId === selectedThreadId) return handledByOverride.userId;
+    return derivedHandledById;
+  }, [selectedThreadId, handledByOverride, derivedHandledById]);
 
   // Keep override in sync (clear it once server state catches up, or when selection changes)
   useEffect(() => {
@@ -261,7 +267,10 @@ export default function ConversationPage() {
       setHandledByOverride(null);
       return;
     }
-    if (handledByOverride && derivedHandledById === handledByOverride) {
+    if (
+      handledByOverride?.threadId === selectedThreadId &&
+      derivedHandledById === handledByOverride.userId
+    ) {
       setHandledByOverride(null);
     }
   }, [selectedThreadId, derivedHandledById, handledByOverride]);
@@ -1329,7 +1338,7 @@ export default function ConversationPage() {
                  value={handledById}
                  onChange={async (val) => {
                     if (!selectedConversation) return;
-                    setHandledByOverride(val);
+                    setHandledByOverride({ threadId: selectedConversation.id, userId: val });
                     await assignThreadToUser(selectedConversation.id, val);
                  }}
                  placeholder="Assign Agent"
