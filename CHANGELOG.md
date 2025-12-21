@@ -1,4 +1,40 @@
 # Change Log
+# [0.1.16] FE WEB CEKAT 2025-12-20
+### UI Components
+- **SearchableSelect Component**: Added a new reusable searchable single-select dropdown component.
+  - Provides searchable dropdown functionality with keyboard navigation support.
+  - Includes proper accessibility attributes and visual feedback for selected items.
+  - Used for improved agent assignment interface in conversation management.
+
+- **SearchableMultiSelect Component**: Added a new reusable searchable multi-select component.
+  - Supports selecting multiple items with badge display for selected values.
+  - Includes add/remove callbacks for granular control over selection changes.
+  - Displays selected items as removable badges with clear visual indicators.
+
+### Conversation Management
+- **Enhanced Agent Assignment UI**: Replaced popover-based assignment interface with searchable select components.
+  - "Handled By" field now uses `SearchableSelect` for improved searchability and UX.
+  - Streamlined assignment flow with better visual feedback and state management.
+  - Added optimistic UI updates with proper state synchronization.
+
+- **Improved Collaborator Management**: Enhanced thread collaborator interface with multi-select support.
+  - Replaced popover-based collaborator addition with `SearchableMultiSelect` component.
+  - Collaborator list now displays as removable badges for better visibility.
+  - Added support for super agent member filtering - only members of the assigned super agent can be added as collaborators.
+  - Collaborator selection is disabled until a "Handled By" agent is assigned.
+  - Automatic fetching of super agent members when an agent is assigned.
+
+- **Manual Thread Assignment**: Added `assignThreadToUser` function for supervisor-level thread reassignment.
+  - Allows supervisors to manually assign conversations to specific users.
+  - Automatically creates system event messages when assignments occur.
+  - Updates thread metadata including `assigned_by_user_id`, `assigned_at`, and `handover_reason`.
+  - Disables AI access when manually assigned (`ai_access_enabled: false`).
+
+- **User Label Resolution**: Improved user display name resolution for agents and collaborators.
+  - Fetches user profile data for agents not present in the human agents list.
+  - Caches user labels to avoid redundant API calls.
+  - Provides fallback display names when profile data is unavailable.
+
 # [0.1.15] FE WEB CEKAT 2025-12-19
 ### Database & Policies
 - **Threads Update Policy**: Master agents can now resolve conversations across all environments.

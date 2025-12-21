@@ -714,6 +714,68 @@ export const useConversations = () => {
     }
   };
 
+  // Assign thread to a specific user (not a takeover). Used by supervisors to reassign.
+  const assignThreadToUser = async (threadId: string, assigneeUserId: string) => {
+    try {
+      setError(null);
+
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+
+      const nowIso = new Date().toISOString();
+      const { error: updateErr } = await supabase
+        .from('threads')
+        .update({
+          assignee_user_id: assigneeUserId,
+          assigned_by_user_id: currentUserId,
+          assigned_at: nowIso,
+          handover_reason: 'other:manual_assign',
+          ai_access_enabled: false,
+        })
+        .eq('id', threadId);
+
+      if (updateErr) throw updateErr;
+
+      // Insert system event message: "Conversation assigned to X by Y"
+      try {
+        const ids = [currentUserId, assigneeUserId].filter(Boolean) as string[];
+        let nameMap: Record<string, string> = {};
+        if (ids.length > 0) {
+          const { data: profiles } = await supabase
+            .from('users_profile')
+            .select('user_id, display_name')
+            .in('user_id', ids);
+          nameMap = Object.fromEntries((profiles || []).map((p: any) => [String(p.user_id), String(p.display_name || '—')]));
+        }
+
+        const assignedByName = (currentUserId && (nameMap[currentUserId] || authData?.user?.email)) || 'agent';
+        const assignedToName = nameMap[assigneeUserId] || 'agent';
+
+        await protectedSupabase.from('messages').insert([{
+          thread_id: threadId,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Conversation assigned to ${assignedToName} by ${assignedByName}.`,
+          payload: { event: 'assign', assigned_to: assigneeUserId, assigned_by: currentUserId }
+        }]);
+      } catch (e) {
+        console.warn('Failed to insert assign event message', e);
+      }
+
+      // Refresh conversations/messages to reflect new assignment
+      await fetchConversations();
+      await fetchMessages(threadId);
+
+      // Audit log
+      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: assigneeUserId } }); } catch { }
+    } catch (error) {
+      console.error('Error assigning thread to user:', error);
+      setError(error instanceof Error ? error.message : 'Failed to assign thread');
+      throw error;
+    }
+  };
+
   // Add collaborator to thread
   const addThreadParticipant = async (threadId: string, userId: string) => {
     try {
@@ -1035,6 +1097,7 @@ export const useConversations = () => {
     createConversation,
     updateThreadStatus,
     assignThread,
+    assignThreadToUser,
     addThreadParticipant,
     removeThreadParticipant,
     addThreadLabel,
