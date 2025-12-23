@@ -7,6 +7,7 @@ import { callWebhook } from '@/lib/webhookClient';
 import { resolveSendMessageEndpoint } from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
+import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 
 // Audio notification system with debouncing
 let lastNotificationTime = 0;
@@ -141,7 +142,6 @@ export const useConversations = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
   const filtersRef = useRef<ThreadFilters>({});
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
@@ -188,26 +188,10 @@ export const useConversations = () => {
     });
   };
 
-  // LocalStorage hydrated snapshot to avoid empty UI during refresh
-  const hydrateFromCache = () => {
-    try {
-      const raw = localStorage.getItem('app.cachedConversations');
-      if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length >= 0) {
-        setConversations(parsed);
-        setHydrated(true);
-        setLoading(false);
-        return true;
-      }
-    } catch { }
-    return false;
-  };
-
   // Fetch conversations with contact and channel details
   const fetchConversations = async (overrideFilters?: ThreadFilters) => {
     try {
-      if (!hydrated) setLoading(true);
+      setLoading(true);
       setError(null);
       // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
@@ -348,8 +332,6 @@ export const useConversations = () => {
 
 
       setConversations(sortedData);
-      // Cache for next refresh
-      try { localStorage.setItem('app.cachedConversations', JSON.stringify(sortedData)); } catch { }
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -875,7 +857,6 @@ export const useConversations = () => {
 
       setConversations(prev => {
         const next = prev.filter(conv => conv.id !== threadId);
-        try { localStorage.setItem('app.cachedConversations', JSON.stringify(next)); } catch { }
         return next;
       });
 
@@ -897,10 +878,30 @@ export const useConversations = () => {
 
   // Initial fetch on mount - guard against duplicate calls
   useEffect(() => {
-    // Hydrate from cache for instant UI
-    hydrateFromCache();
     // Avoid overlapping with other triggers by scheduling slightly
     scheduleConversationsRefresh(10);
+  }, []);
+
+  // Authorization changes: clear any in-memory UI state and refetch.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        setConversations([]);
+        setMessages([]);
+        setSelectedThreadId(null);
+        setError(null);
+      } catch {}
+      try {
+        // Force a refresh using the currently active filters
+        scheduleConversationsRefresh(50);
+      } catch {}
+    };
+    try {
+      window.addEventListener(AUTHZ_CHANGED_EVENT as any, handler as any);
+    } catch {}
+    return () => {
+      try { window.removeEventListener(AUTHZ_CHANGED_EVENT as any, handler as any); } catch {}
+    };
   }, []);
 
   // Auto-resolve check function

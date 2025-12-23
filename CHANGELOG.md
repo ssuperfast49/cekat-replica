@@ -1,4 +1,26 @@
 # Change Log
+# [0.1.17] FE WEB CEKAT 2025-12-22
+### Bug Fixes
+- **Fixed Stale Data Persistence After Role Changes**: Resolved critical issue where threads and contacts persisted in the UI after role changes in the database.
+  - Removed localStorage caching for threads (`app.cachedConversations`) to prevent stale data from persisting after authorization changes.
+  - Disabled query caching for authorization-sensitive operations (threads, contacts) in `protectedSupabase` wrapper to ensure fresh data on role changes.
+  - Threads and contacts now immediately clear and refetch when user roles change, preventing unauthorized data from being displayed.
+  - Fixed issue where changing a user's role from `master_agent` to `super_agent` (or vice versa) in the database would not immediately reflect in the UI.
+
+### Technical Improvements
+- **Realtime Role Change Detection**: Implemented comprehensive authorization change detection system.
+  - Added realtime subscription to `user_roles` table in `RBACContext` to detect role changes for the current user.
+  - Created `authz.ts` utility module for centralized authorization change handling and cache invalidation.
+  - Implemented event-based system (`authzChanged` event) to notify hooks when authorization changes occur.
+  - `useConversations` and `useContacts` hooks now listen for authorization changes and automatically reset state + refetch data.
+  - Ensures UI always reflects current user permissions without requiring manual refresh or logout/login.
+
+- **Cache Invalidation Strategy**: Enhanced cache management for authorization-sensitive data.
+  - Authorization changes now trigger comprehensive cache clearing (localStorage, query cache, fallback handler).
+  - Removed role-agnostic caching that could serve stale results after permission changes.
+  - All authorization-sensitive queries now bypass cache to ensure data accuracy.
+  - Improved security by preventing cached data from persisting after role downgrades.
+
 # [0.1.16] FE WEB CEKAT 2025-12-20
 ### UI Components
 - **SearchableSelect Component**: Added a new reusable searchable single-select dropdown component.

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
 import { defaultFallbackHandler } from '@/lib/fallbackHandler';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 
 export interface Contact {
   id: string;
@@ -38,6 +39,12 @@ export const useContacts = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
+  const lastQueryRef = useRef<{ page: number; limit: number; searchQuery?: string; filters?: ContactsFilter }>({
+    page: 1,
+    limit: 100,
+    searchQuery: undefined,
+    filters: undefined,
+  });
 
   // Fetch contacts with pagination, search, and filters (server-side as much as possible)
   const fetchContacts = async (
@@ -47,6 +54,7 @@ export const useContacts = () => {
     filters?: ContactsFilter
   ) => {
     try {
+      lastQueryRef.current = { page, limit, searchQuery, filters };
       setLoading(true);
       setError(null);
 
@@ -299,6 +307,28 @@ export const useContacts = () => {
   useEffect(() => {
     const run = () => fetchContacts();
     run();
+  }, []);
+
+  // Authorization changes: clear current UI state and refetch with last-used query params.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        setContacts([]);
+        setTotalCount(0);
+        setError(null);
+        setLoading(true);
+      } catch {}
+      try {
+        const { page, limit, searchQuery, filters } = lastQueryRef.current;
+        fetchContacts(page, limit, searchQuery, filters);
+      } catch {}
+    };
+    try {
+      window.addEventListener(AUTHZ_CHANGED_EVENT as any, handler as any);
+    } catch {}
+    return () => {
+      try { window.removeEventListener(AUTHZ_CHANGED_EVENT as any, handler as any); } catch {}
+    };
   }, []);
 
   return {
