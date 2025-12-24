@@ -1,4 +1,18 @@
 # Change Log
+# [0.1.16] FE WEB CEKAT 2025-12-19
+### Circuit Breaker Settings
+- **Robust Numeric Validation**: Reset timeout, monitoring period, request timeout, and threshold fields now accept temporary clears but enforce min/max bounds before saving.
+  - Inline error messages and disabled save state prevent invalid submissions.
+  - Inputs strip non-numeric characters, block scientific notation, and clamp values to their allowed ranges.
+- **Latency Feedback**: Healthy and stress latency controls show live seconds previews, clarifying millisecond inputs.
+- **Tooltip Refinement**: Repositioned tooltips to render beside their triggers, preventing clipping inside the modal.
+
+### Adaptive Rate Limiter Configuration
+- **Precision Controls**: Base limits and multiplier inputs now sanitize numeric entry, limit decimals to three places, and sync their raw display strings with validated state.
+- **Validation Guardrails**: All adaptive fields surface inline errors and keep the save button disabled until values fall within allowed ranges.
+- **Enhanced Summary**: Read-only configuration card now surfaces latency thresholds (with seconds) alongside existing multiplier and interval details.
+- **Modal Tooltips**: Every helper tooltip aligns left/right relative to its column, ensuring full visibility within the dialog.
+
 # [0.1.15] FE WEB CEKAT 2025-12-19
 ### Database & Policies
 - **Threads Update Policy**: Master agents can now resolve conversations across all environments.
