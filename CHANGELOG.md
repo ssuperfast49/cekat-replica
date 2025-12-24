@@ -1,4 +1,55 @@
 # Change Log
+# [0.1.20] FE WEB CEKAT 2025-12-24
+### Conversations: Filter UX & Correctness
+- **Channel Type Filter Fixed**: Channel Type now correctly filters threads at the query level.
+  - Updated `useConversations` to use an inner join (`channels!inner(...)`) so `channels.provider` filters actually constrain `threads` results (PostgREST behavior).
+  - Added defensive client-side filtering for `channelType`, `inbox`, and `platformId` to ensure consistent UI results.
+
+- **Persistent Applied Filters**: Applied filters now persist and are shareable.
+  - Filters are serialized into URL query params (`f_*`) so refresh/back/forward retains the exact filtered view.
+  - If URL has no filter params, the last applied filters are restored from localStorage (per-user key).
+
+- **Visible Active Filters**: Users can now see what’s currently applied.
+  - `ConversationPage` renders active filter badges under the Conversations header (Channel, Platform, Status, Agent, Resolved By, Date, Inbox).
+  - `ChatFilter` modal is now controlled via a `value` prop so reopening the modal shows the currently applied values.
+
+### Configuration & Environment Management
+- **Centralized URL Configuration**: Created comprehensive URL and environment configuration system
+  - New `src/config/urls.ts` centralizes all app base URLs (APP_ORIGIN, WAHA_BASE_URL) with environment-aware defaults
+  - New `src/config/supabase.ts` centralizes Supabase URL and key configuration with automatic dev/prod switching
+  - Production app origin now defaults to `https://synkaai.netlify.app` (even in dev) for consistent LiveChat links
+  - Supabase URL automatically switches: DEV → `bkynymyhbfrhvwxqqttk.supabase.co`, PROD → `api.cssuper.com`
+  - All configuration supports `VITE_*` environment variable overrides for flexible deployment
+  - Removed all hardcoded Netlify and Supabase URLs from components
+
+- **Platform URL Updates**: Updated all platform-related URLs to use centralized configuration
+  - `ConnectedPlatforms.tsx` now uses `APP_ORIGIN` and `livechatUrl()` helper instead of hardcoded URLs
+  - LiveChat embed code now uses configurable `APP_ORIGIN` instead of hardcoded domain
+  - `WhatsAppPlatformForm.tsx` uses `WAHA_BASE_URL` from config instead of hardcoded Railway URL
+  - All platform forms now reference single source of truth for base URLs
+
+### AI Agent Settings Cleanup
+- **Removed Context Window Field**: Removed "Context Window (K tokens)" from Additional Settings UI
+  - Field no longer visible or editable in AI Agent Settings interface
+  - Removed all related state variables (`contextLimitInput`, `contextLimitMax`)
+  - Removed input handler (`handleContextLimitChange`) and validation logic
+  - Save logic still automatically persists safe default value (existing value or 28K tokens, clamped to model capability)
+  - Ensures database writes continue to work without breaking changes
+
+### Conversation Filtering
+- **Removed Pipeline Status Filter**: Cleaned up thread filter interface
+  - Removed "Pipeline Status" dropdown from chat filter dialog
+  - Removed `pipelineStatus` from filter state and type definitions
+  - Removed `pipeline_status` query filtering from `useConversations` hook
+  - Simplified filter UI with cleaner, more focused options
+
+### Technical Improvements
+- **Code Organization**: Improved maintainability and consistency
+  - Single source of truth for all environment-specific URLs
+  - Consistent configuration pattern across all services
+  - Better separation of concerns between UI and configuration
+  - Enhanced type safety with centralized config exports
+
 # [0.1.19] FE WEB CEKAT 2025-12-24
 ### Circuit Breaker Settings
 - **Robust Numeric Validation**: Reset timeout, monitoring period, request timeout, and threshold fields now accept temporary clears but enforce min/max bounds before saving.
@@ -1164,7 +1215,7 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
   - Netlify SPA routing for `/livechat/*` via redirects in `netlify.toml` and `public/_redirects`.
 
 - Connected Platforms
-  - Live chat link and embed now use `https://classy-frangollo-337599.netlify.app/livechat/{platform_id}`.
+  - Live chat link and embed now use `https://synkaai.netlify.app/livechat/{platform_id}`.
   - Added Super Agent section (single-select; master-only). Human Agents now a searchable multi-select of regular agents only.
   - Removed “Teams” card. Agent chips show proper names and can be removed.
 

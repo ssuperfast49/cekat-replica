@@ -32,15 +32,15 @@ interface FilterState {
   status: string;
   resolvedBy: string;
   platformId: string;
-  pipelineStatus: string;
   channelType?: 'whatsapp' | 'telegram' | 'web' | 'all';
 }
 
 interface ChatFilterProps {
+  value?: Partial<FilterState>;
   onFilterChange: (filters: FilterState) => void;
 }
 
-export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
+export const ChatFilter: React.FC<ChatFilterProps> = ({ value, onFilterChange }) => {
   const [open, setOpen] = useState(false);
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
@@ -55,11 +55,35 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
     status: '',
     resolvedBy: '',
     platformId: '',
-    pipelineStatus: '',
     channelType: 'all',
   });
 
   const { agents: humanAgents } = useHumanAgents();
+
+  // Keep the modal fields in sync with the applied filters (parent-controlled).
+  useEffect(() => {
+    if (!value) return;
+    setFilters((prev) => ({
+      ...prev,
+      ...value,
+      dateRange: value.dateRange ?? prev.dateRange,
+    }));
+    if (value.dateRange) {
+      setFromDate(value.dateRange.from);
+      setToDate(value.dateRange.to);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    value?.inbox,
+    value?.agent,
+    value?.status,
+    value?.resolvedBy,
+    value?.platformId,
+    value?.channelType,
+    value?.dateRange?.from ? value.dateRange.from.getTime() : 0,
+    value?.dateRange?.to ? value.dateRange.to.getTime() : 0,
+  ]);
 
   // Platforms for filtering come from channels table
   useEffect(() => {
@@ -114,7 +138,6 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
       status: '',
       resolvedBy: '',
       platformId: '',
-      pipelineStatus: '',
       channelType: 'all',
     };
     setFilters(resetFilters);
@@ -327,7 +350,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
             </div>
           </div>
 
-          {/* Status and Pipeline Status */}
+          {/* Status */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Status</label>
@@ -340,24 +363,6 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
                   <SelectItem value="open">Open</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Pipeline Status</label>
-              <Select value={filters.pipelineStatus} onValueChange={(value) => handleFilterChange('pipelineStatus', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="qualified">Qualified</SelectItem>
-                  <SelectItem value="proposal">Proposal</SelectItem>
-                  <SelectItem value="negotiation">Negotiation</SelectItem>
-                  <SelectItem value="closed-won">Closed Won</SelectItem>
-                  <SelectItem value="closed-lost">Closed Lost</SelectItem>
                 </SelectContent>
               </Select>
             </div>

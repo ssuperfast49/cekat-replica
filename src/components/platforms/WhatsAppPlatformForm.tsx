@@ -16,6 +16,7 @@ import { useRBAC } from "@/contexts/RBACContext";
 import { supabase } from "@/lib/supabase";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { callWebhook } from "@/lib/webhookClient";
+import { WAHA_BASE_URL } from "@/config/urls";
 
 interface WhatsAppPlatformFormProps {
   isOpen: boolean;
@@ -64,10 +65,6 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     if (!selectedSuperAgentId) return null;
     return humanAgents.find((a) => a.primaryRole === 'super_agent' && a.user_id === selectedSuperAgentId) || null;
   }, [selectedSuperAgentId, humanAgents]);
-
-  // WAHA base URL
-  const WAHA_BASE = 'https://waha-plus-production-97c1.up.railway.app';
-
 
   const handleHumanAgentToggle = (agentId: string) => {
     setFormData(prev => ({
@@ -254,7 +251,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       };
 
       const resolved = await resolveSessionName();
-      const url = `${WAHA_BASE}/api/sessions/${encodeURIComponent(resolved)}`;
+      const url = `${WAHA_BASE_URL}/api/sessions/${encodeURIComponent(resolved)}`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {

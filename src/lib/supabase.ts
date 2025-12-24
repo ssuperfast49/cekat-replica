@@ -1,11 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
-
-// const supabaseUrl = 'https://api.cssuper.com'; //PROD
-const supabaseUrl = 'https://bkynymyhbfrhvwxqqttk.supabase.co'; //DEV
-// const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRncm14bGJudXR4cGV3Zm1vZmR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MDY0NzgsImV4cCI6MjA3MDQ4MjQ3OH0.ijDctaGPXK3Ce9uao72YaaYCX9fpPFZGpmrsWp9IfU8'; //PROD
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJreW55bXloYmZyaHZ3eHFxdHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5Mzk1NzIsImV4cCI6MjA3OTUxNTU3Mn0.4ELI9s6908SdW2jd1BM_ht8pTIyLAwPpsqGiGNCdcC0'; //DEV
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Single Supabase client source of truth (env-aware) lives in integrations client.
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
+export const supabase = supabaseClient;
 
 // Export protected wrapper
 import { createProtectedSupabaseClient } from './supabaseProtected';

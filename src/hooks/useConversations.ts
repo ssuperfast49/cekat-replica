@@ -132,7 +132,6 @@ export interface ThreadFilters {
   status?: string;
   resolvedBy?: string;
   platformId?: string;
-  pipelineStatus?: string;
   channelType?: string;
 }
 
@@ -207,14 +206,14 @@ export const useConversations = () => {
         .select(`
           *,
           contacts(name, phone, email),
-          channels(display_name, type, provider, external_id, logo_url, profile_photo_url),
+          channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url),
           messages(id, body, role, direction, created_at, seq)
         `)
         .order('last_msg_at', { ascending: false })
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
 
-      const { dateRange, status, agent, resolvedBy, inbox, channelType, pipelineStatus, platformId } = filtersToUse;
+      const { dateRange, status, agent, resolvedBy, inbox, channelType, platformId } = filtersToUse;
 
       /* Client-side filtering implemented below for consistency
       if (dateRange?.from) {
@@ -242,9 +241,6 @@ export const useConversations = () => {
         // In this schema, channels.provider is the transport (telegram/web/whatsapp).
         // channels.type is typically 'bot' / 'inbox' etc.
         query = query.eq('channels.provider', channelType);
-      }
-      if (pipelineStatus && pipelineStatus !== 'all' && pipelineStatus !== '') {
-        query = query.eq('pipeline_status', pipelineStatus);
       }
       if (platformId && platformId !== 'all' && platformId !== '') {
         query = query.eq('channel_id', platformId);
@@ -326,6 +322,16 @@ export const useConversations = () => {
       if (dateRange?.to) {
         const toTime = endOfDay(dateRange.to).getTime();
         filteredData = filteredData.filter(t => new Date(t.last_msg_at).getTime() <= toTime);
+      }
+      // Defensive client-side filters (in case PostgREST join filters are bypassed)
+      if (inbox && inbox !== 'all' && inbox !== '') {
+        filteredData = filteredData.filter(t => String(t.channel_provider || t.channel?.provider || '').toLowerCase() === String(inbox).toLowerCase());
+      }
+      if (channelType && channelType !== 'all' && channelType !== '') {
+        filteredData = filteredData.filter(t => String(t.channel_provider || t.channel?.provider || '').toLowerCase() === String(channelType).toLowerCase());
+      }
+      if (platformId && platformId !== 'all' && platformId !== '') {
+        filteredData = filteredData.filter(t => String((t as any).channel_id || '') === String(platformId));
       }
 
       // Sort conversations by most recent activity so outbound replies bubble to the top
