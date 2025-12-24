@@ -1,4 +1,15 @@
 # Change Log
+# [0.1.20] FE WEB CEKAT 2025-12-24
+### Circuit Breaker Settings
+- **Date Range Validation**: Updated chat date filter to require both "From" and "To" values before applying.
+  - Prevents half-filled date ranges from running and warns users when only one side is selected.
+  - Disallows selecting an end date earlier than the start date and keeps calendars constrained to valid ranges.
+- **Audit Log Date Filter Guardrails**: Logs page now requires selecting both "From" and "To" dates and constrains pickers to valid ranges.
+  - Displays inline guidance when only one side of the range is provided.
+  - Ensures backend queries use start/end-of-day boundaries for inclusive day filtering.
+  - Replaced separate date inputs with a single range calendar so start and end dates are chosen together.
+- **Changed Development server WAHA connection**
+
 # [0.1.19] FE WEB CEKAT 2025-12-24
 ### Circuit Breaker Settings
 - **Robust Numeric Validation**: Reset timeout, monitoring period, request timeout, and threshold fields now accept temporary clears but enforce min/max bounds before saving.
