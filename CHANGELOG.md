@@ -1,4 +1,24 @@
 # Change Log
+# [0.1.18] FE WEB CEKAT 2025-12-24
+### Bug Fixes
+- **Fixed Platform Filter Not Finding Channels**: Resolved critical bug where selecting a channel type (Telegram, WhatsApp, Web) would show no platforms.
+  - Changed platform filtering from `channels.type` to `channels.provider` to match actual database schema.
+  - In database, `channels.provider` contains transport values (`telegram`, `web`, `whatsapp`) while `channels.type` contains implementation details (`bot`, `inbox`).
+  - Updated both `ChatFilter.tsx` (UI filtering) and `useConversations.ts` (query filtering) to use `channels.provider`.
+  - Telegram and other channel types now correctly display their platforms when selected.
+
+### Conversation Management
+- **Hierarchical Channel Type → Platform Filter**: Enhanced chat filter with parent-child filter relationship.
+  - Platform filter now requires Channel Type selection first (Platform dropdown disabled until Channel Type is chosen).
+  - Placeholder text changes to "Select channel type first" when Channel Type is not selected.
+  - Changing Channel Type automatically clears Platform selection to prevent stale selections.
+  - Improved UX with clear dependency indication between filters.
+
+- **Empty State for Platform Filter**: Added user-friendly empty state handling.
+  - When selected Channel Type has no matching platforms, dropdown shows disabled option: "No platforms found for this channel type".
+  - Prevents confusion when no results are available for a selected channel type.
+  - Platform display simplified to show only `display_name` without provider/type suffix for cleaner UI.
+
 # [0.1.17] FE WEB CEKAT 2025-12-22
 ### Bug Fixes
 - **Fixed Stale Data Persistence After Role Changes**: Resolved critical issue where threads and contacts persisted in the UI after role changes in the database.

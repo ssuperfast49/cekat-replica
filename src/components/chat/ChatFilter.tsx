@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Calendar, CalendarIcon, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -18,8 +18,8 @@ import {
 } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
-import { useAIAgents } from '@/hooks/useAIAgents';
 import { useHumanAgents } from '@/hooks/useHumanAgents';
+import { protectedSupabase } from '@/lib/supabase';
 
 interface FilterState {
   dateRange: {
@@ -31,7 +31,7 @@ interface FilterState {
   agent: string;
   status: string;
   resolvedBy: string;
-  aiAgent: string;
+  platformId: string;
   pipelineStatus: string;
   channelType?: 'whatsapp' | 'telegram' | 'web' | 'all';
 }
@@ -46,6 +46,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
   const [toDate, setToDate] = useState<Date>();
   const [agentOpen, setAgentOpen] = useState(false);
   const [resolvedOpen, setResolvedOpen] = useState(false);
+  const [platforms, setPlatforms] = useState<Array<{ id: string; display_name: string | null; provider: string | null; type: string | null }>>([]);
   const [filters, setFilters] = useState<FilterState>({
     dateRange: {},
     inbox: '',
@@ -53,17 +54,46 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
     agent: '',
     status: '',
     resolvedBy: '',
-    aiAgent: '',
+    platformId: '',
     pipelineStatus: '',
     channelType: 'all',
   });
 
-  const { aiAgents } = useAIAgents();
   const { agents: humanAgents } = useHumanAgents();
+
+  // Platforms for filtering come from channels table
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      try {
+        const { data, error } = await protectedSupabase
+          .from('channels')
+          .select('id, display_name, provider, type')
+          .order('created_at', { ascending: false });
+        if (!active) return;
+        if (error) throw error;
+        setPlatforms((data || []) as any);
+      } catch {
+        if (!active) return;
+        setPlatforms([]);
+      }
+    };
+    run();
+    return () => { active = false; };
+  }, []);
 
   const handleFilterChange = (key: keyof FilterState, value: any) => {
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
+  };
+
+  // Channel Type is the parent selector; platform depends on it.
+  const handleChannelTypeChange = (value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      channelType: value,
+      platformId: '', // reset platform when type changes
+    }));
   };
 
   const handleApply = () => {
@@ -83,8 +113,9 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
       agent: '',
       status: '',
       resolvedBy: '',
-      aiAgent: '',
+      platformId: '',
       pipelineStatus: '',
+      channelType: 'all',
     };
     setFilters(resetFilters);
     setFromDate(undefined);
@@ -178,8 +209,8 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
           </div>
 
           {/* Label and Resolved By */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-4">
+            {/* <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Label</label>
               <Select value={filters.label.join(',')} onValueChange={(value) => handleFilterChange('label', value.split(',').filter(Boolean))}>
                 <SelectTrigger>
@@ -192,7 +223,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
                   <SelectItem value="resolved">Resolved</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </div> */}
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Resolved By</label>
@@ -202,7 +233,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
                     {humanAgents.find(a => a.user_id === filters.resolvedBy)?.display_name || 'Choose Agent'}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[320px] p-0">
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" sideOffset={4}>
                   <Command>
                     <CommandInput placeholder="Search Resolved By Agent" />
                     <CommandEmpty>No agent found.</CommandEmpty>
@@ -219,7 +250,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
             </div>
           </div>
 
-          {/* Agent and AI Agent */}
+          {/* Agent and Platform */}
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Agent</label>
@@ -229,7 +260,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
                     {humanAgents.find(a => a.user_id === filters.agent)?.display_name || 'Choose Agent'}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[320px] p-0">
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" sideOffset={4}>
                   <Command>
                     <CommandInput placeholder="Search Handled By Agent" />
                     <CommandEmpty>No agent found.</CommandEmpty>
@@ -246,25 +277,8 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">AI Agent</label>
-              <Select value={filters.aiAgent} onValueChange={(value) => handleFilterChange('aiAgent', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose AI Agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All AI Agents</SelectItem>
-                  {aiAgents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Channel Type</label>
-              <Select value={filters.channelType} onValueChange={(value: any) => handleFilterChange('channelType', value)}>
+              <Select value={filters.channelType} onValueChange={handleChannelTypeChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Channels" />
                 </SelectTrigger>
@@ -273,6 +287,41 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ onFilterChange }) => {
                   <SelectItem value="whatsapp">WhatsApp</SelectItem>
                   <SelectItem value="telegram">Telegram</SelectItem>
                   <SelectItem value="web">Live Chat</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Platform</label>
+              <Select
+                value={filters.platformId}
+                onValueChange={(value) => handleFilterChange('platformId', value)}
+                disabled={!filters.channelType || filters.channelType === 'all'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={filters.channelType && filters.channelType !== 'all' ? "Choose Platform" : "Select channel type first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Platforms</SelectItem>
+                  {(() => {
+                    const list =
+                      filters.channelType && filters.channelType !== 'all'
+                        ? platforms.filter((ch) => String(ch.provider || '').toLowerCase() === String(filters.channelType).toLowerCase())
+                        : [];
+                    if (!filters.channelType || filters.channelType === 'all') return null;
+                    if (list.length === 0) {
+                      return (
+                        <SelectItem value="__none" disabled>
+                          No platforms found for this channel type
+                        </SelectItem>
+                      );
+                    }
+                    return list.map((ch) => (
+                      <SelectItem key={ch.id} value={ch.id}>
+                        {ch.display_name ?? 'Unknown'}
+                      </SelectItem>
+                    ));
+                  })()}
                 </SelectContent>
               </Select>
             </div>

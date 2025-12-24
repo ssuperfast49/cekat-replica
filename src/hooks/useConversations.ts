@@ -131,7 +131,7 @@ export interface ThreadFilters {
   agent?: string;
   status?: string;
   resolvedBy?: string;
-  aiAgent?: string;
+  platformId?: string;
   pipelineStatus?: string;
   channelType?: string;
 }
@@ -214,7 +214,7 @@ export const useConversations = () => {
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
 
-      const { dateRange, status, agent, resolvedBy, inbox, channelType, pipelineStatus } = filtersToUse;
+      const { dateRange, status, agent, resolvedBy, inbox, channelType, pipelineStatus, platformId } = filtersToUse;
 
       /* Client-side filtering implemented below for consistency
       if (dateRange?.from) {
@@ -239,10 +239,15 @@ export const useConversations = () => {
         query = query.eq('channels.provider', inbox);
       }
       if (channelType && channelType !== 'all' && channelType !== '') {
-        query = query.eq('channels.type', channelType);
+        // In this schema, channels.provider is the transport (telegram/web/whatsapp).
+        // channels.type is typically 'bot' / 'inbox' etc.
+        query = query.eq('channels.provider', channelType);
       }
       if (pipelineStatus && pipelineStatus !== 'all' && pipelineStatus !== '') {
         query = query.eq('pipeline_status', pipelineStatus);
+      }
+      if (platformId && platformId !== 'all' && platformId !== '') {
+        query = query.eq('channel_id', platformId);
       }
 
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -1028,8 +1033,6 @@ export const useConversations = () => {
   useEffect(() => {
     if (!selectedThreadId) return;
 
-
-
     // Set up a periodic refresh as a fallback (every 30 seconds)
     const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 30000);
 
@@ -1041,32 +1044,54 @@ export const useConversations = () => {
         table: 'messages',
         filter: `thread_id=eq.${selectedThreadId}`
       }, (payload) => {
+        const message = payload.new as any;
         // Play notification sound for incoming messages
-        const message = payload.new;
         if (message && message.direction === 'in') {
           playNotificationSound('incoming');
         }
-
-        // Immediately fetch fresh messages
-        fetchMessages(selectedThreadId);
+        // Apply realtime payload to state to avoid full refresh jumps
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === message?.id);
+          if (exists) return prev;
+          const contactName = prev[0]?.contact_name || '';
+          const contactAvatar = prev[0]?.contact_avatar || (contactName?.[0]?.toUpperCase?.() ?? 'U');
+          const next: MessageWithDetails = {
+            ...(message || {}),
+            contact_name: contactName,
+            contact_avatar: contactAvatar,
+          };
+          const merged = [...prev, next];
+          merged.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+          return merged;
+        });
       })
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'messages',
         filter: `thread_id=eq.${selectedThreadId}`
-      }, () => {
-        // Fetch fresh messages for updates
-        fetchMessages(selectedThreadId);
+      }, (payload) => {
+        const message = payload.new as any;
+        setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === message?.id);
+          if (idx < 0) return prev;
+          const updated: MessageWithDetails = { ...prev[idx], ...(message || {}) };
+          const next = [...prev];
+          next[idx] = updated;
+          next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+          return next;
+        });
       })
       .on('postgres_changes', {
         event: 'DELETE',
         schema: 'public',
         table: 'messages',
         filter: `thread_id=eq.${selectedThreadId}`
-      }, () => {
-        // Fetch fresh messages for deletions
-        fetchMessages(selectedThreadId);
+      }, (payload) => {
+        const message = (payload.old || payload.new) as any;
+        const id = message?.id;
+        if (!id) return;
+        setMessages(prev => prev.filter(m => m.id !== id));
       })
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR') {

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -192,7 +192,7 @@ export default function ConversationPage() {
   const [messageSearch, setMessageSearch] = useState("");
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const trimmedSearch = messageSearch.trim();
@@ -233,8 +233,18 @@ export default function ConversationPage() {
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
   
-  const agentOptions = useMemo(() => 
-    humanAgents.map(a => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
+  // Options for the "Handled By" selector: only Super Agents
+  const superAgentOptions = useMemo(
+    () =>
+      humanAgents
+        .filter((a: any) => String(a?.primaryRole || '').toLowerCase() === 'super_agent')
+        .map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
+    [humanAgents]
+  );
+
+  // Options for general agent picking (collaborators, etc.): all human agents
+  const agentOptions = useMemo(
+    () => humanAgents.map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
     [humanAgents]
   );
 
@@ -650,10 +660,14 @@ export default function ConversationPage() {
     }
   };
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // Simple + reliable: always keep chat pinned to bottom on message updates (realtime/refetch).
+  useLayoutEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+    try {
+      viewport.scrollTop = viewport.scrollHeight;
+    } catch {}
+  }, [messages, selectedThreadId]);
 
   // Handle conversation selection
   const handleConversationSelect = async (threadId: string) => {
@@ -1227,7 +1241,7 @@ export default function ConversationPage() {
             </div>
 
             {/* Chat Messages */}
-            <ScrollArea className="flex-1 p-4">
+            <ScrollArea viewportRef={messagesViewportRef as any} className="flex-1 p-4">
               <div className="space-y-2">
                 {messages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-8">
@@ -1246,7 +1260,6 @@ export default function ConversationPage() {
                     </div>
                   ))
                 )}
-                <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
 
@@ -1334,10 +1347,40 @@ export default function ConversationPage() {
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Handled By</h3>
               <SearchableSelect 
-                 options={agentOptions}
+                 options={superAgentOptions}
                  value={handledById}
                  onChange={async (val) => {
                     if (!selectedConversation) return;
+                    // When handled-by (super agent) changes, clear collaborators entirely.
+                    // Agents belong to a single super agent, so existing collaborators would be invalid.
+                    try {
+                      const threadId = selectedConversation.id;
+                      const newSuperAgentId = val;
+
+                      // Optimistic: clear current UI chips immediately
+                      setCollaborators([]);
+
+                      // Best-effort DB cleanup: remove all collaborators except the new super agent + current user
+                      try {
+                        const keep = new Set<string>([newSuperAgentId, user?.id || ''].filter(Boolean) as string[]);
+                        const { data } = await protectedSupabase
+                          .from('thread_collaborators')
+                          .select('user_id')
+                          .eq('thread_id', threadId);
+                        const existingIds = (data || []).map((r: any) => String(r.user_id));
+                        const idsToRemove = existingIds.filter((id: string) => !keep.has(id));
+                        if (idsToRemove.length > 0) {
+                          await protectedSupabase
+                            .from('thread_collaborators')
+                            .delete()
+                            .eq('thread_id', threadId)
+                            .in('user_id', idsToRemove as any);
+                        }
+                      } catch (e) {
+                        // Non-fatal; UI already cleared, and new collaborator list will be constrained by the new super agent scope.
+                        console.warn('Failed to clear collaborators on handled-by change', e);
+                      }
+                    } catch {}
                     setHandledByOverride({ threadId: selectedConversation.id, userId: val });
                     await assignThreadToUser(selectedConversation.id, val);
                  }}
