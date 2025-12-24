@@ -11,7 +11,6 @@ import { classifyError, isRetryableError, getRetryDelay, getUserFriendlyMessage,
 import { defaultRateLimiter, OperationType, RateLimitResult } from './rateLimiter';
 import { defaultAdaptiveRateLimiter } from './adaptiveRateLimiter';
 import { defaultRequestQueue } from './requestQueue';
-import { defaultFallbackHandler, CacheStrategy } from './fallbackHandler';
 import { defaultMetricsCollector } from './metrics';
 
 /**
@@ -159,9 +158,6 @@ async function checkRateLimit(
   }
 }
 
-// Track ongoing background refreshes to prevent infinite loops
-const backgroundRefreshes = new Set<string>();
-
 function serializeArg(arg: any): string {
   if (arg === undefined) return 'u';
   if (arg === null) return 'n';
@@ -237,15 +233,9 @@ function wrapQueryBuilder(
           const startTime = Date.now();
           const signatureHash = hashString(querySignature);
           const cacheKey = endpoint ? `query:${endpoint}:${currentOperation}:${signatureHash}` : undefined;
-          
-          // For read operations, try cache first (before any async calls)
-          if (currentOperation === 'read' && cacheKey && !skipBackgroundRefresh) {
-            const cached = defaultFallbackHandler.get(cacheKey);
-            if (cached && !backgroundRefreshes.has(cacheKey)) {
-              // Return cached immediately - no rate limiting, no queue, no metrics
-              return cached;
-            }
-          }
+          // IMPORTANT: do NOT serve cached read results here.
+          // Authorization can change server-side (e.g., user_roles updated) without a token refresh.
+          // Returning cached query results can leak stale/unauthorized data in the UI.
           
           // Get user ID lazily (after cache check) with timeout protection
           const userIdPromise = getUserId(supabaseInstance).catch(() => null);
@@ -288,9 +278,7 @@ function wrapQueryBuilder(
           }
           
           // Cache successful read responses
-          if (currentOperation === 'read' && cacheKey && result && !result.error && result.data) {
-            defaultFallbackHandler.set(cacheKey, result, 5 * 60 * 1000); // 5 min TTL
-          }
+          // NOTE: We intentionally do not cache read results here for correctness/security.
           
           // Record metrics (non-blocking)
           const responseTime = Date.now() - startTime;
@@ -430,14 +418,6 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
       options?: { count?: 'exact' | 'planned' | 'estimated' }
     ): Promise<{ data: T | null; error: any }> => {
       const startTime = Date.now();
-      const cacheKey = `rpc:${functionName}:${JSON.stringify(args || {})}`;
-      
-      // Try cache first (before any async calls)
-      const cached = defaultFallbackHandler.get<{ data: T | null; error: any }>(cacheKey);
-      if (cached && !cached.error && !backgroundRefreshes.has(cacheKey)) {
-        // Return cached immediately
-        return cached;
-      }
       
       // Get user ID and circuit state lazily
       const userIdPromise = getUserId(supabase).catch(() => null);
@@ -468,10 +448,7 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
           })
         );
 
-        // Cache successful results
-        if (result && !result.error) {
-          defaultFallbackHandler.set(cacheKey, result, 5 * 60 * 1000);
-        }
+        // NOTE: We intentionally do not cache RPC results here for correctness/security.
 
         // Record metrics asynchronously
         const responseTime = Date.now() - startTime;

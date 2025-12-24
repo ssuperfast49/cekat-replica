@@ -1,5 +1,5 @@
 # Change Log
-# [0.1.16] FE WEB CEKAT 2025-12-19
+# [0.1.19] FE WEB CEKAT 2025-12-24
 ### Circuit Breaker Settings
 - **Robust Numeric Validation**: Reset timeout, monitoring period, request timeout, and threshold fields now accept temporary clears but enforce min/max bounds before saving.
   - Inline error messages and disabled save state prevent invalid submissions.
@@ -12,6 +12,90 @@
 - **Validation Guardrails**: All adaptive fields surface inline errors and keep the save button disabled until values fall within allowed ranges.
 - **Enhanced Summary**: Read-only configuration card now surfaces latency thresholds (with seconds) alongside existing multiplier and interval details.
 - **Modal Tooltips**: Every helper tooltip aligns left/right relative to its column, ensuring full visibility within the dialog.
+
+# [0.1.18] FE WEB CEKAT 2025-12-24
+### Bug Fixes
+- **Fixed Platform Filter Not Finding Channels**: Resolved critical bug where selecting a channel type (Telegram, WhatsApp, Web) would show no platforms.
+  - Changed platform filtering from `channels.type` to `channels.provider` to match actual database schema.
+  - In database, `channels.provider` contains transport values (`telegram`, `web`, `whatsapp`) while `channels.type` contains implementation details (`bot`, `inbox`).
+  - Updated both `ChatFilter.tsx` (UI filtering) and `useConversations.ts` (query filtering) to use `channels.provider`.
+  - Telegram and other channel types now correctly display their platforms when selected.
+
+### Conversation Management
+- **Hierarchical Channel Type → Platform Filter**: Enhanced chat filter with parent-child filter relationship.
+  - Platform filter now requires Channel Type selection first (Platform dropdown disabled until Channel Type is chosen).
+  - Placeholder text changes to "Select channel type first" when Channel Type is not selected.
+  - Changing Channel Type automatically clears Platform selection to prevent stale selections.
+  - Improved UX with clear dependency indication between filters.
+
+- **Empty State for Platform Filter**: Added user-friendly empty state handling.
+  - When selected Channel Type has no matching platforms, dropdown shows disabled option: "No platforms found for this channel type".
+  - Prevents confusion when no results are available for a selected channel type.
+  - Platform display simplified to show only `display_name` without provider/type suffix for cleaner UI.
+
+# [0.1.17] FE WEB CEKAT 2025-12-22
+### Bug Fixes
+- **Fixed Stale Data Persistence After Role Changes**: Resolved critical issue where threads and contacts persisted in the UI after role changes in the database.
+  - Removed localStorage caching for threads (`app.cachedConversations`) to prevent stale data from persisting after authorization changes.
+  - Disabled query caching for authorization-sensitive operations (threads, contacts) in `protectedSupabase` wrapper to ensure fresh data on role changes.
+  - Threads and contacts now immediately clear and refetch when user roles change, preventing unauthorized data from being displayed.
+  - Fixed issue where changing a user's role from `master_agent` to `super_agent` (or vice versa) in the database would not immediately reflect in the UI.
+
+### Technical Improvements
+- **Realtime Role Change Detection**: Implemented comprehensive authorization change detection system.
+  - Added realtime subscription to `user_roles` table in `RBACContext` to detect role changes for the current user.
+  - Created `authz.ts` utility module for centralized authorization change handling and cache invalidation.
+  - Implemented event-based system (`authzChanged` event) to notify hooks when authorization changes occur.
+  - `useConversations` and `useContacts` hooks now listen for authorization changes and automatically reset state + refetch data.
+  - Ensures UI always reflects current user permissions without requiring manual refresh or logout/login.
+
+- **Cache Invalidation Strategy**: Enhanced cache management for authorization-sensitive data.
+  - Authorization changes now trigger comprehensive cache clearing (localStorage, query cache, fallback handler).
+  - Removed role-agnostic caching that could serve stale results after permission changes.
+  - All authorization-sensitive queries now bypass cache to ensure data accuracy.
+  - Improved security by preventing cached data from persisting after role downgrades.
+
+# [0.1.16] FE WEB CEKAT 2025-12-20
+### UI Components
+- **SearchableSelect Component**: Added a new reusable searchable single-select dropdown component.
+  - Provides searchable dropdown functionality with keyboard navigation support.
+  - Includes proper accessibility attributes and visual feedback for selected items.
+  - Used for improved agent assignment interface in conversation management.
+
+- **SearchableMultiSelect Component**: Added a new reusable searchable multi-select component.
+  - Supports selecting multiple items with badge display for selected values.
+  - Includes add/remove callbacks for granular control over selection changes.
+  - Displays selected items as removable badges with clear visual indicators.
+
+### Conversation Management
+- **Enhanced Agent Assignment UI**: Replaced popover-based assignment interface with searchable select components.
+  - "Handled By" field now uses `SearchableSelect` for improved searchability and UX.
+  - Streamlined assignment flow with better visual feedback and state management.
+  - Added optimistic UI updates with proper state synchronization.
+
+- **Improved Collaborator Management**: Enhanced thread collaborator interface with multi-select support.
+  - Replaced popover-based collaborator addition with `SearchableMultiSelect` component.
+  - Collaborator list now displays as removable badges for better visibility.
+  - Added support for super agent member filtering - only members of the assigned super agent can be added as collaborators.
+  - Collaborator selection is disabled until a "Handled By" agent is assigned.
+  - Automatic fetching of super agent members when an agent is assigned.
+
+- **Manual Thread Assignment**: Added `assignThreadToUser` function for supervisor-level thread reassignment.
+  - Allows supervisors to manually assign conversations to specific users.
+  - Automatically creates system event messages when assignments occur.
+  - Updates thread metadata including `assigned_by_user_id`, `assigned_at`, and `handover_reason`.
+  - Disables AI access when manually assigned (`ai_access_enabled: false`).
+
+- **User Label Resolution**: Improved user display name resolution for agents and collaborators.
+  - Fetches user profile data for agents not present in the human agents list.
+  - Caches user labels to avoid redundant API calls.
+  - Provides fallback display names when profile data is unavailable.
+
+### Bug Fixes
+- **Fixed Handled By State Leak**: Resolved critical bug where assigning a thread to an agent would incorrectly show that agent as assigned to all other threads.
+  - Scoped `handledByOverride` state to specific thread IDs instead of using global state.
+  - Optimistic UI updates now only apply to the thread being assigned, preventing state leakage when navigating between conversations.
+  - Fixed issue where changing "Handled By" for one thread would temporarily display the same value for all threads until server refresh.
 
 # [0.1.15] FE WEB CEKAT 2025-12-19
 ### Database & Policies

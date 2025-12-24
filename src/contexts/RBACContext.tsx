@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import { PERMISSIONS_SCHEMA } from '@/config/permissions';
+import { clearAuthzSensitiveCaches, emitAuthzChanged } from '@/lib/authz';
 import type { 
   Role, 
   Permission, 
@@ -47,6 +48,35 @@ export function RBACProvider({ children }: RBACProviderProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const computeAuthzFingerprint = (roles: Role[], permissions: Permission[]) => {
+    const rolePart = roles
+      .map(r => String(r?.name ?? '').trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join(',');
+    const permPart = permissions
+      .map(p => `${String((p as any)?.resource ?? '').trim().toLowerCase()}.${String((p as any)?.action ?? '').trim().toLowerCase()}`)
+      .filter(s => s !== '.')
+      .sort()
+      .join(',');
+    return `roles:${rolePart}|perms:${permPart}`;
+  };
+
+  const persistFingerprintAndMaybeInvalidate = (userId: string, fingerprint: string) => {
+    try {
+      const key = `app.authzFingerprint:${userId}`;
+      const prev = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      if (prev && prev !== fingerprint) {
+        // Role/permission change detected → clear any cached UI/data and force refetch.
+        clearAuthzSensitiveCaches();
+        emitAuthzChanged('rbac-fingerprint-changed');
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(key, fingerprint);
+      }
+    } catch {}
+  };
+
   const fetchUserRBAC = async (userId: string, opts?: { background?: boolean }) => {
     try {
       // During background refreshes, avoid flipping the global loading flag
@@ -75,6 +105,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
       if (userRolesError) throw userRolesError;
 
       if (!userRolesData || userRolesData.length === 0) {
+        persistFingerprintAndMaybeInvalidate(userId, computeAuthzFingerprint([], permissions));
         setUserRoles([]);
         setUserWithRoles({
           user_id: userId,
@@ -94,6 +125,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
       if (rolesError) throw rolesError;
 
       const roles: Role[] = rolesData || [];
+      persistFingerprintAndMaybeInvalidate(userId, computeAuthzFingerprint(roles, permissions));
       setUserRoles(roles);
 
       // Create roles with permissions
@@ -136,6 +168,32 @@ export function RBACProvider({ children }: RBACProviderProps) {
       setUserWithRoles(null);
       setLoading(false);
     }
+  }, [user?.id, accountDeactivated]);
+
+  // Realtime: if your roles are edited directly in the DB, invalidate cached UI/data and refresh RBAC.
+  useEffect(() => {
+    if (!user?.id || accountDeactivated) return;
+    const uid = user.id;
+
+    const channel = supabase
+      .channel(`rbac-user-roles:${uid}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_roles', filter: `user_id=eq.${uid}` },
+        async () => {
+          // Clear any cached "master agent" UI/data immediately, then refresh RBAC in background.
+          clearAuthzSensitiveCaches();
+          emitAuthzChanged('user_roles-realtime-change');
+          try {
+            await fetchUserRBAC(uid, { background: true });
+          } catch {}
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
   }, [user?.id, accountDeactivated]);
 
   // Permission checking functions

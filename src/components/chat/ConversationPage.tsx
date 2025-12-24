@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,6 @@ import {
   ChevronDown,
   ChevronUp,
   Tag,
-  UserPlus,
   UserMinus,
   Send,
   MoreVertical,
@@ -41,8 +40,6 @@ import { supabase, protectedSupabase } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLES } from "@/types/rbac";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { setSendMessageProvider } from "@/config/webhook";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
 import PermissionGate from "@/components/rbac/PermissionGate";
@@ -56,6 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { SearchableSelect, SearchableMultiSelect } from "@/components/ui/searchable-select";
 
 interface MatchPosition {
   start: number;
@@ -194,7 +192,7 @@ export default function ConversationPage() {
   const [messageSearch, setMessageSearch] = useState("");
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const trimmedSearch = messageSearch.trim();
@@ -214,6 +212,7 @@ export default function ConversationPage() {
     addThreadLabel,
     removeThreadLabel,
     assignThread,
+    assignThreadToUser,
     deleteThread,
   } = useConversations();
 
@@ -222,12 +221,192 @@ export default function ConversationPage() {
   const { agents: humanAgents } = useHumanAgents();
   const { user } = useAuth();
   const { hasRole, hasPermission } = useRBAC();
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [collabOpen, setCollabOpen] = useState(false);
   const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const canDeleteConversation = hasPermission('contacts.delete');
+  
+  const [collaborators, setCollaborators] = useState<string[]>([]);
+  // Optimistic "handled by" value while an assignment request is in-flight.
+  // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
+  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string } | null>(null);
+  const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
+  const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
+  
+  // Options for the "Handled By" selector: only Super Agents
+  const superAgentOptions = useMemo(
+    () =>
+      humanAgents
+        .filter((a: any) => String(a?.primaryRole || '').toLowerCase() === 'super_agent')
+        .map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
+    [humanAgents]
+  );
+
+  // Options for general agent picking (collaborators, etc.): all human agents
+  const agentOptions = useMemo(
+    () => humanAgents.map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
+    [humanAgents]
+  );
+
+  const humanAgentIdToLabel = useMemo(() => {
+    return Object.fromEntries(
+      humanAgents.map((a: any) => [String(a.user_id), String(a.display_name || a.email || 'Unknown')])
+    ) as Record<string, string>;
+  }, [humanAgents]);
+
+  const labelForUserId = useMemo(() => {
+    return (id: string) => humanAgentIdToLabel[id] || userIdToLabel[id] || id;
+  }, [humanAgentIdToLabel, userIdToLabel]);
+
+  // Derive current handled-by (assignee) without referencing selectedConversation (avoid TDZ)
+  const derivedHandledById = useMemo(() => {
+    if (!selectedThreadId) return null;
+    const t = conversations.find(c => c.id === selectedThreadId) as any;
+    return (t?.assignee_user_id as string | null) ?? null;
+  }, [selectedThreadId, conversations]);
+
+  const handledById = useMemo(() => {
+    if (!selectedThreadId) return null;
+    if (handledByOverride?.threadId === selectedThreadId) return handledByOverride.userId;
+    return derivedHandledById;
+  }, [selectedThreadId, handledByOverride, derivedHandledById]);
+
+  // Keep override in sync (clear it once server state catches up, or when selection changes)
+  useEffect(() => {
+    if (!selectedThreadId) {
+      setHandledByOverride(null);
+      return;
+    }
+    if (
+      handledByOverride?.threadId === selectedThreadId &&
+      derivedHandledById === handledByOverride.userId
+    ) {
+      setHandledByOverride(null);
+    }
+  }, [selectedThreadId, derivedHandledById, handledByOverride]);
+
+  // Fetch allowed collaborator agents for the selected handled-by (super agent)
+  useEffect(() => {
+    if (!handledById) {
+      setSuperAgentMemberAgentIds([]);
+      return;
+    }
+    let active = true;
+    const fetchMembers = async () => {
+      const { data, error } = await protectedSupabase
+        .from('super_agent_members')
+        .select('agent_user_id')
+        .eq('super_agent_id', handledById);
+
+      if (!active) return;
+      if (error) {
+        console.warn('Failed to fetch super agent members', error);
+        setSuperAgentMemberAgentIds([]);
+        return;
+      }
+      setSuperAgentMemberAgentIds((data || []).map((r: any) => String(r.agent_user_id)));
+    };
+    fetchMembers();
+    return () => { active = false; };
+  }, [handledById]);
+
+  // Load display labels for any collaborator/member IDs not present in humanAgents
+  useEffect(() => {
+    const ids = Array.from(new Set([
+      ...(handledById ? [handledById] : []),
+      ...collaborators,
+      ...superAgentMemberAgentIds,
+    ].filter(Boolean))) as string[];
+
+    if (ids.length === 0) return;
+
+    const missing = ids.filter(id => !humanAgentIdToLabel[id] && !userIdToLabel[id]);
+    if (missing.length === 0) return;
+
+    let active = true;
+    const fetchLabels = async () => {
+      try {
+        const { data, error } = await protectedSupabase
+          .from('users_profile')
+          .select('user_id, display_name')
+          .in('user_id', missing);
+
+        if (!active) return;
+        if (error) throw error;
+
+        const nextMap: Record<string, string> = Object.fromEntries(
+          (data || []).map((p: any) => [String(p.user_id), String(p.display_name || '')])
+        );
+
+        setUserIdToLabel(prev => ({ ...prev, ...nextMap }));
+      } catch (e) {
+        // non-fatal: fallback will still show ids
+        console.warn('Failed to fetch user labels', e);
+      }
+    };
+    fetchLabels();
+    return () => { active = false; };
+  }, [handledById, collaborators, superAgentMemberAgentIds, humanAgentIdToLabel, userIdToLabel]);
+
+  const collaboratorOptions = useMemo(() => {
+    if (!handledById) return [];
+    const allowed = new Set(superAgentMemberAgentIds);
+    return agentOptions
+      .filter(o => allowed.has(o.value))
+      .map(o => ({ ...o, label: labelForUserId(o.value) }));
+  }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
+
+  const collaboratorOptionsWithSelected = useMemo(() => {
+    // Ensure selected collaborators always have a label, even if they aren't in the allowed list/options.
+    const map = new Map<string, { value: string; label: string }>();
+    collaboratorOptions.forEach(o => map.set(o.value, o));
+    collaborators.forEach(id => {
+      if (!map.has(id)) map.set(id, { value: id, label: labelForUserId(id) });
+    });
+    return Array.from(map.values());
+  }, [collaboratorOptions, collaborators, labelForUserId]);
+
+  // Fetch collaborators when thread is selected
+  useEffect(() => {
+    if (!selectedThreadId) {
+      setCollaborators([]);
+      return;
+    }
+    let active = true;
+    const fetchCollaborators = async () => {
+        const { data } = await protectedSupabase
+            .from('thread_collaborators')
+            .select('user_id')
+            .eq('thread_id', selectedThreadId);
+        if (active && data) {
+            setCollaborators(data.map(d => d.user_id));
+        }
+    };
+    fetchCollaborators();
+    return () => { active = false; };
+  }, [selectedThreadId]);
+
+  const handleAddCollab = async (userId: string) => {
+    if (!selectedThreadId) return;
+    try {
+        await addThreadParticipant(selectedThreadId, userId);
+        setCollaborators(prev => [...prev, userId]);
+        toast.success("Collaborator added");
+    } catch (e) {
+        // Error handled by hook
+    }
+  };
+
+  const handleRemoveCollab = async (userId: string) => {
+    if (!selectedThreadId) return;
+    try {
+        await removeThreadParticipant(selectedThreadId, userId);
+        setCollaborators(prev => prev.filter(id => id !== userId));
+        toast.success("Collaborator removed");
+    } catch (e) {
+        // Error handled
+    }
+  };
 
   const messageMatches = useMemo<MessageSearchMatch[]>(() => {
     if (!trimmedSearch) {
@@ -481,10 +660,14 @@ export default function ConversationPage() {
     }
   };
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // Simple + reliable: always keep chat pinned to bottom on message updates (realtime/refetch).
+  useLayoutEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+    try {
+      viewport.scrollTop = viewport.scrollHeight;
+    } catch {}
+  }, [messages, selectedThreadId]);
 
   // Handle conversation selection
   const handleConversationSelect = async (threadId: string) => {
@@ -1058,7 +1241,7 @@ export default function ConversationPage() {
             </div>
 
             {/* Chat Messages */}
-            <ScrollArea className="flex-1 p-4">
+            <ScrollArea viewportRef={messagesViewportRef as any} className="flex-1 p-4">
               <div className="space-y-2">
                 {messages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-8">
@@ -1077,7 +1260,6 @@ export default function ConversationPage() {
                     </div>
                   ))
                 )}
-                <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
 
@@ -1162,53 +1344,66 @@ export default function ConversationPage() {
             <div className="text-sm text-muted-foreground">No labels yet</div> */}
 
             {/* Handled By */}
-            <div className="flex items-center justify-between">
+            <div className="space-y-2">
               <h3 className="text-sm font-medium">Handled By</h3>
-              <Popover open={assignOpen} onOpenChange={setAssignOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8">
-                    <UserPlus className="h-4 w-4 mr-2" /> Assign Agent
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-72 p-0">
-                  <Command>
-                    <CommandInput placeholder="Search agent" />
-                    <CommandEmpty>No agent found.</CommandEmpty>
-                    <CommandGroup>
-                      {humanAgents.map((agent) => (
-                        <CommandItem key={agent.user_id} onSelect={async () => { if (!selectedConversation) return; await assignThread(selectedConversation.id, agent.user_id); setAssignOpen(false); }}>
-                          {agent.display_name || 'Agent'}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <SearchableSelect 
+                 options={superAgentOptions}
+                 value={handledById}
+                 onChange={async (val) => {
+                    if (!selectedConversation) return;
+                    // When handled-by (super agent) changes, clear collaborators entirely.
+                    // Agents belong to a single super agent, so existing collaborators would be invalid.
+                    try {
+                      const threadId = selectedConversation.id;
+                      const newSuperAgentId = val;
+
+                      // Optimistic: clear current UI chips immediately
+                      setCollaborators([]);
+
+                      // Best-effort DB cleanup: remove all collaborators except the new super agent + current user
+                      try {
+                        const keep = new Set<string>([newSuperAgentId, user?.id || ''].filter(Boolean) as string[]);
+                        const { data } = await protectedSupabase
+                          .from('thread_collaborators')
+                          .select('user_id')
+                          .eq('thread_id', threadId);
+                        const existingIds = (data || []).map((r: any) => String(r.user_id));
+                        const idsToRemove = existingIds.filter((id: string) => !keep.has(id));
+                        if (idsToRemove.length > 0) {
+                          await protectedSupabase
+                            .from('thread_collaborators')
+                            .delete()
+                            .eq('thread_id', threadId)
+                            .in('user_id', idsToRemove as any);
+                        }
+                      } catch (e) {
+                        // Non-fatal; UI already cleared, and new collaborator list will be constrained by the new super agent scope.
+                        console.warn('Failed to clear collaborators on handled-by change', e);
+                      }
+                    } catch {}
+                    setHandledByOverride({ threadId: selectedConversation.id, userId: val });
+                    await assignThreadToUser(selectedConversation.id, val);
+                 }}
+                 placeholder="Assign Agent"
+                 searchPlaceholder="Search agent..."
+                 className="w-full"
+              />
             </div>
 
             {/* Collaborators */}
-            <div className="flex items-center justify-between">
+            <div className="space-y-2">
               <h3 className="text-sm font-medium">Collaborators</h3>
-              <Popover open={collabOpen} onOpenChange={setCollabOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8">
-                    <UserPlus className="h-4 w-4 mr-2" /> Add Collaborator
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-72 p-0">
-                  <Command>
-                    <CommandInput placeholder="Search agent" />
-                    <CommandEmpty>No agent found.</CommandEmpty>
-                    <CommandGroup>
-                      {humanAgents.map((agent) => (
-                        <CommandItem key={agent.user_id} onSelect={async () => { if (!selectedConversation) return; await handleAddParticipant(agent.user_id); setCollabOpen(false); }}>
-                          {agent.display_name || 'Agent'}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <SearchableMultiSelect
+                 options={collaboratorOptionsWithSelected}
+                 value={collaborators}
+                 onChange={() => {}}
+                 onAdd={handleAddCollab}
+                 onRemove={handleRemoveCollab}
+                 placeholder={handledById ? "Add Collaborator" : "Select handled by first"}
+                 searchPlaceholder="Search agent..."
+                 className="w-full"
+                 disabled={!handledById}
+              />
             </div>
 
             {/* Notes */}
@@ -1236,7 +1431,7 @@ export default function ConversationPage() {
               <h3 className="text-sm font-medium mb-3">Conversation Details</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned By</span><span>{(selectedConversation as any).assigned_by_name || '—'}</span></div>
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Handled By</span><span>{(selectedConversation as any).assignee_name || '—'}</span></div>
+                <div className="flex items-center justify-between"><span className="text-muted-foreground">Handled By</span><span>{handledById ? (labelForUserId(handledById) || '—') : '—'}</span></div>
                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved By</span><span>{(selectedConversation as any).resolved_by_name || '—'}</span></div>
                 <div className="flex items-center justify-between"><span className="text-muted-foreground">AI Handoff At</span><span>{(selectedConversation as any).ai_handoff_at ? new Date((selectedConversation as any).ai_handoff_at).toLocaleString() : '—'}</span></div>
                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned At</span><span>{(selectedConversation as any).assigned_at ? new Date((selectedConversation as any).assigned_at).toLocaleString() : '—'}</span></div>

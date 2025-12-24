@@ -7,6 +7,7 @@ import { callWebhook } from '@/lib/webhookClient';
 import { resolveSendMessageEndpoint } from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
+import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 
 // Audio notification system with debouncing
 let lastNotificationTime = 0;
@@ -130,7 +131,7 @@ export interface ThreadFilters {
   agent?: string;
   status?: string;
   resolvedBy?: string;
-  aiAgent?: string;
+  platformId?: string;
   pipelineStatus?: string;
   channelType?: string;
 }
@@ -141,7 +142,6 @@ export const useConversations = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
   const filtersRef = useRef<ThreadFilters>({});
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
@@ -188,26 +188,10 @@ export const useConversations = () => {
     });
   };
 
-  // LocalStorage hydrated snapshot to avoid empty UI during refresh
-  const hydrateFromCache = () => {
-    try {
-      const raw = localStorage.getItem('app.cachedConversations');
-      if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length >= 0) {
-        setConversations(parsed);
-        setHydrated(true);
-        setLoading(false);
-        return true;
-      }
-    } catch { }
-    return false;
-  };
-
   // Fetch conversations with contact and channel details
   const fetchConversations = async (overrideFilters?: ThreadFilters) => {
     try {
-      if (!hydrated) setLoading(true);
+      setLoading(true);
       setError(null);
       // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
@@ -230,7 +214,7 @@ export const useConversations = () => {
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
 
-      const { dateRange, status, agent, resolvedBy, inbox, channelType, pipelineStatus } = filtersToUse;
+      const { dateRange, status, agent, resolvedBy, inbox, channelType, pipelineStatus, platformId } = filtersToUse;
 
       /* Client-side filtering implemented below for consistency
       if (dateRange?.from) {
@@ -255,10 +239,15 @@ export const useConversations = () => {
         query = query.eq('channels.provider', inbox);
       }
       if (channelType && channelType !== 'all' && channelType !== '') {
-        query = query.eq('channels.type', channelType);
+        // In this schema, channels.provider is the transport (telegram/web/whatsapp).
+        // channels.type is typically 'bot' / 'inbox' etc.
+        query = query.eq('channels.provider', channelType);
       }
       if (pipelineStatus && pipelineStatus !== 'all' && pipelineStatus !== '') {
         query = query.eq('pipeline_status', pipelineStatus);
+      }
+      if (platformId && platformId !== 'all' && platformId !== '') {
+        query = query.eq('channel_id', platformId);
       }
 
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -348,8 +337,6 @@ export const useConversations = () => {
 
 
       setConversations(sortedData);
-      // Cache for next refresh
-      try { localStorage.setItem('app.cachedConversations', JSON.stringify(sortedData)); } catch { }
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -714,6 +701,68 @@ export const useConversations = () => {
     }
   };
 
+  // Assign thread to a specific user (not a takeover). Used by supervisors to reassign.
+  const assignThreadToUser = async (threadId: string, assigneeUserId: string) => {
+    try {
+      setError(null);
+
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+
+      const nowIso = new Date().toISOString();
+      const { error: updateErr } = await supabase
+        .from('threads')
+        .update({
+          assignee_user_id: assigneeUserId,
+          assigned_by_user_id: currentUserId,
+          assigned_at: nowIso,
+          handover_reason: 'other:manual_assign',
+          ai_access_enabled: false,
+        })
+        .eq('id', threadId);
+
+      if (updateErr) throw updateErr;
+
+      // Insert system event message: "Conversation assigned to X by Y"
+      try {
+        const ids = [currentUserId, assigneeUserId].filter(Boolean) as string[];
+        let nameMap: Record<string, string> = {};
+        if (ids.length > 0) {
+          const { data: profiles } = await supabase
+            .from('users_profile')
+            .select('user_id, display_name')
+            .in('user_id', ids);
+          nameMap = Object.fromEntries((profiles || []).map((p: any) => [String(p.user_id), String(p.display_name || '—')]));
+        }
+
+        const assignedByName = (currentUserId && (nameMap[currentUserId] || authData?.user?.email)) || 'agent';
+        const assignedToName = nameMap[assigneeUserId] || 'agent';
+
+        await protectedSupabase.from('messages').insert([{
+          thread_id: threadId,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Conversation assigned to ${assignedToName} by ${assignedByName}.`,
+          payload: { event: 'assign', assigned_to: assigneeUserId, assigned_by: currentUserId }
+        }]);
+      } catch (e) {
+        console.warn('Failed to insert assign event message', e);
+      }
+
+      // Refresh conversations/messages to reflect new assignment
+      await fetchConversations();
+      await fetchMessages(threadId);
+
+      // Audit log
+      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: assigneeUserId } }); } catch { }
+    } catch (error) {
+      console.error('Error assigning thread to user:', error);
+      setError(error instanceof Error ? error.message : 'Failed to assign thread');
+      throw error;
+    }
+  };
+
   // Add collaborator to thread
   const addThreadParticipant = async (threadId: string, userId: string) => {
     try {
@@ -813,7 +862,6 @@ export const useConversations = () => {
 
       setConversations(prev => {
         const next = prev.filter(conv => conv.id !== threadId);
-        try { localStorage.setItem('app.cachedConversations', JSON.stringify(next)); } catch { }
         return next;
       });
 
@@ -835,10 +883,30 @@ export const useConversations = () => {
 
   // Initial fetch on mount - guard against duplicate calls
   useEffect(() => {
-    // Hydrate from cache for instant UI
-    hydrateFromCache();
     // Avoid overlapping with other triggers by scheduling slightly
     scheduleConversationsRefresh(10);
+  }, []);
+
+  // Authorization changes: clear any in-memory UI state and refetch.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        setConversations([]);
+        setMessages([]);
+        setSelectedThreadId(null);
+        setError(null);
+      } catch {}
+      try {
+        // Force a refresh using the currently active filters
+        scheduleConversationsRefresh(50);
+      } catch {}
+    };
+    try {
+      window.addEventListener(AUTHZ_CHANGED_EVENT as any, handler as any);
+    } catch {}
+    return () => {
+      try { window.removeEventListener(AUTHZ_CHANGED_EVENT as any, handler as any); } catch {}
+    };
   }, []);
 
   // Auto-resolve check function
@@ -965,8 +1033,6 @@ export const useConversations = () => {
   useEffect(() => {
     if (!selectedThreadId) return;
 
-
-
     // Set up a periodic refresh as a fallback (every 30 seconds)
     const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 30000);
 
@@ -978,32 +1044,54 @@ export const useConversations = () => {
         table: 'messages',
         filter: `thread_id=eq.${selectedThreadId}`
       }, (payload) => {
+        const message = payload.new as any;
         // Play notification sound for incoming messages
-        const message = payload.new;
         if (message && message.direction === 'in') {
           playNotificationSound('incoming');
         }
-
-        // Immediately fetch fresh messages
-        fetchMessages(selectedThreadId);
+        // Apply realtime payload to state to avoid full refresh jumps
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === message?.id);
+          if (exists) return prev;
+          const contactName = prev[0]?.contact_name || '';
+          const contactAvatar = prev[0]?.contact_avatar || (contactName?.[0]?.toUpperCase?.() ?? 'U');
+          const next: MessageWithDetails = {
+            ...(message || {}),
+            contact_name: contactName,
+            contact_avatar: contactAvatar,
+          };
+          const merged = [...prev, next];
+          merged.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+          return merged;
+        });
       })
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'messages',
         filter: `thread_id=eq.${selectedThreadId}`
-      }, () => {
-        // Fetch fresh messages for updates
-        fetchMessages(selectedThreadId);
+      }, (payload) => {
+        const message = payload.new as any;
+        setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === message?.id);
+          if (idx < 0) return prev;
+          const updated: MessageWithDetails = { ...prev[idx], ...(message || {}) };
+          const next = [...prev];
+          next[idx] = updated;
+          next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+          return next;
+        });
       })
       .on('postgres_changes', {
         event: 'DELETE',
         schema: 'public',
         table: 'messages',
         filter: `thread_id=eq.${selectedThreadId}`
-      }, () => {
-        // Fetch fresh messages for deletions
-        fetchMessages(selectedThreadId);
+      }, (payload) => {
+        const message = (payload.old || payload.new) as any;
+        const id = message?.id;
+        if (!id) return;
+        setMessages(prev => prev.filter(m => m.id !== id));
       })
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR') {
@@ -1035,6 +1123,7 @@ export const useConversations = () => {
     createConversation,
     updateThreadStatus,
     assignThread,
+    assignThreadToUser,
     addThreadParticipant,
     removeThreadParticipant,
     addThreadLabel,

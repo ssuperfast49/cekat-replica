@@ -1,26 +1,3 @@
 {
-    "mcpServers": {
-      "supabase": {
-        "command": "cmd",
-        "args": [
-          "/c",
-          "npx",
-          "-y",
-          "@supabase/mcp-server-supabase@latest"
-        ],
-        "env": {
-          "SUPABASE_ACCESS_TOKEN": "sbp_bef089b68135f6e073f49af71792926a062c4f13"
-        }
-      },
-      "browser-tools": {
-        "command": "cmd",
-        "args": [
-          "/c",
-          "npx",
-          "-y",
-          "@agentdeskai/browser-tools-mcp@1.2.0"
-        ],
-        "enabled": true
-      }
-    }
-  }
+  "mcpServers": {}
+}
