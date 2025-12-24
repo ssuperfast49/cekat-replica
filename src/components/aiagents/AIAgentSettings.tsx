@@ -499,7 +499,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [readFileLimit, setReadFileLimit] = useState<number>(() =>
     clampNumber((profile as any)?.read_file_limit ?? 3, 0, READ_FILE_HARD_MAX)
   );
-  const [contextLimitInput, setContextLimitInput] = useState<string>("");
   const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
   const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
   const [messageLimitInput, setMessageLimitInput] = useState<string>("");
@@ -566,8 +565,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     );
     const history = clampNumber((profile as any)?.history_limit ?? HISTORY_PRACTICAL_MAX, 0, HISTORY_HARD_MAX);
     setHistoryLimitInput(history.toString());
-    const context = clampNumber((profile as any)?.context_limit ?? 28, 0, CONTEXT_PRACTICAL_MAX);
-    setContextLimitInput(context.toString());
     const message = clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX);
     setMessageLimitInput(message.toString());
   }, [profile?.id]);
@@ -581,23 +578,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     }
     return HISTORY_HARD_MAX;
   }, [selectedModel?.max_context_tokens]);
-
-  const contextLimitMax = useMemo(() => {
-    const tokens = selectedModel?.max_context_tokens;
-    if (typeof tokens === 'number' && tokens > 0) {
-      return Math.max(1, Math.floor(tokens / 1000));
-    }
-    return CONTEXT_PRACTICAL_MAX;
-  }, [selectedModel?.max_context_tokens]);
-
-  useEffect(() => {
-    if (!contextLimitInput) return;
-    const numeric = parseInt(contextLimitInput, 10);
-    if (Number.isNaN(numeric)) return;
-    if (numeric > contextLimitMax) {
-      setContextLimitInput(contextLimitMax.toString());
-    }
-  }, [contextLimitInput, contextLimitMax]);
 
   useEffect(() => {
     if (!historyLimitInput) return;
@@ -626,16 +606,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     }
     const clamped = clampNumber(parseInt(sanitized, 10), 0, historyLimitMax);
     setHistoryLimitInput(clamped.toString());
-  };
-
-  const handleContextLimitChange = (raw: string) => {
-    const sanitized = sanitizeNumericInput(raw);
-    if (sanitized === "") {
-      setContextLimitInput("");
-      return;
-    }
-    const clamped = clampNumber(parseInt(sanitized, 10), 0, contextLimitMax);
-    setContextLimitInput(clamped.toString());
   };
 
   const handleMessageLimitChange = (raw: string) => {
@@ -1160,7 +1130,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       setEnableResolve(Boolean((profile as any)?.enable_resolve ?? false));
       setHistoryLimitInput(String(clampNumber((profile as any)?.history_limit ?? HISTORY_PRACTICAL_MAX, 0, HISTORY_HARD_MAX)));
       setReadFileLimit(clampNumber((profile as any)?.read_file_limit ?? 3, 0, READ_FILE_HARD_MAX));
-      setContextLimitInput(String(clampNumber((profile as any)?.context_limit ?? 28, 0, CONTEXT_PRACTICAL_MAX)));
       setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
       setMessageAwait((profile as any)?.message_await ?? 3);
       setMessageLimitInput(String(clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX)));
@@ -1190,8 +1159,20 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
     const autoResolveMinutes = clampNumber(parseNumericInput(autoResolveMinutesInput), 0, AUTO_RESOLVE_MAX_MINUTES);
     const historyLimit = clampNumber(parseNumericInput(historyLimitInput), 0, historyLimitMax);
-    const contextLimit = clampNumber(parseNumericInput(contextLimitInput), 0, contextLimitMax);
     const messageLimit = clampNumber(parseNumericInput(messageLimitInput), 0, MESSAGE_PRACTICAL_MAX);
+    
+    // Context window is no longer user-configurable in the UI.
+    // Persist an existing value (or a sensible default) clamped to the selected model capability.
+    const derivedContextLimitMaxK = (() => {
+      const tokens = selectedModel?.max_context_tokens;
+      if (typeof tokens === 'number' && tokens > 0) return Math.max(1, Math.floor(tokens / 1000));
+      return CONTEXT_PRACTICAL_MAX;
+    })();
+    const contextLimit = clampNumber(
+      clampNumber((profile as any)?.context_limit ?? 28, 0, CONTEXT_PRACTICAL_MAX),
+      0,
+      derivedContextLimitMaxK
+    );
 
     const updateData = {
       system_prompt: systemPrompt,
@@ -1767,31 +1748,6 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     </div>
                     <Input type="number" min={0} value={readFileLimit} onChange={(e)=>setReadFileLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div> */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Context Window (K tokens)</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Batas maksimal konteks yang dapat diproses AI dalam satu respons (dalam K tokens)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder={`Max ${contextLimitMax}K`}
-                      value={contextLimitInput}
-                      onChange={(e) => handleContextLimitChange(e.target.value)}
-                      className="mt-1"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {selectedModel?.display_name ? `${selectedModel.display_name} supports up to ${contextLimitMax}K tokens.` : `Supports up to ${contextLimitMax}K tokens.`}
-                    </p>
-                  </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <label className="text-sm font-medium">Creativity Preset</label>

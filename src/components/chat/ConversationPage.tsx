@@ -225,6 +225,12 @@ export default function ConversationPage() {
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const canDeleteConversation = hasPermission('contacts.delete');
+  const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
+  const isPushingFiltersRef = useRef(false);
+  const filtersInitRef = useRef(false);
+  const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'}`, [user?.id]);
+  const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
+  const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
   
   const [collaborators, setCollaborators] = useState<string[]>([]);
   // Optimistic "handled by" value while an assignment request is in-flight.
@@ -466,7 +472,104 @@ export default function ConversationPage() {
   const matchCount = messageMatches.length;
   const activeMatch = matchCount > 0 ? messageMatches[currentMatchIndex] : null;
 
+  const normalizeFilterString = (v: any) => {
+    const s = (v ?? '').toString();
+    if (!s || s === 'all') return '';
+    return s;
+  };
+
+  const hasAnyActiveFilters = (f: ThreadFilters) => {
+    return Boolean(
+      (f.dateRange?.from || f.dateRange?.to) ||
+      normalizeFilterString(f.inbox) ||
+      normalizeFilterString(f.channelType) ||
+      normalizeFilterString(f.platformId) ||
+      normalizeFilterString(f.status) ||
+      normalizeFilterString(f.agent) ||
+      normalizeFilterString(f.resolvedBy)
+    );
+  };
+
+  const serializeFiltersSignature = (f: ThreadFilters) => {
+    const from = f.dateRange?.from ? f.dateRange.from.getTime() : 0;
+    const to = f.dateRange?.to ? f.dateRange.to.getTime() : 0;
+    return [
+      from,
+      to,
+      normalizeFilterString(f.inbox),
+      normalizeFilterString(f.channelType),
+      normalizeFilterString(f.platformId),
+      normalizeFilterString(f.status),
+      normalizeFilterString(f.agent),
+      normalizeFilterString(f.resolvedBy),
+    ].join('|');
+  };
+
+  const parseFiltersFromSearchParams = (params: URLSearchParams): ThreadFilters => {
+    const fromMsRaw = params.get('f_from');
+    const toMsRaw = params.get('f_to');
+    const fromMs = fromMsRaw ? Number(fromMsRaw) : 0;
+    const toMs = toMsRaw ? Number(toMsRaw) : 0;
+    const dateRange =
+      fromMs || toMs
+        ? {
+            from: fromMs ? new Date(fromMs) : undefined,
+            to: toMs ? new Date(toMs) : undefined,
+          }
+        : undefined;
+
+    const inbox = normalizeFilterString(params.get('f_inbox'));
+    const channelType = normalizeFilterString(params.get('f_channelType'));
+    const platformId = normalizeFilterString(params.get('f_platformId'));
+    const status = normalizeFilterString(params.get('f_status'));
+    const agent = normalizeFilterString(params.get('f_agent'));
+    const resolvedBy = normalizeFilterString(params.get('f_resolvedBy'));
+
+    const out: ThreadFilters = {};
+    if (dateRange) out.dateRange = dateRange;
+    if (inbox) out.inbox = inbox;
+    if (channelType) out.channelType = channelType;
+    if (platformId) out.platformId = platformId;
+    if (status) out.status = status;
+    if (agent) out.agent = agent;
+    if (resolvedBy) out.resolvedBy = resolvedBy;
+    return out;
+  };
+
+  const writeFiltersToSearchParams = (params: URLSearchParams, f: ThreadFilters) => {
+    const keys = ['f_from', 'f_to', 'f_inbox', 'f_channelType', 'f_platformId', 'f_status', 'f_agent', 'f_resolvedBy'];
+    keys.forEach((k) => params.delete(k));
+
+    if (f.dateRange?.from) params.set('f_from', String(f.dateRange.from.getTime()));
+    if (f.dateRange?.to) params.set('f_to', String(f.dateRange.to.getTime()));
+    if (normalizeFilterString(f.inbox)) params.set('f_inbox', normalizeFilterString(f.inbox));
+    if (normalizeFilterString(f.channelType)) params.set('f_channelType', normalizeFilterString(f.channelType));
+    if (normalizeFilterString(f.platformId)) params.set('f_platformId', normalizeFilterString(f.platformId));
+    if (normalizeFilterString(f.status)) params.set('f_status', normalizeFilterString(f.status));
+    if (normalizeFilterString(f.agent)) params.set('f_agent', normalizeFilterString(f.agent));
+    if (normalizeFilterString(f.resolvedBy)) params.set('f_resolvedBy', normalizeFilterString(f.resolvedBy));
+  };
+
   const handleFilterChange = (nextFilters: ThreadFilters) => {
+    setActiveFilters(nextFilters);
+    try {
+      localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify({
+        ...nextFilters,
+        dateRange: nextFilters.dateRange
+          ? {
+              from: nextFilters.dateRange.from ? nextFilters.dateRange.from.getTime() : undefined,
+              to: nextFilters.dateRange.to ? nextFilters.dateRange.to.getTime() : undefined,
+            }
+          : undefined,
+      }));
+    } catch {}
+
+    const next = new URLSearchParams(window.location.search);
+    writeFiltersToSearchParams(next, nextFilters);
+    isPushingFiltersRef.current = true;
+    setSearchParams(next, { replace: true });
+    setTimeout(() => { isPushingFiltersRef.current = false; }, 0);
+
     void fetchConversations(nextFilters);
   };
 
@@ -517,6 +620,79 @@ export default function ConversationPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabParam]);
+
+  // Fetch channels map for showing friendly filter labels (Platform name, provider).
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      try {
+        const { data, error } = await protectedSupabase
+          .from('channels')
+          .select('id, display_name, provider')
+          .order('created_at', { ascending: false });
+        if (!active) return;
+        if (error) throw error;
+        const nameMap: Record<string, string> = {};
+        const providerMap: Record<string, string> = {};
+        (data || []).forEach((row: any) => {
+          nameMap[String(row.id)] = String(row.display_name || 'Unknown');
+          providerMap[String(row.id)] = String(row.provider || '');
+        });
+        setChannelIdToName(nameMap);
+        setChannelIdToProvider(providerMap);
+      } catch {
+        if (!active) return;
+        setChannelIdToName({});
+        setChannelIdToProvider({});
+      }
+    };
+    run();
+    return () => { active = false; };
+  }, []);
+
+  // Initialize filters from URL (preferred) or localStorage (fallback), and keep URL changes (back/forward) in sync.
+  useEffect(() => {
+    if (isPushingFiltersRef.current) return;
+    const fromUrl = parseFiltersFromSearchParams(searchParams);
+
+    // First load: if URL has no filter params, fallback to localStorage once.
+    if (!filtersInitRef.current) {
+      filtersInitRef.current = true;
+      if (!hasAnyActiveFilters(fromUrl)) {
+        try {
+          const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw || '{}') as any;
+            const revived: ThreadFilters = {
+              ...parsed,
+              dateRange: parsed?.dateRange
+                ? {
+                    from: parsed.dateRange.from ? new Date(Number(parsed.dateRange.from)) : undefined,
+                    to: parsed.dateRange.to ? new Date(Number(parsed.dateRange.to)) : undefined,
+                  }
+                : undefined,
+            };
+            setActiveFilters(revived);
+            const next = new URLSearchParams(window.location.search);
+            writeFiltersToSearchParams(next, revived);
+            isPushingFiltersRef.current = true;
+            setSearchParams(next, { replace: true });
+            setTimeout(() => { isPushingFiltersRef.current = false; }, 0);
+            void fetchConversations(revived);
+            return;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    const urlSig = serializeFiltersSignature(fromUrl);
+    const localSig = serializeFiltersSignature(activeFilters);
+    if (urlSig !== localSig) {
+      setActiveFilters(fromUrl);
+      void fetchConversations(fromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.toString(), FILTERS_STORAGE_KEY]);
 
   const filteredConversations = useMemo(() => {
     const list = conversations.filter((conv) =>
@@ -906,9 +1082,53 @@ export default function ConversationPage() {
         <div className="mb-3 pb-2 border-b flex items-center justify-between">
           <h2 className="text-sm font-medium">Conversations</h2>
           <div className="flex items-center gap-1">
-            <ChatFilter onFilterChange={handleFilterChange} />
+            <ChatFilter
+              value={{
+                dateRange: activeFilters.dateRange || {},
+                inbox: (activeFilters.inbox as any) || '',
+                label: [],
+                agent: (activeFilters.agent as any) || '',
+                status: (activeFilters.status as any) || '',
+                resolvedBy: (activeFilters.resolvedBy as any) || '',
+                platformId: (activeFilters.platformId as any) || '',
+                channelType: (activeFilters.channelType as any) || 'all',
+              }}
+              onFilterChange={handleFilterChange}
+            />
           </div>
         </div>
+        {hasAnyActiveFilters(activeFilters) && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {activeFilters.channelType && (
+              <Badge variant="secondary">
+                Channel: {String(activeFilters.channelType).toLowerCase() === 'web' ? 'Live Chat' : String(activeFilters.channelType)}
+              </Badge>
+            )}
+            {activeFilters.platformId && (
+              <Badge variant="secondary">
+                Platform: {channelIdToName[String(activeFilters.platformId)] || String(activeFilters.platformId)}
+              </Badge>
+            )}
+            {activeFilters.status && (
+              <Badge variant="secondary">Status: {String(activeFilters.status)}</Badge>
+            )}
+            {activeFilters.agent && (
+              <Badge variant="secondary">Agent: {labelForUserId(String(activeFilters.agent))}</Badge>
+            )}
+            {activeFilters.resolvedBy && (
+              <Badge variant="secondary">Resolved By: {labelForUserId(String(activeFilters.resolvedBy))}</Badge>
+            )}
+            {(activeFilters.dateRange?.from || activeFilters.dateRange?.to) && (
+              <Badge variant="secondary">
+                Date: {activeFilters.dateRange?.from ? new Date(activeFilters.dateRange.from).toLocaleDateString() : '…'} →{' '}
+                {activeFilters.dateRange?.to ? new Date(activeFilters.dateRange.to).toLocaleDateString() : '…'}
+              </Badge>
+            )}
+            {activeFilters.inbox && (
+              <Badge variant="secondary">Inbox: {String(activeFilters.inbox)}</Badge>
+            )}
+          </div>
+        )}
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-8 text-sm" />

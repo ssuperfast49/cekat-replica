@@ -24,6 +24,7 @@ import { callWebhook } from "@/lib/webhookClient";
 import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
+import { APP_ORIGIN, WAHA_BASE_URL, livechatUrl } from "@/config/urls";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
@@ -74,7 +75,6 @@ const ConnectedPlatforms = () => {
   const pollConnectTimer = useRef<number | null>(null);
   const [isDeletingChannel, setIsDeletingChannel] = useState(false);
 
-  const WAHA_BASE = 'https://waha-plus-production-97c1.up.railway.app';
   const lastFetchedProviderRef = useRef<string | null>(null);
   const isFetchingSessionsRef = useRef<boolean>(false);
   const nextPlatformsRefreshAtRef = useRef<number>(0);
@@ -337,8 +337,8 @@ const ConnectedPlatforms = () => {
             </CardHeader>
             <CardContent>
               <div className="bg-muted p-3 rounded-md">
-                <Input 
-                  value={`https://classy-frangollo-337599.netlify.app/livechat/${selectedPlatformData?.id || '{platform_id}'}`}
+                <Input
+                  value={livechatUrl(String(selectedPlatformData?.id || "{platform_id}"))}
                   readOnly
                   className="bg-background"
                 />
@@ -360,7 +360,7 @@ const ConnectedPlatforms = () => {
 (function(){
   // Lightweight chat embed - uses YOUR project's origin
   var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
-  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'https://classy-frangollo-337599.netlify.app'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
+  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'${APP_ORIGIN}'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
   cfg.position=cfg.position||'bottom-right'; cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
   var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+
            '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+
@@ -454,7 +454,7 @@ const ConnectedPlatforms = () => {
     setIsSessionsLoading(true);
     setSessionsError(null);
     try {
-      const url = `${WAHA_BASE}/api/sessions`;
+      const url = `${WAHA_BASE_URL}/api/sessions`;
       const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
       if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
       const json = await response.json();
@@ -549,7 +549,7 @@ const ConnectedPlatforms = () => {
       const check = async () => {
         try {
           if (!lastConnectSessionName) return;
-          const url = `${WAHA_BASE}/api/sessions/${encodeURIComponent(lastConnectSessionName)}`;
+          const url = `${WAHA_BASE_URL}/api/sessions/${encodeURIComponent(lastConnectSessionName)}`;
           const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
           if (!response.ok) return;
           const s = await response.json();
