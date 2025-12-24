@@ -23,11 +23,35 @@ const PROD_ANON_KEY =
 
 const trimTrailingSlash = (value: string) => value.replace(/\/$/, "");
 
-export const SUPABASE_URL: string = trimTrailingSlash(
-  (env?.VITE_SUPABASE_URL as string | undefined) || (import.meta.env.PROD ? PROD_URL : DEV_URL)
-);
+/**
+ * NOTE ON "dev deploys":
+ * Netlify/Vite builds typically run with `import.meta.env.PROD === true` even for branch/previews.
+ * To avoid accidentally pointing previews at PROD (and/or mixing URL+key), we:
+ * - Prefer explicit VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY if provided
+ * - If only one is provided, infer the correct pair based on the URL host
+ * - Default to DEV unless the resolved URL clearly targets PROD_URL
+ */
+const overrideUrlRaw = env?.VITE_SUPABASE_URL as string | undefined;
+const overrideKeyRaw = env?.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const SUPABASE_ANON_KEY: string =
-  (env?.VITE_SUPABASE_ANON_KEY as string | undefined) || (import.meta.env.PROD ? PROD_ANON_KEY : DEV_ANON_KEY);
+const normalizeUrl = (u: string) => trimTrailingSlash(u.trim());
+
+const inferEnvFromUrl = (u: string): 'prod' | 'dev' => {
+  const url = normalizeUrl(u);
+  if (url.includes('api.cssuper.com')) return 'prod';
+  if (url.includes('bkynymyhbfrhvwxqqttk.supabase.co')) return 'dev';
+  // Unknown host: treat as dev-safe by default.
+  return 'dev';
+};
+
+// Start with safest default.
+let targetEnv: 'prod' | 'dev' = 'dev';
+if (overrideUrlRaw) targetEnv = inferEnvFromUrl(overrideUrlRaw);
+
+const defaultUrl = targetEnv === 'prod' ? PROD_URL : DEV_URL;
+const defaultKey = targetEnv === 'prod' ? PROD_ANON_KEY : DEV_ANON_KEY;
+
+export const SUPABASE_URL: string = normalizeUrl(overrideUrlRaw || defaultUrl);
+export const SUPABASE_ANON_KEY: string = (overrideKeyRaw || defaultKey).trim();
 
 
