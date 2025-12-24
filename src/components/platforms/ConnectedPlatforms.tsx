@@ -489,7 +489,7 @@ const ConnectedPlatforms = () => {
       // Fetch all whatsapp channels once to avoid duplicates; use normalized name match
       const { data: existingChannels } = await supabase
         .from('channels')
-        .select('id, display_name, provider')
+        .select('id, display_name, provider, external_id, credentials')
         .eq('org_id', orgId)
         .eq('provider', 'whatsapp');
 
@@ -497,7 +497,21 @@ const ConnectedPlatforms = () => {
         const sessionName = s?.name || '';
         if (!sessionName) continue;
         const status = String(s?.status || '').toUpperCase();
-        const meId = s?.me?.id || null;
+        let meId = (s as any)?.me?.id || null;
+        // Some WAHA deployments don't include `me` on the list endpoint; fall back to session detail.
+        if (!meId && status === 'WORKING') {
+          try {
+            const detailUrl = `${WAHA_BASE_URL}/api/sessions/${encodeURIComponent(sessionName)}`;
+            const detailRes = await fetch(detailUrl, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+            if (detailRes.ok) {
+              const detailJson = await detailRes.json();
+              const detail = Array.isArray(detailJson) ? detailJson[0] : detailJson;
+              meId = detail?.me?.id || meId;
+            }
+          } catch {
+            // ignore best-effort detail lookup
+          }
+        }
         const isActive = status === 'WORKING' && Boolean(meId);
         const normalized = (sessionName || '').toLowerCase().replace(/\s/g, '');
         const match = (existingChannels || []).find(ch => (ch.display_name || '').toLowerCase().replace(/\s/g, '') === normalized);
@@ -505,12 +519,25 @@ const ConnectedPlatforms = () => {
           // If there's no matching channel created via UI (spaced name), skip insert to avoid duplicates
           continue;
         }
+        const existingCreds = (match as any)?.credentials && typeof (match as any).credentials === 'object'
+          ? (match as any).credentials
+          : {};
+        const sessionFallback = sessionName || normalized || null;
+        const nextExternalId = meId || (match as any)?.external_id || (existingCreds as any)?.waha_session_name || sessionFallback;
+
         await supabase
           .from('channels')
           .update({
             is_active: isActive,
-            external_id: meId,
-            credentials: { waha_status: s?.status || null, me_id: meId },
+            // Don't wipe external_id when the session isn't connected yet (meId is null).
+            // Keep a stable identifier (session name) until we know the real WhatsApp number (me.id).
+            external_id: nextExternalId,
+            credentials: {
+              ...existingCreds,
+              waha_status: s?.status || null,
+              me_id: meId,
+              waha_session_name: (existingCreds as any)?.waha_session_name || sessionFallback,
+            },
           })
           .eq('id', match.id);
       }
@@ -684,7 +711,12 @@ const ConnectedPlatforms = () => {
       const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_name: sessionName }),
+        body: JSON.stringify({
+          // Include channel id so backend workflows (n8n) can reliably clean up related resources.
+          channel_id: channel.id,
+          org_id: channel.org_id,
+          session_name: sessionName,
+        }),
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => '');

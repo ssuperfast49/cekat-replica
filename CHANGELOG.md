@@ -1,4 +1,20 @@
 # Change Log
+ # [0.1.22] FE WEB CEKAT 2025-12-24
+### Authentication & Environment
+- **Supabase Config Hardening**: Prevented “Invalid API key” errors in Netlify preview/dev deploys caused by URL/key mismatches.
+  - `src/config/supabase.ts` now infers dev/prod pairing from the Supabase URL host when only one override is provided.
+  - Defaults to a dev-safe target unless the URL clearly points to `api.cssuper.com`.
+  - Still supports explicit `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` overrides.
+
+### Platforms (WhatsApp)
+- **Delete Webhook Payload**: When deleting WhatsApp channels, the webhook call now includes the channel identifier.
+  - `DELETE_SESSION` payload now sends `channel_id` and `org_id` alongside `session_name` for reliable backend cleanup.
+
+- **External ID Consistency**: WhatsApp channels now maintain a stable external identifier across lifecycle states.
+  - On create, WhatsApp channels set `external_id` to the normalized WAHA session name and store `credentials.waha_session_name`.
+  - WAHA session sync now upgrades `external_id` to the real WhatsApp `me.id` (e.g. `628...@c.us`) once available, and never wipes it back to null.
+  - Added a fallback lookup to `GET /api/sessions/{name}` when the WAHA list endpoint does not include `me.id`.
+  - Standardized WAHA session naming to `toLowerCase().replace(/\s/g,'')` for consistent matching.
 # [0.1.21] FE WEB CEKAT 2025-12-24
 ### Circuit Breaker Settings
 - **Date Range Validation**: Updated chat date filter to require both "From" and "To" values before applying.
@@ -8,7 +24,6 @@
   - Displays inline guidance when only one side of the range is provided.
   - Ensures backend queries use start/end-of-day boundaries for inclusive day filtering.
   - Replaced separate date inputs with a single range calendar so start and end dates are chosen together.
-- **Changed Development server WAHA connection**
 
 # [0.1.20] FE WEB CEKAT 2025-12-24
 ### Conversations: Filter UX & Correctness
