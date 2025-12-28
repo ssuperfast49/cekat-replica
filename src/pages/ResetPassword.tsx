@@ -9,6 +9,8 @@ import { Loader2, Lock, Eye, EyeOff, ArrowLeft, AlertCircle } from 'lucide-react
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/sonner';
 
+const stripSpaces = (value: string) => value.replace(/\s/g, '');
+
 type PasswordRequirement = {
   id: string;
   test: (value: string) => boolean;
@@ -223,7 +225,12 @@ export default function ResetPassword() {
                     if (!passwordTouched) {
                       setPasswordTouched(true);
                     }
-                    setPassword(e.target.value);
+                    setPassword(stripSpaces(e.target.value));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ') {
+                      e.preventDefault();
+                    }
                   }}
                   className="pl-10 pr-10"
                   required
@@ -264,7 +271,12 @@ export default function ResetPassword() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Confirm new password"
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => setConfirmPassword(stripSpaces(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ') {
+                      e.preventDefault();
+                    }
+                  }}
                   className="pl-10"
                   required
                   minLength={8}

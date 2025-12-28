@@ -21,6 +21,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { supabase } from "@/lib/supabase";
 import { Checkbox } from "@/components/ui/checkbox";
 
+const sanitizeEmailInput = (value: string) => value.replace(/\s/g, "").toLowerCase();
+
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   // Teams UI disabled for now
@@ -1306,7 +1308,12 @@ const HumanAgents = () => {
                   id="agent-email"
                   type="email"
                   value={newAgent.email}
-                  onChange={(e) => setNewAgent({ ...newAgent, email: e.target.value })}
+                  onChange={(e) => setNewAgent({ ...newAgent, email: sanitizeEmailInput(e.target.value) })}
+                  onKeyDown={(e) => {
+                    if (e.key === " ") {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="Enter email address"
                 />
               </div>

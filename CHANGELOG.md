@@ -1,5 +1,21 @@
 # Change Log
- # [0.1.22] FE WEB CEKAT 2025-12-24
+# [0.1.23] FE WEB CEKAT 2025-12-29
+### Authentication & User Management
+- **Whitespace-Free Email & Password Inputs**: Login, reset-password, and agent creation forms now strip spaces and force lowercase emails while blocking space characters in passwords, preventing accidental invalid credentials.
+  - `src/components/auth/Login.tsx` sanitizes email input across login, reset, and (future) signup tabs and blocks whitespace in password fields.
+  - `src/pages/ResetPassword.tsx` applies the same input guards to new/confirm password fields.
+  - `src/components/humanagents/HumanAgents.tsx` normalizes emails when creating agents to avoid duplicate entries caused by casing or trailing spaces.
+
+### Conversations
+- **WhatsApp-Style Day Separators**: Chat threads display `Today`, `Yesterday`, or a formatted date badge between message clusters, making timelines easier to scan.
+  - Implemented in `src/components/chat/ConversationPage.tsx` with memoized grouping so the list stays performant.
+
+### Analytics
+- **Unified Date Range Picker**: Replaced separate `From`/`To` inputs with a single range calendar that mirrors the contacts page behavior and keeps queries bounded to today.
+  - `src/components/analytics/Analytics.tsx` stores normalized `YYYY-MM-DD` strings and offers a quick “Clear” action.
+- **Stable Refresh Logic**: Prevented stale data by delaying metric/database fetches until the user finishes selecting the range (popover closes), ensuring the latest `from/to` pair drives every refresh.
+
+# [0.1.22] FE WEB CEKAT 2025-12-24
 ### Authentication & Environment
 - **Supabase Config Hardening**: Prevented “Invalid API key” errors in Netlify preview/dev deploys caused by URL/key mismatches.
   - `src/config/supabase.ts` now infers dev/prod pairing from the Supabase URL host when only one override is provided.

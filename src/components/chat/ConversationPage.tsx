@@ -75,6 +75,39 @@ interface MessageSearchMatch extends MatchPosition {
   order: number;
 }
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+const getLocalDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatMessageDateLabel = (date: Date) => {
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffMs = startOfToday.getTime() - startOfTarget.getTime();
+  const diffDays = Math.floor(diffMs / DAY_IN_MS);
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+type MessageRenderItem =
+  | { type: "date"; key: string; label: string }
+  | { type: "message"; key: string; message: MessageWithDetails };
+
 const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = [], activeMatchOrder = -1 }: MessageBubbleProps) => {
   const isAgent = message.role === 'assistant' || message.role === 'agent' || message.direction === 'out';
   const isSystem = message.role === 'system' || message.type === 'event' || message.type === 'note';
@@ -471,6 +504,42 @@ export default function ConversationPage() {
 
   const matchCount = messageMatches.length;
   const activeMatch = matchCount > 0 ? messageMatches[currentMatchIndex] : null;
+
+  const lastMessageId = useMemo(() => (messages.length > 0 ? messages[messages.length - 1].id : null), [messages]);
+
+  const messagesWithDateSeparators = useMemo<MessageRenderItem[]>(() => {
+    const items: MessageRenderItem[] = [];
+    let lastDateKey: string | null = null;
+
+    messages.forEach((message) => {
+      const createdAt = message.created_at;
+      if (createdAt) {
+        const createdDate = new Date(createdAt);
+        if (!Number.isNaN(createdDate.getTime())) {
+          const dateKey = getLocalDateKey(createdDate);
+          if (dateKey !== lastDateKey) {
+            const label = formatMessageDateLabel(createdDate);
+            if (label) {
+              items.push({
+                type: "date",
+                key: `date-${dateKey}`,
+                label,
+              });
+            }
+            lastDateKey = dateKey;
+          }
+        }
+      }
+
+      items.push({
+        type: "message",
+        key: message.id,
+        message,
+      });
+    });
+
+    return items;
+  }, [messages]);
 
   const normalizeFilterString = (v: any) => {
     const s = (v ?? '').toString();
@@ -1468,17 +1537,30 @@ export default function ConversationPage() {
                     No messages yet. Start the conversation!
                   </div>
                 ) : (
-                  messages.map((message, index) => (
-                    <div key={message.id} ref={el => { messageRefs.current[message.id] = el; }}>
-                      <MessageBubble
-                        message={message}
-                        isLastMessage={index === messages.length - 1}
-                        highlighted={highlightMessageId === message.id}
-                        matches={matchesByMessage[message.id] ?? []}
-                        activeMatchOrder={activeMatch?.messageId === message.id ? activeMatch.order : -1}
-                      />
-                    </div>
-                  ))
+                  messagesWithDateSeparators.map((entry) => {
+                    if (entry.type === "date") {
+                      return (
+                        <div key={entry.key} className="flex justify-center my-4">
+                          <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                            {entry.label}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    const message = entry.message;
+                    return (
+                      <div key={entry.key} ref={el => { messageRefs.current[message.id] = el; }}>
+                        <MessageBubble
+                          message={message}
+                          isLastMessage={message.id === lastMessageId}
+                          highlighted={highlightMessageId === message.id}
+                          matches={matchesByMessage[message.id] ?? []}
+                          activeMatchOrder={activeMatch?.messageId === message.id ? activeMatch.order : -1}
+                        />
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </ScrollArea>
