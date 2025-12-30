@@ -3,6 +3,7 @@ import { SUPABASE_URL } from "@/integrations/supabase/client";
 const env = (import.meta as any).env ?? {};
 
 const LEGACY_BASE_URL = (env?.VITE_WEBHOOK_BASE_URL || "https://primary-production-376c.up.railway.app/webhook").replace(/\/$/, "");
+
 // Build proxy base URL from the shared Supabase base URL
 const PROXY_FUNCTION_SLUG = (env?.VITE_WEBHOOK_PROXY_SLUG || 'proxy-n8n');
 const PROXY_BASE_URL = `${SUPABASE_URL}/functions/v1/${PROXY_FUNCTION_SLUG}`.replace(/\/$/, "");

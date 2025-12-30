@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, Key } from "lucide-react";
@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router-dom";
 import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
+import ContactThreadPickerDialog, { type ContactThreadSummary } from "@/components/chat/ContactThreadPickerDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +58,8 @@ export default function Contacts() {
   const [editSaving, setEditSaving] = useState(false);
   const [contactDetailsOpen, setContactDetailsOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ContactWithDetails | null>(null);
+  const [threadPickerOpen, setThreadPickerOpen] = useState(false);
+  const [threadPickerContact, setThreadPickerContact] = useState<ContactWithDetails | null>(null);
   const navigate = useNavigate();
   const { hasPermission } = useRBAC();
   const canDeleteContacts = hasPermission('contacts.delete');
@@ -110,13 +113,20 @@ export default function Contacts() {
   };
 
   const handleViewConversation = (contact: ContactWithDetails) => {
+    setThreadPickerContact(contact);
+    setThreadPickerOpen(true);
+  };
+
+  const handleSelectThread = (thread: ContactThreadSummary) => {
+    if (!threadPickerContact) return;
     const params = new URLSearchParams({
       menu: "chat",
-      contact: contact.id,
+      contact: threadPickerContact.id,
+      thread: thread.id,
     });
-
+    setThreadPickerOpen(false);
     navigate({ pathname: "/chat", search: params.toString() });
-    toast.success(`Opening conversation with ${contact.name || "contact"}`);
+    toast.success(`Opening conversation with ${threadPickerContact.name || "contact"}`);
   };
 
   const handleViewDetails = (contact: ContactWithDetails) => {
@@ -1125,6 +1135,20 @@ export default function Contacts() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ContactThreadPickerDialog
+        open={threadPickerOpen}
+        onOpenChange={(open) => {
+          setThreadPickerOpen(open);
+          if (!open) setThreadPickerContact(null);
+        }}
+        contact={
+          threadPickerContact
+            ? { id: threadPickerContact.id, name: threadPickerContact.name, phone: threadPickerContact.phone }
+            : null
+        }
+        onSelectThread={handleSelectThread}
+      />
     </div>
   );
 }

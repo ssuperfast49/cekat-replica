@@ -1,4 +1,23 @@
 # Change Log
+# [0.1.24] FE WEB CEKAT 2025-12-30
+### Contacts → Conversations (Multi-Thread Support)
+- **Thread Picker for “Open conversation”**: Contacts now open a thread/channel picker instead of jumping directly to `/chat` by contact, solving ambiguity when a contact has multiple threads across channels.
+  - New component: `src/components/chat/ContactThreadPickerDialog.tsx`
+  - Updated: `src/components/contacts/Contacts.tsx` now opens the picker and navigates with `menu=chat&contact=<id>&thread=<id>`
+
+### Conversations: Deterministic Thread Selection
+- **URL-based thread deep link**: `ConversationPage` now supports `thread=<threadId>` and prioritizes it over `contact=<contactId>`, ensuring the correct thread opens even when the same contact has multiple channel threads.
+  - Clicking a conversation updates the URL (`thread` + `contact`) so navigation is stable and shareable.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Conversations UI
+- **Platform tags**: Conversation rows now show provider badges (e.g. Telegram/Web/WhatsApp) for clearer channel context.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Thread Picker UI Polish
+- **Better list layout**: Improved thread list rendering to avoid clipped/trimmed rows and to pin the platform chip to the bottom-right of each row (timestamp top-right).
+  - Updated: `src/components/chat/ContactThreadPickerDialog.tsx`
+
 # [0.1.23] FE WEB CEKAT 2025-12-29
 ### Authentication & User Management
 - **Whitespace-Free Email & Password Inputs**: Login, reset-password, and agent creation forms now strip spaces and force lowercase emails while blocking space characters in passwords, preventing accidental invalid credentials.

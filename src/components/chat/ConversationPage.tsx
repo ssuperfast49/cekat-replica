@@ -62,6 +62,14 @@ interface MatchPosition {
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const formatPlatformLabel = (providerRaw: string) => {
+  const p = providerRaw.trim().toLowerCase();
+  if (p === "telegram" || p === "Telegram") return "Telegram";
+  if (p === "whatsapp" || p === "wa") return "WhatsApp";
+  if (p === "web") return "Web";
+  return providerRaw;
+};
+
 interface MessageBubbleProps {
   message: MessageWithDetails;
   isLastMessage: boolean;
@@ -677,6 +685,7 @@ export default function ConversationPage() {
 
   // Get contact ID and tab from URL parameters
   const contactId = searchParams.get('contact');
+  const threadParam = searchParams.get('thread');
   const tabParam = searchParams.get('tab');
 
   // Bidirectional URL<->state sync with loop guard
@@ -809,9 +818,31 @@ export default function ConversationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  // Auto-select by explicit thread param (preferred). This disambiguates multi-channel contacts.
+  useEffect(() => {
+    if (!threadParam) return;
+    // Don't re-apply if user already selected (or we already applied it)
+    if (filteredConversations.length === 0) return;
+
+    const target = filteredConversations.find(c => c.id === threadParam);
+    if (!target) return;
+
+    setSelectedThreadId(target.id);
+    if (target.status === 'closed') {
+      setActiveTab('resolved');
+    } else {
+      setActiveTab(target.assigned ? 'assigned' : 'unassigned');
+    }
+    void fetchMessages(target.id);
+    if (target.channel?.provider) {
+      setSendMessageProvider(target.channel.provider);
+    }
+  }, [threadParam, filteredConversations]);
+
   // Auto-select by contactId only on first load for this navigation; do not override manual selection
   useEffect(() => {
     if (!contactId) return;
+    if (threadParam) return; // explicit thread param wins
     if (selectedThreadId) return; // user has already selected a thread; don't override
     if (filteredConversations.length === 0) return;
     const target = filteredConversations.find(c => c.contact_id === contactId);
@@ -922,13 +953,12 @@ export default function ConversationPage() {
       setSendMessageProvider(conv.channel.provider);
     }
     setSelectedThreadId(threadId);
-    // Clear URL contact param to avoid auto-selection overriding manual changes
+    // Keep URL in sync so deep-links work and URL selection doesn't override manual changes
     try {
       const next = new URLSearchParams(window.location.search);
-      if (next.has('contact')) {
-        next.delete('contact');
-        setSearchParams(next, { replace: true });
-      }
+      next.set('thread', threadId);
+      if (conv?.contact_id) next.set('contact', conv.contact_id);
+      setSearchParams(next, { replace: true });
     } catch { }
     await fetchMessages(threadId);
   };
@@ -1287,9 +1317,16 @@ export default function ConversationPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end shrink-0 w-[120px]">
-                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                          <div className="mt-1">{renderStatus(conv)}</div>
+                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                            <div className="mt-1">{renderStatus(conv)}</div>
+                          </div>
+                          {(conv.channel_provider || conv.channel?.provider) ? (
+                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                            </Badge>
+                          ) : <span />}
                         </div>
                       </div>
                     </button>
@@ -1342,9 +1379,16 @@ export default function ConversationPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end shrink-0 w-[120px]">
-                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                          <div className="mt-1">{renderStatus(conv)}</div>
+                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                            <div className="mt-1">{renderStatus(conv)}</div>
+                          </div>
+                          {(conv.channel_provider || conv.channel?.provider) ? (
+                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                            </Badge>
+                          ) : <span />}
                         </div>
                       </div>
                     </button>
@@ -1398,9 +1442,16 @@ export default function ConversationPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end shrink-0 w-[120px]">
-                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                          <div className="mt-1">{renderStatus(conv)}</div>
+                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                            <div className="mt-1">{renderStatus(conv)}</div>
+                          </div>
+                          {(conv.channel_provider || conv.channel?.provider) ? (
+                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                            </Badge>
+                          ) : <span />}
                         </div>
                       </div>
                     </button>
