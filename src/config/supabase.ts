@@ -38,7 +38,8 @@ const normalizeUrl = (u: string) => trimTrailingSlash(u.trim());
 
 const inferEnvFromUrl = (u: string): 'prod' | 'dev' => {
   const url = normalizeUrl(u);
-  if (url.includes('api.cssuper.com')) return 'prod';
+  // if (url.includes('api.cssuper.com')) return 'prod';
+  if (url.includes('tgrmxlbnutxpewfmofdx.supabase.co')) return 'prod';
   if (url.includes('bkynymyhbfrhvwxqqttk.supabase.co')) return 'dev';
   // Unknown host: treat as dev-safe by default.
   return 'dev';
