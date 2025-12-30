@@ -88,8 +88,8 @@ const Index = () => {
   const { user, signOut, setAccountDeactivated, accountDeactivated } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { getDefaultNavItem, getNavItem, canAccessNavItem } = useNavigation();
   const { loading: rbacLoading, hasRole } = useRBAC();
+  const { getDefaultNavItem, getNavItem, canAccessNavItem, getAccessibleNavItems } = useNavigation();
 
   // Org-wide AI paused modal state
   const [showAiPausedModal, setShowAiPausedModal] = useState(false);
@@ -276,7 +276,7 @@ const Index = () => {
           <Separator className="mb-4 mt-1"/>
           
           <nav className="flex flex-col gap-1 flex-1">
-            {NAVIGATION_ORDER.map((navKey) => {
+            {getAccessibleNavItems().map((navKey) => {
               const navItem = getNavItem(navKey);
               return (
                 <PermissionNavItem
@@ -411,7 +411,7 @@ const Index = () => {
             ) : active === "analytics" ? (
               <>
                 <h1 className="sr-only">Analytics Dashboard</h1>
-                <PermissionGate permission={'analytics.view_kpi'}>
+                <PermissionGate permission={'analytics.read'}>
                   <Analytics />
                 </PermissionGate>
               </>
@@ -445,7 +445,7 @@ const Index = () => {
               </PermissionGate>
             ) : active === "permissions" ? (
               <RoleGate role={ROLES.MASTER_AGENT} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
-                <PermissionGate permission={'access_rules.configure'}>
+                <PermissionGate permission={'roles.read'}>
                   <h1 className="sr-only">Permissions</h1>
                   <PermissionsPage />
                 </PermissionGate>

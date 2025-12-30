@@ -5,7 +5,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { Settings, Trash2, Plus, Loader2, Search } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import AIAgentSettings from "./AIAgentSettings";
 import { useAIProfiles, AIProfile } from "@/hooks/useAIProfiles";
@@ -13,6 +25,7 @@ import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSuperAgentScope } from "@/hooks/useSuperAgentScope";
+import { useHumanAgents } from "@/hooks/useHumanAgents";
 
 interface AIAgent {
   id: string;
@@ -143,9 +156,14 @@ const AIAgents = () => {
   const [filteredCount, setFilteredCount] = useState(0);
   const [totalAgents, setTotalAgents] = useState(0);
   const [lastCreated, setLastCreated] = useState<Date | null>(null);
+  const [agentPendingDelete, setAgentPendingDelete] = useState<AIAgent | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const firstLoadRef = useRef(true);
   const { user } = useAuth();
   const { mode: scopeMode, superAgentId, loading: scopeLoading, error: scopeError } = useSuperAgentScope();
+  const { agents: humanAgents } = useHumanAgents();
+  const [createSuperOpen, setCreateSuperOpen] = useState(false);
+  const [selectedCreateSuperId, setSelectedCreateSuperId] = useState<string | null>(null);
   
 const escapeIlike = (value: string) =>
   value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
@@ -158,7 +176,7 @@ const modelMap = useMemo(() => {
   return map;
 }, [aiModels, fallbackModels]);
 
-const { deleteProfile } = useAIProfiles();
+  const { deleteProfile } = useAIProfiles();
 
 const buildAgent = (
   profile: AIProfile,
@@ -385,19 +403,26 @@ useEffect(() => {
 }, [modelFilter, modelOptions]);
 
 // Delete AI agent
-const handleDeleteAgent = async (agentId: string) => {
+const handleDeleteAgent = (agentId: string) => {
   const agentToDelete = agents.find(agent => agent.id === agentId);
+  if (!agentToDelete) return;
+  setAgentPendingDelete(agentToDelete);
+};
 
-  if (window.confirm(`Are you sure you want to delete "${agentToDelete?.name}"? This action cannot be undone.`)) {
-    try {
-      await deleteProfile(agentId);
-      await Promise.all([fetchAgents(), fetchStats()]);
-      toast.success(`"${agentToDelete?.name}" has been deleted successfully`);
-    } catch (error) {
-      console.error('Error deleting agent:', error);
-      setError('Failed to delete AI agent');
-      toast.error('Failed to delete AI agent');
-    }
+const confirmDeleteAgent = async () => {
+  if (!agentPendingDelete) return;
+  try {
+    setDeleteLoading(true);
+    await deleteProfile(agentPendingDelete.id);
+    await Promise.all([fetchAgents(), fetchStats()]);
+    toast.success(`"${agentPendingDelete.name}" has been deleted successfully`);
+    setAgentPendingDelete(null);
+  } catch (error) {
+    console.error('Error deleting agent:', error);
+    setError('Failed to delete AI agent');
+    toast.error('Failed to delete AI agent');
+  } finally {
+    setDeleteLoading(false);
   }
 };
 
@@ -407,7 +432,7 @@ const handleDeleteAgent = async (agentId: string) => {
   };
 
   // Handle create agent form submission
-  const handleCreateAgent = () => {
+  const handleCreateAgent = async () => {
     if (!newAgentName.trim()) {
       toast.error('Please enter an AI agent name');
       return;
@@ -418,22 +443,60 @@ const handleDeleteAgent = async (agentId: string) => {
       return;
     }
 
-    const newAgent: AIAgent = {
-      id: 'new',
-      name: newAgentName.trim(),
-      initials: newAgentName.trim().split(' ').map(word => word.charAt(0)).join('').toUpperCase().slice(0, 2),
-      creator: 'Admin',
-      created_at: new Date().toISOString(),
-      modelId: selectedModelId,
-      modelName: aiModels.find((m) => m.id === selectedModelId)?.display_name || undefined,
-      provider: aiModels.find((m) => m.id === selectedModelId)?.provider || null,
-    };
-    
-    setSelectedAgent(newAgent);
-    setShowCreateDialog(false);
-    setNewAgentName("");
-    setSelectedTemplate("customer-service");
-    toast.info('Creating new AI agent...');
+    if (!selectedCreateSuperId) {
+      toast.error('Please choose a Super Agent');
+      return;
+    }
+
+    try {
+      // Create the AI profile immediately
+      const { data, error } = await supabase
+        .from('ai_profiles')
+        .insert([{
+          org_id: DEFAULT_ORG_ID,
+          name: newAgentName.trim(),
+          description: null,
+          system_prompt: "",
+          welcome_message: "",
+          transfer_conditions: "",
+          stop_ai_after_handoff: true,
+          model_id: selectedModelId,
+          super_agent_id: selectedCreateSuperId,
+        }])
+        .select('id, name, created_at, model_id, super_agent_id')
+        .single();
+
+      if (error) throw error;
+
+      const createdId = (data as any)?.id as string;
+
+      const newAgent: AIAgent = {
+        id: createdId,
+        name: data?.name || newAgentName.trim(),
+        initials: (data?.name || newAgentName.trim()).split(' ').map(w => w.charAt(0)).join('').toUpperCase().slice(0, 2),
+        creator: "Admin",
+        created_at: data?.created_at || new Date().toISOString(),
+        modelId: data?.model_id || selectedModelId,
+        modelName: aiModels.find((m) => m.id === (data?.model_id || selectedModelId))?.display_name || undefined,
+        provider: aiModels.find((m) => m.id === (data?.model_id || selectedModelId))?.provider || null,
+        superAgentId: data?.super_agent_id || selectedCreateSuperId,
+        superAgentName: undefined,
+      };
+
+      setSelectedAgent(newAgent);
+      setShowCreateDialog(false);
+      setNewAgentName("");
+      setSelectedTemplate("customer-service");
+      setSelectedCreateSuperId(null);
+      toast.success('AI agent created successfully');
+
+      // Refresh stats/list to reflect the new item
+      fetchAgents();
+      fetchStats();
+    } catch (e: any) {
+      console.error('Create AI Agent failed:', e);
+      toast.error(e?.message || 'Failed to create AI agent');
+    }
   };
 
   const modelsInitializedRef = useRef(false);
@@ -512,7 +575,8 @@ const handleDeleteAgent = async (agentId: string) => {
   const providerSelectOptions = providerOptions.length ? providerOptions : [];
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold">AI Agents</h1>
         <div className="text-muted-foreground max-w-2xl mx-auto">
@@ -675,6 +739,39 @@ const handleDeleteAgent = async (agentId: string) => {
               />
             </div>
 
+            {/* Super Agent picker with search */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Super Agent *</label>
+              <Popover open={createSuperOpen} onOpenChange={setCreateSuperOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between">
+                    {(() => {
+                      const sup = humanAgents.find(a => a.primaryRole === 'super_agent' && a.user_id === selectedCreateSuperId);
+                      return sup?.display_name || sup?.email || selectedCreateSuperId || 'Choose a super agent';
+                    })()}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[360px] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search super agents..." />
+                    <CommandEmpty>No super agents found.</CommandEmpty>
+                    <CommandGroup>
+                      {humanAgents
+                        .filter(a => a.primaryRole === 'super_agent')
+                        .map(sa => (
+                          <CommandItem key={sa.user_id} onSelect={() => { setSelectedCreateSuperId(sa.user_id); setCreateSuperOpen(false); }}>
+                            <span className="ml-2">{sa.display_name || sa.email || sa.user_id.slice(0,8)}</span>
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-muted-foreground">
+                Assign a super agent who will own and manage this AI agent.
+              </p>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Template</label>
               <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
@@ -781,7 +878,7 @@ const handleDeleteAgent = async (agentId: string) => {
             <Button 
               onClick={handleCreateAgent}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              disabled={!newAgentName.trim() || !selectedModelId}
+              disabled={!newAgentName.trim() || !selectedModelId || !selectedCreateSuperId}
             >
               Create AI Agent
             </Button>
@@ -790,6 +887,44 @@ const handleDeleteAgent = async (agentId: string) => {
         </Dialog>
       </PermissionGate>
     </div>
+
+      <AlertDialog
+        open={!!agentPendingDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) {
+            setAgentPendingDelete(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete AI Agent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {agentPendingDelete
+                ? `Are you sure you want to delete "${agentPendingDelete.name}"? This action cannot be undone.`
+                : "Are you sure you want to delete this AI agent?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteAgent}
+              disabled={deleteLoading}
+              className="bg-destructive hover:bg-destructive/90 focus:ring-destructive/50"
+            >
+              {deleteLoading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Deleting...
+                </span>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 

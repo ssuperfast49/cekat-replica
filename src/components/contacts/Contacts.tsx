@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, Key } from "lucide-react";
@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router-dom";
 import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
+import ContactThreadPickerDialog, { type ContactThreadSummary } from "@/components/chat/ContactThreadPickerDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { protectedSupabase } from "@/lib/supabase";
 
 // Remove hardcoded data - will use Supabase data instead
 
@@ -47,6 +49,7 @@ export default function Contacts() {
     handledBy: '',
     dateRange: {}
   });
+  const [exporting, setExporting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editName, setEditName] = useState<string>("");
@@ -55,12 +58,14 @@ export default function Contacts() {
   const [editSaving, setEditSaving] = useState(false);
   const [contactDetailsOpen, setContactDetailsOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ContactWithDetails | null>(null);
+  const [threadPickerOpen, setThreadPickerOpen] = useState(false);
+  const [threadPickerContact, setThreadPickerContact] = useState<ContactWithDetails | null>(null);
   const navigate = useNavigate();
   const { hasPermission } = useRBAC();
   const canDeleteContacts = hasPermission('contacts.delete');
   
   // Use the contacts hook
-  const { 
+  const {
     contacts, 
     loading, 
     error, 
@@ -108,13 +113,20 @@ export default function Contacts() {
   };
 
   const handleViewConversation = (contact: ContactWithDetails) => {
+    setThreadPickerContact(contact);
+    setThreadPickerOpen(true);
+  };
+
+  const handleSelectThread = (thread: ContactThreadSummary) => {
+    if (!threadPickerContact) return;
     const params = new URLSearchParams({
       menu: "chat",
-      contact: contact.id,
+      contact: threadPickerContact.id,
+      thread: thread.id,
     });
-
+    setThreadPickerOpen(false);
     navigate({ pathname: "/chat", search: params.toString() });
-    toast.success(`Opening conversation with ${contact.name || "contact"}`);
+    toast.success(`Opening conversation with ${threadPickerContact.name || "contact"}`);
   };
 
   const handleViewDetails = (contact: ContactWithDetails) => {
@@ -234,6 +246,16 @@ export default function Contacts() {
     return copy;
   })();
 
+  const filteredContacts = (() => {
+    let result = sortedContacts;
+    if (filters.handledBy && filters.handledBy !== '') {
+      result = result.filter(contact => contact.handledBy === filters.handledBy);
+    }
+    return result;
+  })();
+
+  const visibleCount = filteredContacts.length;
+
   const renderChatStatus = (status?: string) => {
     if (!status || status === '—') return <span className="text-muted-foreground">—</span>;
     const color = status === 'open' ? 'bg-blue-100 text-blue-700' : status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700';
@@ -247,7 +269,7 @@ export default function Contacts() {
         <div>
           <h1 className="text-2xl font-semibold">Contacts</h1>
           <p className="text-sm text-muted-foreground">
-            Total Contacts: {loading ? '...' : totalCount.toLocaleString()}
+            Total Contacts: {loading ? '...' : `${visibleCount.toLocaleString()} of ${totalCount.toLocaleString()}`}
           </p>
         </div>
         
@@ -442,22 +464,102 @@ export default function Contacts() {
                 </TooltipContent>
               </Tooltip>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline">Export</Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Ekspor daftar kontak</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline">Customize Columns</Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Kustomisasi kolom yang ditampilkan</p>
-              </TooltipContent>
-            </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        setExporting(true);
+                        const { data, error } = await protectedSupabase
+                          .from('contacts')
+                          .select(`
+                            id,
+                            name,
+                            phone,
+                            email,
+                            notes,
+                            created_at,
+                            threads!left(
+                              status,
+                              assignee_user_id,
+                              created_at,
+                              channels(display_name, provider, type)
+                            )
+                          `);
+
+                        if (error) throw error;
+
+                        const rows: Record<string, string>[] = (data || []).map((row: any) => {
+                          const latestThread = (row.threads || [])[0] || null;
+                          return {
+                            id: row.id,
+                            name: row.name ?? '',
+                            phone: row.phone ?? '',
+                            email: row.email ?? '',
+                            notes: row.notes ?? '',
+                            contact_created_at: row.created_at ?? '',
+                            chat_status: latestThread?.status ?? '',
+                            handled_by: latestThread?.assignee_user_id ?? '',
+                            chat_channel: latestThread?.channels?.display_name ?? '',
+                            chat_channel_provider: latestThread?.channels?.provider ?? '',
+                            chat_channel_type: latestThread?.channels?.type ?? '',
+                            chat_created_at: latestThread?.created_at ?? '',
+                          };
+                        });
+
+                        const csvContent = [
+                          ['ID','Name','Phone','Email','Notes','Contact Created At','Chat Status','Handled By','Chat Channel','Chat Channel Provider','Chat Channel Type','Chat Created At'].join(','),
+                          ...rows.map(row => [
+                            row.id,
+                            row.name,
+                            row.phone,
+                            row.email,
+                            row.notes?.replace(/"/g, '""'),
+                            row.contact_created_at,
+                            row.chat_status,
+                            row.handled_by,
+                            row.chat_channel,
+                            row.chat_channel_provider,
+                            row.chat_channel_type,
+                            row.chat_created_at
+                          ].map(value => `"${value ?? ''}"`).join(','))
+                        ].join('\n');
+
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.setAttribute('download', `contacts-${new Date().toISOString()}.csv`);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+
+                        toast.success('Contacts exported to CSV');
+                      } catch (err) {
+                        console.error('Failed to export contacts:', err);
+                        toast.error('Failed to export contacts');
+                      } finally {
+                        setExporting(false);
+                      }
+                    }}
+                    disabled={exporting}
+                  >
+                    {exporting ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Exporting...
+                      </span>
+                    ) : (
+                      'Export'
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Ekspor daftar kontak</p>
+                </TooltipContent>
+              </Tooltip>
           </div>
         </div>
       </div>
@@ -610,7 +712,7 @@ export default function Contacts() {
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedContacts.map((contact) => (
+                filteredContacts.map((contact) => (
                   <TableRow key={contact.id} className={`hover:bg-muted/50 ${selectedContacts.includes(contact.id) ? 'bg-blue-50' : ''}`}>
                     <TableCell>
                       <Checkbox 
@@ -754,13 +856,13 @@ export default function Contacts() {
           </Button>
           <span className="text-sm">
             Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">
-              {Math.ceil(totalCount / itemsPerPage)}
+              {Math.max(1, Math.ceil(visibleCount / itemsPerPage))}
             </span>
           </span>
           <Button 
             variant="outline" 
             size="sm"
-            disabled={currentPage >= Math.ceil(totalCount / itemsPerPage) || loading}
+            disabled={currentPage >= Math.ceil(visibleCount / itemsPerPage) || loading}
             onClick={() => setCurrentPage(currentPage + 1)}
           >
             <ChevronRight className="w-4 h-4" />
@@ -782,7 +884,7 @@ export default function Contacts() {
             </Select>
             <span>rows</span>
           </div>
-          <span>Total: <span className="font-medium">{totalCount.toLocaleString()}</span></span>
+          <span>Total: <span className="font-medium">{visibleCount.toLocaleString()}</span></span>
         </div>
       </div>
 
@@ -1033,6 +1135,20 @@ export default function Contacts() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ContactThreadPickerDialog
+        open={threadPickerOpen}
+        onOpenChange={(open) => {
+          setThreadPickerOpen(open);
+          if (!open) setThreadPickerContact(null);
+        }}
+        contact={
+          threadPickerContact
+            ? { id: threadPickerContact.id, name: threadPickerContact.name, phone: threadPickerContact.phone }
+            : null
+        }
+        onSelectThread={handleSelectThread}
+      />
     </div>
   );
 }

@@ -247,18 +247,31 @@ export const usePlatforms = () => {
       }
 
       // Create channel (formerly platform)
+      const normalizedWhatsAppSessionName =
+        platformData.provider === 'whatsapp'
+          ? String(platformData.display_name || '')
+              .toLowerCase()
+              .replace(/\s/g, '')
+          : null;
+
       const { data: newChannel, error: platformError } = await supabase
         .from('channels')
         .insert({
           org_id: orgId,
           display_name: platformData.display_name,
-          credentials: {},
+          credentials:
+            platformData.provider === 'whatsapp'
+              ? { waha_session_name: normalizedWhatsAppSessionName }
+              : {},
           provider: platformData.provider,
           type: 'inbox',
           profile_photo_url: platformData.profile_photo_url,
           ai_profile_id: platformData.ai_profile_id,
           super_agent_id: channelSuperAgentId,
           is_active: true,
+          // For WhatsApp, set an initial external_id to the WAHA session name.
+          // This ensures the channel is addressable even before it is connected (when me.id isn't known yet).
+          external_id: platformData.provider === 'whatsapp' ? normalizedWhatsAppSessionName : null,
         })
         .select()
         .single();

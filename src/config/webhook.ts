@@ -1,8 +1,9 @@
 // Webhook Configuration with proxy-aware routing
-import { SUPABASE_URL } from "../integrations/supabase/client";
+import { SUPABASE_URL } from "@/integrations/supabase/client";
 const env = (import.meta as any).env ?? {};
 
 const LEGACY_BASE_URL = (env?.VITE_WEBHOOK_BASE_URL || "https://primary-production-376c.up.railway.app/webhook").replace(/\/$/, "");
+
 // Build proxy base URL from the shared Supabase base URL
 const PROXY_FUNCTION_SLUG = (env?.VITE_WEBHOOK_PROXY_SLUG || 'proxy-n8n');
 const PROXY_BASE_URL = `${SUPABASE_URL}/functions/v1/${PROXY_FUNCTION_SLUG}`.replace(/\/$/, "");
@@ -36,9 +37,9 @@ export const WEBHOOK_CONFIG = {
     // Telegram endpoints
     TELEGRAM: {
       CREATE_PLATFORM: `${ROUTE_PREFIX}telegram.create_platform`,
-      // Provider-specific send endpoint
       SEND_MESSAGE: `${ROUTE_PREFIX}telegram.send_message`,
       DELETE_WEBHOOK: `${ROUTE_PREFIX}telegram.delete_webhook`,
+      VERIFY_TOKEN: `${SUPABASE_URL}/functions/v1/telegram-verify-token`,
     },
     
     // AI Agent endpoints
@@ -48,8 +49,8 @@ export const WEBHOOK_CONFIG = {
     },
     // Knowledgebase endpoints
     KNOWLEDGE: {
-      FILE_UPLOAD: "/knowledge/file-upload",
-      FILE_DELETE: "/knowledge/file-delete",
+      FILE_UPLOAD: "/knowledge/file-upload-dev",
+      FILE_DELETE: "/knowledge/file-delete-dev",
     },
     
     // Message endpoints
@@ -73,6 +74,13 @@ export const WEBHOOK_CONFIG = {
       const routeKey = extractRouteKey(endpoint);
       if (!routeKey) throw new Error("Invalid proxy route key");
       return `${PROXY_BASE_URL}/${routeKey}`;
+    }
+
+    // When forcing legacy, convert route:foo.bar → /foo.bar
+    if (opts.forceLegacy && isProxyEndpoint(endpoint)) {
+      const routeKey = extractRouteKey(endpoint);
+      if (!routeKey) throw new Error("Invalid proxy route key");
+      return `${LEGACY_BASE_URL}/${routeKey}`;
     }
 
     return `${LEGACY_BASE_URL}${ensureLeadingSlash(endpoint)}`;

@@ -21,6 +21,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { supabase } from "@/lib/supabase";
 import { Checkbox } from "@/components/ui/checkbox";
 
+const sanitizeEmailInput = (value: string) => value.replace(/\s/g, "").toLowerCase();
+
 const HumanAgents = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   // Teams UI disabled for now
@@ -70,8 +72,6 @@ const HumanAgents = () => {
   const [tabValue, setTabValue] = useState<'active' | 'pending'>('active');
   const [activeAgentToSuperMap, setActiveAgentToSuperMap] = useState<Record<string, string>>({});
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
-  const [createPermissionKey, setCreatePermissionKey] = useState<string | null>(null);
-  const [checkingCreatePermission, setCheckingCreatePermission] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "super_agent" | "agent">("all");
@@ -420,10 +420,10 @@ const HumanAgents = () => {
                               <div className="flex items-center gap-2">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                    <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                                       <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                                       <span className="text-xs">{stub.status}</span>
-                                      <ChevronDown className="h-3 w-3" />
+                                      {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent className="bg-background border z-50">
@@ -439,26 +439,11 @@ const HumanAgents = () => {
                                 {hasRole(ROLES.MASTER_AGENT) && (
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
-                                <PermissionGate permission={'super_agents.delete'}>
-                                  <TooltipProvider delayDuration={200}>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span>
-                                          <Button
-                                            size="sm"
-                                            className="h-8 w-8 p-0 bg-red-200 text-red-500 cursor-not-allowed"
-                                            disabled
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                          </Button>
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>Master agent tidak dapat dihapus</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                </PermissionGate>
+                                {stub.primaryRole !== 'master_agent' && (
+                                  <PermissionGate permission={'super_agents.delete'}>
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  </PermissionGate>
+                                )}
                               </div>
                             </div>
                           );
@@ -494,10 +479,10 @@ const HumanAgents = () => {
                                 <div className="flex items-center gap-2">
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                      <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                                         <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                                         <span className="text-xs">{stub.status}</span>
-                                        <ChevronDown className="h-3 w-3" />
+                                        {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent className="bg-background border z-50">
@@ -513,9 +498,11 @@ const HumanAgents = () => {
                                   {hasRole(ROLES.MASTER_AGENT) && (
                                     <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                   )}
-                                  <PermissionGate permission={'super_agents.delete'}>
-                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                  </PermissionGate>
+                                  {stub.primaryRole !== 'master_agent' && (
+                                    <PermissionGate permission={'super_agents.delete'}>
+                                      <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                    </PermissionGate>
+                                  )}
                                 </div>
                               </div>
 
@@ -548,10 +535,10 @@ const HumanAgents = () => {
                                     <div className="flex items-center gap-2">
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                          <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={child.primaryRole === 'master_agent'}>
                                             <div className={`h-2 w-2 rounded-full ${getStatusColor(child.status)}`} />
                                             <span className="text-xs">{child.status}</span>
-                                            <ChevronDown className="h-3 w-3" />
+                                            {child.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent className="bg-background border z-50">
@@ -567,9 +554,11 @@ const HumanAgents = () => {
                                       {hasRole(ROLES.MASTER_AGENT) && (
                                         <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(child)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                       )}
-                                      <PermissionGate permission={'super_agents.delete'}>
-                                        <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                      </PermissionGate>
+                                      {child.primaryRole !== 'master_agent' && (
+                                        <PermissionGate permission={'super_agents.delete'}>
+                                          <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                        </PermissionGate>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -606,10 +595,10 @@ const HumanAgents = () => {
                               <div className="flex items-center gap-2">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="gap-2 h-8">
+                                    <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                                       <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                                       <span className="text-xs">{stub.status}</span>
-                                      <ChevronDown className="h-3 w-3" />
+                                      {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent className="bg-background border z-50">
@@ -625,9 +614,11 @@ const HumanAgents = () => {
                                 {hasRole(ROLES.MASTER_AGENT) && (
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
-                                <PermissionGate permission={'super_agents.delete'}>
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                </PermissionGate>
+                                {stub.primaryRole !== 'master_agent' && (
+                                  <PermissionGate permission={'super_agents.delete'}>
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  </PermissionGate>
+                                )}
                               </div>
                             </div>
                           );
@@ -673,12 +664,12 @@ const HumanAgents = () => {
                       {isPending ? (
                         <Badge className={`text-xs leading-none h-6 px-2 inline-flex items-center ${isExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{isExpired ? 'Expired' : 'Invited'}</Badge>
                       ) : (
-                        <DropdownMenu>
+                                  <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="gap-2 h-8">
+                            <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
                               <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
                               <span className="text-xs">{stub.status}</span>
-                              <ChevronDown className="h-3 w-3" />
+                              {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="bg-background border z-50">
@@ -745,6 +736,20 @@ const HumanAgents = () => {
                               </Button>
                             </PermissionGate>
                           )}
+                          {stub.primaryRole !== 'master_agent' && (
+                            <PermissionGate permission={'super_agents.delete'}>
+                              <Button 
+                                size="sm" 
+                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </PermissionGate>
+                          )}
+                        </>
+                      ) : (
+                        stub.primaryRole !== 'master_agent' && (
                           <PermissionGate permission={'super_agents.delete'}>
                             <Button 
                               size="sm" 
@@ -754,17 +759,7 @@ const HumanAgents = () => {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </PermissionGate>
-                        </>
-                      ) : (
-                        <PermissionGate permission={'super_agents.delete'}>
-                          <Button 
-                            size="sm" 
-                            className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                            onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </PermissionGate>
+                        )
                       )}
                     </div>
                   </div>
@@ -1110,55 +1105,6 @@ const HumanAgents = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const resolveCreatePermission = async () => {
-      setCheckingCreatePermission(true);
-      try {
-        const { data, error } = await supabase
-          .from('permissions')
-          .select('id, resource, action');
-
-        if (cancelled) return;
-
-        if (error) {
-          console.warn('Failed to fetch permissions table:', error.message || error);
-          setCreatePermissionKey(null);
-          return;
-        }
-
-        console.debug('permissions table entries', data);
-
-        const hasUsersProfileCreate = (data || []).some(
-          (row: any) => String(row?.resource) === 'users_profile' && String(row?.action) === 'create'
-        );
-
-        if (hasUsersProfileCreate) {
-          setCreatePermissionKey('users_profile.create');
-        } else {
-          console.warn('users_profile.create permission not found in permissions table');
-          setCreatePermissionKey(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          console.warn('Error resolving create agent permission', e);
-          setCreatePermissionKey('super_agents.create');
-        }
-      } finally {
-        if (!cancelled) {
-          setCheckingCreatePermission(false);
-        }
-      }
-    };
-
-    resolveCreatePermission();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Compute which agents are visible to the current viewer
   const getVisibleAgents = () => {
     if (hasRole(ROLES.MASTER_AGENT)) return agents;
@@ -1317,21 +1263,32 @@ const HumanAgents = () => {
               </SelectContent>
             </Select>
           </div>
-          {checkingCreatePermission ? (
-            <Button className="gap-2 bg-blue-600 text-white" disabled>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Checking…
-            </Button>
-          ) : createPermissionKey ? (
-            <PermissionGate permission={createPermissionKey}>
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-                    <Plus className="h-4 w-4" />
-                    Create Agent
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md bg-background border">
+          <PermissionGate
+            permission={'users_profile.create'}
+            fallback={(
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button className="gap-2 bg-blue-600 text-white" disabled>
+                      <Plus className="h-4 w-4" />
+                      Create Agent
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>You do not have permission to create agents.</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          >
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                  <Plus className="h-4 w-4" />
+                  Create Agent
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md bg-background border">
                   <DialogHeader>
                     <DialogTitle>Create New Agent</DialogTitle>
                   </DialogHeader>
@@ -1351,7 +1308,12 @@ const HumanAgents = () => {
                   id="agent-email"
                   type="email"
                   value={newAgent.email}
-                  onChange={(e) => setNewAgent({ ...newAgent, email: e.target.value })}
+                  onChange={(e) => setNewAgent({ ...newAgent, email: sanitizeEmailInput(e.target.value) })}
+                  onKeyDown={(e) => {
+                    if (e.key === " ") {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="Enter email address"
                 />
               </div>
@@ -1441,22 +1403,7 @@ const HumanAgents = () => {
                   </div>
                 </DialogContent>
               </Dialog>
-            </PermissionGate>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button className="gap-2 bg-blue-600 text-white" disabled>
-                    <Plus className="h-4 w-4" />
-                    Create Agent
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Missing permission: users_profile.create</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          </PermissionGate>
         </div>
       </div>
 

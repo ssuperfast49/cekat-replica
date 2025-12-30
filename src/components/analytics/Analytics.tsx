@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,9 +9,12 @@ import { ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip, BarChart
 import { useEffect, useMemo, useState } from "react";
 import { supabase, logAction, protectedSupabase } from "@/lib/supabase";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
-import { HelpCircle, Database, Trash2, AlertTriangle, CheckCircle, Shield } from "lucide-react";
+import { HelpCircle, Database, Trash2, AlertTriangle, CheckCircle, Shield, CalendarIcon } from "lucide-react";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { useRBAC } from "@/contexts/RBACContext";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { DateRange } from "react-day-picker";
 
 type ConversationPoint = { time: string; value: number; firstTime?: number; returning?: number };
 type AgentMetric = { name: string; value: number };
@@ -147,6 +149,8 @@ export default function Analytics() {
     total_blocks_read: number;
     cache_hit_percentage: number;
   } | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   
   // Data retention & GDPR moved to Admin Panel
 
@@ -392,16 +396,86 @@ export default function Analytics() {
     }
   };
 
+  const formatInputDate = (date: Date) => date.toISOString().slice(0, 10);
+
+  const formatDisplayDate = (value: string) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  };
+
+  const dateSummary = useMemo(() => {
+    if (from && to) {
+      return `${formatDisplayDate(from)} – ${formatDisplayDate(to)}`;
+    }
+    if (from) {
+      return `From ${formatDisplayDate(from)}`;
+    }
+    if (to) {
+      return `Until ${formatDisplayDate(to)}`;
+    }
+    return "Select date range";
+  }, [from, to]);
+
+  useEffect(() => {
+    setDateRange((prev) => {
+      const nextFrom = from ? new Date(from) : undefined;
+      const nextTo = to ? new Date(to) : undefined;
+
+      if (!nextFrom && !nextTo) {
+        return prev ? undefined : prev;
+      }
+
+      const prevFromTime = prev?.from ? prev.from.getTime() : undefined;
+      const prevToTime = prev?.to ? prev.to.getTime() : undefined;
+      const nextFromTime = nextFrom ? nextFrom.getTime() : undefined;
+      const nextToTime = nextTo ? nextTo.getTime() : undefined;
+
+      if (prevFromTime === nextFromTime && prevToTime === nextToTime) {
+        return prev;
+      }
+
+      return { from: nextFrom, to: nextTo };
+    });
+  }, [from, to]);
+
+  const handleCalendarSelect = (range: DateRange | undefined) => {
+    setDateRange(range);
+    if (!range) {
+      setFrom("");
+      setTo("");
+      return;
+    }
+    const nextFrom = range.from ? formatInputDate(range.from) : "";
+    const nextTo = range.to ? formatInputDate(range.to) : "";
+    setFrom(nextFrom);
+    setTo(nextTo);
+    if (range.from && range.to) {
+      setDatePopoverOpen(false);
+    }
+  };
+
+  const handleClearDateRange = () => {
+    setDateRange(undefined);
+    setFrom("");
+    setTo("");
+    setDatePopoverOpen(false);
+  };
+
 
   // Single source of truth for fetching; avoids double calls on mount
   useEffect(() => {
+    if (datePopoverOpen) {
+      return;
+    }
     const run = () => {
       fetchMetrics();
       fetchDatabaseStats();
       // Retention & GDPR moved to Admin Panel
     };
     run();
-  }, [from, to, channelFilter]);
+  }, [from, to, channelFilter, datePopoverOpen]);
 
   return (
     <div className="p-6 space-y-6">
@@ -411,35 +485,46 @@ export default function Analytics() {
       </div>
 
       {/* Range controls */}
-      <div className="flex items-end gap-3">
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">From</div>
-          <Input
-            type="date"
-            value={from}
-            max={to || new Date().toISOString().slice(0,10)}
-            onChange={(e)=>{
-              const v = e.target.value;
-              setFrom(v);
-              if (to && v && v > to) setTo(v);
-            }}
-            className="h-9 w-[180px]"
-          />
-        </div>
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">To</div>
-          <Input
-            type="date"
-            value={to}
-            min={from || undefined}
-            max={new Date().toISOString().slice(0,10)}
-            onChange={(e)=>{
-              const v = e.target.value;
-              setTo(v);
-              if (from && v && v < from) setFrom(v);
-            }}
-            className="h-9 w-[180px]"
-          />
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="flex flex-col">
+          <span className="text-xs text-muted-foreground mb-1">Date Range</span>
+          <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={`justify-start text-left font-normal h-9 w-[220px] ${!from && !to ? "text-muted-foreground" : ""}`}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateSummary}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto min-w-[520px] p-0" align="start">
+              <CalendarComponent
+                mode="range"
+                numberOfMonths={2}
+                selected={dateRange}
+                defaultMonth={dateRange?.from ?? new Date()}
+                onSelect={handleCalendarSelect}
+                disabled={(date) => date > new Date()}
+                initialFocus
+              />
+              <div className="flex items-center justify-between border-t px-3 py-2">
+                <Button variant="ghost" size="sm" onClick={handleClearDateRange}>
+                  Clear
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDatePopoverOpen(false)}
+                    disabled={!dateRange?.from && !dateRange?.to}
+                  >
+                    Done
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <div>
           <div className="text-xs text-muted-foreground mb-1">Channel</div>

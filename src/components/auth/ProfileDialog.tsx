@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Settings, CreditCard, User, Lock, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 interface ProfilePopoverProps {
   children: React.ReactNode;
@@ -16,6 +17,7 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
   const [activeTab, setActiveTab] = useState("profile");
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [notifications, setNotifications] = useState(false);
+  const navigate = useNavigate();
 
   const getUserInitials = (name: string | null, email: string) => {
     if (name) {
@@ -30,6 +32,10 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
     } catch (error) {
       console.error('Error signing out:', error);
     }
+  };
+
+  const handleResetPassword = () => {
+    navigate("/reset-password");
   };
 
   const sidebarItems = [
@@ -117,7 +123,7 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
                 {/* Reset Password */}
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium">Reset Password</span>
-                  <Button variant="ghost" size="sm" className="p-1 h-6 w-6">
+                  <Button variant="ghost" size="sm" className="p-1 h-6 w-6" onClick={handleResetPassword}>
                     <Lock className="h-3 w-3 text-muted-foreground" />
                   </Button>
                 </div>

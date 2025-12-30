@@ -1,15 +1,32 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://api.cssuper.com'; //PROD
-// const supabaseUrl = 'https://bkynymyhbfrhvwxqqttk.supabase.co'; //DEV
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRncm14bGJudXR4cGV3Zm1vZmR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MDY0NzgsImV4cCI6MjA3MDQ4MjQ3OH0.ijDctaGPXK3Ce9uao72YaaYCX9fpPFZGpmrsWp9IfU8'; //PROD
-// const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJreW55bXloYmZyaHZ3eHFxdHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5Mzk1NzIsImV4cCI6MjA3OTUxNTU3Mn0.4ELI9s6908SdW2jd1BM_ht8pTIyLAwPpsqGiGNCdcC0'; //DEV
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Single Supabase client source of truth (env-aware) lives in integrations client.
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
+export const supabase = supabaseClient;
 
 // Export protected wrapper
 import { createProtectedSupabaseClient } from './supabaseProtected';
 export const protectedSupabase = createProtectedSupabaseClient(supabase);
+
+/**
+ * Get current user ID from localStorage (more reliable than Supabase session)
+ * Falls back to Supabase session if localStorage is not available
+ */
+export async function getCurrentUserId(): Promise<string | null> {
+  try {
+    // First try localStorage (more reliable)
+    const storedUserId = typeof localStorage !== 'undefined' 
+      ? localStorage.getItem('app.currentUserId') 
+      : null;
+    if (storedUserId) {
+      return storedUserId;
+    }
+    
+    // Fallback to Supabase session
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function logAction(params: {
   action: string;
@@ -24,8 +41,23 @@ export async function logAction(params: {
   try {
     const { action, resource, resourceId = null, context = {}, ip = null, userAgent = null } = params;
     // Resolve user and org if not supplied
-    const { data: authData } = await supabase.auth.getUser();
-    const resolvedUserId = params.userId ?? authData?.user?.id ?? null;
+    // Prefer localStorage user_id (more reliable) over Supabase session
+    let resolvedUserId = params.userId ?? null;
+    if (!resolvedUserId) {
+      try {
+        const storedUserId = typeof localStorage !== 'undefined' 
+          ? localStorage.getItem('app.currentUserId') 
+          : null;
+        if (storedUserId) {
+          resolvedUserId = storedUserId;
+        }
+      } catch {}
+    }
+    // Fallback to Supabase session if localStorage doesn't have it
+    if (!resolvedUserId) {
+      const { data: authData } = await supabase.auth.getUser();
+      resolvedUserId = authData?.user?.id ?? null;
+    }
     let resolvedOrgId = params.orgId ?? null;
     
     // Only try to resolve org if we have a valid user and session

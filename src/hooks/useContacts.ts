@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
 import { defaultFallbackHandler } from '@/lib/fallbackHandler';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 
 export interface Contact {
   id: string;
@@ -38,6 +39,12 @@ export const useContacts = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
+  const lastQueryRef = useRef<{ page: number; limit: number; searchQuery?: string; filters?: ContactsFilter }>({
+    page: 1,
+    limit: 100,
+    searchQuery: undefined,
+    filters: undefined,
+  });
 
   // Fetch contacts with pagination, search, and filters (server-side as much as possible)
   const fetchContacts = async (
@@ -47,11 +54,17 @@ export const useContacts = () => {
     filters?: ContactsFilter
   ) => {
     try {
+      lastQueryRef.current = { page, limit, searchQuery, filters };
       setLoading(true);
       setError(null);
 
       // Determine whether we need to inner-join threads based on filters
-      const needsThreadInnerJoin = !!(filters?.chatStatus || filters?.handledBy || filters?.dateRange?.from || filters?.dateRange?.to);
+      const needsThreadInnerJoin = !!(
+        filters?.chatStatus ||
+        filters?.dateRange?.from ||
+        filters?.dateRange?.to ||
+        filters?.handledBy === 'assigned'
+      );
 
       let query = protectedSupabase
         .from('contacts')
@@ -59,7 +72,7 @@ export const useContacts = () => {
           `
           id, org_id, name, email, phone, locale, notes, created_at,
           threads${needsThreadInnerJoin ? '!inner' : ''}(
-            status, created_at, assignee_user_id,
+            id, status, created_at, assignee_user_id,
             channels(display_name, provider, type)
           )
           `,
@@ -77,10 +90,7 @@ export const useContacts = () => {
         if (filters.chatStatus) {
           query = query.eq('threads.status', filters.chatStatus);
         }
-        if (filters.handledBy === 'unassigned') {
-          // contacts whose latest thread has no assignee
-          query = query.is('threads.assignee_user_id', null);
-        } else if (filters.handledBy === 'assigned') {
+        if (filters.handledBy === 'assigned') {
           query = query.not('threads.assignee_user_id', 'is', null as any);
         }
         if (filters.dateRange?.from) {
@@ -153,10 +163,7 @@ export const useContacts = () => {
 
           // Handled By filter
           if (filters.handledBy) {
-            if (filters.handledBy === 'unassigned' && contact.handledBy !== '') {
-              return false;
-            }
-            if (filters.handledBy !== 'unassigned' && contact.handledBy !== filters.handledBy) {
+            if (contact.handledBy !== filters.handledBy) {
               return false;
             }
           }
@@ -300,6 +307,28 @@ export const useContacts = () => {
   useEffect(() => {
     const run = () => fetchContacts();
     run();
+  }, []);
+
+  // Authorization changes: clear current UI state and refetch with last-used query params.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        setContacts([]);
+        setTotalCount(0);
+        setError(null);
+        setLoading(true);
+      } catch {}
+      try {
+        const { page, limit, searchQuery, filters } = lastQueryRef.current;
+        fetchContacts(page, limit, searchQuery, filters);
+      } catch {}
+    };
+    try {
+      window.addEventListener(AUTHZ_CHANGED_EVENT as any, handler as any);
+    } catch {}
+    return () => {
+      try { window.removeEventListener(AUTHZ_CHANGED_EVENT as any, handler as any); } catch {}
+    };
   }, []);
 
   return {

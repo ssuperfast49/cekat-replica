@@ -12,6 +12,9 @@ import pkg from "../../../package.json";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
+const stripSpaces = (value: string) => value.replace(/\s/g, "");
+const sanitizeEmailInput = (value: string) => stripSpaces(value).toLowerCase();
+
 interface LoginProps {
   onBack?: () => void;
 }
@@ -243,7 +246,12 @@ export default function Login({ onBack }: LoginProps) {
                       type="email"
                       placeholder="Enter your email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => setEmail(sanitizeEmailInput(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === " ") {
+                          e.preventDefault();
+                        }
+                      }}
                       className="pl-10"
                       required
                     />
@@ -259,7 +267,12 @@ export default function Login({ onBack }: LoginProps) {
                        type={showPassword ? "text" : "password"}
                        placeholder="Enter your password"
                        value={password}
-                       onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => setPassword(stripSpaces(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === " ") {
+                          e.preventDefault();
+                        }
+                      }}
                        className="pl-10 pr-10"
                        required
                      />
@@ -336,7 +349,12 @@ export default function Login({ onBack }: LoginProps) {
                       type="email"
                       placeholder="Enter your email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => setEmail(sanitizeEmailInput(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === " ") {
+                          e.preventDefault();
+                        }
+                      }}
                       className="pl-10"
                       required
                     />
@@ -351,7 +369,12 @@ export default function Login({ onBack }: LoginProps) {
                       type={showPassword ? "text" : "password"}
                       placeholder="Create a password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => setPassword(stripSpaces(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === " ") {
+                          e.preventDefault();
+                        }
+                      }}
                       className="pl-10 pr-10"
                       required
                       minLength={6}
@@ -380,7 +403,12 @@ export default function Login({ onBack }: LoginProps) {
                       type={showPassword ? "text" : "password"}
                       placeholder="Confirm your password"
                       value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      onChange={(e) => setConfirmPassword(stripSpaces(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === " ") {
+                          e.preventDefault();
+                        }
+                      }}
                       className="pl-10"
                       required
                     />
@@ -411,7 +439,12 @@ export default function Login({ onBack }: LoginProps) {
                       type="email"
                       placeholder="Enter your email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => setEmail(sanitizeEmailInput(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === " ") {
+                          e.preventDefault();
+                        }
+                      }}
                       className="pl-10"
                       required
                     />

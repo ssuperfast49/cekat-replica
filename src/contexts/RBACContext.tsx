@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { supabase } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { PERMISSIONS_SCHEMA } from '@/config/permissions';
+import { clearAuthzSensitiveCaches, emitAuthzChanged } from '@/lib/authz';
 import type { 
   Role, 
   Permission, 
@@ -46,6 +48,35 @@ export function RBACProvider({ children }: RBACProviderProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const computeAuthzFingerprint = (roles: Role[], permissions: Permission[]) => {
+    const rolePart = roles
+      .map(r => String(r?.name ?? '').trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join(',');
+    const permPart = permissions
+      .map(p => `${String((p as any)?.resource ?? '').trim().toLowerCase()}.${String((p as any)?.action ?? '').trim().toLowerCase()}`)
+      .filter(s => s !== '.')
+      .sort()
+      .join(',');
+    return `roles:${rolePart}|perms:${permPart}`;
+  };
+
+  const persistFingerprintAndMaybeInvalidate = (userId: string, fingerprint: string) => {
+    try {
+      const key = `app.authzFingerprint:${userId}`;
+      const prev = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      if (prev && prev !== fingerprint) {
+        // Role/permission change detected → clear any cached UI/data and force refetch.
+        clearAuthzSensitiveCaches();
+        emitAuthzChanged('rbac-fingerprint-changed');
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(key, fingerprint);
+      }
+    } catch {}
+  };
+
   const fetchUserRBAC = async (userId: string, opts?: { background?: boolean }) => {
     try {
       // During background refreshes, avoid flipping the global loading flag
@@ -74,6 +105,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
       if (userRolesError) throw userRolesError;
 
       if (!userRolesData || userRolesData.length === 0) {
+        persistFingerprintAndMaybeInvalidate(userId, computeAuthzFingerprint([], permissions));
         setUserRoles([]);
         setUserWithRoles({
           user_id: userId,
@@ -93,6 +125,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
       if (rolesError) throw rolesError;
 
       const roles: Role[] = rolesData || [];
+      persistFingerprintAndMaybeInvalidate(userId, computeAuthzFingerprint(roles, permissions));
       setUserRoles(roles);
 
       // Create roles with permissions
@@ -137,9 +170,38 @@ export function RBACProvider({ children }: RBACProviderProps) {
     }
   }, [user?.id, accountDeactivated]);
 
+  // Realtime: if your roles are edited directly in the DB, invalidate cached UI/data and refresh RBAC.
+  useEffect(() => {
+    if (!user?.id || accountDeactivated) return;
+    const uid = user.id;
+
+    const channel = supabase
+      .channel(`rbac-user-roles:${uid}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_roles', filter: `user_id=eq.${uid}` },
+        async () => {
+          // Clear any cached "master agent" UI/data immediately, then refresh RBAC in background.
+          clearAuthzSensitiveCaches();
+          emitAuthzChanged('user_roles-realtime-change');
+          try {
+            await fetchUserRBAC(uid, { background: true });
+          } catch {}
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, [user?.id, accountDeactivated]);
+
   // Permission checking functions
   const hasPermission = (permission: PermissionName | string): boolean => {
     if (!permission) return false;
+
+    // Master Agent Bypass: Always allow master_agent
+    if (userRoles.some(r => r.name === 'master_agent')) return true;
 
     const normalizedInput = String(permission).trim().toLowerCase();
 
@@ -162,6 +224,9 @@ export function RBACProvider({ children }: RBACProviderProps) {
         remove: ['delete'],
         delete: ['remove'],
         send: ['create'],
+        // Read synonyms: treat any read_* as satisfying generic read and vice versa
+        read: ['read_all', 'read_own', 'read_channel_owned', 'read_collaborator'],
+        read_all: ['read'],
       };
       const alts = synonymMap[action] || [];
       if (alts.length > 0) {
@@ -214,7 +279,14 @@ export function RBACProvider({ children }: RBACProviderProps) {
     if (!resource || actions.length === 0) return false;
     return actions.every(a => hasPermission(`${resource}.${a}`));
   };
-  const canRead = (resource: string) => hasPermission(`${resource}.read`);
+  // canRead checks if user has ANY read capability for the resource based on the schema
+  const canRead = (resource: string) => {
+    const actions = (PERMISSIONS_SCHEMA as any)[resource] as string[] | undefined;
+    if (!Array.isArray(actions)) return false;
+    const readActions = actions.filter(a => a === 'read' || a.startsWith('read_'));
+    if (readActions.length === 0) return false;
+    return readActions.some(a => hasPermission(`${resource}.${a}`));
+  };
   const canCreate = (resource: string) => hasPermission(`${resource}.create`);
   const canUpdate = (resource: string) => hasPermission(`${resource}.update`);
   const canDelete = (resource: string) => hasPermission(`${resource}.delete`);

@@ -67,6 +67,14 @@ export default function CircuitBreakerStatus() {
   const [editConfig, setEditConfig] = useState<CircuitBreakerConfig>(databaseCircuitBreaker.getConfig());
   const [adaptiveConfig, setAdaptiveConfig] = useState<AdaptiveConfig>(defaultAdaptiveRateLimiter.getConfig());
   const [editAdaptiveConfig, setEditAdaptiveConfig] = useState<AdaptiveConfig>(defaultAdaptiveRateLimiter.getConfig());
+  const formatMultiplierInput = (value: number) =>
+    Number.isFinite(value) ? value.toFixed(3).replace(/\.?0+$/, '') : '';
+  const [minMultiplierInput, setMinMultiplierInput] = useState<string>(() =>
+    formatMultiplierInput(defaultAdaptiveRateLimiter.getConfig().minMultiplier)
+  );
+  const [maxMultiplierInput, setMaxMultiplierInput] = useState<string>(() =>
+    formatMultiplierInput(defaultAdaptiveRateLimiter.getConfig().maxMultiplier)
+  );
   const [adaptiveMultipliers, setAdaptiveMultipliers] = useState<Record<OperationType, number>>({
     read: defaultAdaptiveRateLimiter.getMultiplier('read'),
     write: defaultAdaptiveRateLimiter.getMultiplier('write'),
@@ -74,7 +82,7 @@ export default function CircuitBreakerStatus() {
     auth: defaultAdaptiveRateLimiter.getMultiplier('auth'),
   });
 
-  const isAdmin = hasPermission('access_rules.configure'); // Using same permission as permissions page
+  const isAdmin = hasPermission('admin_panel.update'); // Admins can update panel settings
 
   useEffect(() => {
     // Update stats periodically
@@ -203,7 +211,10 @@ export default function CircuitBreakerStatus() {
   };
 
   const handleEditAdaptiveConfig = () => {
-    setEditAdaptiveConfig(defaultAdaptiveRateLimiter.getConfig());
+    const configValue = defaultAdaptiveRateLimiter.getConfig();
+    setEditAdaptiveConfig(configValue);
+    setMinMultiplierInput(formatMultiplierInput(configValue.minMultiplier));
+    setMaxMultiplierInput(formatMultiplierInput(configValue.maxMultiplier));
     setShowEditAdaptiveConfigModal(true);
   };
 
@@ -224,6 +235,26 @@ export default function CircuitBreakerStatus() {
   const successRate = stats.totalRequests > 0 
     ? ((stats.totalRequests - stats.failures) / stats.totalRequests * 100).toFixed(1)
     : '0';
+
+  const readLimit = editAdaptiveConfig.baseConfig.read.limit;
+  const writeLimit = editAdaptiveConfig.baseConfig.write.limit;
+  const rpcLimit = editAdaptiveConfig.baseConfig.rpc.limit;
+  const authLimit = editAdaptiveConfig.baseConfig.auth.limit;
+  const minMultiplier = editAdaptiveConfig.minMultiplier;
+  const maxMultiplier = editAdaptiveConfig.maxMultiplier;
+  const healthyLatencyThreshold = editAdaptiveConfig.healthyLatencyThreshold;
+  const stressLatencyThreshold = editAdaptiveConfig.stressLatencyThreshold;
+  const adjustmentInterval = editAdaptiveConfig.adjustmentInterval;
+
+  const isReadLimitValid = Number.isFinite(readLimit) && readLimit >= 10 && readLimit <= 1000;
+  const isWriteLimitValid = Number.isFinite(writeLimit) && writeLimit >= 5 && writeLimit <= 500;
+  const isRpcLimitValid = Number.isFinite(rpcLimit) && rpcLimit >= 5 && rpcLimit <= 200;
+  const isAuthLimitValid = Number.isFinite(authLimit) && authLimit >= 2 && authLimit <= 100;
+  const isMinMultiplierValid = Number.isFinite(minMultiplier) && minMultiplier >= 0.1 && minMultiplier <= 1.0;
+  const isMaxMultiplierValid = Number.isFinite(maxMultiplier) && maxMultiplier >= 1.0 && maxMultiplier <= 5.0;
+  const isHealthyLatencyValid = Number.isFinite(healthyLatencyThreshold) && healthyLatencyThreshold >= 50 && healthyLatencyThreshold <= 1000;
+  const isStressLatencyValid = Number.isFinite(stressLatencyThreshold) && stressLatencyThreshold >= 500 && stressLatencyThreshold <= 10000;
+  const isAdjustmentIntervalValid = Number.isFinite(adjustmentInterval) && adjustmentInterval >= 10000 && adjustmentInterval <= 600000;
 
   // Sample metrics data for charts (last 10 minutes)
   const timeSeriesData = Array.from({ length: 10 }, (_, i) => {
@@ -593,7 +624,7 @@ export default function CircuitBreakerStatus() {
       )}
 
       {/* Admin Controls */}
-      <PermissionGate permission="access_rules.configure">
+      <PermissionGate permission="admin_panel.update">
         {/* Limit Configuration */}
         <Card className="mb-4">
           <CardHeader>
@@ -832,7 +863,7 @@ export default function CircuitBreakerStatus() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t">
               <div className="space-y-2">
                 <div className="flex items-center gap-1">
                   <Label className="text-xs text-muted-foreground">Min Multiplier</Label>
@@ -873,6 +904,48 @@ export default function CircuitBreakerStatus() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Maximum: {(adaptiveConfig.maxMultiplier * 100).toFixed(0)}% dari base
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label className="text-xs text-muted-foreground">Healthy Latency Threshold (ms)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Response time di bawah ini dianggap sehat. Sistem akan meningkatkan limit (min: 50ms, max: 1000ms)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  value={adaptiveConfig.healthyLatencyThreshold}
+                  disabled
+                  className="font-mono"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {(adaptiveConfig.healthyLatencyThreshold / 1000).toFixed(1)} seconds
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <Label className="text-xs text-muted-foreground">Stress Latency Threshold (ms)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Response time di atas ini dianggap stres. Sistem akan menurunkan limit (min: 500ms, max: 10000ms)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  value={adaptiveConfig.stressLatencyThreshold}
+                  disabled
+                  className="font-mono"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {(adaptiveConfig.stressLatencyThreshold / 1000).toFixed(1)} seconds
                 </p>
               </div>
               <div className="space-y-2">
@@ -2016,25 +2089,61 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="right" align="start" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi read (min: 10, max: 1000)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="readLimit"
-                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min={10}
                     max={1000}
-                    value={editAdaptiveConfig.baseConfig.read.limit}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      baseConfig: {
-                        ...editAdaptiveConfig.baseConfig,
-                        read: { ...editAdaptiveConfig.baseConfig.read, limit: parseInt(e.target.value) || 100 }
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault();
                       }
-                    })}
+                    }}
+                    value={Number.isFinite(readLimit) ? readLimit : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setEditAdaptiveConfig((prev) => {
+                        if (raw === '') {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              read: { ...prev.baseConfig.read, limit: NaN },
+                            },
+                          };
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (!Number.isFinite(parsed)) {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              read: { ...prev.baseConfig.read, limit: NaN },
+                            },
+                          };
+                        }
+                        const next = Math.min(1000, parsed);
+                        return {
+                          ...prev,
+                          baseConfig: {
+                            ...prev.baseConfig,
+                            read: { ...prev.baseConfig.read, limit: next },
+                          },
+                        };
+                      });
+                    }}
                   />
+                  {!isReadLimitValid && (
+                    <p className="text-xs text-red-500">
+                      Reads base limit must be between 10 and 1000 requests per minute.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="writeLimit">
@@ -2043,25 +2152,61 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi write (min: 5, max: 500)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="writeLimit"
-                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min={5}
                     max={500}
-                    value={editAdaptiveConfig.baseConfig.write.limit}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      baseConfig: {
-                        ...editAdaptiveConfig.baseConfig,
-                        write: { ...editAdaptiveConfig.baseConfig.write, limit: parseInt(e.target.value) || 30 }
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault();
                       }
-                    })}
+                    }}
+                    value={Number.isFinite(writeLimit) ? writeLimit : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setEditAdaptiveConfig((prev) => {
+                        if (raw === '') {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              write: { ...prev.baseConfig.write, limit: NaN },
+                            },
+                          };
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (!Number.isFinite(parsed)) {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              write: { ...prev.baseConfig.write, limit: NaN },
+                            },
+                          };
+                        }
+                        const next = Math.min(500, parsed);
+                        return {
+                          ...prev,
+                          baseConfig: {
+                            ...prev.baseConfig,
+                            write: { ...prev.baseConfig.write, limit: next },
+                          },
+                        };
+                      });
+                    }}
                   />
+                  {!isWriteLimitValid && (
+                    <p className="text-xs text-red-500">
+                      Writes base limit must be between 5 and 500 requests per minute.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="rpcLimit">
@@ -2070,25 +2215,61 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="right" align="start" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi RPC (min: 5, max: 200)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="rpcLimit"
-                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min={5}
                     max={200}
-                    value={editAdaptiveConfig.baseConfig.rpc.limit}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      baseConfig: {
-                        ...editAdaptiveConfig.baseConfig,
-                        rpc: { ...editAdaptiveConfig.baseConfig.rpc, limit: parseInt(e.target.value) || 20 }
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault();
                       }
-                    })}
+                    }}
+                    value={Number.isFinite(rpcLimit) ? rpcLimit : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setEditAdaptiveConfig((prev) => {
+                        if (raw === '') {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              rpc: { ...prev.baseConfig.rpc, limit: NaN },
+                            },
+                          };
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (!Number.isFinite(parsed)) {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              rpc: { ...prev.baseConfig.rpc, limit: NaN },
+                            },
+                          };
+                        }
+                        const next = Math.min(200, parsed);
+                        return {
+                          ...prev,
+                          baseConfig: {
+                            ...prev.baseConfig,
+                            rpc: { ...prev.baseConfig.rpc, limit: next },
+                          },
+                        };
+                      });
+                    }}
                   />
+                  {!isRpcLimitValid && (
+                    <p className="text-xs text-red-500">
+                      RPC base limit must be between 5 and 200 requests per minute.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="authLimit">
@@ -2097,25 +2278,61 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi autentikasi (min: 2, max: 100)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="authLimit"
-                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min={2}
                     max={100}
-                    value={editAdaptiveConfig.baseConfig.auth.limit}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      baseConfig: {
-                        ...editAdaptiveConfig.baseConfig,
-                        auth: { ...editAdaptiveConfig.baseConfig.auth, limit: parseInt(e.target.value) || 10 }
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault();
                       }
-                    })}
+                    }}
+                    value={Number.isFinite(authLimit) ? authLimit : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setEditAdaptiveConfig((prev) => {
+                        if (raw === '') {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              auth: { ...prev.baseConfig.auth, limit: NaN },
+                            },
+                          };
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (!Number.isFinite(parsed)) {
+                          return {
+                            ...prev,
+                            baseConfig: {
+                              ...prev.baseConfig,
+                              auth: { ...prev.baseConfig.auth, limit: NaN },
+                            },
+                          };
+                        }
+                        const next = Math.min(100, parsed);
+                        return {
+                          ...prev,
+                          baseConfig: {
+                            ...prev.baseConfig,
+                            auth: { ...prev.baseConfig.auth, limit: next },
+                          },
+                        };
+                      });
+                    }}
                   />
+                  {!isAuthLimitValid && (
+                    <p className="text-xs text-red-500">
+                      Auth base limit must be between 2 and 100 requests per minute.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -2130,26 +2347,65 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Multiplier minimum (misal: 0.5 = 50%). Digunakan saat sistem stres (min: 0.1, max: 1.0)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="minMultiplier"
-                    type="number"
+                    inputMode="decimal"
+                    pattern="^[0-9]*[.]?[0-9]*$"
                     min={0.1}
                     max={1.0}
                     step={0.1}
-                    value={editAdaptiveConfig.minMultiplier}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      minMultiplier: parseFloat(e.target.value) || 0.5
-                    })}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    value={minMultiplierInput}
+                    onChange={(e) => {
+                      let sanitized = e.target.value.replace(/[^0-9.]/g, '');
+                      if ((sanitized.match(/\./g)?.length ?? 0) > 1) {
+                        return;
+                      }
+                      if (sanitized.startsWith('.')) {
+                        sanitized = `0${sanitized}`;
+                      }
+                      if (sanitized.includes('.')) {
+                        const [whole, fraction] = sanitized.split('.');
+                        const limitedFraction = (fraction ?? '').slice(0, 3);
+                        sanitized = `${whole}.${limitedFraction}`;
+                      }
+                      if (sanitized === '' || sanitized === '.') {
+                        setMinMultiplierInput('');
+                        setEditAdaptiveConfig((prev) => ({ ...prev, minMultiplier: NaN }));
+                        return;
+                      }
+                      const parsed = parseFloat(sanitized);
+                      if (!Number.isFinite(parsed)) {
+                        setMinMultiplierInput('');
+                        setEditAdaptiveConfig((prev) => ({ ...prev, minMultiplier: NaN }));
+                        return;
+                      }
+                      const capped = Math.min(1.0, parsed);
+                      const displayValue = parsed > capped ? capped.toFixed(3).replace(/\.?0+$/, '') : sanitized;
+                      setMinMultiplierInput(displayValue);
+                      setEditAdaptiveConfig((prev) => ({ ...prev, minMultiplier: parseFloat(displayValue) }));
+                    }}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Minimum: {(editAdaptiveConfig.minMultiplier * 100).toFixed(0)}% dari base limit
+                    Minimum:{' '}
+                    {Number.isFinite(minMultiplier)
+                      ? `${(minMultiplier * 100).toFixed(0)}% dari base limit`
+                      : 'Enter a minimum multiplier value'}
                   </p>
+                  {(!isMinMultiplierValid) && (
+                    <p className="text-xs text-red-500">
+                      Min multiplier must be between 0.1 and 1.0.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="maxMultiplier">
@@ -2158,26 +2414,65 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="left" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Multiplier maksimum (misal: 2.0 = 200%). Digunakan saat sistem sehat (min: 1.0, max: 5.0)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="maxMultiplier"
-                    type="number"
+                    inputMode="decimal"
+                    pattern="^[0-9]*[.]?[0-9]*$"
                     min={1.0}
                     max={5.0}
                     step={0.1}
-                    value={editAdaptiveConfig.maxMultiplier}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      maxMultiplier: parseFloat(e.target.value) || 2.0
-                    })}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    value={maxMultiplierInput}
+                    onChange={(e) => {
+                      let sanitized = e.target.value.replace(/[^0-9.]/g, '');
+                      if ((sanitized.match(/\./g)?.length ?? 0) > 1) {
+                        return;
+                      }
+                      if (sanitized.startsWith('.')) {
+                        sanitized = `0${sanitized}`;
+                      }
+                      if (sanitized.includes('.')) {
+                        const [whole, fraction] = sanitized.split('.');
+                        const limitedFraction = (fraction ?? '').slice(0, 3);
+                        sanitized = `${whole}.${limitedFraction}`;
+                      }
+                      if (sanitized === '' || sanitized === '.') {
+                        setMaxMultiplierInput('');
+                        setEditAdaptiveConfig((prev) => ({ ...prev, maxMultiplier: NaN }));
+                        return;
+                      }
+                      const parsed = parseFloat(sanitized);
+                      if (!Number.isFinite(parsed)) {
+                        setMaxMultiplierInput('');
+                        setEditAdaptiveConfig((prev) => ({ ...prev, maxMultiplier: NaN }));
+                        return;
+                      }
+                      const capped = Math.min(5.0, parsed);
+                      const displayValue = parsed > capped ? capped.toFixed(3).replace(/\.?0+$/, '') : sanitized;
+                      setMaxMultiplierInput(displayValue);
+                      setEditAdaptiveConfig((prev) => ({ ...prev, maxMultiplier: parseFloat(displayValue) }));
+                    }}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Maximum: {(editAdaptiveConfig.maxMultiplier * 100).toFixed(0)}% dari base limit
+                    Maximum:{' '}
+                    {Number.isFinite(maxMultiplier)
+                      ? `${(maxMultiplier * 100).toFixed(0)}% dari base limit`
+                      : 'Enter a maximum multiplier value'}
                   </p>
+                  {(!isMaxMultiplierValid) && (
+                    <p className="text-xs text-red-500">
+                      Max multiplier must be between 1.0 and 5.0.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="healthyLatency">
@@ -2186,23 +2481,49 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Response time di bawah ini dianggap sehat. Sistem akan meningkatkan limit (min: 50ms, max: 1000ms)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="healthyLatency"
-                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min={50}
                     max={1000}
                     step={50}
-                    value={editAdaptiveConfig.healthyLatencyThreshold}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      healthyLatencyThreshold: parseInt(e.target.value) || 200
-                    })}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    value={Number.isFinite(healthyLatencyThreshold) ? healthyLatencyThreshold : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setEditAdaptiveConfig((prev) => {
+                        if (raw === '') {
+                          return { ...prev, healthyLatencyThreshold: NaN };
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (!Number.isFinite(parsed)) {
+                          return { ...prev, healthyLatencyThreshold: NaN };
+                        }
+                        const next = Math.min(1000, parsed);
+                        return { ...prev, healthyLatencyThreshold: next };
+                      });
+                    }}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {Number.isFinite(healthyLatencyThreshold)
+                      ? `${(healthyLatencyThreshold / 1000).toFixed(1)} seconds`
+                      : 'Enter a value between 50 and 1000 milliseconds'}
+                  </p>
+                  {(!isHealthyLatencyValid) && (
+                    <p className="text-xs text-red-500">
+                      Healthy latency threshold must be between 50 and 1000 milliseconds.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="stressLatency">
@@ -2211,23 +2532,49 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="left" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Response time di atas ini dianggap stres. Sistem akan menurunkan limit (min: 500ms, max: 10000ms)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="stressLatency"
-                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min={500}
                     max={10000}
                     step={100}
-                    value={editAdaptiveConfig.stressLatencyThreshold}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      stressLatencyThreshold: parseInt(e.target.value) || 1000
-                    })}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    value={Number.isFinite(stressLatencyThreshold) ? stressLatencyThreshold : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setEditAdaptiveConfig((prev) => {
+                        if (raw === '') {
+                          return { ...prev, stressLatencyThreshold: NaN };
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (!Number.isFinite(parsed)) {
+                          return { ...prev, stressLatencyThreshold: NaN };
+                        }
+                        const next = Math.min(10000, parsed);
+                        return { ...prev, stressLatencyThreshold: next };
+                      });
+                    }}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {Number.isFinite(stressLatencyThreshold)
+                      ? `${(stressLatencyThreshold / 1000).toFixed(1)} seconds`
+                      : 'Enter a value between 500 and 10000 milliseconds'}
+                  </p>
+                  {(!isStressLatencyValid) && (
+                    <p className="text-xs text-red-500">
+                      Stress latency threshold must be between 500 and 10000 milliseconds.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="adjustmentInterval">
@@ -2236,26 +2583,49 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent>
+                    <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Frekuensi pengecekan dan penyesuaian limit (min: 10000ms, max: 600000ms)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
                   <Input
                     id="adjustmentInterval"
-                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min={10000}
                     max={600000}
                     step={10000}
-                    value={editAdaptiveConfig.adjustmentInterval}
-                    onChange={(e) => setEditAdaptiveConfig({
-                      ...editAdaptiveConfig,
-                      adjustmentInterval: parseInt(e.target.value) || 60000
-                    })}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    value={Number.isFinite(adjustmentInterval) ? adjustmentInterval : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setEditAdaptiveConfig((prev) => {
+                        if (raw === '') {
+                          return { ...prev, adjustmentInterval: NaN };
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (!Number.isFinite(parsed)) {
+                          return { ...prev, adjustmentInterval: NaN };
+                        }
+                        const next = Math.min(600000, parsed);
+                        return { ...prev, adjustmentInterval: next };
+                      });
+                    }}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Setiap {(editAdaptiveConfig.adjustmentInterval / 1000).toFixed(0)} detik
+                    {Number.isFinite(adjustmentInterval)
+                      ? `Setiap ${(adjustmentInterval / 1000).toFixed(0)} detik`
+                      : 'Enter an interval between 10000 and 600000 milliseconds.'}
                   </p>
+                  {(!isAdjustmentIntervalValid) && (
+                    <p className="text-xs text-red-500">
+                      Adjustment interval must be between 10000 and 600000 milliseconds.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -2270,7 +2640,21 @@ export default function CircuitBreakerStatus() {
             <Button variant="outline" onClick={() => setShowEditAdaptiveConfigModal(false)}>
               Batal
             </Button>
-            <Button variant="default" onClick={confirmEditAdaptiveConfig}>
+            <Button
+              variant="default"
+              onClick={confirmEditAdaptiveConfig}
+              disabled={
+                !isReadLimitValid ||
+                !isWriteLimitValid ||
+                !isRpcLimitValid ||
+                !isAuthLimitValid ||
+                !isMinMultiplierValid ||
+                !isMaxMultiplierValid ||
+                !isHealthyLatencyValid ||
+                !isStressLatencyValid ||
+                !isAdjustmentIntervalValid
+              }
+            >
               Simpan Perubahan
             </Button>
           </DialogFooter>
@@ -2305,11 +2689,20 @@ export default function CircuitBreakerStatus() {
                 </Label>
                 <Input
                   id="failureThreshold"
-                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1}
                   max={100}
-                  value={editConfig.failureThreshold}
-                  onChange={(e) => setEditConfig({ ...editConfig, failureThreshold: parseInt(e.target.value) || 5 })}
+                  value={Number.isFinite(editConfig.failureThreshold) ? editConfig.failureThreshold : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    if (raw === '') {
+                      setEditConfig((prev) => ({ ...prev, failureThreshold: 1 }));
+                      return;
+                    }
+                    const next = Math.min(100, Math.max(1, parseInt(raw, 10)));
+                    setEditConfig((prev) => ({ ...prev, failureThreshold: next }));
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -2320,22 +2713,50 @@ export default function CircuitBreakerStatus() {
                       <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Waktu tunggu sebelum mencoba pemulihan (transisi ke HALF_OPEN). Min: 5000ms, Max: 300000ms</p>
+                      <p>Waktu tunggu sebelum mencoba pemulihan (transisi ke HALF_OPEN). Min: 10000ms, Max: 300000ms</p>
                     </TooltipContent>
                   </Tooltip>
                 </Label>
                 <Input
                   id="resetTimeout"
-                  type="number"
-                  min={5000}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  min={10000}
                   max={300000}
                   step={1000}
-                  value={editConfig.resetTimeout}
-                  onChange={(e) => setEditConfig({ ...editConfig, resetTimeout: parseInt(e.target.value) || 30000 })}
+                  onKeyDown={(e) => {
+                    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  value={Number.isFinite(editConfig.resetTimeout) ? editConfig.resetTimeout : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    if (raw === '') {
+                      setEditConfig((prev) => ({ ...prev, resetTimeout: NaN }));
+                      return;
+                    }
+                    const parsed = parseInt(raw, 10);
+                    if (!Number.isFinite(parsed)) {
+                      setEditConfig((prev) => ({ ...prev, resetTimeout: NaN }));
+                      return;
+                    }
+                    setEditConfig((prev) => ({ ...prev, resetTimeout: parsed }));
+                  }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {(editConfig.resetTimeout / 1000).toFixed(0)} seconds
+                  {Number.isFinite(editConfig.resetTimeout)
+                    ? `${(editConfig.resetTimeout / 1000).toFixed(0)} seconds`
+                    : 'Enter a value between 10000 and 300000'}
                 </p>
+                {Number.isFinite(editConfig.resetTimeout) && editConfig.resetTimeout < 10000 && (
+                  <p className="text-xs text-red-500">
+                    Minimum reset timeout is 10000 milliseconds (10 seconds).
+                  </p>
+                )}
+                {Number.isFinite(editConfig.resetTimeout) && editConfig.resetTimeout > 300000 && (
+                  <p className="text-xs text-red-500">Maximum reset timeout is 300000 milliseconds.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="successThreshold">
@@ -2351,12 +2772,38 @@ export default function CircuitBreakerStatus() {
                 </Label>
                 <Input
                   id="successThreshold"
-                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1}
                   max={10}
-                  value={editConfig.successThreshold}
-                  onChange={(e) => setEditConfig({ ...editConfig, successThreshold: parseInt(e.target.value) || 2 })}
+                  onKeyDown={(e) => {
+                    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  value={Number.isFinite(editConfig.successThreshold) ? editConfig.successThreshold : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    if (raw === '') {
+                      setEditConfig((prev) => ({ ...prev, successThreshold: NaN }));
+                      return;
+                    }
+                    const parsed = parseInt(raw, 10);
+                    if (!Number.isFinite(parsed)) {
+                      setEditConfig((prev) => ({ ...prev, successThreshold: NaN }));
+                      return;
+                    }
+                    const next = Math.min(10, Math.max(1, parsed));
+                    setEditConfig((prev) => ({ ...prev, successThreshold: next }));
+                  }}
                 />
+                {(!Number.isFinite(editConfig.successThreshold) ||
+                  editConfig.successThreshold < 1 ||
+                  editConfig.successThreshold > 10) && (
+                  <p className="text-xs text-red-500">
+                    Success threshold must be a number between 1 and 10.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="monitoringPeriod">
@@ -2372,16 +2819,46 @@ export default function CircuitBreakerStatus() {
                 </Label>
                 <Input
                   id="monitoringPeriod"
-                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1000}
                   max={60000}
                   step={1000}
-                  value={editConfig.monitoringPeriod}
-                  onChange={(e) => setEditConfig({ ...editConfig, monitoringPeriod: parseInt(e.target.value) || 10000 })}
+                  onKeyDown={(e) => {
+                    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  value={Number.isFinite(editConfig.monitoringPeriod) ? editConfig.monitoringPeriod : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    if (raw === '') {
+                      setEditConfig((prev) => ({ ...prev, monitoringPeriod: NaN }));
+                      return;
+                    }
+                    const parsed = parseInt(raw, 10);
+                    if (!Number.isFinite(parsed)) {
+                      setEditConfig((prev) => ({ ...prev, monitoringPeriod: NaN }));
+                      return;
+                    }
+                    setEditConfig((prev) => ({ ...prev, monitoringPeriod: parsed }));
+                  }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {(editConfig.monitoringPeriod / 1000).toFixed(0)} seconds
+                  {Number.isFinite(editConfig.monitoringPeriod)
+                    ? `${(editConfig.monitoringPeriod / 1000).toFixed(0)} seconds`
+                    : 'Enter a value between 1000 and 60000'}
                 </p>
+                {Number.isFinite(editConfig.monitoringPeriod) && editConfig.monitoringPeriod < 1000 && (
+                  <p className="text-xs text-red-500">
+                    Minimum monitoring period is 1000 milliseconds (1 second).
+                  </p>
+                )}
+                {Number.isFinite(editConfig.monitoringPeriod) && editConfig.monitoringPeriod > 60000 && (
+                  <p className="text-xs text-red-500">
+                    Maximum monitoring period is 60000 milliseconds (60 seconds).
+                  </p>
+                )}
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="timeout">
@@ -2397,16 +2874,42 @@ export default function CircuitBreakerStatus() {
                 </Label>
                 <Input
                   id="timeout"
-                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1000}
                   max={60000}
                   step={1000}
-                  value={editConfig.timeout}
-                  onChange={(e) => setEditConfig({ ...editConfig, timeout: parseInt(e.target.value) || 10000 })}
+                  onKeyDown={(e) => {
+                    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  value={Number.isFinite(editConfig.timeout) ? editConfig.timeout : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    if (raw === '') {
+                      setEditConfig((prev) => ({ ...prev, timeout: NaN }));
+                      return;
+                    }
+                    const parsed = parseInt(raw, 10);
+                    if (!Number.isFinite(parsed)) {
+                      setEditConfig((prev) => ({ ...prev, timeout: NaN }));
+                      return;
+                    }
+                    const next = Math.min(60000, parsed);
+                    setEditConfig((prev) => ({ ...prev, timeout: next }));
+                  }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {(editConfig.timeout / 1000).toFixed(0)} seconds
+                  {Number.isFinite(editConfig.timeout)
+                    ? `${(editConfig.timeout / 1000).toFixed(0)} seconds`
+                    : 'Enter a value between 1000 and 60000'}
                 </p>
+                {Number.isFinite(editConfig.timeout) && editConfig.timeout < 1000 && (
+                  <p className="text-xs text-red-500">
+                    Minimum request timeout is 1000 milliseconds (1 second).
+                  </p>
+                )}
               </div>
             </div>
             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
@@ -2419,7 +2922,36 @@ export default function CircuitBreakerStatus() {
             <Button variant="outline" onClick={() => setShowEditConfigModal(false)}>
               Batal
             </Button>
-            <Button variant="default" onClick={confirmEditConfig}>
+            <Button
+              variant="default"
+              onClick={confirmEditConfig}
+              disabled={
+                !Number.isFinite(editConfig.resetTimeout) ||
+                editConfig.resetTimeout < 10000 ||
+                editConfig.resetTimeout > 300000 ||
+                !Number.isFinite(editConfig.failureThreshold) ||
+                editConfig.failureThreshold < 1 ||
+                editConfig.failureThreshold > 100 ||
+                !Number.isFinite(editConfig.successThreshold) ||
+                editConfig.successThreshold < 1 ||
+                editConfig.successThreshold > 10 ||
+                !Number.isFinite(editConfig.monitoringPeriod) ||
+                editConfig.monitoringPeriod < 1000 ||
+                editConfig.monitoringPeriod > 60000 ||
+                !Number.isFinite(editConfig.timeout) ||
+                editConfig.timeout < 1000 ||
+                editConfig.timeout > 60000 ||
+                !isReadLimitValid ||
+                !isWriteLimitValid ||
+                !isRpcLimitValid ||
+                !isAuthLimitValid ||
+                !isMinMultiplierValid ||
+                !isMaxMultiplierValid ||
+                !isHealthyLatencyValid ||
+                !isStressLatencyValid ||
+                !isAdjustmentIntervalValid
+              }
+            >
               Simpan Perubahan
             </Button>
           </DialogFooter>

@@ -104,7 +104,7 @@ export default function Otp() {
     if (cooldown > 0) return;
     setResending(true);
     try {
-      await supabase.functions.invoke('send-2fa-email', {
+      await supabase.functions.invoke('send-2fa-login-email', {
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
       });
       toast.success("A new code was sent");

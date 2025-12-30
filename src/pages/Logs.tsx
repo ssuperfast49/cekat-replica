@@ -2,12 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { exportToCsv, sanitizeForExport } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { endOfDay, startOfDay } from 'date-fns';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { DateRange } from 'react-day-picker';
+import { CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type LogRow = {
   id: string;
@@ -31,15 +40,23 @@ export default function Logs() {
   const [total, setTotal] = useState(0);
   const [qUser, setQUser] = useState<string>('all');
   const [qAction, setQAction] = useState<string>('all');
-  const [from, setFrom] = useState<string>('');
-  const [to, setTo] = useState<string>('');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [userOptions, setUserOptions] = useState<{ id: string; email: string }[]>([]);
   const [actionOptions, setActionOptions] = useState<string[]>([]);
   const [userMap, setUserMap] = useState<Record<string, { email: string | null; display_name: string | null }>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState<LogRow | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
-  const range = useMemo(() => ({ from: from ? new Date(from).toISOString() : null, to: to ? new Date(to).toISOString() : null }), [from, to]);
+  const range = useMemo(() => {
+    if (!dateRange?.from || !dateRange?.to) {
+      return { from: null, to: null };
+    }
+    const start = startOfDay(dateRange.from).toISOString();
+    const end = endOfDay(dateRange.to).toISOString();
+    return { from: start, to: end };
+  }, [dateRange]);
 
   const fetchFilters = async () => {
     // distinct users
@@ -112,6 +129,19 @@ export default function Logs() {
   }, []);
 
   useEffect(() => {
+    if (dateRange?.from && !dateRange?.to) {
+      setDateError('Select both a start date and an end date to filter logs.');
+      return;
+    }
+    if (dateRange?.to && !dateRange?.from) {
+      setDateRange({ from: dateRange.to, to: dateRange.to });
+      setDateError(null);
+      return;
+    }
+    setDateError(null);
+  }, [dateRange]);
+
+  useEffect(() => {
     fetchPage();
   }, [page, pageSize, qUser, qAction, range.from, range.to]);
 
@@ -169,13 +199,42 @@ export default function Logs() {
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground">From</label>
-            <Input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} className="h-9" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">To</label>
-            <Input type="date" value={to} onChange={(e)=>setTo(e.target.value)} className="h-9" />
+          <div className="col-span-2">
+            <label className="text-xs text-muted-foreground block mb-1">Date Range</label>
+            <Popover open={datePopoverOpen} onOpenChange={(v) => setDatePopoverOpen(v)}>
+              <PopoverTrigger asChild onClick={() => setDatePopoverOpen(true)}>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "justify-start text-left font-normal h-9 w-full",
+                    !dateRange?.from && !dateRange?.to && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange?.from && dateRange?.to
+                    ? `${dateRange.from.toLocaleDateString()} – ${dateRange.to.toLocaleDateString()}`
+                    : "Select date range"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto min-w-[560px] p-0" align="start">
+                <CalendarComponent
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange?.from}
+                  selected={dateRange}
+                  onSelect={(range) => {
+                    setDateRange(range);
+                    if (range?.from && range?.to) {
+                      setDatePopoverOpen(false);
+                    }
+                  }}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+            {dateError ? (
+              <p className="text-xs text-destructive mt-1">{dateError}</p>
+            ) : null}
           </div>
           <div className="flex items-end gap-2">
             <Select value={String(pageSize)} onValueChange={(v)=>setPageSize(Number(v))}>

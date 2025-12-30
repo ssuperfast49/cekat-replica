@@ -6,6 +6,8 @@ import WEBHOOK_CONFIG from '@/config/webhook';
 import { callWebhook } from '@/lib/webhookClient';
 import { resolveSendMessageEndpoint } from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { startOfDay, endOfDay } from 'date-fns';
+import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 
 // Audio notification system with debouncing
 let lastNotificationTime = 0;
@@ -19,20 +21,20 @@ const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
 
     // Only play sounds when the tab is visible
     if (document.visibilityState !== 'visible') {
-      
+
       return;
     }
 
     // Debounce notifications to prevent duplicate sounds
     const now = Date.now();
     if (now - lastNotificationTime < NOTIFICATION_DEBOUNCE_MS) {
-      
+
       return;
     }
     lastNotificationTime = now;
 
     const audio = new Audio();
-    
+
     if (type === 'incoming') {
       // Use the message pop alert for incoming messages
       audio.src = '/tones/mixkit-message-pop-alert-2354.mp3';
@@ -40,10 +42,10 @@ const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
       // Use the long pop for outgoing messages (optional)
       audio.src = '/tones/mixkit-long-pop-2358.wav';
     }
-    
+
     audio.volume = 0.7; // Set a reasonable volume
-    audio.play().catch(() => {});
-  } catch {}
+    audio.play().catch(() => { });
+  } catch { }
 };
 
 export interface Thread {
@@ -83,7 +85,7 @@ export interface Message {
   created_at: string;
 }
 
-  export interface ConversationWithDetails extends Thread {
+export interface ConversationWithDetails extends Thread {
   // Additional fields for display
   contact_name: string;
   contact_phone: string;
@@ -91,15 +93,15 @@ export interface Message {
   channel_name: string;
   channel_type: string;
   channel_provider?: string;
-    channel?: {
-      provider?: string;
-      type?: string;
-      display_name?: string;
-      external_id?: string;
-      logo_url?: string | null;
-      profile_photo_url?: string | null;
-    };
-    channel_logo_url?: string | null;
+  channel?: {
+    provider?: string;
+    type?: string;
+    display_name?: string;
+    external_id?: string;
+    logo_url?: string | null;
+    profile_photo_url?: string | null;
+  };
+  channel_logo_url?: string | null;
   last_message_preview: string;
   last_message_direction?: 'in' | 'out' | null;
   last_message_role?: 'user' | 'assistant' | 'agent' | 'system' | null;
@@ -119,17 +121,32 @@ export interface MessageWithDetails extends Message {
   _status?: 'pending' | 'sent' | 'error';
 }
 
+export interface ThreadFilters {
+  dateRange?: {
+    from?: Date;
+    to?: Date;
+  };
+  inbox?: string;
+  label?: string[];
+  agent?: string;
+  status?: string;
+  resolvedBy?: string;
+  platformId?: string;
+  channelType?: string;
+}
+
 export const useConversations = () => {
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [messages, setMessages] = useState<MessageWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+  const filtersRef = useRef<ThreadFilters>({});
+  const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
 
   const scheduleConversationsRefresh = (delayMs: number = 400) => {
-    try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch {}
+    try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     conversationsRefreshTimer.current = window.setTimeout(() => {
       // Only refresh if the document is visible to prevent unnecessary fetches when tab is hidden
       if (document.visibilityState === 'visible') {
@@ -157,60 +174,86 @@ export const useConversations = () => {
         }
         return conv;
       });
-      
+
       // Re-sort conversations after update so newest activity is always first
       const sorted = updated.sort((a, b) => {
         const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
         const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
       });
-      
+
       console.log('Re-sorted conversations after message update');
       return sorted;
     });
   };
 
-  // LocalStorage hydrated snapshot to avoid empty UI during refresh
-  const hydrateFromCache = () => {
-    try {
-      const raw = localStorage.getItem('app.cachedConversations');
-      if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length >= 0) {
-        setConversations(parsed);
-        setHydrated(true);
-        setLoading(false);
-        return true;
-      }
-    } catch {}
-    return false;
-  };
-
   // Fetch conversations with contact and channel details
-  const fetchConversations = async () => {
+  const fetchConversations = async (overrideFilters?: ThreadFilters) => {
     try {
-      if (!hydrated) setLoading(true);
+      setLoading(true);
       setError(null);
       // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
 
-      const selectPromise = protectedSupabase
+      const filtersToUse = overrideFilters ?? filtersRef.current;
+      if (overrideFilters) {
+        filtersRef.current = overrideFilters;
+        setActiveFilters(overrideFilters);
+      }
+
+      let query = protectedSupabase
         .from('threads')
         .select(`
           *,
           contacts(name, phone, email),
-          channels(display_name, type, provider, external_id, logo_url, profile_photo_url),
+          channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url),
           messages(id, body, role, direction, created_at, seq)
         `)
         .order('last_msg_at', { ascending: false })
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
 
+      const { dateRange, status, agent, resolvedBy, inbox, channelType, platformId } = filtersToUse;
+
+      /* Client-side filtering implemented below for consistency
+      if (dateRange?.from) {
+        const fromIso = startOfDay(dateRange.from).toISOString();
+        query = query.gte('last_msg_at', fromIso);
+      }
+      if (dateRange?.to) {
+        const toIso = endOfDay(dateRange.to).toISOString();
+        query = query.lte('last_msg_at', toIso);
+      }
+      */
+      if (status && status !== 'all' && status !== '') {
+        query = query.eq('status', status);
+      }
+      if (agent && agent !== 'all' && agent !== '') {
+        query = query.eq('assignee_user_id', agent);
+      }
+      if (resolvedBy && resolvedBy !== 'all' && resolvedBy !== '') {
+        query = query.eq('resolved_by_user_id', resolvedBy);
+      }
+      if (inbox && inbox !== 'all' && inbox !== '') {
+        query = query.eq('channels.provider', inbox);
+      }
+      if (channelType && channelType !== 'all' && channelType !== '') {
+        // In this schema, channels.provider is the transport (telegram/web/whatsapp).
+        // channels.type is typically 'bot' / 'inbox' etc.
+        query = query.eq('channels.provider', channelType);
+      }
+      if (platformId && platformId !== 'all' && platformId !== '') {
+        query = query.eq('channel_id', platformId);
+      }
+
       const timeoutPromise = new Promise<never>((_, reject) => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 8000);
       });
 
-      const { data, error } = await Promise.race([selectPromise as any, timeoutPromise]) as any;
+      const { data, error } = await Promise.race([
+        query as any,
+        timeoutPromise,
+      ]) as any;
 
       if (error) throw error;
 
@@ -236,9 +279,9 @@ export const useConversations = () => {
         const lastDir = last?.direction ?? null;
         const lastRole = last?.role ?? null;
         const unreplied = lastDir === 'in' || lastRole === 'user';
-        
+
         // Log to verify we're getting the latest message timestamp
-        
+
         return {
           ...thread,
           contact_name: thread.contacts?.name || 'Unknown Contact',
@@ -270,17 +313,36 @@ export const useConversations = () => {
         } as ConversationWithDetails;
       });
 
+      // Filter data client-side for consistent date handling
+      let filteredData = transformedData;
+      if (dateRange?.from) {
+        const fromTime = startOfDay(dateRange.from).getTime();
+        filteredData = filteredData.filter(t => new Date(t.last_msg_at).getTime() >= fromTime);
+      }
+      if (dateRange?.to) {
+        const toTime = endOfDay(dateRange.to).getTime();
+        filteredData = filteredData.filter(t => new Date(t.last_msg_at).getTime() <= toTime);
+      }
+      // Defensive client-side filters (in case PostgREST join filters are bypassed)
+      if (inbox && inbox !== 'all' && inbox !== '') {
+        filteredData = filteredData.filter(t => String(t.channel_provider || t.channel?.provider || '').toLowerCase() === String(inbox).toLowerCase());
+      }
+      if (channelType && channelType !== 'all' && channelType !== '') {
+        filteredData = filteredData.filter(t => String(t.channel_provider || t.channel?.provider || '').toLowerCase() === String(channelType).toLowerCase());
+      }
+      if (platformId && platformId !== 'all' && platformId !== '') {
+        filteredData = filteredData.filter(t => String((t as any).channel_id || '') === String(platformId));
+      }
+
       // Sort conversations by most recent activity so outbound replies bubble to the top
-      const sortedData = transformedData.sort((a, b) => {
+      const sortedData = filteredData.sort((a, b) => {
         const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
         const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
       });
 
-      
+
       setConversations(sortedData);
-      // Cache for next refresh
-      try { localStorage.setItem('app.cachedConversations', JSON.stringify(sortedData)); } catch {}
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -293,7 +355,7 @@ export const useConversations = () => {
   // Fetch messages for a specific thread
   const fetchMessages = async (threadId: string) => {
     try {
-      
+
       setError(null);
 
       const { data, error } = await supabase
@@ -337,7 +399,7 @@ export const useConversations = () => {
         contact_avatar: contactName[0]?.toUpperCase() || 'U'
       }));
 
-      
+
       setMessages(transformedData);
       setSelectedThreadId(threadId);
 
@@ -455,7 +517,7 @@ export const useConversations = () => {
 
       // Replace optimistic pending with fresh list including the inserted message
       await fetchMessages(threadId);
-      
+
       // Update conversation preview locally to avoid unnecessary refresh
       updateConversationPreview(threadId, {
         body: messageText,
@@ -472,7 +534,7 @@ export const useConversations = () => {
           resourceId: (data as any)?.id ?? null,
           context: { thread_id: threadId, role }
         });
-      } catch {}
+      } catch { }
 
       return data;
     } catch (error) {
@@ -521,7 +583,7 @@ export const useConversations = () => {
       // Audit log
       try {
         await logAction({ action: 'thread.create', resource: 'thread', resourceId: (data as any)?.id ?? null, context: { contact_id: contactId, channel_id: channelId } });
-      } catch {}
+      } catch { }
 
       return data;
     } catch (error) {
@@ -547,7 +609,7 @@ export const useConversations = () => {
       await fetchConversations();
 
       // Audit log
-      try { await logAction({ action: 'thread.update_status', resource: 'thread', resourceId: threadId, context: { status } }); } catch {}
+      try { await logAction({ action: 'thread.update_status', resource: 'thread', resourceId: threadId, context: { status } }); } catch { }
 
     } catch (error) {
       console.error('Error updating thread status:', error);
@@ -601,7 +663,7 @@ export const useConversations = () => {
       }
 
       // Ensure AI access is disabled even if already assigned
-      try { await protectedSupabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch {}
+      try { await protectedSupabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch { }
 
       // Create a system event message noting the takeover
       try {
@@ -636,10 +698,72 @@ export const useConversations = () => {
       await fetchMessages(threadId);
 
       // Audit log
-      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: _userId } }); } catch {}
+      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: _userId } }); } catch { }
 
     } catch (error) {
       console.error('Error assigning thread:', error);
+      setError(error instanceof Error ? error.message : 'Failed to assign thread');
+      throw error;
+    }
+  };
+
+  // Assign thread to a specific user (not a takeover). Used by supervisors to reassign.
+  const assignThreadToUser = async (threadId: string, assigneeUserId: string) => {
+    try {
+      setError(null);
+
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+
+      const nowIso = new Date().toISOString();
+      const { error: updateErr } = await supabase
+        .from('threads')
+        .update({
+          assignee_user_id: assigneeUserId,
+          assigned_by_user_id: currentUserId,
+          assigned_at: nowIso,
+          handover_reason: 'other:manual_assign',
+          ai_access_enabled: false,
+        })
+        .eq('id', threadId);
+
+      if (updateErr) throw updateErr;
+
+      // Insert system event message: "Conversation assigned to X by Y"
+      try {
+        const ids = [currentUserId, assigneeUserId].filter(Boolean) as string[];
+        let nameMap: Record<string, string> = {};
+        if (ids.length > 0) {
+          const { data: profiles } = await supabase
+            .from('users_profile')
+            .select('user_id, display_name')
+            .in('user_id', ids);
+          nameMap = Object.fromEntries((profiles || []).map((p: any) => [String(p.user_id), String(p.display_name || '—')]));
+        }
+
+        const assignedByName = (currentUserId && (nameMap[currentUserId] || authData?.user?.email)) || 'agent';
+        const assignedToName = nameMap[assigneeUserId] || 'agent';
+
+        await protectedSupabase.from('messages').insert([{
+          thread_id: threadId,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Conversation assigned to ${assignedToName} by ${assignedByName}.`,
+          payload: { event: 'assign', assigned_to: assigneeUserId, assigned_by: currentUserId }
+        }]);
+      } catch (e) {
+        console.warn('Failed to insert assign event message', e);
+      }
+
+      // Refresh conversations/messages to reflect new assignment
+      await fetchConversations();
+      await fetchMessages(threadId);
+
+      // Audit log
+      try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: assigneeUserId } }); } catch { }
+    } catch (error) {
+      console.error('Error assigning thread to user:', error);
       setError(error instanceof Error ? error.message : 'Failed to assign thread');
       throw error;
     }
@@ -656,7 +780,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.add_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch {}
+      try { await logAction({ action: 'thread.add_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch { }
 
     } catch (error) {
       console.error('Error adding thread participant:', error);
@@ -678,7 +802,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.remove_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch {}
+      try { await logAction({ action: 'thread.remove_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch { }
 
     } catch (error) {
       console.error('Error removing thread participant:', error);
@@ -698,7 +822,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.add_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch {}
+      try { await logAction({ action: 'thread.add_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch { }
 
     } catch (error) {
       console.error('Error adding thread label:', error);
@@ -720,7 +844,7 @@ export const useConversations = () => {
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.remove_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch {}
+      try { await logAction({ action: 'thread.remove_label', resource: 'thread', resourceId: threadId, context: { label_id: labelId } }); } catch { }
 
     } catch (error) {
       console.error('Error removing thread label:', error);
@@ -744,7 +868,6 @@ export const useConversations = () => {
 
       setConversations(prev => {
         const next = prev.filter(conv => conv.id !== threadId);
-        try { localStorage.setItem('app.cachedConversations', JSON.stringify(next)); } catch {}
         return next;
       });
 
@@ -753,7 +876,7 @@ export const useConversations = () => {
         setMessages([]);
       }
 
-      try { await logAction({ action: 'thread.delete', resource: 'thread', resourceId: threadId }); } catch {}
+      try { await logAction({ action: 'thread.delete', resource: 'thread', resourceId: threadId }); } catch { }
 
       await fetchConversations();
 
@@ -766,10 +889,30 @@ export const useConversations = () => {
 
   // Initial fetch on mount - guard against duplicate calls
   useEffect(() => {
-    // Hydrate from cache for instant UI
-    hydrateFromCache();
     // Avoid overlapping with other triggers by scheduling slightly
     scheduleConversationsRefresh(10);
+  }, []);
+
+  // Authorization changes: clear any in-memory UI state and refetch.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        setConversations([]);
+        setMessages([]);
+        setSelectedThreadId(null);
+        setError(null);
+      } catch {}
+      try {
+        // Force a refresh using the currently active filters
+        scheduleConversationsRefresh(50);
+      } catch {}
+    };
+    try {
+      window.addEventListener(AUTHZ_CHANGED_EVENT as any, handler as any);
+    } catch {}
+    return () => {
+      try { window.removeEventListener(AUTHZ_CHANGED_EVENT as any, handler as any); } catch {}
+    };
   }, []);
 
   // Auto-resolve check function
@@ -780,9 +923,9 @@ export const useConversations = () => {
         console.error('Auto-resolve check failed:', error);
         return;
       }
-      
+
       if (data && data.length > 0) {
-        
+
         // Refresh conversations to show updated status
         fetchConversations();
       }
@@ -814,7 +957,7 @@ export const useConversations = () => {
       .subscribe();
 
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try { supabase.removeChannel(channel); } catch { }
     };
   }, []);
 
@@ -823,10 +966,10 @@ export const useConversations = () => {
   useEffect(() => {
     const channel = supabase
       .channel('messages-realtime-for-convlist')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages' 
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages'
       }, (payload) => {
         // Only refresh for incoming messages or system messages
         // Skip outgoing messages (direction: 'out') to avoid refresh when sending
@@ -864,20 +1007,20 @@ export const useConversations = () => {
         }
         // Skip outgoing messages (direction: 'out') - these are handled by the sendMessage function
       })
-      .on('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'messages' 
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages'
       }, () => {
         // Only refresh on message updates that might affect conversation preview
         if (document.visibilityState === 'visible') {
           scheduleConversationsRefresh(500);
         }
       })
-      .on('postgres_changes', { 
-        event: 'DELETE', 
-        schema: 'public', 
-        table: 'messages' 
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'messages'
       }, () => {
         // Refresh on message deletion as it affects conversation state
         if (document.visibilityState === 'visible') {
@@ -887,54 +1030,74 @@ export const useConversations = () => {
       .subscribe();
 
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
-      try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch {}
+      try { supabase.removeChannel(channel); } catch { }
+      try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     };
   }, []);
 
   // Realtime: keep messages in sync for the selected thread
   useEffect(() => {
     if (!selectedThreadId) return;
-    
-    
-    
+
     // Set up a periodic refresh as a fallback (every 30 seconds)
     const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 30000);
-    
+
     const channel = supabase
       .channel(`messages-${selectedThreadId}`)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `thread_id=eq.${selectedThreadId}` 
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `thread_id=eq.${selectedThreadId}`
       }, (payload) => {
+        const message = payload.new as any;
         // Play notification sound for incoming messages
-        const message = payload.new;
         if (message && message.direction === 'in') {
           playNotificationSound('incoming');
         }
-        
-        // Immediately fetch fresh messages
-        fetchMessages(selectedThreadId);
+        // Apply realtime payload to state to avoid full refresh jumps
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === message?.id);
+          if (exists) return prev;
+          const contactName = prev[0]?.contact_name || '';
+          const contactAvatar = prev[0]?.contact_avatar || (contactName?.[0]?.toUpperCase?.() ?? 'U');
+          const next: MessageWithDetails = {
+            ...(message || {}),
+            contact_name: contactName,
+            contact_avatar: contactAvatar,
+          };
+          const merged = [...prev, next];
+          merged.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+          return merged;
+        });
       })
-      .on('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `thread_id=eq.${selectedThreadId}` 
-      }, () => {
-        // Fetch fresh messages for updates
-        fetchMessages(selectedThreadId);
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `thread_id=eq.${selectedThreadId}`
+      }, (payload) => {
+        const message = payload.new as any;
+        setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === message?.id);
+          if (idx < 0) return prev;
+          const updated: MessageWithDetails = { ...prev[idx], ...(message || {}) };
+          const next = [...prev];
+          next[idx] = updated;
+          next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+          return next;
+        });
       })
-      .on('postgres_changes', { 
-        event: 'DELETE', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `thread_id=eq.${selectedThreadId}` 
-      }, () => {
-        // Fetch fresh messages for deletions
-        fetchMessages(selectedThreadId);
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'messages',
+        filter: `thread_id=eq.${selectedThreadId}`
+      }, (payload) => {
+        const message = (payload.old || payload.new) as any;
+        const id = message?.id;
+        if (!id) return;
+        setMessages(prev => prev.filter(m => m.id !== id));
       })
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR') {
@@ -942,10 +1105,10 @@ export const useConversations = () => {
           setTimeout(() => { fetchMessages(selectedThreadId); }, 1000);
         }
       });
-      
+
     return () => {
       clearInterval(refreshInterval);
-      try { supabase.removeChannel(channel); } catch {}
+      try { supabase.removeChannel(channel); } catch { }
     };
   }, [selectedThreadId]);
 
@@ -966,6 +1129,7 @@ export const useConversations = () => {
     createConversation,
     updateThreadStatus,
     assignThread,
+    assignThreadToUser,
     addThreadParticipant,
     removeThreadParticipant,
     addThreadLabel,
@@ -973,5 +1137,6 @@ export const useConversations = () => {
     deleteThread,
     // Auto-resolve functionality
     checkAutoResolve,
+    activeFilters,
   };
 };

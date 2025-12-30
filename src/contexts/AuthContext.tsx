@@ -285,6 +285,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // Only set user as signed in if account is active
           setSession(initialSession);
           setUser(initialSession.user);
+          
+          // Store user_id in localStorage for reliable access (since Supabase sessioning can be unreliable)
+          try {
+            if (initialSession.user?.id) {
+              localStorage.setItem('app.currentUserId', initialSession.user.id);
+              localStorage.setItem('app.currentUserEmail', initialSession.user.email || '');
+            }
+          } catch {}
           // Defer OTP decision until profile evaluation completes to avoid flicker
           if (!loadingGuardTriggered) {
             window.clearTimeout(loadingGuard);
@@ -362,6 +370,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
             if (uid && lastLoginLoggedUserIdRef.current !== uid) {
               logAction({ action: 'auth.login', resource: 'auth', userId: uid, context: {} }).catch(() => {});
               lastLoginLoggedUserIdRef.current = uid;
+              
+              // Store user_id in localStorage for reliable access (since Supabase sessioning can be unreliable)
+              try {
+                localStorage.setItem('app.currentUserId', uid);
+                localStorage.setItem('app.currentUserEmail', nextSession?.user?.email || '');
+              } catch {}
             }
             
             // Preserve OTP verification if it was already satisfied for this user
@@ -388,7 +402,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 if (enabled && !persistedVerified) {
                   const currentUserId = nextSession?.user?.id || null;
                   if (currentUserId && sent2faForUserIdRef.current !== currentUserId) {
-                    supabase.functions.invoke('send-2fa-email', {
+                    supabase.functions.invoke('send-2fa-login-email', {
                       headers: nextSession?.access_token ? { Authorization: `Bearer ${nextSession.access_token}` } : undefined,
                     }).then(() => {
                       sent2faForUserIdRef.current = currentUserId;
@@ -407,6 +421,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // If user is in password recovery, only require OTP if enabled in profile
           if (event === 'PASSWORD_RECOVERY') {
             try { localStorage.setItem('auth.intent', 'recovery'); } catch {}
+            // Strip Supabase hash fragments so router can navigate cleanly
+            try {
+              if (window.location.hash) {
+                const url = new URL(window.location.href);
+                url.hash = '';
+                window.history.replaceState({}, document.title, url.toString());
+              }
+            } catch {}
+            // Ensure we land on the dedicated reset password page
+            if (window.location.pathname !== '/reset-password') {
+              navigate('/reset-password', { replace: true });
+            }
             setOtpEvaluated(false);
             evaluateOtpWithGuard(
               (async () => {
@@ -442,13 +468,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setOtpVerified(false);
             setIsSigningOut(false);
             setAccountDeactivated(false);
+            
+            // Clear all cache on sign out
             try {
-              const vid = user?.id ? `otpVerified:${user.id}` : 'otpVerified';
-              const rid = user?.id ? `otpRequired:${user.id}` : 'otpRequired';
-              localStorage.removeItem(vid);
-              localStorage.removeItem(rid);
-              localStorage.removeItem('app.lastAuthEvent');
-            } catch {}
+              // Clear all localStorage items
+              const keysToRemove: string[] = [];
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key) {
+                  keysToRemove.push(key);
+                }
+              }
+              keysToRemove.forEach(key => {
+                try {
+                  localStorage.removeItem(key);
+                } catch {}
+              });
+              
+              // Clear all sessionStorage
+              const sessionKeysToRemove: string[] = [];
+              for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                if (key) {
+                  sessionKeysToRemove.push(key);
+                }
+              }
+              sessionKeysToRemove.forEach(key => {
+                try {
+                  sessionStorage.removeItem(key);
+                } catch {}
+              });
+            } catch (cacheError) {
+              console.warn('Error clearing cache on sign out:', cacheError);
+            }
           }
         } catch {}
 
@@ -499,6 +551,62 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signOut = useCallback(async () => {
     try {
       setIsSigningOut(true);
+      
+      // Clear all cache before signing out
+      try {
+        // Clear all localStorage items (including cached data)
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => {
+          try {
+            localStorage.removeItem(key);
+          } catch {}
+        });
+        
+        // Clear all sessionStorage
+        const sessionKeysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key) {
+            sessionKeysToRemove.push(key);
+          }
+        }
+        sessionKeysToRemove.forEach(key => {
+          try {
+            sessionStorage.removeItem(key);
+          } catch {}
+        });
+        
+        // Specifically clear common cache keys
+        const cachePatterns = [
+          'app.cached',
+          'app.lastAuthEvent',
+          'app.currentUserId',
+          'app.currentUserEmail',
+          'otpVerified',
+          'otpRequired',
+          'auth.intent',
+          'sb-',
+        ];
+        
+        // Clear any remaining keys matching patterns
+        Object.keys(localStorage).forEach(key => {
+          if (cachePatterns.some(pattern => key.includes(pattern))) {
+            try {
+              localStorage.removeItem(key);
+            } catch {}
+          }
+        });
+      } catch (cacheError) {
+        console.warn('Error clearing cache:', cacheError);
+      }
+      
+      // Sign out from Supabase
       await supabase.auth.signOut();
     } catch (error) {
       console.error('Error signing out:', error);

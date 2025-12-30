@@ -1,7 +1,404 @@
 # Change Log
+# [0.1.24] FE WEB CEKAT 2025-12-30
+### Contacts → Conversations (Multi-Thread Support)
+- **Thread Picker for “Open conversation”**: Contacts now open a thread/channel picker instead of jumping directly to `/chat` by contact, solving ambiguity when a contact has multiple threads across channels.
+  - New component: `src/components/chat/ContactThreadPickerDialog.tsx`
+  - Updated: `src/components/contacts/Contacts.tsx` now opens the picker and navigates with `menu=chat&contact=<id>&thread=<id>`
+
+### Conversations: Deterministic Thread Selection
+- **URL-based thread deep link**: `ConversationPage` now supports `thread=<threadId>` and prioritizes it over `contact=<contactId>`, ensuring the correct thread opens even when the same contact has multiple channel threads.
+  - Clicking a conversation updates the URL (`thread` + `contact`) so navigation is stable and shareable.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Conversations UI
+- **Platform tags**: Conversation rows now show provider badges (e.g. Telegram/Web/WhatsApp) for clearer channel context.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Thread Picker UI Polish
+- **Better list layout**: Improved thread list rendering to avoid clipped/trimmed rows and to pin the platform chip to the bottom-right of each row (timestamp top-right).
+  - Updated: `src/components/chat/ContactThreadPickerDialog.tsx`
+
+# [0.1.23] FE WEB CEKAT 2025-12-29
+### Authentication & User Management
+- **Whitespace-Free Email & Password Inputs**: Login, reset-password, and agent creation forms now strip spaces and force lowercase emails while blocking space characters in passwords, preventing accidental invalid credentials.
+  - `src/components/auth/Login.tsx` sanitizes email input across login, reset, and (future) signup tabs and blocks whitespace in password fields.
+  - `src/pages/ResetPassword.tsx` applies the same input guards to new/confirm password fields.
+  - `src/components/humanagents/HumanAgents.tsx` normalizes emails when creating agents to avoid duplicate entries caused by casing or trailing spaces.
+
+### Conversations
+- **WhatsApp-Style Day Separators**: Chat threads display `Today`, `Yesterday`, or a formatted date badge between message clusters, making timelines easier to scan.
+  - Implemented in `src/components/chat/ConversationPage.tsx` with memoized grouping so the list stays performant.
+
+### Analytics
+- **Unified Date Range Picker**: Replaced separate `From`/`To` inputs with a single range calendar that mirrors the contacts page behavior and keeps queries bounded to today.
+  - `src/components/analytics/Analytics.tsx` stores normalized `YYYY-MM-DD` strings and offers a quick “Clear” action.
+- **Stable Refresh Logic**: Prevented stale data by delaying metric/database fetches until the user finishes selecting the range (popover closes), ensuring the latest `from/to` pair drives every refresh.
+
+# [0.1.22] FE WEB CEKAT 2025-12-24
+### Authentication & Environment
+- **Supabase Config Hardening**: Prevented “Invalid API key” errors in Netlify preview/dev deploys caused by URL/key mismatches.
+  - `src/config/supabase.ts` now infers dev/prod pairing from the Supabase URL host when only one override is provided.
+  - Defaults to a dev-safe target unless the URL clearly points to `api.cssuper.com`.
+  - Still supports explicit `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` overrides.
+
+### Platforms (WhatsApp)
+- **Delete Webhook Payload**: When deleting WhatsApp channels, the webhook call now includes the channel identifier.
+  - `DELETE_SESSION` payload now sends `channel_id` and `org_id` alongside `session_name` for reliable backend cleanup.
+
+- **External ID Consistency**: WhatsApp channels now maintain a stable external identifier across lifecycle states.
+  - On create, WhatsApp channels set `external_id` to the normalized WAHA session name and store `credentials.waha_session_name`.
+  - WAHA session sync now upgrades `external_id` to the real WhatsApp `me.id` (e.g. `628...@c.us`) once available, and never wipes it back to null.
+  - Added a fallback lookup to `GET /api/sessions/{name}` when the WAHA list endpoint does not include `me.id`.
+  - Standardized WAHA session naming to `toLowerCase().replace(/\s/g,'')` for consistent matching.
+# [0.1.21] FE WEB CEKAT 2025-12-24
+### Circuit Breaker Settings
+- **Date Range Validation**: Updated chat date filter to require both "From" and "To" values before applying.
+  - Prevents half-filled date ranges from running and warns users when only one side is selected.
+  - Disallows selecting an end date earlier than the start date and keeps calendars constrained to valid ranges.
+- **Audit Log Date Filter Guardrails**: Logs page now requires selecting both "From" and "To" dates and constrains pickers to valid ranges.
+  - Displays inline guidance when only one side of the range is provided.
+  - Ensures backend queries use start/end-of-day boundaries for inclusive day filtering.
+  - Replaced separate date inputs with a single range calendar so start and end dates are chosen together.
+
+# [0.1.20] FE WEB CEKAT 2025-12-24
+### Conversations: Filter UX & Correctness
+- **Channel Type Filter Fixed**: Channel Type now correctly filters threads at the query level.
+  - Updated `useConversations` to use an inner join (`channels!inner(...)`) so `channels.provider` filters actually constrain `threads` results (PostgREST behavior).
+  - Added defensive client-side filtering for `channelType`, `inbox`, and `platformId` to ensure consistent UI results.
+
+- **Persistent Applied Filters**: Applied filters now persist and are shareable.
+  - Filters are serialized into URL query params (`f_*`) so refresh/back/forward retains the exact filtered view.
+  - If URL has no filter params, the last applied filters are restored from localStorage (per-user key).
+
+- **Visible Active Filters**: Users can now see what’s currently applied.
+  - `ConversationPage` renders active filter badges under the Conversations header (Channel, Platform, Status, Agent, Resolved By, Date, Inbox).
+  - `ChatFilter` modal is now controlled via a `value` prop so reopening the modal shows the currently applied values.
+
+### Configuration & Environment Management
+- **Centralized URL Configuration**: Created comprehensive URL and environment configuration system
+  - New `src/config/urls.ts` centralizes all app base URLs (APP_ORIGIN, WAHA_BASE_URL) with environment-aware defaults
+  - New `src/config/supabase.ts` centralizes Supabase URL and key configuration with automatic dev/prod switching
+  - Production app origin now defaults to `https://synkaai.netlify.app` (even in dev) for consistent LiveChat links
+  - Supabase URL automatically switches: DEV → `bkynymyhbfrhvwxqqttk.supabase.co`, PROD → `api.cssuper.com`
+  - All configuration supports `VITE_*` environment variable overrides for flexible deployment
+  - Removed all hardcoded Netlify and Supabase URLs from components
+
+- **Platform URL Updates**: Updated all platform-related URLs to use centralized configuration
+  - `ConnectedPlatforms.tsx` now uses `APP_ORIGIN` and `livechatUrl()` helper instead of hardcoded URLs
+  - LiveChat embed code now uses configurable `APP_ORIGIN` instead of hardcoded domain
+  - `WhatsAppPlatformForm.tsx` uses `WAHA_BASE_URL` from config instead of hardcoded Railway URL
+  - All platform forms now reference single source of truth for base URLs
+
+### AI Agent Settings Cleanup
+- **Removed Context Window Field**: Removed "Context Window (K tokens)" from Additional Settings UI
+  - Field no longer visible or editable in AI Agent Settings interface
+  - Removed all related state variables (`contextLimitInput`, `contextLimitMax`)
+  - Removed input handler (`handleContextLimitChange`) and validation logic
+  - Save logic still automatically persists safe default value (existing value or 28K tokens, clamped to model capability)
+  - Ensures database writes continue to work without breaking changes
+
+### Conversation Filtering
+- **Removed Pipeline Status Filter**: Cleaned up thread filter interface
+  - Removed "Pipeline Status" dropdown from chat filter dialog
+  - Removed `pipelineStatus` from filter state and type definitions
+  - Removed `pipeline_status` query filtering from `useConversations` hook
+  - Simplified filter UI with cleaner, more focused options
+
+### Technical Improvements
+- **Code Organization**: Improved maintainability and consistency
+  - Single source of truth for all environment-specific URLs
+  - Consistent configuration pattern across all services
+  - Better separation of concerns between UI and configuration
+  - Enhanced type safety with centralized config exports
+
+# [0.1.19] FE WEB CEKAT 2025-12-24
+### Circuit Breaker Settings
+- **Robust Numeric Validation**: Reset timeout, monitoring period, request timeout, and threshold fields now accept temporary clears but enforce min/max bounds before saving.
+  - Inline error messages and disabled save state prevent invalid submissions.
+  - Inputs strip non-numeric characters, block scientific notation, and clamp values to their allowed ranges.
+- **Latency Feedback**: Healthy and stress latency controls show live seconds previews, clarifying millisecond inputs.
+- **Tooltip Refinement**: Repositioned tooltips to render beside their triggers, preventing clipping inside the modal.
+
+### Adaptive Rate Limiter Configuration
+- **Precision Controls**: Base limits and multiplier inputs now sanitize numeric entry, limit decimals to three places, and sync their raw display strings with validated state.
+- **Validation Guardrails**: All adaptive fields surface inline errors and keep the save button disabled until values fall within allowed ranges.
+- **Enhanced Summary**: Read-only configuration card now surfaces latency thresholds (with seconds) alongside existing multiplier and interval details.
+- **Modal Tooltips**: Every helper tooltip aligns left/right relative to its column, ensuring full visibility within the dialog.
+
+# [0.1.18] FE WEB CEKAT 2025-12-24
+### Bug Fixes
+- **Fixed Platform Filter Not Finding Channels**: Resolved critical bug where selecting a channel type (Telegram, WhatsApp, Web) would show no platforms.
+  - Changed platform filtering from `channels.type` to `channels.provider` to match actual database schema.
+  - In database, `channels.provider` contains transport values (`telegram`, `web`, `whatsapp`) while `channels.type` contains implementation details (`bot`, `inbox`).
+  - Updated both `ChatFilter.tsx` (UI filtering) and `useConversations.ts` (query filtering) to use `channels.provider`.
+  - Telegram and other channel types now correctly display their platforms when selected.
+
+### Conversation Management
+- **Hierarchical Channel Type → Platform Filter**: Enhanced chat filter with parent-child filter relationship.
+  - Platform filter now requires Channel Type selection first (Platform dropdown disabled until Channel Type is chosen).
+  - Placeholder text changes to "Select channel type first" when Channel Type is not selected.
+  - Changing Channel Type automatically clears Platform selection to prevent stale selections.
+  - Improved UX with clear dependency indication between filters.
+
+- **Empty State for Platform Filter**: Added user-friendly empty state handling.
+  - When selected Channel Type has no matching platforms, dropdown shows disabled option: "No platforms found for this channel type".
+  - Prevents confusion when no results are available for a selected channel type.
+  - Platform display simplified to show only `display_name` without provider/type suffix for cleaner UI.
+
+# [0.1.17] FE WEB CEKAT 2025-12-22
+### Bug Fixes
+- **Fixed Stale Data Persistence After Role Changes**: Resolved critical issue where threads and contacts persisted in the UI after role changes in the database.
+  - Removed localStorage caching for threads (`app.cachedConversations`) to prevent stale data from persisting after authorization changes.
+  - Disabled query caching for authorization-sensitive operations (threads, contacts) in `protectedSupabase` wrapper to ensure fresh data on role changes.
+  - Threads and contacts now immediately clear and refetch when user roles change, preventing unauthorized data from being displayed.
+  - Fixed issue where changing a user's role from `master_agent` to `super_agent` (or vice versa) in the database would not immediately reflect in the UI.
+
+### Technical Improvements
+- **Realtime Role Change Detection**: Implemented comprehensive authorization change detection system.
+  - Added realtime subscription to `user_roles` table in `RBACContext` to detect role changes for the current user.
+  - Created `authz.ts` utility module for centralized authorization change handling and cache invalidation.
+  - Implemented event-based system (`authzChanged` event) to notify hooks when authorization changes occur.
+  - `useConversations` and `useContacts` hooks now listen for authorization changes and automatically reset state + refetch data.
+  - Ensures UI always reflects current user permissions without requiring manual refresh or logout/login.
+
+- **Cache Invalidation Strategy**: Enhanced cache management for authorization-sensitive data.
+  - Authorization changes now trigger comprehensive cache clearing (localStorage, query cache, fallback handler).
+  - Removed role-agnostic caching that could serve stale results after permission changes.
+  - All authorization-sensitive queries now bypass cache to ensure data accuracy.
+  - Improved security by preventing cached data from persisting after role downgrades.
+
+# [0.1.16] FE WEB CEKAT 2025-12-20
+### UI Components
+- **SearchableSelect Component**: Added a new reusable searchable single-select dropdown component.
+  - Provides searchable dropdown functionality with keyboard navigation support.
+  - Includes proper accessibility attributes and visual feedback for selected items.
+  - Used for improved agent assignment interface in conversation management.
+
+- **SearchableMultiSelect Component**: Added a new reusable searchable multi-select component.
+  - Supports selecting multiple items with badge display for selected values.
+  - Includes add/remove callbacks for granular control over selection changes.
+  - Displays selected items as removable badges with clear visual indicators.
+
+### Conversation Management
+- **Enhanced Agent Assignment UI**: Replaced popover-based assignment interface with searchable select components.
+  - "Handled By" field now uses `SearchableSelect` for improved searchability and UX.
+  - Streamlined assignment flow with better visual feedback and state management.
+  - Added optimistic UI updates with proper state synchronization.
+
+- **Improved Collaborator Management**: Enhanced thread collaborator interface with multi-select support.
+  - Replaced popover-based collaborator addition with `SearchableMultiSelect` component.
+  - Collaborator list now displays as removable badges for better visibility.
+  - Added support for super agent member filtering - only members of the assigned super agent can be added as collaborators.
+  - Collaborator selection is disabled until a "Handled By" agent is assigned.
+  - Automatic fetching of super agent members when an agent is assigned.
+
+- **Manual Thread Assignment**: Added `assignThreadToUser` function for supervisor-level thread reassignment.
+  - Allows supervisors to manually assign conversations to specific users.
+  - Automatically creates system event messages when assignments occur.
+  - Updates thread metadata including `assigned_by_user_id`, `assigned_at`, and `handover_reason`.
+  - Disables AI access when manually assigned (`ai_access_enabled: false`).
+
+- **User Label Resolution**: Improved user display name resolution for agents and collaborators.
+  - Fetches user profile data for agents not present in the human agents list.
+  - Caches user labels to avoid redundant API calls.
+  - Provides fallback display names when profile data is unavailable.
+
+### Bug Fixes
+- **Fixed Handled By State Leak**: Resolved critical bug where assigning a thread to an agent would incorrectly show that agent as assigned to all other threads.
+  - Scoped `handledByOverride` state to specific thread IDs instead of using global state.
+  - Optimistic UI updates now only apply to the thread being assigned, preventing state leakage when navigating between conversations.
+  - Fixed issue where changing "Handled By" for one thread would temporarily display the same value for all threads until server refresh.
+
+# [0.1.15] FE WEB CEKAT 2025-12-19
+### Database & Policies
+- **Threads Update Policy**: Master agents can now resolve conversations across all environments.
+  - Updated the `threads update perm update_own` policy to allow updates when `is_master_agent_in_org(org_id)` is true.
+  - Applied the policy change to main, development, and backup Supabase projects and added a migration for consistency.
+
+### Conversation Management
+- **Resolved Thread Cleanup**: UI now hides take-over controls once a thread is closed.
+  - Removed the takeover button and composer input when `status === 'closed'`, preventing accidental actions on resolved chats.
+
+### Contacts
+- **Unassigned Filter Accuracy**: Ensured the contacts list reflects only unassigned records without altering assigned data.
+  - Adjusted Supabase querying and client filtering so contacts with no assigned agent (or no thread yet) display correctly.
+  - Total counters and pagination now show filtered counts (e.g. `12 of 16`) when a handled-by filter is active.
+- **Export to CSV**: Added a one-click export that downloads the current contact dataset (with latest thread info) as a CSV.
+  - Includes contact fields (name, phone, email, notes, created_at) and latest thread metadata (status, handled by, channel).
+- **Toolbar Cleanup**: Removed the unused “Customize Columns” button for a leaner toolbar experience.
+
+# [0.1.14] FE WEB CEKAT 2025-12-18
+### Platform Forms (WhatsApp / Telegram / Web)
+- **Top Spacing Layout Fix**: Standardized form spacing under dialog headers for a cleaner, consistent layout across all platform setup forms.
+
+### Telegram Platform
+- **Bot Token Validation (Required)**: Added a **Validate** button beside the Telegram Bot Token field and made validation mandatory before creating a Telegram platform.
+  - Create is blocked with an error until the token has been validated.
+- **Token Verification via Supabase Edge Function**: Token verification now calls the Supabase Edge Function endpoint (`/functions/v1/telegram-verify-token`) with a strict response contract (`{ valid: boolean }`).
+  - `callWebhook()` now auto-attaches Supabase auth headers for Supabase Edge Function URLs.
+
+# [0.1.13] FE WEB CEKAT 2025-12-17
+### Conversation Management
+- **Date Filter Fix**: Resolved an issue where the date filter in the conversations menu would incorrectly exclude valid conversations.
+  - Switched from server-side filtering on `created_at`/`last_msg_at` (which could be stale) to client-side filtering using the computed last message time.
+  - Ensures the filter now perfectly matches the dates displayed in the UI, correctly showing threads active within the selected range.
+
+# [0.1.12] FE WEB CEKAT 2025-12-14
+### Human Agents UI Protection
+- **Master Agent UI Safeguards**: Enhanced protection for master agent accounts in the Human Agents interface.
+  - Status dropdown button is now disabled for master agents across all sections (master agents, super agents, regular agents, and pending invitations).
+  - Chevron dropdown icon is conditionally hidden for master agents to provide clear visual indication that status cannot be changed.
+  - Delete button is completely hidden for master agents (replacing the previous disabled button with tooltip approach) across all agent sections.
+  - Applied consistent protection logic using `primaryRole === 'master_agent'` checks throughout the component.
+  - Provides cleaner UI experience by removing non-functional controls rather than showing disabled states.
+
+### Authentication & OTP
+- **2FA Email Edge Function Update**: Updated edge function reference for login-specific 2FA emails.
+  - Changed edge function call from `send-2fa-email` to `send-2fa-login-email` in `AuthContext.tsx` and `Otp.tsx`.
+  - Aligns with backend function naming convention for better clarity and separation of login vs other 2FA email flows.
+
+# [0.1.11] FE WEB CEKAT 2025-12-10
+### Conversation Management
+- **Status Filter Cleanup**: Removed the redundant "Resolved" option from the conversation status filter.
+  - The "Closed" status now serves as the single source of truth for completed conversations.
+  - Simplified the filtering logic to remove unnecessary status checks.
+
+# [0.1.10] FE WEB CEKAT 2025-12-09
+### Human Agents & Permissions
+- **Create Agent Permission Gate**: Simplified and hardened the Create Agent button on the Human Agents page.
+  - Button is now directly gated by `users_profile.create` via `PermissionGate`, following the same pattern as other RBAC-protected actions.
+  - When the user lacks permission, the button stays visible but disabled with a clear tooltip (“You do not have permission to create agents.”).
+  - Removed the extra client-side lookup against the `permissions` table and associated state (`createPermissionKey`, `checkingCreatePermission`) to reduce complexity and runtime edge cases.
+
+### Navigation & RBAC Consistency
+- **Super Agents Schema Alignment**: Updated `PERMISSIONS_SCHEMA` to include the full `super_agents` action set (`create`, `update`, `delete`, `read_all`, `read_own`), matching the backend `permissions` table.
+- **Navigation Read-Gates**: Centralized navigation gating to use read scopes consistently:
+  - Added a defensive `readPerms(resource)` helper that safely derives `resource.read*` keys from `PERMISSIONS_SCHEMA`.
+  - Human Agents sidebar item now depends on any `super_agents` read scope (e.g. `super_agents.read_all` / `super_agents.read_own`), keeping menu visibility aligned with DB permissions.
+- **useNavigation Stability**: Adjusted `useNavigation` to skip DB permission recomputation while RBAC is still loading, preventing transient context errors during hot reloads while keeping the existing has_perm-first behavior.
+
+# [0.1.9] FE WEB CEKAT 2025-12-03
+### AI Agents
+- Replaced the browser `confirm()` with a first-class modal when deleting AI agents.
+  - Uses the shared `AlertDialog` component with explicit cancel/confirm controls.
+  - Shows the agent name inside the confirmation copy and blocks dismissal while the request is in flight.
+  - Surfaces loader feedback and only closes when the Supabase delete succeeds.
+
+# [0.1.8] FE WEB CEKAT 2025-12-03
+### Platform Forms: Super Agent Management & Scoping
+- **Explicit Super Agent Selection**: All platform forms (WhatsApp, Telegram, Web) now require explicit Super Agent selection before AI Agent selection
+  - Super Agent field is now a required, selectable dropdown (previously derived from AI Agent)
+  - Field appears above AI Agent selection with clear labeling and tooltips
+  - Form validation prevents submission without Super Agent selection
+  - Helper text explains that Super Agent can be changed independently of AI Agent
+
+- **AI Agent Filtering by Super Agent**: Enhanced AI Agent selection with strict scoping
+  - AI Agent dropdown only shows agents belonging to the selected Super Agent
+  - Validation prevents selecting AI agents that don't belong to the selected Super Agent
+  - Error toast notifications when attempting invalid selections
+  - Form automatically resets AI Agent selection when Super Agent changes
+  - Warning message displayed if selected AI Agent lacks a Super Agent assignment
+
+- **Human Agent Scoping**: Improved human agent assignment with role-based filtering
+  - Human Agent multi-select only shows agents assigned to the selected Super Agent
+  - "Select All" and "Unselect All" buttons for quick agent assignment
+  - Multi-select disabled until Super Agent is selected
+  - Clear placeholder text indicating selection requirements
+  - Consistent behavior across all platform types (WhatsApp, Telegram, Web)
+
+- **AI Agent Creation Enhancement**: Super Agent assignment during creation
+  - Super Agent selection required in AI Agent creation dialog
+  - Searchable dropdown for Super Agent selection
+  - Super Agent information displayed in AI Agent cards
+  - Validation ensures Super Agent is selected before agent creation
+
+### Navigation & Permissions Updates
+- **Navigation Configuration**: Updated navigation items and permission mappings
+  - Refined permission checks for navigation visibility
+  - Enhanced role-based access control for navigation items
+  - Improved database permission checks in useNavigation hook
+
+- **Permission Schema**: Updated permissions configuration
+  - Aligned permission schema with backend requirements
+  - Enhanced permission categorization and validation
+
+### Live Chat Improvements
+- **Message Handling**: Enhanced message synchronization and streaming
+  - Improved realtime message updates
+  - Better handling of streaming responses
+  - Optimized message deduplication logic
+  - Enhanced user message timeout handling
+
+### Webhook Configuration
+- **Webhook Routing**: Updated webhook endpoint configuration
+  - Enhanced proxy-aware routing
+  - Improved endpoint resolution for different providers
+  - Better error handling for webhook calls
+
+### Technical Improvements
+- **Hooks Enhancement**: Improved data fetching and scoping
+  - Enhanced useAIAgents hook with better super agent scoping
+  - Improved useNavigation hook with database permission checks
+  - Better error handling and loading states
+  - Optimized cache management
+
+# [0.1.7] FE WEB CEKAT 2025-12-03
+### RBAC & Permissions (Finalized Alignment)
+- Standardized PERMISSIONS_SCHEMA to match production backend exactly:
+  analytics, ai_profiles, ai_sessions, channels, contacts, contact_identities, threads, messages, ai_agent_files, admin_panel, roles, audit_logs, alerts.
+- Permission Matrix UX revamp (purely permission-driven):
+  - Card sections enforced per resource: Manage (create/update/delete), Access Level (read variants), Special Actions (send/ack).
+  - Mutually exclusive Access Level pills; Threads uses “My Channels” (read_channel_owned), “Collaborator”, “All”.
+  - Special actions exposed as toggles: messages.send (Send), alerts.ack (Acknowledge).
+  - “Select All” sets Manage + Special Actions ON and selects the most permissive single read level; “Unselect All” resets to None.
+  - Labels updated (“Update Settings” for admin_panel.update); consistent wording across cards.
+  - Added concise tooltips for threads/messages read scopes and alerts.ack.
+- Removed bundle-based “Menu Access” from PermissionsPage; no more ghost toggles or bundles.
+- Fixed toggle handler so switches reflect intended state; role permission grant/revoke now gated by roles.update.
+- Debounced RBAC refresh during bulk edits to prevent UI lag.
+
+### Navigation & Visibility (Policy-First)
+- Menu visibility now depends on DB has_perm checks; items are hidden if the user lacks any read scope for that section.
+- Updated gating keys to align with schema:
+  - Admin Panel: admin_panel.read (menu), admin_panel.update (controls)
+  - Permissions: roles.read
+  - Chat: threads.read_* (any of read_all/read_channel_owned/read_collaborator)
+  - Analytics: analytics.read
+  - Contacts: contacts.read_*; Platforms: channels.read_*; AI Agents: ai_profiles.read_*; Logs: audit_logs.read
+- Sidebar renders only items from getAccessibleNavItems(); fixed ReferenceError by properly destructuring the hook return.
+- Reduced has_perm spam: policy checks recompute only when RBAC roles/permissions change.
+
+### Admin Panel
+- Replaced legacy access_rules.configure gates:
+  - Controls now use admin_panel.update; navigation uses admin_panel.read.
+
+### Misc
+- Added contact_identities to schema.
+- Consistency/cleanup across labels, ordering, and spacing in Permission Matrix.
+
+# [0.1.6] FE WEB CEKAT 2025-11-30
+### Cache Management & Session Reliability
+- **Comprehensive Cache Clearing on Logout**: Enhanced logout functionality to clear all cached data
+  - Clears all localStorage items (including `app.cached*`, `app.currentUserId`, etc.)
+  - Clears all sessionStorage items
+  - Clears all Supabase auth tokens
+  - Prevents stale data from persisting after logout
+  - Applied to both `AuthContext.signOut()` and `Logout.tsx` page
+
+- **localStorage-Based User ID Storage**: Improved session reliability by storing user ID in localStorage
+  - User ID and email stored in localStorage as `app.currentUserId` and `app.currentUserEmail` on login
+  - Added `getCurrentUserId()` helper function that prefers localStorage over Supabase session
+  - Updated `logAction()` to use localStorage user_id first, then fallback to Supabase session
+  - Ensures consistent user identification even when Supabase session is temporarily unavailable
+
+### Bug Fixes
+- **Merge Conflict Resolution**: Resolved merge conflict in `useAIAgents.ts` by combining `scopeMode` and `superAgentId` logic
+- **Policy Role Fix**: Fixed `threads_master_read` policy to use `authenticated` role instead of `public` role
+- **Cache Persistence**: Fixed issue where cached data persisted after logout, causing users to see unauthorized data
+
 # [0.1.5] FE WEB CEKAT 2025-11-30
 ### Webhook & Supabase URL Consistency
-- **Single Source for Supabase URL**: Exported a shared `SUPABASE_URL` constant from the Supabase client so all front-end integrations reference the same base URL (`https://api.cssuper.com`) instead of duplicating it.
+- **Single Source for Supabase URL**: Exported a shared `SUPABASE_URL` constant from the Supabase client so all front-end integrations reference the same base URL sinstead of duplicating it.
 - **Proxy Edge Function Alignment**: Updated `WEBHOOK_CONFIG` to derive the proxy base (`/functions/v1/proxy-n8n`) from the shared `SUPABASE_URL`, removing the old hardcoded Supabase project host and keeping proxy routing aligned with the active project.
 - **WhatsApp WAHA Webhook Normalization**: Swapped the hardcoded Railway webhook host in `WhatsAppPlatformForm` for `WEBHOOK_CONFIG.BASE_URL`, ensuring WAHA sessions always post back into the currently configured webhook environment.
 
@@ -879,7 +1276,7 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
   - Netlify SPA routing for `/livechat/*` via redirects in `netlify.toml` and `public/_redirects`.
 
 - Connected Platforms
-  - Live chat link and embed now use `https://classy-frangollo-337599.netlify.app/livechat/{platform_id}`.
+  - Live chat link and embed now use `https://synkaai.netlify.app/livechat/{platform_id}`.
   - Added Super Agent section (single-select; master-only). Human Agents now a searchable multi-select of regular agents only.
   - Removed “Teams” card. Agent chips show proper names and can be removed.
 

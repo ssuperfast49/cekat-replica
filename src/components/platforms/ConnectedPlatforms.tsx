@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Plus, Settings, HelpCircle, ExternalLink, Code, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
+import { Plus, HelpCircle,  X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader as DangerHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 // Removed tabs; rendering is based on provider
 import { usePlatforms, CreatePlatformData } from "@/hooks/usePlatforms";
@@ -27,7 +24,7 @@ import { callWebhook } from "@/lib/webhookClient";
 import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { APP_ORIGIN, WAHA_BASE_URL, livechatUrl } from "@/config/urls";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
@@ -40,7 +37,6 @@ const ConnectedPlatforms = () => {
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [providerTab, setProviderTab] = useState<'whatsapp' | 'telegram' | 'web'>('whatsapp');
   const [selectedAgent, setSelectedAgent] = useState<string>("");
-  const [selectedHumanAgent, setSelectedHumanAgent] = useState<string>("");
 
   // Platform selection and setup state
   const [isPlatformSelectionOpen, setIsPlatformSelectionOpen] = useState(false);
@@ -79,7 +75,6 @@ const ConnectedPlatforms = () => {
   const pollConnectTimer = useRef<number | null>(null);
   const [isDeletingChannel, setIsDeletingChannel] = useState(false);
 
-  const WAHA_BASE = 'https://waha-plus-production-97c1.up.railway.app';
   const lastFetchedProviderRef = useRef<string | null>(null);
   const isFetchingSessionsRef = useRef<boolean>(false);
   const nextPlatformsRefreshAtRef = useRef<number>(0);
@@ -342,8 +337,8 @@ const ConnectedPlatforms = () => {
             </CardHeader>
             <CardContent>
               <div className="bg-muted p-3 rounded-md">
-                <Input 
-                  value={`https://classy-frangollo-337599.netlify.app/livechat/${selectedPlatformData?.id || '{platform_id}'}`}
+                <Input
+                  value={livechatUrl(String(selectedPlatformData?.id || "{platform_id}"))}
                   readOnly
                   className="bg-background"
                 />
@@ -365,7 +360,7 @@ const ConnectedPlatforms = () => {
 (function(){
   // Lightweight chat embed - uses YOUR project's origin
   var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
-  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'https://classy-frangollo-337599.netlify.app'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
+  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'${APP_ORIGIN}'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
   cfg.position=cfg.position||'bottom-right'; cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
   var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+
            '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+
@@ -459,7 +454,7 @@ const ConnectedPlatforms = () => {
     setIsSessionsLoading(true);
     setSessionsError(null);
     try {
-      const url = `${WAHA_BASE}/api/sessions`;
+      const url = `${WAHA_BASE_URL}/api/sessions`;
       const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
       if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
       const json = await response.json();
@@ -494,7 +489,7 @@ const ConnectedPlatforms = () => {
       // Fetch all whatsapp channels once to avoid duplicates; use normalized name match
       const { data: existingChannels } = await supabase
         .from('channels')
-        .select('id, display_name, provider')
+        .select('id, display_name, provider, external_id, credentials')
         .eq('org_id', orgId)
         .eq('provider', 'whatsapp');
 
@@ -502,7 +497,21 @@ const ConnectedPlatforms = () => {
         const sessionName = s?.name || '';
         if (!sessionName) continue;
         const status = String(s?.status || '').toUpperCase();
-        const meId = s?.me?.id || null;
+        let meId = (s as any)?.me?.id || null;
+        // Some WAHA deployments don't include `me` on the list endpoint; fall back to session detail.
+        if (!meId && status === 'WORKING') {
+          try {
+            const detailUrl = `${WAHA_BASE_URL}/api/sessions/${encodeURIComponent(sessionName)}`;
+            const detailRes = await fetch(detailUrl, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+            if (detailRes.ok) {
+              const detailJson = await detailRes.json();
+              const detail = Array.isArray(detailJson) ? detailJson[0] : detailJson;
+              meId = detail?.me?.id || meId;
+            }
+          } catch {
+            // ignore best-effort detail lookup
+          }
+        }
         const isActive = status === 'WORKING' && Boolean(meId);
         const normalized = (sessionName || '').toLowerCase().replace(/\s/g, '');
         const match = (existingChannels || []).find(ch => (ch.display_name || '').toLowerCase().replace(/\s/g, '') === normalized);
@@ -510,12 +519,25 @@ const ConnectedPlatforms = () => {
           // If there's no matching channel created via UI (spaced name), skip insert to avoid duplicates
           continue;
         }
+        const existingCreds = (match as any)?.credentials && typeof (match as any).credentials === 'object'
+          ? (match as any).credentials
+          : {};
+        const sessionFallback = sessionName || normalized || null;
+        const nextExternalId = meId || (match as any)?.external_id || (existingCreds as any)?.waha_session_name || sessionFallback;
+
         await supabase
           .from('channels')
           .update({
             is_active: isActive,
-            external_id: meId,
-            credentials: { waha_status: s?.status || null, me_id: meId },
+            // Don't wipe external_id when the session isn't connected yet (meId is null).
+            // Keep a stable identifier (session name) until we know the real WhatsApp number (me.id).
+            external_id: nextExternalId,
+            credentials: {
+              ...existingCreds,
+              waha_status: s?.status || null,
+              me_id: meId,
+              waha_session_name: (existingCreds as any)?.waha_session_name || sessionFallback,
+            },
           })
           .eq('id', match.id);
       }
@@ -554,7 +576,7 @@ const ConnectedPlatforms = () => {
       const check = async () => {
         try {
           if (!lastConnectSessionName) return;
-          const url = `${WAHA_BASE}/api/sessions/${encodeURIComponent(lastConnectSessionName)}`;
+          const url = `${WAHA_BASE_URL}/api/sessions/${encodeURIComponent(lastConnectSessionName)}`;
           const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
           if (!response.ok) return;
           const s = await response.json();
@@ -689,7 +711,12 @@ const ConnectedPlatforms = () => {
       const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_name: sessionName }),
+        body: JSON.stringify({
+          // Include channel id so backend workflows (n8n) can reliably clean up related resources.
+          channel_id: channel.id,
+          org_id: channel.org_id,
+          session_name: sessionName,
+        }),
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => '');
@@ -738,9 +765,6 @@ const ConnectedPlatforms = () => {
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Platforms</h2>
-            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-              <Plus className="h-4 w-4" />
-            </Button>
           </div>
           <p className="text-sm text-muted-foreground mb-6">
             This is where you can connect all your platforms
