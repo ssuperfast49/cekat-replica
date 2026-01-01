@@ -11,6 +11,9 @@
 - **Client auth resilience**: `src/lib/webhookClient.ts` attempts to attach a session token when available but no longer blocks calls if the viewer lacks one, so widget traffic still reaches the proxy (and surfaces 401s when the function enforces auth).
 - **Env guidance**: Documented the required `VITE_SUPABASE_ANON_KEY` in `src/config/supabase.ts` so deployments fail fast if keys are missing, and restored custom-domain detection so `api.cssuper.com` resolves to the production Supabase key when the variable is omitted.
 - **Commit:** `chore: document proxy routing updates` — removed hardcoded Supabase fallbacks so `src/config/supabase.ts` now reads only the environment-provided URL/key, preventing prod refresh logouts caused by mismatched credentials.
+### Live Chat
+- **Streaming order stability**: `src/pages/LiveChat.tsx` now tracks a monotonic render order so assistant replies consistently appear beneath the triggering user message without requiring a refresh.
+- **Proxy-first webhook**: The Live Chat send flow always calls the Supabase `proxy-n8n` function before falling back to the legacy webhook, so both production and development environments continue to hit the proxy listener.
 
 # [0.1.24] FE WEB CEKAT 2025-12-30
 ### Contacts → Conversations (Multi-Thread Support)

@@ -25,7 +25,8 @@ export default function LiveChat() {
   // Support either :platform_id or :platformId param
   const pid = useMemo(() => platform_id || platformId || "unknown", [platform_id, platformId]);
 
-  const [messages, setMessages] = useState<Array<{ id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>>([]);
+  type ChatMessage = { id: string; role: "user" | "assistant"; body: string; at: string; order: number; streaming?: boolean };
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
@@ -34,6 +35,8 @@ export default function LiveChat() {
   const [username, setUsername] = useState<string>("");
   const [aiProfileId, setAiProfileId] = useState<string | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const messageOrderRef = useRef(0);
+  const nextOrder = () => ++messageOrderRef.current;
   // Profile settings are resolved server-side by the webhook; no client DB calls.
   const endRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -119,6 +122,8 @@ export default function LiveChat() {
     if (!ok) playSequence([1046.5, 1318.5, 1568.0, [1046.5, 1318.5, 1568.0, 2093.0]], 120, 0.06);
   };
 
+const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
+
   // Ensure we have a persistent, friendly username per platform/host
   useEffect(() => {
     try {
@@ -183,7 +188,7 @@ export default function LiveChat() {
         
         if (Array.isArray(data)) {
           setMessages((prev) => {
-            const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>();
+            const map = new Map<string, ChatMessage>();
             prev.forEach((m) => map.set(m.id, m));
             
             // Only process agent/assistant messages from periodic refresh
@@ -198,12 +203,23 @@ export default function LiveChat() {
                 continue;
               }
               
-              const item = { id: r.id, role, body: r.body || '', at: r.created_at || new Date().toISOString() };
+              const existing = map.get(r.id);
+              const item: ChatMessage = existing ?? {
+                id: r.id,
+                role,
+                body: r.body || '',
+                at: r.created_at || new Date().toISOString(),
+                order: nextOrder(),
+              };
+              if (!existing) {
+                item.body = r.body || '';
+                item.at = r.created_at || new Date().toISOString();
+              }
               map.set(item.id, item);
             }
             
             const arr = Array.from(map.values());
-            arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
+            arr.sort((a,b)=> a.order - b.order);
             return arr;
           });
         }
@@ -252,13 +268,34 @@ export default function LiveChat() {
       
       
       setMessages((prev) => {
-        const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>();
+        const map = new Map<string, ChatMessage>();
         prev.forEach((m) => map.set(m.id, m));
         
         for (const r of rows) {
           if (!r?.id) continue;
           const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
-          const item = { id: r.id, role, body: r.body || '', at: r.created_at || new Date().toISOString() };
+          let inheritedOrder: number | null = null;
+          if (role === 'assistant' && streamingMessageId) {
+            for (const [key, value] of map.entries()) {
+              if (value.id === streamingMessageId) {
+                inheritedOrder = value.order;
+                map.delete(key);
+                break;
+              }
+            }
+          }
+          const existing = map.get(r.id);
+          const item: ChatMessage = existing ?? {
+            id: r.id,
+            role,
+            body: r.body || '',
+            at: r.created_at || new Date().toISOString(),
+            order: inheritedOrder ?? nextOrder(),
+          };
+          if (!existing) {
+            item.body = r.body || '';
+            item.at = r.created_at || new Date().toISOString();
+          }
           
           // For user messages, check if we already have a temp message to replace
           if (role === 'user') {
@@ -275,28 +312,16 @@ export default function LiveChat() {
             }
           }
           
-          // For assistant messages, remove any streaming message
-          if (role === 'assistant' && streamingMessageId) {
-            for (const [key, value] of map.entries()) {
-              if (value.id === streamingMessageId) {
-                map.delete(key);
-                
-                break;
-              }
-            }
-          }
-          
           // Only add if we don't already have this message
           if (!map.has(item.id)) {
             map.set(item.id, item);
-            
           } else {
             
           }
         }
         
         const arr = Array.from(map.values());
-        arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
+        arr.sort((a,b)=> a.order - b.order);
         
         return arr;
       });
@@ -422,7 +447,7 @@ export default function LiveChat() {
     setDraft("");
     // Optimistic preview while waiting for DB insert (will be replaced by realtime row)
     const tempId = `temp-${Date.now()}`;
-    setMessages((prev) => [...prev, { id: tempId, role: "user", body: text, at: new Date().toISOString() }]);
+    setMessages((prev) => [...prev, { id: tempId, role: "user", body: text, at: new Date().toISOString(), order: nextOrder() }]);
     playLow();
     setLoading(true);
 
@@ -470,24 +495,39 @@ export default function LiveChat() {
 
       
       
-      // For public/live widget, fall back to legacy webhook when no Supabase session
-      let useLegacy = false;
+      let resp: Response | null = null;
+      let proxyStatus: number | null = null;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        useLegacy = !session;
-      } catch {
-        useLegacy = true;
+        resp = await callWebhook(
+          WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          },
+          { forceLegacy: false },
+        );
+      } catch (proxyError) {
+        console.warn('[LiveChat] proxy webhook call failed', proxyError);
       }
 
-      const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }, { forceLegacy: useLegacy });
-      
-      
-      
-      if (!resp.ok) throw new Error(`Webhook failed ${resp.status}`);
+      if (!resp || !resp.ok) {
+        proxyStatus = resp?.status ?? null;
+        resp = await callWebhook(
+          WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          },
+          { forceLegacy: true },
+        );
+      }
+
+      if (!resp.ok) {
+        const statusDetails = proxyStatus ? ` (proxy status ${proxyStatus})` : '';
+        throw new Error(`Webhook failed ${resp.status}${statusDetails}`);
+      }
       
       // Handle streaming response
       if (resp.body) {
@@ -537,13 +577,17 @@ export default function LiveChat() {
                         return next;
                       } else {
                         // Create new streaming message with content
-                        return [...prev, {
-                          id: streamingId,
-                          role: "assistant",
-                          body: content,
-                          at: new Date().toISOString(),
-                          streaming: true
-                        }];
+                        return [
+                          ...prev,
+                          {
+                            id: streamingId,
+                            role: "assistant",
+                            body: content,
+                            at: nextAssistantTimestamp(),
+                            order: nextOrder(),
+                            streaming: true,
+                          },
+                        ];
                       }
                     });
                   }
@@ -561,13 +605,17 @@ export default function LiveChat() {
                         return next;
                       } else {
                         // Create new streaming message with content
-                        return [...prev, {
-                          id: streamingId,
-                          role: "assistant",
-                          body: content,
-                          at: new Date().toISOString(),
-                          streaming: true
-                        }];
+                        return [
+                          ...prev,
+                          {
+                            id: streamingId,
+                            role: "assistant",
+                            body: content,
+                            at: nextAssistantTimestamp(),
+                            order: nextOrder(),
+                            streaming: true,
+                          },
+                        ];
                       }
                     });
                   }
@@ -583,13 +631,17 @@ export default function LiveChat() {
                     return next;
                   } else {
                     // Create new streaming message with content
-                    return [...prev, {
-                      id: streamingId,
-                      role: "assistant",
-                      body: line,
-                      at: new Date().toISOString(),
-                      streaming: true
-                    }];
+                    return [
+                      ...prev,
+                      {
+                        id: streamingId,
+                        role: "assistant",
+                        body: line,
+                        at: nextAssistantTimestamp(),
+                        order: nextOrder(),
+                        streaming: true,
+                      },
+                    ];
                   }
                 });
               }
@@ -615,26 +667,34 @@ export default function LiveChat() {
               return next;
             } else {
               // Create new message if streaming message doesn't exist
-              return [...prev, {
-                id: streamingId,
-                role: "assistant",
-                body: responseText,
-                at: new Date().toISOString(),
-                streaming: false
-              }];
+              return [
+                ...prev,
+                {
+                  id: streamingId,
+                  role: "assistant",
+                  body: responseText,
+                  at: nextAssistantTimestamp(),
+                  order: nextOrder(),
+                  streaming: false,
+                },
+              ];
             }
           });
           setStreamingMessageId(null);
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
           // Create a fallback message
-          setMessages((prev) => [...prev, {
-            id: streamingId,
-            role: "assistant",
-            body: "I'm processing your message, please wait...",
-            at: new Date().toISOString(),
-            streaming: false
-          }]);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: streamingId,
+              role: "assistant",
+              body: "I'm processing your message, please wait...",
+              at: nextAssistantTimestamp(),
+              order: nextOrder(),
+              streaming: false,
+            },
+          ]);
           setStreamingMessageId(null);
         }
       }
@@ -652,13 +712,14 @@ export default function LiveChat() {
             .then(({ data }) => {
               if (Array.isArray(data)) {
                 setMessages((prev) => {
-                  const map = new Map<string, { id: string; role: "user" | "assistant"; body: string; at: string; streaming?: boolean }>();
+                  const map = new Map<string, ChatMessage>();
                   prev.forEach((m) => map.set(m.id, m));
                   
                   // Only process agent/assistant messages from immediate refresh
                   for (const r of data) {
                     if (!r?.id) continue;
                     const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+                    let inheritedOrder: number | null = null;
                     
                     // SKIP user messages from immediate refresh
                     if (role === 'user') {
@@ -666,12 +727,35 @@ export default function LiveChat() {
                       continue;
                     }
                     
-                    const item = { id: r.id, role, body: r.body || '', at: r.created_at || new Date().toISOString() };
+                    const existing = map.get(r.id);
+                    const item: ChatMessage = existing ?? {
+                      id: r.id,
+                      role,
+                      body: r.body || '',
+                      at: r.created_at || new Date().toISOString(),
+                      order: nextOrder(),
+                    };
+                    if (!existing) {
+                      item.body = r.body || '';
+                      item.at = r.created_at || new Date().toISOString();
+                    }
+                    if (streamingMessageId) {
+                      for (const [key, value] of map.entries()) {
+                        if (value.id === streamingMessageId) {
+                          inheritedOrder = value.order;
+                          map.delete(key);
+                          break;
+                        }
+                      }
+                    }
+                    if (!existing) {
+                      item.order = inheritedOrder ?? item.order;
+                    }
                     map.set(item.id, item);
                   }
                   
                   const arr = Array.from(map.values());
-                  arr.sort((a,b)=> new Date(a.at).getTime()-new Date(b.at).getTime());
+                  arr.sort((a,b)=> a.order - b.order);
                   return arr;
                 });
               }
@@ -682,12 +766,17 @@ export default function LiveChat() {
     } catch (e) {
       console.error('Streaming error:', e);
       // Replace streaming message with error
-      setMessages((prev) => prev.filter((m) => m.id !== streamingId).concat({ 
-        id: crypto.randomUUID(), 
-        role: "assistant", 
-        body: "Sorry, I'm having trouble right now. Please try again later.", 
-        at: new Date().toISOString() 
-      }));
+      setMessages((prev) =>
+        prev
+          .filter((m) => m.id !== streamingId)
+          .concat({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            body: "Sorry, I'm having trouble right now. Please try again later.",
+            at: nextAssistantTimestamp(),
+            order: nextOrder(),
+          }),
+      );
       setStreamingMessageId(null);
       playHigh();
     } finally {
@@ -703,6 +792,10 @@ export default function LiveChat() {
       handleSend();
     }
   };
+
+  const sortedMessages = useMemo(() => {
+    return [...messages].sort((a, b) => a.order - b.order);
+  }, [messages]);
 
   const fmt = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -723,7 +816,7 @@ export default function LiveChat() {
                     Preparing chat…
                   </div>
                 )}
-                {messages.map((m) => {
+                {sortedMessages.map((m) => {
                   // Don't render empty messages or streaming messages with no content
                   if (!m.body || (m.streaming && m.body.trim() === '')) {
                     return null;
