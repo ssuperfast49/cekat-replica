@@ -1,12 +1,20 @@
-// Webhook Configuration with proxy-aware routing
+// Webhook configuration with proxy-aware routing.
+// Environment variables:
+// - VITE_WEBHOOK_BASE_URL: direct (legacy) WAHA/N8N base URL.
+// - VITE_WEBHOOK_PROXY_SLUG: optional override for the proxy function slug.
+// - VITE_WEBHOOK_PROXY_BASE_URL: optional explicit base URL for the proxy function.
 import { SUPABASE_URL } from "@/integrations/supabase/client";
 const env = (import.meta as any).env ?? {};
 
 const LEGACY_BASE_URL = (env?.VITE_WEBHOOK_BASE_URL || "https://primary-production-376c.up.railway.app/webhook").replace(/\/$/, "");
 
-// Build proxy base URL from the shared Supabase base URL
+// Build proxy base URL from environment override or Supabase functions endpoint
 const PROXY_FUNCTION_SLUG = (env?.VITE_WEBHOOK_PROXY_SLUG || 'proxy-n8n');
-const PROXY_BASE_URL = `${SUPABASE_URL}/functions/v1/${PROXY_FUNCTION_SLUG}`.replace(/\/$/, "");
+const overrideProxyBase = env?.VITE_WEBHOOK_PROXY_BASE_URL as string | undefined;
+const resolvedProxyBase = overrideProxyBase
+  ? overrideProxyBase.replace(/\/$/, "")
+  : `${SUPABASE_URL}/functions/v1/${PROXY_FUNCTION_SLUG}`.replace(/\/$/, "");
+const PROXY_BASE_URL = resolvedProxyBase;
 
 const ROUTE_PREFIX = "route:";
 
@@ -14,6 +22,18 @@ const ensureLeadingSlash = (endpoint: string) => endpoint.startsWith("/") ? endp
 
 const isProxyEndpoint = (endpoint: string) => endpoint.startsWith(ROUTE_PREFIX);
 const extractRouteKey = (endpoint: string) => isProxyEndpoint(endpoint) ? endpoint.slice(ROUTE_PREFIX.length) : null;
+
+const isBareSupabaseHost = (urlValue: string): boolean => {
+  try {
+    const parsed = new URL(urlValue);
+    const bareHost = parsed.hostname.endsWith(".supabase.co");
+    const path = parsed.pathname || "";
+    const hasFunctionsPath = path.includes("/functions/");
+    return bareHost && !hasFunctionsPath;
+  } catch {
+    return false;
+  }
+};
 
 export const WEBHOOK_CONFIG = {
   // Maintain legacy base for compatibility / fallback use-cases
@@ -70,17 +90,13 @@ export const WEBHOOK_CONFIG = {
     if (!endpoint) throw new Error("Endpoint must be provided");
     if (endpoint.startsWith("http")) return endpoint;
 
-    if (!opts.forceLegacy && isProxyEndpoint(endpoint)) {
+    if (isProxyEndpoint(endpoint)) {
       const routeKey = extractRouteKey(endpoint);
       if (!routeKey) throw new Error("Invalid proxy route key");
-      return `${PROXY_BASE_URL}/${routeKey}`;
-    }
 
-    // When forcing legacy, convert route:foo.bar → /foo.bar
-    if (opts.forceLegacy && isProxyEndpoint(endpoint)) {
-      const routeKey = extractRouteKey(endpoint);
-      if (!routeKey) throw new Error("Invalid proxy route key");
-      return `${LEGACY_BASE_URL}/${routeKey}`;
+      const canUseLegacyRoute = Boolean(opts.forceLegacy) && !isBareSupabaseHost(LEGACY_BASE_URL);
+      const base = canUseLegacyRoute ? LEGACY_BASE_URL : PROXY_BASE_URL;
+      return `${base}/${routeKey}`;
     }
 
     return `${LEGACY_BASE_URL}${ensureLeadingSlash(endpoint)}`;

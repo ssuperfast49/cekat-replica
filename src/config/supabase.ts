@@ -3,7 +3,7 @@
  *
  * Prefer setting these as environment variables in Netlify / local `.env`:
  * - VITE_SUPABASE_URL
- * - VITE_SUPABASE_ANON_KEY
+ * - VITE_SUPABASE_ANON_KEY (required – no hardcoded fallback)
  *
  * Defaults:
  * - DEV  → bkynymyhbfrhvwxqqttk.supabase.co

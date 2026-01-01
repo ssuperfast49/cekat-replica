@@ -1,4 +1,10 @@
 # Change Log
+# [0.1.25] FE WEB CEKAT 2025-12-30
+### Webhook Routing & Live Chat
+- **Proxy-aware production routing**: `src/config/webhook.ts` now prefers Supabase Edge proxy routes while still allowing explicit overrides and legacy fallbacks, ensuring production hits `proxy-n8n` even when `VITE_WEBHOOK_BASE_URL` is set to your Supabase host.
+- **Client auth resilience**: `src/lib/webhookClient.ts` attempts to attach a session token when available but no longer blocks calls if the viewer lacks one, so widget traffic still reaches the proxy (and surfaces 401s when the function enforces auth).
+- **Env guidance**: Documented the required `VITE_SUPABASE_ANON_KEY` in `src/config/supabase.ts` so deployments fail fast if keys are missing.
+
 # [0.1.24] FE WEB CEKAT 2025-12-30
 ### Contacts → Conversations (Multi-Thread Support)
 - **Thread Picker for “Open conversation”**: Contacts now open a thread/channel picker instead of jumping directly to `/chat` by contact, solving ambiguity when a contact has multiple threads across channels.
