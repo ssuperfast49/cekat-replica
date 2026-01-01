@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.26] FE WEB CEKAT 2026-01-01
+### Live Chat
+- **Streaming order stability**: `src/pages/LiveChat.tsx` now tracks a monotonic render order so assistant replies consistently appear beneath the triggering user message without requiring a refresh.
+- **Proxy-first webhook**: The Live Chat send flow always calls the Supabase `proxy-n8n` function before falling back to the legacy webhook, so both production and development environments continue to hit the proxy listener.
+
 # [0.1.24] FE WEB CEKAT 2025-12-30
 ### Contacts → Conversations (Multi-Thread Support)
 - **Thread Picker for “Open conversation”**: Contacts now open a thread/channel picker instead of jumping directly to `/chat` by contact, solving ambiguity when a contact has multiple threads across channels.
