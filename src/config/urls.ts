@@ -22,7 +22,7 @@ export const APP_ORIGIN: string = (() => {
   const override = env?.VITE_APP_ORIGIN as string | undefined;
   if (override) return trimTrailingSlash(override);
 
-  return "https://synkaai.netlify.app";
+  return "https://cssuper.com";
 })();
 
 /**
