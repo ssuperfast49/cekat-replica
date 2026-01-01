@@ -3,7 +3,7 @@
 ### Webhook Routing & Live Chat
 - **Proxy-aware production routing**: `src/config/webhook.ts` now prefers Supabase Edge proxy routes while still allowing explicit overrides and legacy fallbacks, ensuring production hits `proxy-n8n` even when `VITE_WEBHOOK_BASE_URL` is set to your Supabase host.
 - **Client auth resilience**: `src/lib/webhookClient.ts` attempts to attach a session token when available but no longer blocks calls if the viewer lacks one, so widget traffic still reaches the proxy (and surfaces 401s when the function enforces auth).
-- **Env guidance**: Documented the required `VITE_SUPABASE_ANON_KEY` in `src/config/supabase.ts` so deployments fail fast if keys are missing.
+- **Env guidance**: Documented the required `VITE_SUPABASE_ANON_KEY` in `src/config/supabase.ts` so deployments fail fast if keys are missing, and restored custom-domain detection so `api.cssuper.com` resolves to the production Supabase key when the variable is omitted.
 
 # [0.1.24] FE WEB CEKAT 2025-12-30
 ### Contacts → Conversations (Multi-Thread Support)
