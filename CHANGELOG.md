@@ -1,4 +1,17 @@
 # Change Log
+# [0.1.27] FE WEB CEKAT 2026-01-02
+### Conversation Management
+- **Handled By Clearing**: Users can now remove super agent assignments from conversations using a clear button in the "Handled By" selector.
+  - Added `allowClear` prop to `SearchableSelect` component with inline clear button (X icon) that appears when a value is selected.
+  - "Handled By" selector in conversation sidebar now supports clearing assignments, allowing conversations to be unassigned.
+  - Updated `assignThreadToUser` function to accept `null` for unassigning conversations, properly clearing assignment metadata and creating "conversation unassigned" system event messages.
+  - When clearing "Handled By", all collaborators are automatically removed to maintain data consistency.
+  - Updated: `src/components/ui/searchable-select.tsx`, `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Resolved Thread Read-Only Controls**: Closed conversations now lock their "Handled By" and collaborator selectors.
+  - `SearchableSelect` and `SearchableMultiSelect` honor the disabled state (no clear button, no chip removal) when a thread is resolved.
+  - Collaborator add/remove handlers bail early for resolved threads to prevent accidental edits.
+  - Updated: `src/components/ui/searchable-select.tsx`, `src/components/chat/ConversationPage.tsx`
+
 # [0.1.26] FE WEB CEKAT 2026-01-01
 ### Supabase Configuration
 - **Env-only credentials**: `src/config/supabase.ts` now reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (or `VITE_SUPABASE_PUBLISHABLE_KEY`) directly from the environment, with clear error messages when either is missing.

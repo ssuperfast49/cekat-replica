@@ -708,7 +708,7 @@ export const useConversations = () => {
   };
 
   // Assign thread to a specific user (not a takeover). Used by supervisors to reassign.
-  const assignThreadToUser = async (threadId: string, assigneeUserId: string) => {
+  const assignThreadToUser = async (threadId: string, assigneeUserId: string | null) => {
     try {
       setError(null);
 
@@ -716,15 +716,23 @@ export const useConversations = () => {
       const currentUserId = authData?.user?.id || null;
 
       const nowIso = new Date().toISOString();
+      const updatePayload: Record<string, any> = {
+        assignee_user_id: assigneeUserId,
+        handover_reason: assigneeUserId ? 'other:manual_assign' : 'other:manual_unassign',
+        ai_access_enabled: false,
+      };
+
+      if (assigneeUserId) {
+        updatePayload.assigned_by_user_id = currentUserId;
+        updatePayload.assigned_at = nowIso;
+      } else {
+        updatePayload.assigned_by_user_id = null;
+        updatePayload.assigned_at = null;
+      }
+
       const { error: updateErr } = await supabase
         .from('threads')
-        .update({
-          assignee_user_id: assigneeUserId,
-          assigned_by_user_id: currentUserId,
-          assigned_at: nowIso,
-          handover_reason: 'other:manual_assign',
-          ai_access_enabled: false,
-        })
+        .update(updatePayload)
         .eq('id', threadId);
 
       if (updateErr) throw updateErr;
@@ -742,16 +750,25 @@ export const useConversations = () => {
         }
 
         const assignedByName = (currentUserId && (nameMap[currentUserId] || authData?.user?.email)) || 'agent';
-        const assignedToName = nameMap[assigneeUserId] || 'agent';
-
-        await protectedSupabase.from('messages').insert([{
+        const eventEntry = {
           thread_id: threadId,
           direction: null,
-          role: 'system',
-          type: 'event',
-          body: `Conversation assigned to ${assignedToName} by ${assignedByName}.`,
-          payload: { event: 'assign', assigned_to: assigneeUserId, assigned_by: currentUserId }
-        }]);
+          role: 'system' as const,
+          type: 'event' as const,
+          body: '',
+          payload: {} as Record<string, any>,
+        };
+
+        if (assigneeUserId) {
+          const assignedToName = nameMap[assigneeUserId] || 'agent';
+          eventEntry.body = `Conversation assigned to ${assignedToName} by ${assignedByName}.`;
+          eventEntry.payload = { event: 'assign', assigned_to: assigneeUserId, assigned_by: currentUserId };
+        } else {
+          eventEntry.body = `Conversation unassigned by ${assignedByName}.`;
+          eventEntry.payload = { event: 'unassign', assigned_by: currentUserId };
+        }
+
+        await protectedSupabase.from('messages').insert([eventEntry]);
       } catch (e) {
         console.warn('Failed to insert assign event message', e);
       }

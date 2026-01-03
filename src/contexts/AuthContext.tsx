@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode, useM
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, logAction } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { SUPABASE_URL } from '@/integrations/supabase/client';
 
 interface AuthContextType {
   user: User | null;
@@ -30,6 +31,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const sent2faForUserIdRef = useRef<string | null>(null);
   const [otpRequired, setOtpRequired] = useState<boolean>(false);
+  const SUPABASE_AUTH_TOKEN_KEY = useMemo(() => {
+    try {
+      const url = new URL(SUPABASE_URL);
+      const projectRef = url.hostname.split('.')[0];
+      if (!projectRef) return null;
+      return `sb-${projectRef}-auth-token`;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const [otpVerified, setOtpVerifiedState] = useState<boolean>(() => {
     try {
       // Global flag
@@ -235,9 +247,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
               }
             } catch {}
           }
-          // Clean up any obviously stale project refs we used previously
-          localStorage.removeItem('sb-tgrmxlbnutxpewfmofdx-auth-token');
-          localStorage.removeItem('sb-yoekcpoppfudmqtvjcby-auth-token');
+          // Clean up stale Supabase project tokens, but never remove the active project's token
+          if (SUPABASE_AUTH_TOKEN_KEY) {
+            const staleKeys = keys.filter(k => k !== SUPABASE_AUTH_TOKEN_KEY);
+            staleKeys.forEach(k => {
+              try { localStorage.removeItem(k); } catch {}
+            });
+          } else {
+            // If we cannot determine the current project, remove only known legacy refs
+            localStorage.removeItem('sb-yoekcpoppfudmqtvjcby-auth-token');
+          }
         } catch {}
 
         const sessionResult = await Promise.race([
