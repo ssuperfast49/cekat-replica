@@ -1,4 +1,20 @@
 # Change Log
+# [0.1.29] FE WEB CEKAT 2026-01-07
+### Conversation Management
+- **Single Collaborator Restriction**: Changed Collaborators field from multi-select to single-select, allowing only one collaborator per thread.
+  - Replaced `SearchableMultiSelect` with `SearchableSelect` component for collaborator selection.
+  - When a new collaborator is selected, it automatically replaces any existing collaborator for that thread.
+  - Collaborator field supports clearing selection to remove the collaborator entirely.
+  - Existing threads with multiple collaborators are automatically trimmed to a single collaborator when accessed.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+- **Role-Based Takeover Chat Button**: Implemented role-based access control for the "Takeover Chat" button.
+  - **Master agents and super agents**: Takeover button is always enabled (when thread is unassigned).
+  - **Regular agents**: Takeover button is only enabled when no collaborator exists for the thread.
+  - Regular agents see a disabled button with tooltip explanation when a collaborator is already assigned.
+  - Prevents regular agents from taking over conversations that already have a collaborator assigned.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
 # [0.1.28] FE WEB CEKAT 2026-01-07
 ### Security & Data Access Control
 - **Super Agent Data Isolation**: Implemented Row Level Security (RLS) policies to ensure super agents can only view their own data in platform creation forms.
@@ -14,6 +30,7 @@
   - Helper text updated to indicate that super agent is automatically determined by the current user's account for super agent users.
   - Master agents continue to see and can select from all available super agents in the dropdown.
   - Updated: `src/components/platforms/TelegramPlatformForm.tsx`, `src/components/platforms/WebPlatformForm.tsx`, `src/components/platforms/WhatsAppPlatformForm.tsx`
+
 
 # [0.1.27] FE WEB CEKAT 2026-01-02
 ### Conversation Management
