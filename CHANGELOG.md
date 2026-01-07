@@ -1,5 +1,5 @@
 # Change Log
-# [0.1.28] FE WEB CEKAT 2026-01-07
+# [0.1.30] FE WEB CEKAT 2026-01-07
 ### Platform Management
 - **Live Chat Takeover Notices**: System takeover events now render as toast notifications instead of chat bubbles, keeping conversation history clean while still informing customers.
   - Updated: `src/pages/LiveChat.tsx`
@@ -7,6 +7,39 @@
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
 - **Header Cleanup**: Removed redundant save/delete buttons from platform edit header; autosave flow handles updates and delete remains available in the existing danger zone.
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
+# [0.1.29] FE WEB CEKAT 2026-01-07
+### Conversation Management
+- **Single Collaborator Restriction**: Changed Collaborators field from multi-select to single-select, allowing only one collaborator per thread.
+  - Replaced `SearchableMultiSelect` with `SearchableSelect` component for collaborator selection.
+  - When a new collaborator is selected, it automatically replaces any existing collaborator for that thread.
+  - Collaborator field supports clearing selection to remove the collaborator entirely.
+  - Existing threads with multiple collaborators are automatically trimmed to a single collaborator when accessed.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+- **Role-Based Takeover Chat Button**: Implemented role-based access control for the "Takeover Chat" button.
+  - **Master agents and super agents**: Takeover button is always enabled (when thread is unassigned).
+  - **Regular agents**: Takeover button is only enabled when no collaborator exists for the thread.
+  - Regular agents see a disabled button with tooltip explanation when a collaborator is already assigned.
+  - Prevents regular agents from taking over conversations that already have a collaborator assigned.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+# [0.1.28] FE WEB CEKAT 2026-01-07
+### Security & Data Access Control
+- **Super Agent Data Isolation**: Implemented Row Level Security (RLS) policies to ensure super agents can only view their own data in platform creation forms.
+  - Secured `v_users` view to prevent data leakage by removing direct access to `auth.users` table.
+  - View now anchors on `users_profile` table with proper RLS enforcement, ensuring super agents only see their own profile.
+  - Master agents retain full visibility to all users within their organization via `is_master_agent_in_org()` function.
+  - Database migration applied to enforce RLS policies at the database level for true security (not just frontend filtering).
+
+### Platform Creation Forms
+- **Auto-Select Super Agent for Super Agent Users**: Enhanced platform creation forms (Telegram, WhatsApp, Web) to automatically select and lock the Super Agent dropdown when the current user is a super agent.
+  - Super Agent field is automatically populated with the current user's ID when form opens for super agent users.
+  - Field becomes read-only (disabled) with visual indication when user is a super agent, preventing them from changing their own assignment.
+  - Helper text updated to indicate that super agent is automatically determined by the current user's account for super agent users.
+  - Master agents continue to see and can select from all available super agents in the dropdown.
+  - Updated: `src/components/platforms/TelegramPlatformForm.tsx`, `src/components/platforms/WebPlatformForm.tsx`, `src/components/platforms/WhatsAppPlatformForm.tsx`
+
 
 # [0.1.27] FE WEB CEKAT 2026-01-02
 ### Conversation Management

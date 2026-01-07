@@ -53,7 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { SearchableSelect, SearchableMultiSelect } from "@/components/ui/searchable-select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface MatchPosition {
   start: number;
@@ -262,6 +262,9 @@ export default function ConversationPage() {
   const { agents: humanAgents } = useHumanAgents();
   const { user } = useAuth();
   const { hasRole, hasPermission } = useRBAC();
+  const isMasterAgent = hasRole('master_agent');
+  const isSuperAgent = hasRole('super_agent');
+  const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent;
   const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -273,6 +276,9 @@ export default function ConversationPage() {
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
   
+  // NOTE: thread_collaborators is used for access control (assignee + super agent auto-added).
+  // We keep the full set of collaborator user_ids from DB here, but the UI "Collaborators" control
+  // will manage *at most one* additional agent collaborator under the selected super agent.
   const [collaborators, setCollaborators] = useState<string[]>([]);
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
@@ -403,15 +409,23 @@ export default function ConversationPage() {
       .map(o => ({ ...o, label: labelForUserId(o.value) }));
   }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
 
+  const agentCollaboratorIds = useMemo(() => {
+    if (!handledById) return [];
+    const allowed = new Set(superAgentMemberAgentIds);
+    return (collaborators || []).map(String).filter((id) => allowed.has(id));
+  }, [collaborators, handledById, superAgentMemberAgentIds]);
+
+  const selectedCollaboratorId = agentCollaboratorIds.length > 0 ? agentCollaboratorIds[0] : null;
+
   const collaboratorOptionsWithSelected = useMemo(() => {
-    // Ensure selected collaborators always have a label, even if they aren't in the allowed list/options.
+    // Ensure selected collaborator always has a label, even if they aren't in the allowed list/options.
     const map = new Map<string, { value: string; label: string }>();
     collaboratorOptions.forEach(o => map.set(o.value, o));
-    collaborators.forEach(id => {
-      if (!map.has(id)) map.set(id, { value: id, label: labelForUserId(id) });
-    });
+    if (selectedCollaboratorId && !map.has(selectedCollaboratorId)) {
+      map.set(selectedCollaboratorId, { value: selectedCollaboratorId, label: labelForUserId(selectedCollaboratorId) });
+    }
     return Array.from(map.values());
-  }, [collaboratorOptions, collaborators, labelForUserId]);
+  }, [collaboratorOptions, selectedCollaboratorId, labelForUserId]);
 
   // Fetch collaborators when thread is selected
   useEffect(() => {
@@ -433,29 +447,33 @@ export default function ConversationPage() {
     return () => { active = false; };
   }, [selectedThreadId]);
 
-  const handleAddCollab = async (userId: string) => {
+  // Enforce single "agent collaborator" under the handled-by super agent by trimming extras (non-fatal best-effort).
+  useEffect(() => {
     if (!selectedThreadId) return;
-    if (selectedConversation?.status === 'closed') return;
-    try {
-        await addThreadParticipant(selectedThreadId, userId);
-        setCollaborators(prev => [...prev, userId]);
-        toast.success("Collaborator added");
-    } catch (e) {
-        // Error handled by hook
-    }
-  };
-
-  const handleRemoveCollab = async (userId: string) => {
-    if (!selectedThreadId) return;
-    if (selectedConversation?.status === 'closed') return;
-    try {
-        await removeThreadParticipant(selectedThreadId, userId);
-        setCollaborators(prev => prev.filter(id => id !== userId));
-        toast.success("Collaborator removed");
-    } catch (e) {
-        // Error handled
-    }
-  };
+    if (!handledById) return;
+    if (agentCollaboratorIds.length <= 1) return;
+    let cancelled = false;
+    const trim = async () => {
+      try {
+        const keep = agentCollaboratorIds[0];
+        const extras = agentCollaboratorIds.slice(1);
+        if (!keep || extras.length === 0) return;
+        await protectedSupabase
+          .from('thread_collaborators')
+          .delete()
+          .eq('thread_id', selectedThreadId)
+          .in('user_id', extras as any);
+        if (!cancelled) {
+          setCollaborators(prev => prev.filter((id) => !extras.includes(String(id))));
+        }
+      } catch (e) {
+        // non-fatal
+        console.warn('Failed to trim collaborators', e);
+      }
+    };
+    trim();
+    return () => { cancelled = true; };
+  }, [selectedThreadId, handledById, agentCollaboratorIds]);
 
   const messageMatches = useMemo<MessageSearchMatch[]>(() => {
     if (!trimmedSearch) {
@@ -1679,14 +1697,32 @@ export default function ConversationPage() {
                   </div>
                 ) : (
                   <PermissionGate permission={'threads.update'}>
-                    <Button
-                      type="button"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={handleTakeoverChat}
-                      disabled={!user?.id}
-                    >
-                      Takeover Chat
-                    </Button>
+                    {(() => {
+                      const hasAgentCollaborator = agentCollaboratorIds.length > 0;
+                      const takeoverAllowedByRole =
+                        isMasterAgent ||
+                        isSuperAgent ||
+                        (isRegularAgentOnly && !hasAgentCollaborator);
+                      const takeoverDisabled = !user?.id || !takeoverAllowedByRole;
+                      const takeoverTooltip = !user?.id
+                        ? 'You must be signed in'
+                        : takeoverAllowedByRole
+                          ? undefined
+                          : isRegularAgentOnly && hasAgentCollaborator
+                            ? 'Collaborator already assigned; agents cannot take over.'
+                            : 'Only master or super agents can take over.';
+                      return (
+                        <Button
+                          type="button"
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                          onClick={handleTakeoverChat}
+                          disabled={takeoverDisabled}
+                          title={takeoverTooltip}
+                        >
+                          Takeover Chat
+                        </Button>
+                      );
+                    })()}
                   </PermissionGate>
                 )
               )}
@@ -1788,16 +1824,50 @@ export default function ConversationPage() {
             {/* Collaborators */}
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Collaborators</h3>
-              <SearchableMultiSelect
-                 options={collaboratorOptionsWithSelected}
-                 value={collaborators}
-                 onChange={() => {}}
-                 onAdd={handleAddCollab}
-                 onRemove={handleRemoveCollab}
-                 placeholder={handledById ? "Add Collaborator" : "Select handled by first"}
-                 searchPlaceholder="Search agent..."
-                 className="w-full"
-                 disabled={!handledById || isSelectedConversationResolved}
+              <SearchableSelect
+                options={collaboratorOptionsWithSelected}
+                value={selectedCollaboratorId}
+                onChange={async (val) => {
+                  if (!selectedConversation || selectedConversation.status === 'closed') return;
+                  if (!selectedThreadId) return;
+                  if (!handledById) return;
+
+                  const allowed = new Set(superAgentMemberAgentIds);
+                  const agentIdsToRemove = (collaborators || []).map(String).filter((id) => allowed.has(id));
+
+                  try {
+                    // Remove all existing agent-collaborators for this super agent scope
+                    if (agentIdsToRemove.length > 0) {
+                      await protectedSupabase
+                        .from('thread_collaborators')
+                        .delete()
+                        .eq('thread_id', selectedThreadId)
+                        .in('user_id', agentIdsToRemove as any);
+                    }
+
+                    // Add the newly selected one (if any)
+                    if (val) {
+                      await addThreadParticipant(selectedThreadId, val);
+                    }
+
+                    // Update local state: keep non-agent collaborators (assignee/super agent), replace agent-collabs with val
+                    setCollaborators(prev => {
+                      const prevStr = (prev || []).map(String);
+                      const kept = prevStr.filter((id) => !allowed.has(id));
+                      return val ? [...kept, val] : kept;
+                    });
+
+                    toast.success(val ? "Collaborator updated" : "Collaborator cleared");
+                  } catch (e) {
+                    // Hook/DB will handle errors; keep UI stable
+                  }
+                }}
+                placeholder={handledById ? "Select Collaborator" : "Select handled by first"}
+                searchPlaceholder="Search agent..."
+                className="w-full"
+                disabled={!handledById || isSelectedConversationResolved}
+                allowClear
+                clearLabel="Clear collaborator"
               />
             </div>
 
