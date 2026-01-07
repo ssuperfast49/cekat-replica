@@ -1,4 +1,13 @@
 # Change Log
+# [0.1.28] FE WEB CEKAT 2026-01-07
+### Platform Management
+- **Live Chat Takeover Notices**: System takeover events now render as toast notifications instead of chat bubbles, keeping conversation history clean while still informing customers.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Human Agent Assignment UX**: Selecting agents in platform edit autosaves immediately; no more extra click to add collaborators.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+- **Header Cleanup**: Removed redundant save/delete buttons from platform edit header; autosave flow handles updates and delete remains available in the existing danger zone.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
 # [0.1.27] FE WEB CEKAT 2026-01-02
 ### Conversation Management
 - **Handled By Clearing**: Users can now remove super agent assignments from conversations using a clear button in the "Handled By" selector.

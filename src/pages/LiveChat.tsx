@@ -36,6 +36,8 @@ export default function LiveChat() {
   const [aiProfileId, setAiProfileId] = useState<string | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const messageOrderRef = useRef(0);
+const systemNotificationIdsRef = useRef<Set<string>>(new Set());
+const notificationsReadyRef = useRef(false);
   const nextOrder = () => ++messageOrderRef.current;
   // Profile settings are resolved server-side by the webhook; no client DB calls.
   const endRef = useRef<HTMLDivElement>(null);
@@ -122,6 +124,20 @@ export default function LiveChat() {
     if (!ok) playSequence([1046.5, 1318.5, 1568.0, [1046.5, 1318.5, 1568.0, 2093.0]], 120, 0.06);
   };
 
+const notifySystemMessage = (message: { id?: string; body?: string }) => {
+  if (!message?.id) return;
+  if (systemNotificationIdsRef.current.has(message.id)) return;
+  systemNotificationIdsRef.current.add(message.id);
+  if (!notificationsReadyRef.current) return;
+  const content = String(message.body || '').trim();
+  if (!content) return;
+  import('@/components/ui/sonner')
+    .then(({ toast }) => {
+      toast.info(content, { duration: 3500 });
+    })
+    .catch(() => {});
+};
+
 const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
 
   // Ensure we have a persistent, friendly username per platform/host
@@ -195,6 +211,10 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
             // Skip user messages to prevent duplicates with optimistic updates
             for (const r of data) {
               if (!r?.id) continue;
+              if (r.role === 'system') {
+                notifySystemMessage(r);
+                continue;
+              }
               const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
               
               // SKIP user messages from periodic refresh
@@ -273,6 +293,10 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
         
         for (const r of rows) {
           if (!r?.id) continue;
+          if (r.role === 'system') {
+            notifySystemMessage(r);
+            continue;
+          }
           const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
           let inheritedOrder: number | null = null;
           if (role === 'assistant' && streamingMessageId) {
@@ -329,6 +353,8 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
 
     const attachToThread = async (tid: string) => {
       setThreadId(tid);
+      systemNotificationIdsRef.current = new Set();
+      notificationsReadyRef.current = false;
       try {
         const { data } = await supabase
           .from('messages')
@@ -336,35 +362,41 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
           .eq('thread_id', tid)
           .order('created_at', { ascending: true });
         if (Array.isArray(data)) upsertFromRows(data);
-      } catch {}
-      sub = supabase
-        .channel(`livechat-msgs-${tid}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${tid}` }, (payload: any) => {
-          const ev = payload?.eventType;
-          const row = payload?.new || payload?.old;
-          if (!row) return;
-          
-          
-          
-          // COMPLETELY SKIP user messages from realtime to prevent duplicates
-          if (row?.role === 'user') {
+        sub = supabase
+          .channel(`livechat-msgs-${tid}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${tid}` }, (payload: any) => {
+            const ev = payload?.eventType;
+            const row = payload?.new || payload?.old;
+            if (!row) return;
             
-            return;
-          }
-          
-          // Only process agent/assistant messages from realtime
-          if (row?.role === 'agent' || row?.role === 'assistant') {
             
-            upsertFromRows([row]);
-          }
-          
-          // Clear streaming message ID if we get a real agent message
-          if (ev === 'INSERT' && row?.role === 'agent' && streamingMessageId) {
-            setStreamingMessageId(null);
-          }
-        })
-        .subscribe();
-      setBooting(false);
+            
+            // COMPLETELY SKIP user messages from realtime to prevent duplicates
+            if (row?.role === 'user') {
+              
+              return;
+            }
+            if (row?.role === 'system') {
+              notifySystemMessage(row);
+              return;
+            }
+            
+            // Only process agent/assistant messages from realtime
+            if (row?.role === 'agent' || row?.role === 'assistant') {
+              
+              upsertFromRows([row]);
+            }
+            
+            // Clear streaming message ID if we get a real agent message
+            if (ev === 'INSERT' && row?.role === 'agent' && streamingMessageId) {
+              setStreamingMessageId(null);
+            }
+          })
+          .subscribe();
+      } finally {
+        notificationsReadyRef.current = true;
+        setBooting(false);
+      }
     };
 
     const init = async () => {
@@ -718,6 +750,10 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
                   // Only process agent/assistant messages from immediate refresh
                   for (const r of data) {
                     if (!r?.id) continue;
+                    if (r.role === 'system') {
+                      notifySystemMessage(r);
+                      continue;
+                    }
                     const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
                     let inheritedOrder: number | null = null;
                     

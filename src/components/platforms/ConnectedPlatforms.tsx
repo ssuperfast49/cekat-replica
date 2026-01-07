@@ -44,7 +44,6 @@ const ConnectedPlatforms = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [updatingAgents, setUpdatingAgents] = useState(false);
   const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
-  const [savingPlatform, setSavingPlatform] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [removingAvatar, setRemovingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -140,6 +139,29 @@ const ConnectedPlatforms = () => {
   const canEditAgents = hasRole('master_agent') || hasRole('super_agent');
   const availableAgentsToAdd = humanAgents.filter(a => a.primaryRole === 'agent' && !assignedHumanAgents.some(x => x.user_id === a.user_id));
   const multiSelectOptions: MultiSelectOption[] = availableAgentsToAdd.map(a => ({ value: a.user_id, label: a.display_name || a.email || a.user_id.slice(0,8) }));
+
+  const handlePendingAgentsChange = async (values: string[]) => {
+    if (!selectedPlatformData || !canEditAgents) {
+      setPendingAgentIds([]);
+      return;
+    }
+    if (values.length === 0) {
+      setPendingAgentIds([]);
+      return;
+    }
+    setPendingAgentIds(values);
+    try {
+      setUpdatingAgents(true);
+      const currentIds = assignedHumanAgents.map((a: any) => a.user_id);
+      const nextIds = Array.from(new Set([...currentIds, ...values]));
+      await updatePlatform(selectedPlatformData.id, { human_agent_ids: nextIds });
+    } catch (error: any) {
+      toast({ title: 'Failed to add agent', description: error?.message || 'Please try again', variant: 'destructive' });
+    } finally {
+      setUpdatingAgents(false);
+      setPendingAgentIds([]);
+    }
+  };
 
   const renderPlatformDetails = (includeWebExtras: boolean) => (
     <>
@@ -277,34 +299,15 @@ const ConnectedPlatforms = () => {
 
           {canEditAgents && selectedPlatformData && (
             <div className="mt-3 flex items-center gap-2">
-              <MultiSelect options={multiSelectOptions} value={pendingAgentIds} onChange={setPendingAgentIds} placeholder="Select human agents to add" />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <PermissionGate permission={'channel_agents.update'}>
-                    <Button
-                    variant="outline"
-                    disabled={updatingAgents || pendingAgentIds.length === 0}
-                    onClick={async () => {
-                      if (!selectedPlatformData) return;
-                      try {
-                        setUpdatingAgents(true);
-                        const currentIds = assignedHumanAgents.map((a: any) => a.user_id);
-                        const nextIds = Array.from(new Set([...currentIds, ...pendingAgentIds]));
-                        await updatePlatform(selectedPlatformData.id, { human_agent_ids: nextIds });
-                        setPendingAgentIds([]);
-                      } finally {
-                        setUpdatingAgents(false);
-                      }
-                    }}
-                  >
-                    Add selected
-                  </Button>
-                  </PermissionGate>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Tambahkan agen manusia yang dipilih ke platform ini</p>
-                </TooltipContent>
-              </Tooltip>
+              <PermissionGate permission={'channel_agents.update'}>
+                <MultiSelect
+                  options={multiSelectOptions}
+                  value={pendingAgentIds}
+                  onChange={handlePendingAgentsChange}
+                  placeholder="Select human agents to add"
+                  disabled={updatingAgents}
+                />
+              </PermissionGate>
             </div>
           )}
         </CardContent>
@@ -994,62 +997,6 @@ const ConnectedPlatforms = () => {
               <p className="text-muted-foreground">
                 {selectedPlatformData ? (selectedPlatformData.description || selectedPlatformData.website_url || '') : 'Choose a platform to manage'}
               </p>
-            </div>
-            <div className="flex gap-2">
-              {selectedPlatformData && (
-                <>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    disabled={savingPlatform || !selectedAgent || selectedAgent === (selectedPlatformData as any)?.ai_profile_id}
-                    onClick={async () => {
-                      if (!selectedPlatformData) return;
-                      try {
-                        setSavingPlatform(true);
-                        const updates: Record<string, any> = {};
-                        if (selectedAgent && selectedAgent !== (selectedPlatformData as any)?.ai_profile_id) {
-                          updates.ai_profile_id = selectedAgent;
-                        }
-                        if (Object.keys(updates).length === 0) {
-                          toast({ title: 'No changes', description: 'There are no changes to save.' });
-                          return;
-                        }
-                        await updatePlatform(selectedPlatformData.id, updates);
-                        toast({ title: 'Saved', description: 'Platform settings updated.' });
-                        try { window.dispatchEvent(new CustomEvent('refresh-platforms')); } catch {}
-                        await fetchPlatforms();
-                      } catch (e: any) {
-                        toast({ title: 'Error', description: e?.message || 'Failed to save platform', variant: 'destructive' });
-                      } finally {
-                        setSavingPlatform(false);
-                      }
-                    }}
-                  >
-                    {savingPlatform ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    disabled={isDeletingChannel}
-                    onClick={async () => {
-                      if (!selectedPlatformData) return;
-                      try {
-                        setIsDeletingChannel(true);
-                        await deleteChannelByProvider(selectedPlatformData);
-                        toast({ title: 'Deleted', description: 'Channel has been deleted.' });
-                        setSelectedPlatform(null);
-                        await fetchPlatforms();
-                      } catch (e: any) {
-                        toast({ title: 'Error', description: e?.message || 'Failed to delete channel', variant: 'destructive' });
-                      } finally {
-                        setIsDeletingChannel(false);
-                      }
-                    }}
-                  >
-                    {isDeletingChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </Button>
-                </>
-              )}
             </div>
           </div>
 
