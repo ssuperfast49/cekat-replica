@@ -1,5 +1,29 @@
 # Change Log
+# [0.1.27] FE WEB CEKAT 2026-01-02
+### Conversation Management
+- **Handled By Clearing**: Users can now remove super agent assignments from conversations using a clear button in the "Handled By" selector.
+  - Added `allowClear` prop to `SearchableSelect` component with inline clear button (X icon) that appears when a value is selected.
+  - "Handled By" selector in conversation sidebar now supports clearing assignments, allowing conversations to be unassigned.
+  - Updated `assignThreadToUser` function to accept `null` for unassigning conversations, properly clearing assignment metadata and creating "conversation unassigned" system event messages.
+  - When clearing "Handled By", all collaborators are automatically removed to maintain data consistency.
+  - Updated: `src/components/ui/searchable-select.tsx`, `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Resolved Thread Read-Only Controls**: Closed conversations now lock their "Handled By" and collaborator selectors.
+  - `SearchableSelect` and `SearchableMultiSelect` honor the disabled state (no clear button, no chip removal) when a thread is resolved.
+  - Collaborator add/remove handlers bail early for resolved threads to prevent accidental edits.
+  - Updated: `src/components/ui/searchable-select.tsx`, `src/components/chat/ConversationPage.tsx`
+
 # [0.1.26] FE WEB CEKAT 2026-01-01
+### Supabase Configuration
+- **Env-only credentials**: `src/config/supabase.ts` now reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (or `VITE_SUPABASE_PUBLISHABLE_KEY`) directly from the environment, with clear error messages when either is missing.
+- **Removed baked-in keys**: Any hardcoded DEV/PROD URLs or anonymous keys have been removed, eliminating mismatched-session logouts when the production build refreshes.
+- **Commit:** `chore: document proxy routing updates` — aligned the config with environment-driven credentials and documented the change.
+
+# [0.1.25] FE WEB CEKAT 2025-12-30
+### Webhook Routing & Live Chat
+- **Proxy-aware production routing**: `src/config/webhook.ts` now prefers Supabase Edge proxy routes while still allowing explicit overrides and legacy fallbacks, ensuring production hits `proxy-n8n` even when `VITE_WEBHOOK_BASE_URL` is set to your Supabase host.
+- **Client auth resilience**: `src/lib/webhookClient.ts` attempts to attach a session token when available but no longer blocks calls if the viewer lacks one, so widget traffic still reaches the proxy (and surfaces 401s when the function enforces auth).
+- **Env guidance**: Documented the required `VITE_SUPABASE_ANON_KEY` in `src/config/supabase.ts` so deployments fail fast if keys are missing, and restored custom-domain detection so `api.cssuper.com` resolves to the production Supabase key when the variable is omitted.
+- **Commit:** `chore: document proxy routing updates` — removed hardcoded Supabase fallbacks so `src/config/supabase.ts` now reads only the environment-provided URL/key, preventing prod refresh logouts caused by mismatched credentials.
 ### Live Chat
 - **Streaming order stability**: `src/pages/LiveChat.tsx` now tracks a monotonic render order so assistant replies consistently appear beneath the triggering user message without requiring a refresh.
 - **Proxy-first webhook**: The Live Chat send flow always calls the Supabase `proxy-n8n` function before falling back to the legacy webhook, so both production and development environments continue to hit the proxy listener.

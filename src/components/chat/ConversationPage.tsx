@@ -276,7 +276,7 @@ export default function ConversationPage() {
   const [collaborators, setCollaborators] = useState<string[]>([]);
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
-  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string } | null>(null);
+  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
   
@@ -435,6 +435,7 @@ export default function ConversationPage() {
 
   const handleAddCollab = async (userId: string) => {
     if (!selectedThreadId) return;
+    if (selectedConversation?.status === 'closed') return;
     try {
         await addThreadParticipant(selectedThreadId, userId);
         setCollaborators(prev => [...prev, userId]);
@@ -446,6 +447,7 @@ export default function ConversationPage() {
 
   const handleRemoveCollab = async (userId: string) => {
     if (!selectedThreadId) return;
+    if (selectedConversation?.status === 'closed') return;
     try {
         await removeThreadParticipant(selectedThreadId, userId);
         setCollaborators(prev => prev.filter(id => id !== userId));
@@ -868,6 +870,7 @@ export default function ConversationPage() {
     }
     return filteredConversations.find(c => c.id === selectedThreadId) || null;
   }, [selectedThreadId, filteredConversations]);
+  const isSelectedConversationResolved = selectedConversation?.status === 'closed';
 
   // Check if current user is a collaborator on selected thread
   useEffect(() => {
@@ -962,6 +965,41 @@ export default function ConversationPage() {
     } catch { }
     await fetchMessages(threadId);
   };
+
+  // Keep selection aligned to the active tab so "Assigned/Unassigned" doesn't show a resolved thread (and vice versa).
+  useEffect(() => {
+    const selectFirstForTab = () => {
+      if (activeTab === 'resolved') {
+        return filteredConversations.find(c => c.status === 'closed') || null;
+      }
+      if (activeTab === 'assigned') {
+        return filteredConversations.find(c => c.status !== 'closed' && !!c.assigned) || null;
+      }
+      // unassigned
+      return filteredConversations.find(c => c.status !== 'closed' && !c.assigned) || null;
+    };
+
+    const shouldBeResolved = activeTab === 'resolved';
+    const isResolvedSelected = selectedConversation?.status === 'closed';
+
+    // If nothing selected, pick the first thread in the current tab (if any).
+    if (!selectedThreadId) {
+      const first = selectFirstForTab();
+      if (first?.id) void handleConversationSelect(first.id);
+      return;
+    }
+
+    // If selected thread doesn't match current tab, switch selection to the first thread in the tab.
+    if (selectedConversation && shouldBeResolved !== isResolvedSelected) {
+      const first = selectFirstForTab();
+      if (first?.id) {
+        void handleConversationSelect(first.id);
+      } else {
+        // No threads available in this tab; clear selection to avoid showing a stale thread.
+        setSelectedThreadId(null);
+      }
+    }
+  }, [activeTab, filteredConversations, selectedThreadId, selectedConversation]);
 
   // Send message
   const handleSendMessage = async () => {
@@ -1703,19 +1741,15 @@ export default function ConversationPage() {
                  options={superAgentOptions}
                  value={handledById}
                  onChange={async (val) => {
-                    if (!selectedConversation) return;
-                    // When handled-by (super agent) changes, clear collaborators entirely.
-                    // Agents belong to a single super agent, so existing collaborators would be invalid.
+                    if (!selectedConversation || selectedConversation.status === 'closed') return;
+                    const threadId = selectedConversation.id;
+                    // Optimistic: clear current UI chips immediately so users see a reset state.
+                    setCollaborators([]);
+
+                    // When handled-by changes, collaborator membership must be reset.
                     try {
-                      const threadId = selectedConversation.id;
-                      const newSuperAgentId = val;
-
-                      // Optimistic: clear current UI chips immediately
-                      setCollaborators([]);
-
-                      // Best-effort DB cleanup: remove all collaborators except the new super agent + current user
-                      try {
-                        const keep = new Set<string>([newSuperAgentId, user?.id || ''].filter(Boolean) as string[]);
+                      if (val) {
+                        const keep = new Set<string>([val, user?.id || ''].filter(Boolean) as string[]);
                         const { data } = await protectedSupabase
                           .from('thread_collaborators')
                           .select('user_id')
@@ -1729,17 +1763,25 @@ export default function ConversationPage() {
                             .eq('thread_id', threadId)
                             .in('user_id', idsToRemove as any);
                         }
-                      } catch (e) {
-                        // Non-fatal; UI already cleared, and new collaborator list will be constrained by the new super agent scope.
-                        console.warn('Failed to clear collaborators on handled-by change', e);
+                      } else {
+                        await protectedSupabase
+                          .from('thread_collaborators')
+                          .delete()
+                          .eq('thread_id', threadId);
                       }
-                    } catch {}
-                    setHandledByOverride({ threadId: selectedConversation.id, userId: val });
-                    await assignThreadToUser(selectedConversation.id, val);
+                    } catch (e) {
+                      // Non-fatal; UI already cleared, and collaborator list will be rebuilt once a super agent is selected.
+                      console.warn('Failed to clear collaborators on handled-by change', e);
+                    }
+
+                    setHandledByOverride({ threadId, userId: val });
+                    await assignThreadToUser(threadId, val);
                  }}
                  placeholder="Assign Agent"
                  searchPlaceholder="Search agent..."
                  className="w-full"
+                 allowClear={!isSelectedConversationResolved}
+                 disabled={isSelectedConversationResolved}
               />
             </div>
 
@@ -1755,7 +1797,7 @@ export default function ConversationPage() {
                  placeholder={handledById ? "Add Collaborator" : "Select handled by first"}
                  searchPlaceholder="Search agent..."
                  className="w-full"
-                 disabled={!handledById}
+                 disabled={!handledById || isSelectedConversationResolved}
               />
             </div>
 

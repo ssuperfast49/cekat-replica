@@ -16,24 +16,30 @@ export async function callWebhook(endpoint: string, init: RequestInit = {}, opti
   const { forceLegacy = false, skipAuth = false } = options;
 
   const url = WEBHOOK_CONFIG.buildUrl(endpoint, { forceLegacy });
+  const usingProxyBase = url.startsWith(WEBHOOK_CONFIG.PROXY_BASE_URL);
+  const effectiveForceLegacy = forceLegacy && !usingProxyBase;
   const headers = new Headers(init.headers as HeadersInit | undefined);
   const isSupabaseFunctionUrl = url.startsWith(SUPABASE_URL) && url.includes("/functions/v1/");
-  const requiresAuth = (!forceLegacy && WEBHOOK_CONFIG.isProxyEndpoint(endpoint)) || isSupabaseFunctionUrl;
+  const requiresAuth =
+    (!effectiveForceLegacy && WEBHOOK_CONFIG.isProxyEndpoint(endpoint)) ||
+    isSupabaseFunctionUrl ||
+    usingProxyBase;
 
   if (requiresAuth && !skipAuth && !headers.has("Authorization")) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-
-    if (!token) {
-      throw new Error("Unable to call webhook without an active Supabase session");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+    } catch {
+      // ignore session lookup errors; we'll attempt the call without Authorization
     }
+  }
 
-    headers.set("Authorization", `Bearer ${token}`);
-
-    const anonKey = getAnonKey();
-    if (anonKey && !headers.has("apikey")) {
-      headers.set("apikey", anonKey);
-    }
+  const anonKey = getAnonKey();
+  if (anonKey && (requiresAuth || usingProxyBase || isSupabaseFunctionUrl || url.startsWith(SUPABASE_URL)) && !headers.has("apikey")) {
+    headers.set("apikey", anonKey);
   }
 
   return fetch(url, {

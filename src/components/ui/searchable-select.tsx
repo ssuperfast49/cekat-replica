@@ -25,11 +25,13 @@ export interface Option {
 interface SearchableSelectProps {
   options: Option[]
   value?: string | null
-  onChange: (value: string) => void
+  onChange: (value: string | null) => void
   placeholder?: string
   searchPlaceholder?: string
   className?: string
   disabled?: boolean
+  allowClear?: boolean
+  clearLabel?: string
 }
 
 export function SearchableSelect({
@@ -40,12 +42,22 @@ export function SearchableSelect({
   searchPlaceholder = "Search...",
   className,
   disabled = false,
+  allowClear = false,
+  clearLabel = "Clear selection",
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
 
   const selectedLabel = React.useMemo(() => {
     return options.find((option) => option.value === value)?.label
   }, [options, value])
+
+  const handleClear = (event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (disabled) return
+    onChange(null)
+    setOpen(false)
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -58,7 +70,19 @@ export function SearchableSelect({
           disabled={disabled}
         >
           <span className="truncate">{value ? selectedLabel : placeholder}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <span className="ml-2 flex items-center gap-1">
+            {allowClear && !disabled && value ? (
+              <span
+                role="button"
+                aria-label={clearLabel}
+                className="rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+                onClick={handleClear}
+              >
+                <X className="h-4 w-4" />
+              </span>
+            ) : null}
+            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
