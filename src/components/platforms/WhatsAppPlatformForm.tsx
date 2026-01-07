@@ -28,7 +28,7 @@ interface WhatsAppPlatformFormProps {
 const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: WhatsAppPlatformFormProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { hasPermission } = useRBAC();
+  const { hasPermission, hasRole } = useRBAC();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
 
@@ -54,6 +54,18 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   // Permission-based gating: user must have channels.create
   const canCreateChannel = hasPermission('channels.create');
+  const isSuperAgentUser = hasRole('super_agent');
+
+  // If current user is a super_agent, force super agent selection to themselves (RLS-safe + UX)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!isSuperAgentUser) return;
+    if (!user?.id) return;
+    setSelectedSuperAgentId(user.id);
+    // Keep selections consistent with the enforced super agent scope
+    setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isSuperAgentUser, user?.id]);
 
   const resolveSuperAgentForAI = (aiProfileId: string): string | null => {
     if (!aiProfileId) return null;
@@ -543,6 +555,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                   // Reset AI/human agent selections to respect new super agent scope
                   setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
                 }}
+                disabled={isSuperAgentUser}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Choose a Super Agent" />

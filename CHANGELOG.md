@@ -1,4 +1,20 @@
 # Change Log
+# [0.1.28] FE WEB CEKAT 2026-01-07
+### Security & Data Access Control
+- **Super Agent Data Isolation**: Implemented Row Level Security (RLS) policies to ensure super agents can only view their own data in platform creation forms.
+  - Secured `v_users` view to prevent data leakage by removing direct access to `auth.users` table.
+  - View now anchors on `users_profile` table with proper RLS enforcement, ensuring super agents only see their own profile.
+  - Master agents retain full visibility to all users within their organization via `is_master_agent_in_org()` function.
+  - Database migration applied to enforce RLS policies at the database level for true security (not just frontend filtering).
+
+### Platform Creation Forms
+- **Auto-Select Super Agent for Super Agent Users**: Enhanced platform creation forms (Telegram, WhatsApp, Web) to automatically select and lock the Super Agent dropdown when the current user is a super agent.
+  - Super Agent field is automatically populated with the current user's ID when form opens for super agent users.
+  - Field becomes read-only (disabled) with visual indication when user is a super agent, preventing them from changing their own assignment.
+  - Helper text updated to indicate that super agent is automatically determined by the current user's account for super agent users.
+  - Master agents continue to see and can select from all available super agents in the dropdown.
+  - Updated: `src/components/platforms/TelegramPlatformForm.tsx`, `src/components/platforms/WebPlatformForm.tsx`, `src/components/platforms/WhatsAppPlatformForm.tsx`
+
 # [0.1.27] FE WEB CEKAT 2026-01-02
 ### Conversation Management
 - **Handled By Clearing**: Users can now remove super agent assignments from conversations using a clear button in the "Handled By" selector.
