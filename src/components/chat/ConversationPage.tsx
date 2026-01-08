@@ -265,6 +265,8 @@ export default function ConversationPage() {
   const isMasterAgent = hasRole('master_agent');
   const isSuperAgent = hasRole('super_agent');
   const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent;
+  const canSendMessagesPermission = hasPermission('messages.create');
+  const currentUserId = user?.id ?? null;
   const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -409,11 +411,13 @@ export default function ConversationPage() {
       .map(o => ({ ...o, label: labelForUserId(o.value) }));
   }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
 
+  const collaboratorUserIds = useMemo(() => (collaborators || []).map(String), [collaborators]);
+
   const agentCollaboratorIds = useMemo(() => {
     if (!handledById) return [];
     const allowed = new Set(superAgentMemberAgentIds);
-    return (collaborators || []).map(String).filter((id) => allowed.has(id));
-  }, [collaborators, handledById, superAgentMemberAgentIds]);
+    return collaboratorUserIds.filter((id) => allowed.has(id));
+  }, [collaboratorUserIds, handledById, superAgentMemberAgentIds]);
 
   const selectedCollaboratorId = agentCollaboratorIds.length > 0 ? agentCollaboratorIds[0] : null;
 
@@ -426,6 +430,32 @@ export default function ConversationPage() {
     }
     return Array.from(map.values());
   }, [collaboratorOptions, selectedCollaboratorId, labelForUserId]);
+
+  const isCurrentUserCollaborator = useMemo(() => {
+    if (!currentUserId) return false;
+    return collaboratorUserIds.includes(currentUserId);
+  }, [collaboratorUserIds, currentUserId]);
+
+  const roleAllowsSend = useMemo(() => {
+    if (isMasterAgent || isSuperAgent) return true;
+    if (handledById && currentUserId && handledById === currentUserId) return true;
+    if (selectedCollaboratorId && currentUserId && selectedCollaboratorId === currentUserId) return true;
+    if (isRegularAgentOnly && isCurrentUserCollaborator) return true;
+    return false;
+  }, [isMasterAgent, isSuperAgent, handledById, currentUserId, selectedCollaboratorId, isRegularAgentOnly, isCurrentUserCollaborator]);
+
+  const canCurrentUserSend = canSendMessagesPermission || roleAllowsSend;
+
+  const sendDisabledReason = useMemo(() => {
+    if (canCurrentUserSend) return undefined;
+    if (!canSendMessagesPermission && !roleAllowsSend) {
+      return 'You do not have permission to send messages.';
+    }
+    if (!roleAllowsSend && isRegularAgentOnly) {
+      return 'Only the assigned collaborator can send messages.';
+    }
+    return undefined;
+  }, [canCurrentUserSend, canSendMessagesPermission, roleAllowsSend, isRegularAgentOnly]);
 
   // Fetch collaborators when thread is selected
   useEffect(() => {
@@ -1682,13 +1712,14 @@ export default function ConversationPage() {
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={handleKeyPress}
                       className="flex-1"
-                      disabled={!hasPermission('messages.create')}
+                      disabled={!canCurrentUserSend}
+                      title={sendDisabledReason}
                     />
                     <Button
                       type="button"
                       onClick={handleSendMessage}
-                      disabled={!draft.trim() || !hasPermission('messages.create')}
-                      title={!hasPermission('messages.create') ? 'No permission to send messages' : 'Send message'}
+                      disabled={!draft.trim() || !canCurrentUserSend}
+                      title={sendDisabledReason || 'Send message'}
                       aria-label="Send message"
                     >
                       <Send className="h-4 w-4" />
@@ -1772,52 +1803,9 @@ export default function ConversationPage() {
             {/* Handled By */}
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Handled By</h3>
-              <SearchableSelect 
-                 options={superAgentOptions}
-                 value={handledById}
-                 onChange={async (val) => {
-                    if (!selectedConversation || selectedConversation.status === 'closed') return;
-                    const threadId = selectedConversation.id;
-                    // Optimistic: clear current UI chips immediately so users see a reset state.
-                    setCollaborators([]);
-
-                    // When handled-by changes, collaborator membership must be reset.
-                    try {
-                      if (val) {
-                        const keep = new Set<string>([val, user?.id || ''].filter(Boolean) as string[]);
-                        const { data } = await protectedSupabase
-                          .from('thread_collaborators')
-                          .select('user_id')
-                          .eq('thread_id', threadId);
-                        const existingIds = (data || []).map((r: any) => String(r.user_id));
-                        const idsToRemove = existingIds.filter((id: string) => !keep.has(id));
-                        if (idsToRemove.length > 0) {
-                          await protectedSupabase
-                            .from('thread_collaborators')
-                            .delete()
-                            .eq('thread_id', threadId)
-                            .in('user_id', idsToRemove as any);
-                        }
-                      } else {
-                        await protectedSupabase
-                          .from('thread_collaborators')
-                          .delete()
-                          .eq('thread_id', threadId);
-                      }
-                    } catch (e) {
-                      // Non-fatal; UI already cleared, and collaborator list will be rebuilt once a super agent is selected.
-                      console.warn('Failed to clear collaborators on handled-by change', e);
-                    }
-
-                    setHandledByOverride({ threadId, userId: val });
-                    await assignThreadToUser(threadId, val);
-                 }}
-                 placeholder="Assign Agent"
-                 searchPlaceholder="Search agent..."
-                 className="w-full"
-                 allowClear={!isSelectedConversationResolved}
-                 disabled={isSelectedConversationResolved}
-              />
+              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {handledById ? (labelForUserId(handledById) || '—') : '—'}
+              </div>
             </div>
 
             {/* Collaborators */}

@@ -240,6 +240,8 @@ const Index = () => {
     updateMenuParam("admin");
   };
 
+  const canAccessHumanAgentsByRole = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT);
+
   // If account is deactivated, don't render the main content to prevent API calls
   if (accountDeactivated) {
     return (
@@ -293,6 +295,7 @@ const Index = () => {
                   requireAll={navItem.requireAll}
                   resourceAny={navItem.resourceAny}
                   requiredRoles={navItem.requiredRoles}
+                  roleBypass={navItem.roleBypass}
                 />
               );
             })}
@@ -439,10 +442,16 @@ const Index = () => {
             ) : /* settings hidden */ false ? (
               <></>
             ) : active === "humanagents" ? (
-              <PermissionGate permission={'super_agents.read'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Human Agents.</div>}>
+              <>
                 <h1 className="sr-only">Human Agents</h1>
-                <HumanAgents />
-              </PermissionGate>
+                {canAccessHumanAgentsByRole ? (
+                  <HumanAgents />
+                ) : (
+                  <PermissionGate permission={'super_agents.read'} fallback={<div className="text-sm text-muted-foreground">You do not have access to Human Agents.</div>}>
+                    <HumanAgents />
+                  </PermissionGate>
+                )}
+              </>
             ) : active === "permissions" ? (
               <RoleGate role={ROLES.MASTER_AGENT} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
                 <PermissionGate permission={'roles.read'}>

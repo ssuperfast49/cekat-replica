@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Plus, HelpCircle,  X, Upload, Trash2, MessageCircle, Globe, Send, Loader2 } from "lucide-react";
+import { Plus, HelpCircle,  X, Upload, Trash2, MessageCircle, Globe, Send, Loader2, Copy } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -335,16 +335,55 @@ const ConnectedPlatforms = () => {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 Link LiveChat 
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>URL untuk live chat widget yang dapat diembed di website</p>
+                  </TooltipContent>
+                </Tooltip>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="bg-muted p-3 rounded-md">
-                <Input
-                  value={livechatUrl(String(selectedPlatformData?.id || "{platform_id}"))}
-                  readOnly
-                  className="bg-background"
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={livechatUrl(String(selectedPlatformData?.id || "{platform_id}"))}
+                    readOnly
+                    className="bg-background flex-1"
+                  />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        onClick={async () => {
+                          const url = livechatUrl(String(selectedPlatformData?.id || "{platform_id}"));
+                          try {
+                            await navigator.clipboard.writeText(url);
+                            toast({
+                              title: "Copied!",
+                              description: "Live chat URL copied to clipboard",
+                            });
+                          } catch (error) {
+                            toast({
+                              title: "Failed to copy",
+                              description: "Please try again",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Copy URL</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -354,12 +393,20 @@ const ConnectedPlatforms = () => {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 Embed Code 
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Kode embed untuk menambahkan widget live chat ke website</p>
+                  </TooltipContent>
+                </Tooltip>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Textarea
-                value={`<script>
+              <div className="relative">
+                <Textarea
+                  value={`<script>
 (function(){
   // Lightweight chat embed - uses YOUR project's origin
   var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
@@ -376,9 +423,58 @@ const ConnectedPlatforms = () => {
   d.body.appendChild(bubble); d.body.appendChild(panel);
 })();
 </script>`}
-                readOnly
-                className="font-mono text-xs h-48 bg-muted"
-              />
+                  readOnly
+                  className="font-mono text-xs h-48 bg-muted pr-12"
+                />
+                <div className="absolute top-2 right-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={async () => {
+                          const embedCode = `<script>
+(function(){
+  // Lightweight chat embed - uses YOUR project's origin
+  var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
+  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'${APP_ORIGIN}'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
+  cfg.position=cfg.position||'bottom-right'; cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
+  var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+
+           '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+
+           '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';
+  var s=d.createElement('style'); s.type='text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);
+  var bubble=d.createElement('button'); bubble.id='chat-bubble'; bubble.setAttribute('aria-label','Open chat'); bubble.innerHTML='💬';
+  var panel=d.createElement('div'); panel.id='chat-panel';
+  var iframe=d.createElement('iframe'); iframe.src=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);
+  bubble.addEventListener('click',function(){ panel.classList.toggle('open'); });
+  d.body.appendChild(bubble); d.body.appendChild(panel);
+})();
+</script>`;
+                          try {
+                            await navigator.clipboard.writeText(embedCode);
+                            toast({
+                              title: "Copied!",
+                              description: "Embed code copied to clipboard",
+                            });
+                          } catch (error) {
+                            toast({
+                              title: "Failed to copy",
+                              description: "Please try again",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Copy embed code</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </>

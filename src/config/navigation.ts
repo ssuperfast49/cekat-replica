@@ -1,5 +1,6 @@
 import { LucideIcon, MessageSquare, BarChart2, Users, PlugZap, Bot, ShieldCheck, Settings as SettingsIcon, Shield, ClipboardList } from 'lucide-react';
 import { ROLES } from '@/types/rbac';
+import type { RoleName } from '@/types/rbac';
 import { PERMISSIONS_SCHEMA } from '@/config/permissions';
 
 export type NavKey = 
@@ -31,6 +32,10 @@ export interface NavigationItem {
    * Optional: restrict nav item visibility to specific roles (ANY-of)
    */
   requiredRoles?: string[];
+  /**
+   * Optional: allow these roles to bypass permission checks for the nav item.
+   */
+  roleBypass?: RoleName[];
 }
 
 // Helper: build list of read permissions for a resource from PERMISSIONS_SCHEMA
@@ -117,6 +122,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     // Gate Human Agents nav by Super Agents read permission
     permissions: readPerms('super_agents'),
     requireAll: false,
+    roleBypass: [ROLES.MASTER_AGENT, ROLES.SUPER_AGENT],
     description: "Manage human agent assignments and roles"
   },
 

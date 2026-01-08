@@ -21,6 +21,12 @@ export function useNavigation() {
     const navItem = NAVIGATION_CONFIG[navKey];
     if (!navItem) return false;
 
+    const roleBypassGranted = Array.isArray(navItem.roleBypass) && navItem.roleBypass.length > 0
+      ? hasAnyRole(navItem.roleBypass)
+      : false;
+
+    if (roleBypassGranted) return true;
+
     const permsOk = navItem.permissions.length === 0
       ? true
       : navItem.requireAll
