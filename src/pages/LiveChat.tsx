@@ -190,67 +190,7 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
     };
   }, [streamingMessageId]);
 
-  // Periodic refresh as backup to ensure messages are up-to-date
-  useEffect(() => {
-    if (!threadId) return;
-    
-    const refreshMessages = async () => {
-      try {
-        const { data } = await supabase
-          .from('messages')
-          .select('id, role, body, created_at')
-          .eq('thread_id', threadId)
-          .order('created_at', { ascending: true });
-        
-        if (Array.isArray(data)) {
-          setMessages((prev) => {
-            const map = new Map<string, ChatMessage>();
-            prev.forEach((m) => map.set(m.id, m));
-            
-            // Only process agent/assistant messages from periodic refresh
-            // Skip user messages to prevent duplicates with optimistic updates
-            for (const r of data) {
-              if (!r?.id) continue;
-              if (r.role === 'system') {
-                notifySystemMessage(r);
-                continue;
-              }
-              const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
-              
-              // SKIP user messages from periodic refresh
-              if (role === 'user') {
-                
-                continue;
-              }
-              
-              const existing = map.get(r.id);
-              const item: ChatMessage = existing ?? {
-                id: r.id,
-                role,
-                body: r.body || '',
-                at: r.created_at || new Date().toISOString(),
-                order: nextOrder(),
-              };
-              if (!existing) {
-                item.body = r.body || '';
-                item.at = r.created_at || new Date().toISOString();
-              }
-              map.set(item.id, item);
-            }
-            
-            const arr = Array.from(map.values());
-            arr.sort((a,b)=> a.order - b.order);
-            return arr;
-          });
-        }
-      } catch (error) {
-        console.error('Error refreshing messages:', error);
-      }
-    };
-
-    const interval = setInterval(refreshMessages, 2000); // Refresh every 2 seconds for faster updates
-    return () => clearInterval(interval);
-  }, [threadId]);
+  // Removed periodic polling; realtime subscriptions now handle message sync exclusively.
 
   // Attach to existing thread for this platform and current username, and subscribe to realtime
   // Fetch AI profile ID from channel/platform (best-effort; webhook can resolve server-side)

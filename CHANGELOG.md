@@ -1,4 +1,8 @@
 # Change Log
+# [0.1.31] FE WEB CEKAT 2026-01-08
+- **Live Chat Realtime-Only Sync**: Removed the 2-second polling loop from the live chat widget so updates rely solely on Supabase realtime subscriptions, cutting unnecessary network and memory usage.
+  - Updated: `src/pages/LiveChat.tsx`
+
 # [0.1.30] FE WEB CEKAT 2026-01-07
 ### Platform Management
 - **Live Chat Takeover Notices**: System takeover events now render as toast notifications instead of chat bubbles, keeping conversation history clean while still informing customers.

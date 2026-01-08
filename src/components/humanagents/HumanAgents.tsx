@@ -77,6 +77,7 @@ const HumanAgents = () => {
   const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "super_agent" | "agent">("all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [pendingStatusFilter, setPendingStatusFilter] = useState<"all" | "invited" | "expired">("all");
+  const viewerIsSuperOnly = hasRole(ROLES.SUPER_AGENT) && !hasRole(ROLES.MASTER_AGENT);
 
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
@@ -439,7 +440,7 @@ const HumanAgents = () => {
                                 {hasRole(ROLES.MASTER_AGENT) && (
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
-                                {stub.primaryRole !== 'master_agent' && (
+                                {canDeleteAgent(stub) && (
                                   <PermissionGate permission={'super_agents.delete'}>
                                     <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
                                   </PermissionGate>
@@ -498,7 +499,7 @@ const HumanAgents = () => {
                                   {hasRole(ROLES.MASTER_AGENT) && (
                                     <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                   )}
-                                  {stub.primaryRole !== 'master_agent' && (
+                                  {canDeleteAgent(stub) && (
                                     <PermissionGate permission={'super_agents.delete'}>
                                       <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
                                     </PermissionGate>
@@ -554,7 +555,7 @@ const HumanAgents = () => {
                                       {hasRole(ROLES.MASTER_AGENT) && (
                                         <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(child)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                       )}
-                                      {child.primaryRole !== 'master_agent' && (
+                                      {canDeleteAgent(child) && (
                                         <PermissionGate permission={'super_agents.delete'}>
                                           <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
                                         </PermissionGate>
@@ -614,7 +615,7 @@ const HumanAgents = () => {
                                 {hasRole(ROLES.MASTER_AGENT) && (
                                   <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
                                 )}
-                                {stub.primaryRole !== 'master_agent' && (
+                                {canDeleteAgent(stub) && (
                                   <PermissionGate permission={'super_agents.delete'}>
                                     <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
                                   </PermissionGate>
@@ -736,7 +737,7 @@ const HumanAgents = () => {
                               </Button>
                             </PermissionGate>
                           )}
-                          {stub.primaryRole !== 'master_agent' && (
+                          {canDeleteAgent(stub) && (
                             <PermissionGate permission={'super_agents.delete'}>
                               <Button 
                                 size="sm" 
@@ -749,7 +750,7 @@ const HumanAgents = () => {
                           )}
                         </>
                       ) : (
-                        stub.primaryRole !== 'master_agent' && (
+                        canDeleteAgent(stub) && (
                           <PermissionGate permission={'super_agents.delete'}>
                             <Button 
                               size="sm" 
@@ -1239,6 +1240,13 @@ const HumanAgents = () => {
     if (role === "super_agent") return "bg-emerald-100 text-emerald-700";
     if (role === "agent") return "bg-gray-100 text-gray-700";
     return "bg-gray-100 text-gray-700";
+  };
+
+  const canDeleteAgent = (agent?: AgentWithDetails | null) => {
+    if (!agent) return false;
+    if (agent.primaryRole === 'master_agent') return false;
+    if (viewerIsSuperOnly && currentUserId && agent.user_id === currentUserId) return false;
+    return true;
   };
 
   return (
