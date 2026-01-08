@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.33] FE WEB CEKAT 2026-01-08
+### Conversations
+- **Role-aware Message Composer**: Chat input now enables whenever a user has `messages.create`, is a master/super agent, is the current handled-by assignee, or is the selected collaborator—ensuring the right people can reply without manual overrides.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
 # [0.1.32] FE WEB CEKAT 2026-01-08
 ### Platform Management
 - **Live Chat Link Quality-of-Life**: Added copy-to-clipboard buttons with toast feedback for both the live chat URL and embed snippet so teammates can drop links/widgets faster without selecting text manually.

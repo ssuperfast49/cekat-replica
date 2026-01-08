@@ -265,6 +265,8 @@ export default function ConversationPage() {
   const isMasterAgent = hasRole('master_agent');
   const isSuperAgent = hasRole('super_agent');
   const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent;
+  const canSendMessagesPermission = hasPermission('messages.create');
+  const currentUserId = user?.id ?? null;
   const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -409,11 +411,13 @@ export default function ConversationPage() {
       .map(o => ({ ...o, label: labelForUserId(o.value) }));
   }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
 
+  const collaboratorUserIds = useMemo(() => (collaborators || []).map(String), [collaborators]);
+
   const agentCollaboratorIds = useMemo(() => {
     if (!handledById) return [];
     const allowed = new Set(superAgentMemberAgentIds);
-    return (collaborators || []).map(String).filter((id) => allowed.has(id));
-  }, [collaborators, handledById, superAgentMemberAgentIds]);
+    return collaboratorUserIds.filter((id) => allowed.has(id));
+  }, [collaboratorUserIds, handledById, superAgentMemberAgentIds]);
 
   const selectedCollaboratorId = agentCollaboratorIds.length > 0 ? agentCollaboratorIds[0] : null;
 
@@ -426,6 +430,32 @@ export default function ConversationPage() {
     }
     return Array.from(map.values());
   }, [collaboratorOptions, selectedCollaboratorId, labelForUserId]);
+
+  const isCurrentUserCollaborator = useMemo(() => {
+    if (!currentUserId) return false;
+    return collaboratorUserIds.includes(currentUserId);
+  }, [collaboratorUserIds, currentUserId]);
+
+  const roleAllowsSend = useMemo(() => {
+    if (isMasterAgent || isSuperAgent) return true;
+    if (handledById && currentUserId && handledById === currentUserId) return true;
+    if (selectedCollaboratorId && currentUserId && selectedCollaboratorId === currentUserId) return true;
+    if (isRegularAgentOnly && isCurrentUserCollaborator) return true;
+    return false;
+  }, [isMasterAgent, isSuperAgent, handledById, currentUserId, selectedCollaboratorId, isRegularAgentOnly, isCurrentUserCollaborator]);
+
+  const canCurrentUserSend = canSendMessagesPermission || roleAllowsSend;
+
+  const sendDisabledReason = useMemo(() => {
+    if (canCurrentUserSend) return undefined;
+    if (!canSendMessagesPermission && !roleAllowsSend) {
+      return 'You do not have permission to send messages.';
+    }
+    if (!roleAllowsSend && isRegularAgentOnly) {
+      return 'Only the assigned collaborator can send messages.';
+    }
+    return undefined;
+  }, [canCurrentUserSend, canSendMessagesPermission, roleAllowsSend, isRegularAgentOnly]);
 
   // Fetch collaborators when thread is selected
   useEffect(() => {
@@ -1683,13 +1713,14 @@ export default function ConversationPage() {
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={handleKeyPress}
                       className="flex-1"
-                      disabled={!hasPermission('messages.create')}
+                      disabled={!canCurrentUserSend}
+                      title={sendDisabledReason}
                     />
                     <Button
                       type="button"
                       onClick={handleSendMessage}
-                      disabled={!draft.trim() || !hasPermission('messages.create')}
-                      title={!hasPermission('messages.create') ? 'No permission to send messages' : 'Send message'}
+                      disabled={!draft.trim() || !canCurrentUserSend}
+                      title={sendDisabledReason || 'Send message'}
                       aria-label="Send message"
                     >
                       <Send className="h-4 w-4" />
