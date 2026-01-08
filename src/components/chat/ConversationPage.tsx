@@ -1773,52 +1773,9 @@ export default function ConversationPage() {
             {/* Handled By */}
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Handled By</h3>
-              <SearchableSelect 
-                 options={superAgentOptions}
-                 value={handledById}
-                 onChange={async (val) => {
-                    if (!selectedConversation || selectedConversation.status === 'closed') return;
-                    const threadId = selectedConversation.id;
-                    // Optimistic: clear current UI chips immediately so users see a reset state.
-                    setCollaborators([]);
-
-                    // When handled-by changes, collaborator membership must be reset.
-                    try {
-                      if (val) {
-                        const keep = new Set<string>([val, user?.id || ''].filter(Boolean) as string[]);
-                        const { data } = await protectedSupabase
-                          .from('thread_collaborators')
-                          .select('user_id')
-                          .eq('thread_id', threadId);
-                        const existingIds = (data || []).map((r: any) => String(r.user_id));
-                        const idsToRemove = existingIds.filter((id: string) => !keep.has(id));
-                        if (idsToRemove.length > 0) {
-                          await protectedSupabase
-                            .from('thread_collaborators')
-                            .delete()
-                            .eq('thread_id', threadId)
-                            .in('user_id', idsToRemove as any);
-                        }
-                      } else {
-                        await protectedSupabase
-                          .from('thread_collaborators')
-                          .delete()
-                          .eq('thread_id', threadId);
-                      }
-                    } catch (e) {
-                      // Non-fatal; UI already cleared, and collaborator list will be rebuilt once a super agent is selected.
-                      console.warn('Failed to clear collaborators on handled-by change', e);
-                    }
-
-                    setHandledByOverride({ threadId, userId: val });
-                    await assignThreadToUser(threadId, val);
-                 }}
-                 placeholder="Assign Agent"
-                 searchPlaceholder="Search agent..."
-                 className="w-full"
-                 allowClear={!isSelectedConversationResolved}
-                 disabled={isSelectedConversationResolved}
-              />
+              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {handledById ? (labelForUserId(handledById) || '—') : '—'}
+              </div>
             </div>
 
             {/* Collaborators */}

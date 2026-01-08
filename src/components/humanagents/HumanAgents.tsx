@@ -15,7 +15,7 @@ import { useHumanAgents, AgentWithDetails } from "@/hooks/useHumanAgents";
 import { useAIAgents } from "@/hooks/useAIAgents";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { useRBAC } from "@/contexts/RBACContext";
-import { ROLES } from "@/types/rbac";
+import { ROLES, type RoleName } from "@/types/rbac";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/lib/supabase";
@@ -58,6 +58,9 @@ const HumanAgents = () => {
   const { toast } = useToast();
   const lastErrorRef = useRef<string | null>(null);
   const { hasPermission, hasRole } = useRBAC();
+  const isMasterAgent = hasRole(ROLES.MASTER_AGENT);
+  const isSuperAgent = hasRole(ROLES.SUPER_AGENT);
+  const manageRoleBypass: RoleName[] = [ROLES.MASTER_AGENT, ROLES.SUPER_AGENT];
   // Pagination and Pending tab state backed by v_human_agents
   const [activeRows, setActiveRows] = useState<any[]>([]);
   const [pendingRows, setPendingRows] = useState<any[]>([]);
@@ -83,6 +86,12 @@ const HumanAgents = () => {
     const handler = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
     return () => clearTimeout(handler);
   }, [searchTerm]);
+
+  useEffect(() => {
+    if (isSuperAgent && tabValue !== 'active') {
+      setTabValue('active');
+    }
+  }, [isSuperAgent, tabValue]);
 
   // Ensure only master agents can create super agents
   useEffect(() => {
@@ -434,7 +443,7 @@ const HumanAgents = () => {
                                 </DropdownMenu>
                               </div>
                               <div className="flex items-center gap-1">
-                                <PermissionGate permission={'users_profile.update_token_limit'}>
+                                <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
                                   <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
                                 </PermissionGate>
                                 {hasRole(ROLES.MASTER_AGENT) && (
@@ -493,7 +502,7 @@ const HumanAgents = () => {
                                   </DropdownMenu>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <PermissionGate permission={'users_profile.update_token_limit'}>
+                                  <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
                                     <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
                                   </PermissionGate>
                                   {hasRole(ROLES.MASTER_AGENT) && (
@@ -549,7 +558,7 @@ const HumanAgents = () => {
                                       </DropdownMenu>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                      <PermissionGate permission={'users_profile.update_token_limit'}>
+                                      <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
                                         <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(child)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
                                       </PermissionGate>
                                       {hasRole(ROLES.MASTER_AGENT) && (
@@ -609,7 +618,7 @@ const HumanAgents = () => {
                                 </DropdownMenu>
                               </div>
                               <div className="flex items-center gap-1">
-                                <PermissionGate permission={'users_profile.update_token_limit'}>
+                                <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
                                   <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
                                 </PermissionGate>
                                 {hasRole(ROLES.MASTER_AGENT) && (
@@ -692,7 +701,7 @@ const HumanAgents = () => {
                     </div>
                     <div className="flex items-center gap-1">
                       {!isPending && (
-                        <PermissionGate permission={'users_profile.update_token_limit'}>
+                        <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
                           <Button
                             size="sm"
                             className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
@@ -1271,32 +1280,33 @@ const HumanAgents = () => {
               </SelectContent>
             </Select>
           </div>
-          <PermissionGate
-            permission={'users_profile.create'}
-            fallback={(
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button className="gap-2 bg-blue-600 text-white" disabled>
-                      <Plus className="h-4 w-4" />
-                      Create Agent
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>You do not have permission to create agents.</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          >
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-                  <Plus className="h-4 w-4" />
-                  Create Agent
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md bg-background border">
+          {!isSuperAgent && (
+            <PermissionGate
+              permission={'users_profile.create'}
+              fallback={(
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button className="gap-2 bg-blue-600 text-white" disabled>
+                        <Plus className="h-4 w-4" />
+                        Create Agent
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>You do not have permission to create agents.</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            >
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                    <Plus className="h-4 w-4" />
+                    Create Agent
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md bg-background border">
                   <DialogHeader>
                     <DialogTitle>Create New Agent</DialogTitle>
                   </DialogHeader>
@@ -1411,7 +1421,8 @@ const HumanAgents = () => {
                   </div>
                 </DialogContent>
               </Dialog>
-          </PermissionGate>
+            </PermissionGate>
+          )}
         </div>
       </div>
 
@@ -1425,63 +1436,69 @@ const HumanAgents = () => {
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as "all" | "master_agent" | "super_agent" | "agent")}>
-            <SelectTrigger className="w-[150px] bg-background border">
-              <SelectValue placeholder="Role" />
-            </SelectTrigger>
-            <SelectContent className="bg-background border z-50">
-              <SelectItem value="all">All roles</SelectItem>
-              <SelectItem value="master_agent">Master Agent</SelectItem>
-              <SelectItem value="super_agent">Super Agent</SelectItem>
-              <SelectItem value="agent">Agent</SelectItem>
-            </SelectContent>
-          </Select>
+        {!isSuperAgent && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as "all" | "master_agent" | "super_agent" | "agent")}>
+              <SelectTrigger className="w-[150px] bg-background border">
+                <SelectValue placeholder="Role" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border z-50">
+                <SelectItem value="all">All roles</SelectItem>
+                <SelectItem value="master_agent">Master Agent</SelectItem>
+                <SelectItem value="super_agent">Super Agent</SelectItem>
+                <SelectItem value="agent">Agent</SelectItem>
+              </SelectContent>
+            </Select>
 
-          {tabValue === 'pending' ? (
-            <Select value={pendingStatusFilter} onValueChange={(v) => setPendingStatusFilter(v as "all" | "invited" | "expired")}>
-              <SelectTrigger className="w-[150px] bg-background border">
-                <SelectValue placeholder="Invitation status" />
-              </SelectTrigger>
-              <SelectContent className="bg-background border z-50">
-                <SelectItem value="all">All invitations</SelectItem>
-                <SelectItem value="invited">Invited</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : (
-            <Select value={activeStatusFilter} onValueChange={(v) => setActiveStatusFilter(v as "all" | "active" | "inactive")}>
-              <SelectTrigger className="w-[150px] bg-background border">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent className="bg-background border z-50">
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+            {tabValue === 'pending' ? (
+              <Select value={pendingStatusFilter} onValueChange={(v) => setPendingStatusFilter(v as "all" | "invited" | "expired")}>
+                <SelectTrigger className="w-[150px] bg-background border">
+                  <SelectValue placeholder="Invitation status" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border z-50">
+                  <SelectItem value="all">All invitations</SelectItem>
+                  <SelectItem value="invited">Invited</SelectItem>
+                  <SelectItem value="expired">Expired</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={activeStatusFilter} onValueChange={(v) => setActiveStatusFilter(v as "all" | "active" | "inactive")}>
+                <SelectTrigger className="w-[150px] bg-background border">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border z-50">
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        )}
       </div>
 
       <Tabs value={tabValue} onValueChange={(v)=>setTabValue(v as any)} className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className={`grid w-full max-w-md ${isSuperAgent ? 'grid-cols-1' : 'grid-cols-2'}`}>
           <TabsTrigger value="active" className="gap-2">
             <UserCheck className="h-4 w-4" />
             Active
           </TabsTrigger>
-          <TabsTrigger value="pending" className="gap-2">
-            <UserPlus className="h-4 w-4" />
-            Pending
-          </TabsTrigger>
+          {!isSuperAgent && (
+            <TabsTrigger value="pending" className="gap-2">
+              <UserPlus className="h-4 w-4" />
+              Pending
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="active" className="space-y-4">
           {renderPagedTable(activeRows, loadingActiveTable || loading, activeTotal, activePage, activePageSize, setActivePage, setActivePageSize, false, activeAgentToSuperMap)}
         </TabsContent>
-        <TabsContent value="pending" className="space-y-4">
-          {renderPagedTable(pendingRows, loadingPendingTable, pendingTotal, pendingPage, pendingPageSize, setPendingPage, setPendingPageSize, true)}
-        </TabsContent>
+        {!isSuperAgent && (
+          <TabsContent value="pending" className="space-y-4">
+            {renderPagedTable(pendingRows, loadingPendingTable, pendingTotal, pendingPage, pendingPageSize, setPendingPage, setPendingPageSize, true)}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Clustering UI removed per design simplification; nested table above is sufficient */}

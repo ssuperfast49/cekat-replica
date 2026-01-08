@@ -1,4 +1,21 @@
 # Change Log
+# [0.1.32] FE WEB CEKAT 2026-01-08
+### Platform Management
+- **Live Chat Link Quality-of-Life**: Added copy-to-clipboard buttons with toast feedback for both the live chat URL and embed snippet so teammates can drop links/widgets faster without selecting text manually.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
+### Navigation & RBAC
+- **Guaranteed Human Agents Menu for Supervisors**: Super agents now always see the Human Agents sidebar item (role bypass) and can open the roster even if their read permissions are still syncing.
+  - Updated: `src/config/navigation.ts`, `src/hooks/useNavigation.ts`, `src/components/navigation/PermissionNavItem.tsx`, `src/pages/Index.tsx`
+
+### Human Agent Management
+- **Super Agent Focused View**: When a super agent opens the roster the Create button and Pending tab disappear, role/status filters are hidden, and all action buttons (status, limits, delete) are automatically allowed for members in their own cluster thanks to the new `roleBypass` helper.
+  - Updated: `src/components/humanagents/HumanAgents.tsx`, `src/components/rbac/PermissionGate.tsx`
+
+### Conversation Sidebar
+- **Handled By Read-Only**: The “Handled By” field is now display-only, preventing mid-conversation reassignment from the info pane while still showing who currently owns the thread.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
 # [0.1.31] FE WEB CEKAT 2026-01-08
 - **Live Chat Realtime-Only Sync**: Removed the 2-second polling loop from the live chat widget so updates rely solely on Supabase realtime subscriptions, cutting unnecessary network and memory usage.
   - Updated: `src/pages/LiveChat.tsx`

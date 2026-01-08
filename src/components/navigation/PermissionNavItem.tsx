@@ -1,6 +1,7 @@
 import { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRBAC } from '@/contexts/RBACContext';
+import type { RoleName } from '@/types/rbac';
 
 interface PermissionNavItemProps {
   icon: LucideIcon;
@@ -12,6 +13,7 @@ interface PermissionNavItemProps {
   requireAll?: boolean;
   resourceAny?: string[];
   requiredRoles?: string[];
+  roleBypass?: RoleName[];
 }
 
 /**
@@ -28,6 +30,7 @@ export default function PermissionNavItem({
   requireAll = false,
   resourceAny = [],
   requiredRoles = [],
+  roleBypass = [],
 }: PermissionNavItemProps) {
   const { hasAnyPermission, hasAllPermissions, hasAnyRole, loading } = useRBAC();
 
@@ -38,8 +41,9 @@ export default function PermissionNavItem({
     ? hasAllPermissions(permissions)
     : hasAnyPermission(permissions);
   const allowedRoles = requiredRoles.length === 0 || hasAnyRole(requiredRoles);
+  const roleBypassGranted = roleBypass.length > 0 && hasAnyRole(roleBypass);
 
-  if (!allowedPerms || !allowedRoles) return null;
+  if (!roleBypassGranted && (!allowedPerms || !allowedRoles)) return null;
 
   return (
     <button
