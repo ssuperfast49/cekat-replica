@@ -13,6 +13,9 @@ import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 let lastNotificationTime = 0;
 const NOTIFICATION_DEBOUNCE_MS = 1000; // Prevent duplicate sounds within 1 second
 
+// Global flag to track if the 'assigned' enum value is supported by the database
+let dbSupportsAssignedStatus = true;
+
 const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
   try {
     // Check if audio is enabled
@@ -53,7 +56,7 @@ export interface Thread {
   org_id: string;
   contact_id: string;
   channel_id: string;
-  status: 'open' | 'pending' | 'closed';
+  status: 'open' | 'pending' | 'closed' | 'assigned';
   assignee_user_id: string | null;
   assigned_by_user_id?: string | null;
   resolved_by_user_id?: string | null;
@@ -100,6 +103,7 @@ export interface ConversationWithDetails extends Thread {
     external_id?: string;
     logo_url?: string | null;
     profile_photo_url?: string | null;
+    super_agent_id?: string | null;
   };
   channel_logo_url?: string | null;
   last_message_preview: string;
@@ -111,6 +115,8 @@ export interface ConversationWithDetails extends Thread {
   assignee_name?: string;
   resolved_by_name?: string;
   unreplied?: boolean;
+  super_agent_id?: string | null;
+  super_agent_name?: string | null;
 }
 
 export interface MessageWithDetails extends Message {
@@ -152,10 +158,43 @@ export const useConversations = () => {
       if (document.visibilityState === 'visible') {
         // Prevent parallel fetches
         if (!loading) {
-          fetchConversations();
+          fetchConversations(undefined, { silent: true });
         }
       }
     }, delayMs) as unknown as number;
+  };
+
+  const computeAssignmentState = (source: {
+    ai_access_enabled?: boolean | null;
+    assigned_at?: string | null;
+    assignee_user_id?: string | null;
+    channel_super_agent_id?: string | null;
+    status?: string | null;
+    ai_handoff_at?: string | null;
+  }) => {
+    const explicitAssignee = source?.assignee_user_id ?? null;
+    const channelSuperAgentId = source?.channel_super_agent_id ?? null;
+    const status = (source?.status || '').toLowerCase();
+
+    const assignee_user_id = explicitAssignee ?? channelSuperAgentId ?? null;
+    const handled_by_super_agent = !!assignee_user_id && assignee_user_id === channelSuperAgentId;
+
+    const isClosed = status === 'closed';
+    const aiActive = source?.ai_access_enabled === true && !source?.ai_handoff_at;
+
+    const assignedFromSignals =
+      Boolean(source?.assigned_at) ||
+      (!aiActive && source?.ai_access_enabled === false) ||
+      (!!source?.ai_handoff_at) ||
+      status === 'assigned';
+
+    const assigned = !isClosed && assignedFromSignals;
+
+    return {
+      assigned,
+      assignee_user_id,
+      handled_by_super_agent,
+    };
   };
 
   // More targeted refresh for specific thread updates
@@ -163,13 +202,41 @@ export const useConversations = () => {
     setConversations(prev => {
       const updated = prev.map(conv => {
         if (conv.id === threadId) {
+          const channelSuperAgentId = conv.channel?.super_agent_id ?? conv.super_agent_id ?? null;
+          const assignment = computeAssignmentState({
+            ai_access_enabled: conv.ai_access_enabled,
+            assigned_at: conv.assigned_at,
+            assignee_user_id: conv.assignee_user_id,
+            channel_super_agent_id: channelSuperAgentId,
+            status: conv.status,
+            ai_handoff_at: (conv as any).ai_handoff_at ?? null,
+          });
+          const assigneeName =
+            assignment.assignee_user_id
+              ? assignment.assignee_user_id === channelSuperAgentId
+                ? conv.super_agent_name || conv.assignee_name || '—'
+                : conv.assignee_name || '—'
+              : '—';
+          const nextStatus: Thread['status'] =
+            conv.status === 'closed'
+              ? 'closed'
+              : conv.status === 'pending' && !assignment.assigned
+                ? 'pending'
+                : assignment.assigned
+                  ? 'assigned'
+                  : 'open';
+
           return {
             ...conv,
             last_message_preview: (lastMessage?.body || '').toString().replace(/\s+/g, ' ').trim() || '—',
             last_message_direction: lastMessage?.direction ?? null,
             last_message_role: lastMessage?.role ?? null,
             last_msg_at: lastMessage?.created_at || conv.last_msg_at,
-            unreplied: lastMessage?.direction === 'in' || lastMessage?.role === 'user'
+            unreplied: lastMessage?.direction === 'in' || lastMessage?.role === 'user',
+            assigned: assignment.assigned,
+            assignee_user_id: assignment.assignee_user_id,
+            assignee_name: assigneeName,
+            status: nextStatus,
           };
         }
         return conv;
@@ -188,9 +255,11 @@ export const useConversations = () => {
   };
 
   // Fetch conversations with contact and channel details
-  const fetchConversations = async (overrideFilters?: ThreadFilters) => {
+  const fetchConversations = async (overrideFilters?: ThreadFilters, options: { silent?: boolean } = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       setError(null);
       // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
@@ -206,7 +275,7 @@ export const useConversations = () => {
         .select(`
           *,
           contacts(name, phone, email),
-          channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url),
+          channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url, super_agent_id),
           messages(id, body, role, direction, created_at, seq)
         `)
         .order('last_msg_at', { ascending: false })
@@ -259,7 +328,12 @@ export const useConversations = () => {
 
       // Build user map for display names
       const userIds: string[] = Array.from(new Set(
-        (data || []).flatMap((t: any) => [t.assigned_by_user_id, t.assignee_user_id, t.resolved_by_user_id]).filter(Boolean)
+        (data || []).flatMap((t: any) => [
+          t.assigned_by_user_id,
+          t.assignee_user_id,
+          t.resolved_by_user_id,
+          t.channels?.super_agent_id,
+        ]).filter(Boolean)
       ));
 
       let userIdToName: Record<string, string> = {};
@@ -272,6 +346,14 @@ export const useConversations = () => {
         userIdToName = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.display_name || '—']));
       }
 
+      const statusUpdates: Array<{
+        id: string;
+        status: Thread['status'];
+        assignee_user_id: string | null;
+        needsAssignedAt: boolean;
+        shouldClearAssignee: boolean;
+      }> = [];
+
       // Transform data to match the expected format
       const transformedData: ConversationWithDetails[] = (data || []).map((thread: any) => {
         const last = Array.isArray(thread.messages) && thread.messages.length > 0 ? thread.messages[0] : null;
@@ -281,6 +363,49 @@ export const useConversations = () => {
         const unreplied = lastDir === 'in' || lastRole === 'user';
 
         // Log to verify we're getting the latest message timestamp
+
+        const channelSuperAgentId = thread.channels?.super_agent_id || null;
+        const assignment = computeAssignmentState({
+          ai_access_enabled: thread.ai_access_enabled,
+          assigned_at: thread.assigned_at,
+          assignee_user_id: thread.assignee_user_id,
+          channel_super_agent_id: channelSuperAgentId,
+          status: thread.status,
+          ai_handoff_at: thread.ai_handoff_at,
+        });
+        const channelSuperAgentName = channelSuperAgentId ? (userIdToName[channelSuperAgentId] || '—') : '—';
+        const assigneeName = assignment.assignee_user_id
+          ? assignment.assignee_user_id === channelSuperAgentId
+            ? channelSuperAgentName
+            : (userIdToName[assignment.assignee_user_id] || '—')
+          : '—';
+
+        const currentStatus = (thread.status || 'open') as Thread['status'];
+        let desiredStatus: Thread['status'] = currentStatus;
+        if (currentStatus === 'closed') {
+          desiredStatus = 'closed';
+        } else if (currentStatus === 'pending') {
+          desiredStatus = assignment.assigned ? 'assigned' : 'pending';
+        } else if (assignment.assigned) {
+          desiredStatus = 'assigned';
+        } else {
+          desiredStatus = 'open';
+        }
+
+        // If the database doesn't support 'assigned', fall back to 'open'
+        if (desiredStatus === 'assigned' && !dbSupportsAssignedStatus) {
+          desiredStatus = 'open';
+        }
+
+        if (desiredStatus !== currentStatus) {
+          statusUpdates.push({
+            id: thread.id,
+            status: desiredStatus,
+            assignee_user_id: assignment.assignee_user_id ?? null,
+            needsAssignedAt: desiredStatus === 'assigned' && !thread.assigned_at && !!assignment.assignee_user_id,
+            shouldClearAssignee: assignment.assignee_user_id == null,
+          });
+        }
 
         return {
           ...thread,
@@ -297,6 +422,7 @@ export const useConversations = () => {
             external_id: thread.channels?.external_id,
             logo_url: thread.channels?.logo_url || null,
             profile_photo_url: thread.channels?.profile_photo_url || null,
+            super_agent_id: channelSuperAgentId,
           },
           channel_logo_url: thread.channels?.logo_url || thread.channels?.profile_photo_url || null,
           last_message_preview: lastPreview || '—',
@@ -305,10 +431,15 @@ export const useConversations = () => {
           // Use the timestamp from the latest message instead of the database's last_msg_at
           last_msg_at: last?.created_at || thread.last_msg_at,
           message_count: 0,
-          assigned: !!thread.assignee_user_id,
+          assigned: assignment.assigned,
           assigned_by_name: thread.assigned_by_user_id ? (userIdToName[thread.assigned_by_user_id] || '—') : '—',
-          assignee_name: thread.assignee_user_id ? (userIdToName[thread.assignee_user_id] || '—') : '—',
+          assignee_name: assigneeName,
+          assignee_user_id: assignment.assignee_user_id,
           resolved_by_name: thread.resolved_by_user_id ? (userIdToName[thread.resolved_by_user_id] || '—') : '—',
+          ai_access_enabled: thread.ai_access_enabled ?? false,
+          super_agent_id: channelSuperAgentId,
+          super_agent_name: channelSuperAgentName,
+          status: desiredStatus,
           unreplied,
         } as ConversationWithDetails;
       });
@@ -343,6 +474,47 @@ export const useConversations = () => {
 
 
       setConversations(sortedData);
+
+      if (statusUpdates.length > 0) {
+        // Run updates in background to avoid blocking the UI flow
+        (async () => {
+          for (const update of statusUpdates) {
+            try {
+              const payload: Record<string, any> = { status: update.status };
+              if (update.status === 'assigned') {
+                if (update.assignee_user_id) {
+                  payload.assignee_user_id = update.assignee_user_id;
+                }
+                if (update.needsAssignedAt && update.assignee_user_id) {
+                  payload.assigned_at = new Date().toISOString();
+                }
+              }
+              if (update.shouldClearAssignee) {
+                payload.assignee_user_id = null;
+                payload.assigned_at = null;
+              }
+              const { error } = await protectedSupabase
+                .from('threads')
+                .update(payload)
+                .eq('id', update.id);
+              
+              if (error) {
+                // If we get an invalid enum value error, it means the migration hasn't been applied
+                if (error.code === '22P02' && update.status === 'assigned') {
+                  console.warn('[useConversations] Database does not support "assigned" status. Falling back to "open".');
+                  dbSupportsAssignedStatus = false;
+                  // Try falling back to 'open' if it was meant to be 'assigned'
+                  await protectedSupabase.from('threads').update({ ...payload, status: 'open' }).eq('id', update.id);
+                } else {
+                  throw error;
+                }
+              }
+            } catch (err) {
+              console.warn('Failed to sync thread status', err);
+            }
+          }
+        })();
+      }
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -486,29 +658,32 @@ export const useConversations = () => {
         // Prefer provider from our in-memory conversations list to avoid extra DB calls
         const conv = conversations.find(c => c.id === threadId);
         const provider = (conv?.channel?.provider || (threadData as any)?.channels?.provider) as string | undefined;
-        const endpoint = resolveSendMessageEndpoint(provider);
 
-        const webhookPayload = {
-          channel_id: threadData.channel_id,
-          contact_id: threadData.contact_id,
-          contact_phone: contactData?.phone || null,
-          external_id: contactData?.external_id || null,
-          text: messageText,
-          type: 'text',
-          direction: 'out',
-          role: role
-        };
+        if (provider && provider.toLowerCase() !== 'web') {
+          const endpoint = resolveSendMessageEndpoint(provider);
 
-        const webhookResponse = await callWebhook(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(webhookPayload)
-        });
+          const webhookPayload = {
+            channel_id: threadData.channel_id,
+            contact_id: threadData.contact_id,
+            contact_phone: contactData?.phone || null,
+            external_id: contactData?.external_id || null,
+            text: messageText,
+            type: 'text',
+            direction: 'out',
+            role: role
+          };
 
-        if (!webhookResponse.ok) {
-          console.warn('Webhook call failed:', webhookResponse.status, webhookResponse.statusText);
+          const webhookResponse = await callWebhook(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(webhookPayload)
+          });
+
+          if (!webhookResponse.ok) {
+            console.warn('Webhook call failed:', webhookResponse.status, webhookResponse.statusText);
+          }
         }
       } catch (webhookError) {
         console.error('Error calling webhook:', webhookError);
@@ -578,7 +753,7 @@ export const useConversations = () => {
       if (error) throw error;
 
       // Refresh conversations
-      await fetchConversations();
+      await fetchConversations(undefined, { silent: true });
 
       // Audit log
       try {
@@ -594,19 +769,19 @@ export const useConversations = () => {
   };
 
   // Update thread status
-  const updateThreadStatus = async (threadId: string, status: 'open' | 'pending' | 'closed') => {
+  const updateThreadStatus = async (threadId: string, status: 'open' | 'pending' | 'closed' | 'assigned') => {
     try {
       setError(null);
 
       const { error } = await supabase
         .from('threads')
-        .update({ status })
+        .update({ status } as any)
         .eq('id', threadId);
 
       if (error) throw error;
 
       // Refresh conversations
-      await fetchConversations();
+      await fetchConversations(undefined, { silent: true });
 
       // Audit log
       try { await logAction({ action: 'thread.update_status', resource: 'thread', resourceId: threadId, context: { status } }); } catch { }
@@ -651,7 +826,8 @@ export const useConversations = () => {
               assigned_by_user_id: currentUserId,
               assigned_at: new Date().toISOString(),
               handover_reason: 'other:manual_takeover',
-              ai_access_enabled: false
+              ai_access_enabled: false,
+              status: 'assigned' as any
             })
             .eq('id', threadId);
           if (updateErr) {
@@ -694,7 +870,7 @@ export const useConversations = () => {
       }
 
       // Refresh conversations/messages to reflect new assignment
-      await fetchConversations();
+      await fetchConversations(undefined, { silent: true });
       await fetchMessages(threadId);
 
       // Audit log
@@ -720,6 +896,7 @@ export const useConversations = () => {
         assignee_user_id: assigneeUserId,
         handover_reason: assigneeUserId ? 'other:manual_assign' : 'other:manual_unassign',
         ai_access_enabled: false,
+        status: assigneeUserId ? 'assigned' : 'open',
       };
 
       if (assigneeUserId) {
@@ -774,7 +951,7 @@ export const useConversations = () => {
       }
 
       // Refresh conversations/messages to reflect new assignment
-      await fetchConversations();
+      await fetchConversations(undefined, { silent: true });
       await fetchMessages(threadId);
 
       // Audit log
@@ -834,7 +1011,7 @@ export const useConversations = () => {
       setError(null);
 
       const { error } = await supabase
-        .from('thread_labels')
+        .from('thread_labels' as any)
         .insert([{ thread_id: threadId, label_id: labelId }]);
 
       if (error) throw error;
@@ -854,7 +1031,7 @@ export const useConversations = () => {
       setError(null);
 
       const { error } = await supabase
-        .from('thread_labels')
+        .from('thread_labels' as any)
         .delete()
         .eq('thread_id', threadId)
         .eq('label_id', labelId);
@@ -895,7 +1072,7 @@ export const useConversations = () => {
 
       try { await logAction({ action: 'thread.delete', resource: 'thread', resourceId: threadId }); } catch { }
 
-      await fetchConversations();
+      await fetchConversations(undefined, { silent: true });
 
     } catch (error) {
       console.error('Error deleting thread:', error);
@@ -944,7 +1121,7 @@ export const useConversations = () => {
       if (data && data.length > 0) {
 
         // Refresh conversations to show updated status
-        fetchConversations();
+        fetchConversations(undefined, { silent: true });
       }
     } catch (error) {
       console.error('Auto-resolve check error:', error);

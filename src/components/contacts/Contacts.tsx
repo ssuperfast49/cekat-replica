@@ -258,8 +258,17 @@ export default function Contacts() {
 
   const renderChatStatus = (status?: string) => {
     if (!status || status === '—') return <span className="text-muted-foreground">—</span>;
-    const color = status === 'open' ? 'bg-blue-100 text-blue-700' : status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700';
-    return <Badge className={`${color} border-0`}>{status}</Badge>;
+    const normalized = status.toLowerCase();
+    const color =
+      normalized === 'open'
+        ? 'bg-blue-100 text-blue-700'
+        : normalized === 'assigned'
+          ? 'bg-indigo-100 text-indigo-700'
+          : normalized === 'pending'
+            ? 'bg-amber-100 text-amber-700'
+            : 'bg-green-100 text-green-700';
+    const label = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    return <Badge className={`${color} border-0`}>{label}</Badge>;
   };
 
   return (
@@ -311,7 +320,7 @@ export default function Contacts() {
                             <HelpCircle className="w-4 h-4 text-muted-foreground cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Filter berdasarkan status percakapan: Open (terbuka), Pending (menunggu), atau Closed (tertutup)</p>
+                            <p>Filter berdasarkan status percakapan: Open (terbuka), Assigned (ditangani), Pending (menunggu), atau Closed (tertutup)</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -330,6 +339,7 @@ export default function Contacts() {
                         <SelectContent>
                           <SelectItem value="all">All statuses</SelectItem>
                           <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="assigned">Assigned</SelectItem>
                           <SelectItem value="pending">Pending</SelectItem>
                           <SelectItem value="closed">Closed</SelectItem>
                         </SelectContent>

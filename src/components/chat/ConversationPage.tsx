@@ -951,7 +951,7 @@ export default function ConversationPage() {
       toast.success('You are now assigned to this chat');
       // Move UI to Assigned tab and enable composer immediately
       setActiveTab('assigned');
-      await fetchConversations();
+      await fetchConversations(undefined, { silent: true });
     } catch (e) {
       toast.error('Failed to take over chat');
     }
@@ -1041,7 +1041,7 @@ export default function ConversationPage() {
             `Percakapan telah dialihkan ke super agent dan AI access dinonaktifkan.`
           );
           // Refresh conversations to show updated assignment
-          await fetchConversations();
+          await fetchConversations(undefined, { silent: true });
           // Don't send message - let super agent handle it
           return;
         }
@@ -1095,7 +1095,6 @@ export default function ConversationPage() {
       // Clear input immediately and fire send without blocking UI
       setDraft("");
       void sendMessage(selectedThreadId, text, 'assistant');
-      toast.success("Message sent successfully");
     } catch (error) {
       toast.error("Failed to send message");
     }
@@ -1222,7 +1221,7 @@ export default function ConversationPage() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <p className="text-red-600 mb-2">Error: {error}</p>
-          <Button onClick={() => { void fetchConversations(); }} variant="outline">
+          <Button onClick={() => { void fetchConversations(undefined, { silent: true }); }} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry
           </Button>
@@ -1625,7 +1624,7 @@ export default function ConversationPage() {
                   <Button
                     size="sm"
                     className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                    onClick={async () => { if (selectedConversation.status === 'closed') return; const { error } = await protectedSupabase.from('threads').update({ status: 'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if (error) { toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); } }}
+                    onClick={async () => { if (selectedConversation.status === 'closed') return; const { error } = await protectedSupabase.from('threads').update({ status: 'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if (error) { toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(undefined, { silent: true }); setActiveTab('resolved'); } }}
                   >
                     Resolve
                   </Button>

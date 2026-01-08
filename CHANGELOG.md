@@ -1,4 +1,45 @@
 # Change Log
+# [0.1.32] FE WEB CEKAT 2026-01-09
+### Live Chat & Messaging
+- **Realtime Message Recovery**: Fixed a bug where customer messages (role: 'user') were filtered out of the realtime feed, ensuring the chat window correctly updates when messages are persisted to the database.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Smart Message Deduplication**: Added a client-side deduplication pass that prevents "double bubbles" when both an optimistic send and a database insert arrive near-simultaneously (2-second window).
+  - Updated: `src/pages/LiveChat.tsx`
+- **Resilient Thread Attachment**: Relaxed the thread lookup logic so the widget gracefully falls back to the most recent channel activity if a session-id match isn't immediately found—no more hanging on "Waiting for response".
+  - Updated: `src/pages/LiveChat.tsx`
+
+### Assignment & Status Management
+- **Thread Status Enum Extension**: Added a new `assigned` value to the database `thread_status` enum to properly distinguish between new inquiries and those handled by a super agent or human.
+  - New: `supabase/migrations/20260109000000_add_assigned_thread_status.sql`
+- **Automated Assignment Flow**: Threads now automatically transition to `assigned` status when a bot hands off or a super agent is linked to the platform, while remaining in `open` for fresh inquiries.
+  - Updated: `src/hooks/useConversations.ts`
+- **Enum Safety Fallback**: Added a catch for Supabase error `22P02` so the app gracefully falls back to `open` status if the new `assigned` enum value hasn't been applied to the database yet.
+  - Updated: `src/hooks/useConversations.ts`
+- **Handled-By Display Logic**: Refactored the UI to show the platform's super agent as the default handler for bot-managed threads without incorrectly flagging them as "Assigned" until a real handoff occurs.
+  - Updated: `src/hooks/useConversations.ts`
+
+### UI/UX Polish
+- **Silent Background Refresh**: Implemented a "silent" fetch mode for conversation lists that bypasses global loading states, eliminating the screen "blinking" effect when sending messages or receiving updates.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Toaster Cleanup**: Removed redundant "Message sent successfully" notifications to reduce UI clutter, keeping toasts reserved for actual errors or critical events.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Enhanced Contact Filtering**: Surfaced the new `assigned` status in the Contacts view with proper badge coloring and filter support.
+  - Updated: `src/components/contacts/Contacts.tsx`, `src/hooks/useContacts.ts`
+- **Live Chat Realtime Resync**: Added a lightweight catch-up mechanism that rehydrates conversations if the Supabase realtime channel drops or the tab wakes from suspension—no constant polling required.
+  - Updated: `src/pages/LiveChat.tsx`
+- **New Thread Subscription Fix**: Realtime subscriptions now hydrate newly created live chat threads immediately without requiring a manual refresh.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Queued Catch-Up Requests**: Ensures live chat queues multiple background fetches when the first message creates a thread so the AI reply appears without manual reloads, retries the AI webhook on transient failures, and preserves message order for streaming replies.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Session-Scoped Live Chat Threads**: Persist the live chat thread per browser session and only attach to threads created for the current session username, so concurrent visitors no longer see mixed conversations.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Streaming Placeholder Cleanup**: Replace temporary assistant bubbles with the persisted Supabase message as soon as it arrives, preventing the UI from flickering or reordering when replies land.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Thread Restore Fallbacks**: If Supabase hasn't stamped a `session_id`, the live chat gracefully falls back to the contact alias when restoring or attaching to a thread—no more blank states or scrolling jumps.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Realtime Catch-Up Safety Net**: After each API send, the widget aggressively refetches the thread so AI replies render even if realtime events arrive late.
+  - Updated: `src/pages/LiveChat.tsx`
+
 # [0.1.31] FE WEB CEKAT 2026-01-08
 - **Live Chat Realtime-Only Sync**: Removed the 2-second polling loop from the live chat widget so updates rely solely on Supabase realtime subscriptions, cutting unnecessary network and memory usage.
   - Updated: `src/pages/LiveChat.tsx`

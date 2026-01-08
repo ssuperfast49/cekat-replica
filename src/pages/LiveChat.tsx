@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+const sendMessageRetryDelay = 1000;
+const sendMessageMaxAttempts = 3;
+
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -30,15 +33,123 @@ export default function LiveChat() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
-  const [sessionId, setSessionId] = useState<string>("session_" + Date.now());
+  const [sessionId, setSessionId] = useState(() => {
+    if (typeof window === 'undefined') return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const key = `livechat_session_${platform_id || platformId || "unknown"}`;
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const generated = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    window.sessionStorage.setItem(key, generated);
+    return generated;
+  });
   const [threadId, setThreadId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
   const [aiProfileId, setAiProfileId] = useState<string | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const messageOrderRef = useRef(0);
-const systemNotificationIdsRef = useRef<Set<string>>(new Set());
-const notificationsReadyRef = useRef(false);
+  const systemNotificationIdsRef = useRef<Set<string>>(new Set());
+  const notificationsReadyRef = useRef(false);
+  const catchUpTimersRef = useRef<number[]>([]);
+  const threadIdRef = useRef<string | null>(null);
+  const streamingDraftIdRef = useRef<string | null>(null);
+  const lastOptimisticIdRef = useRef<string | null>(null);
+  const attachToThreadRef = useRef<((tid: string) => Promise<void>) | null>(null);
+  const sessionThreadKeyRef = useRef<string | null>(null);
+  const pendingCatchUpRef = useRef(false);
+  const pendingThreadAttachRef = useRef(false);
+  const pendingThreadInfoRef = useRef<{ alias: string; startedAt: string } | null>(null);
+  const threadAttachTimersRef = useRef<number[]>([]);
   const nextOrder = () => ++messageOrderRef.current;
+  const appendSorted = (messages: ChatMessage[], message: ChatMessage) => {
+    const nextOrderValue = (messages[messages.length - 1]?.order ?? 0) + 1;
+    return [...messages, { ...message, order: nextOrderValue }];
+  };
+  const moveOptimisticToTail = (messages: ChatMessage[]) => {
+    const optimisticId = lastOptimisticIdRef.current;
+    if (!optimisticId) return messages;
+    const currentUserIndex = messages.findIndex((m) => m.id === optimisticId);
+    if (currentUserIndex <= -1) return messages;
+    const streamingId = streamingDraftIdRef.current;
+    if (!streamingId) return messages;
+    const updatedStreamingIndex = messages.findIndex((m) => m.id === streamingId);
+    if (updatedStreamingIndex === -1 || updatedStreamingIndex > currentUserIndex) return messages;
+    const next = messages.slice();
+    const [currentUserMessage] = next.splice(currentUserIndex, 1);
+    next.push(currentUserMessage);
+    next[next.length - 1].order = (next[next.length - 2]?.order ?? 0) + 1;
+    return next;
+  };
+  const appendAssistantChunk = (messageId: string, chunk: string) => {
+    if (!chunk) return;
+    setMessages((prev) => {
+      const existingIdx = prev.findIndex((m) => m.id === messageId);
+      if (existingIdx >= 0) {
+        const next = prev.slice();
+        const existing = next[existingIdx];
+        next[existingIdx] = {
+          ...existing,
+          body: (existing.body || '') + chunk,
+          streaming: true,
+          order: existing.order || nextOrder(),
+        };
+        return next;
+      }
+      const tentative: ChatMessage = {
+        id: messageId,
+        role: "assistant",
+        body: chunk,
+        at: nextAssistantTimestamp(),
+        order: prev[prev.length - 1]?.order ?? 0,
+        streaming: true,
+      };
+      return moveOptimisticToTail(appendSorted(prev, tentative));
+    });
+  };
+  const finalizeAssistantMessage = (messageId: string, finalContent?: string) => {
+    setMessages((prev) => {
+      const existingIdx = prev.findIndex((m) => m.id === messageId);
+      if (existingIdx >= 0) {
+        const next = prev.slice();
+        const existing = next[existingIdx];
+        next[existingIdx] = {
+          ...existing,
+          body: finalContent !== undefined ? finalContent : existing.body,
+          streaming: false,
+        };
+        return next;
+      }
+      if (finalContent === undefined) return prev;
+      const tentative: ChatMessage = {
+        id: messageId,
+        role: "assistant",
+        body: finalContent,
+        at: nextAssistantTimestamp(),
+        order: prev[prev.length - 1]?.order ?? 0,
+        streaming: false,
+      };
+      return moveOptimisticToTail(appendSorted(prev, tentative));
+    });
+    setStreamingMessageId(null);
+    lastOptimisticIdRef.current = null;
+  };
+  const sessionThreadKey = typeof window !== 'undefined' ? `livechat_thread_${pid}_${sessionId}` : null;
+  useEffect(() => {
+    sessionThreadKeyRef.current = sessionThreadKey;
+  }, [sessionThreadKey]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = `livechat_session_${pid}`;
+    const stored = window.sessionStorage.getItem(key);
+    if (stored && stored !== sessionId) {
+      setSessionId(stored);
+      return;
+    }
+    if (!stored) {
+      const generated = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      window.sessionStorage.setItem(key, generated);
+      setSessionId(generated);
+    }
+  }, [pid]);
   // Profile settings are resolved server-side by the webhook; no client DB calls.
   const endRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -140,13 +251,53 @@ const notifySystemMessage = (message: { id?: string; body?: string }) => {
 
 const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
 
-  // Ensure we have a persistent, friendly username per platform/host
+const clearCatchUpTimers = () => {
+  if (catchUpTimersRef.current.length > 0) {
+    catchUpTimersRef.current.forEach((id) => {
+      try { clearTimeout(id); } catch {}
+    });
+    catchUpTimersRef.current = [];
+  }
+};
+
+const requestCatchUpFetch = async (threadId: string | null, hydrate: (rows: any[]) => void) => {
+  if (!threadId) return;
+  const { data } = await supabase
+    .from('messages')
+    .select('id, role, body, created_at')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true });
+  if (Array.isArray(data)) {
+    hydrate(data);
+  }
+};
+
+const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => void, delays: number[]) => {
+  clearCatchUpTimers();
+  if (!threadId) {
+    pendingCatchUpRef.current = true;
+    return;
+  }
+  catchUpTimersRef.current = delays.map((delay) =>
+    window.setTimeout(async () => {
+      try {
+        await requestCatchUpFetch(threadId, hydrate);
+      } catch (err) {
+        console.error('[LiveChat] catch-up failed', err);
+      }
+    }, delay)
+  );
+};
+
+
+  // Ensure we have a session-scoped friendly username
   useEffect(() => {
     try {
-      const host = (typeof window !== 'undefined' ? window.location.host : 'unknown');
-      const key = `livechat_username_${pid}_${host}`;
+      const storage = typeof window !== 'undefined' ? window.sessionStorage : null;
+      if (!storage) return;
+      const key = `livechat_username_${pid}_${sessionId}`;
       let value = '';
-      try { value = localStorage.getItem(key) || ''; } catch {}
+      try { value = storage.getItem(key) || ''; } catch {}
       if (!value) {
         const adjectives = ['Happy', 'Bright', 'Calm', 'Brave', 'Kind', 'Sunny', 'Lucky', 'Cheerful', 'Swift', 'Clever'];
         const nouns = ['User', 'Visitor', 'Friend', 'Guest', 'Buddy', 'Pal', 'Explorer', 'Champion', 'Star', 'Hero'];
@@ -154,15 +305,40 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
         const noun = nouns[Math.floor(Math.random() * nouns.length)];
         const num = Math.floor(100 + Math.random() * 900);
         value = `${adj} ${noun} ${num}`;
-        try { localStorage.setItem(key, value); } catch {}
+        try { storage.setItem(key, value); } catch {}
       }
       setUsername(value);
     } catch {}
-  }, [pid]);
+  }, [pid, sessionId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  useEffect(() => {
+    threadIdRef.current = threadId;
+    if (!threadId) {
+    clearCatchUpTimers();
+    }
+  if (threadId && pendingCatchUpRef.current) {
+    pendingCatchUpRef.current = false;
+    scheduleCatchUps(threadId, upsertFromRows, [0]);
+  }
+  }, [threadId]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        scheduleCatchUps(threadIdRef.current, upsertFromRows, [0]);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  useEffect(() => () => clearCatchUpTimers(), []);
 
   // Test Supabase connection
   useEffect(() => {
@@ -186,6 +362,7 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
     return () => {
       if (streamingMessageId) {
         setStreamingMessageId(null);
+        streamingDraftIdRef.current = null;
       }
     };
   }, [streamingMessageId]);
@@ -219,82 +396,222 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
     }
   }, [pid]);
 
+const upsertFromRows = useCallback((rows: any[]) => {
+  if (!rows || rows.length === 0) return;
+  setMessages((prev) => {
+    const map = new Map<string, ChatMessage>();
+    prev.forEach((m) => map.set(m.id, m));
+    let changed = false;
+
+    for (const r of rows) {
+      if (!r?.id) continue;
+      if (r.role === 'system') {
+        notifySystemMessage(r);
+        continue;
+      }
+      const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+      let inheritedOrder: number | null = null;
+
+      if (role === 'assistant' && streamingDraftIdRef.current) {
+        for (const [key, value] of map.entries()) {
+          if (value.id === streamingDraftIdRef.current) {
+            inheritedOrder = value.order;
+            map.delete(key);
+            streamingDraftIdRef.current = null;
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      if (role === 'user') {
+        for (const [key, value] of map.entries()) {
+          if (
+            value.id.startsWith('temp-') &&
+            value.role === 'user' &&
+            value.body === r.body &&
+            Math.abs(new Date(value.at).getTime() - new Date(r.created_at).getTime()) < 10000
+          ) {
+            inheritedOrder = value.order;
+            map.delete(key);
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      const existing = map.get(r.id);
+      const createdAt = r.created_at || new Date().toISOString();
+      const body = r.body || '';
+
+      if (existing) {
+        if (existing.body !== body) {
+          existing.body = body;
+          changed = true;
+        }
+        if (existing.at !== createdAt) {
+          existing.at = createdAt;
+          changed = true;
+        }
+        if (role === 'assistant' && existing.streaming) {
+          existing.streaming = false;
+          changed = true;
+        }
+      } else {
+        const item: ChatMessage = {
+          id: r.id,
+          role,
+          body,
+          at: createdAt,
+          order: inheritedOrder ?? nextOrder(),
+        };
+        map.set(item.id, item);
+        changed = true;
+      }
+    }
+
+    const arr = Array.from(map.values());
+    arr.sort((a, b) => a.order - b.order);
+
+    // Guard against duplicate rows emitted by the backend (same content/timestamp but new ids)
+    const deduped: ChatMessage[] = [];
+    const dedupeWindowMs = 2000;
+    const seen = new Map<string, number>();
+    for (const item of arr) {
+      const key = `${item.role}:${item.body?.trim().toLowerCase() ?? ''}`;
+      const at = new Date(item.at).getTime();
+      const lastSeen = seen.get(key);
+      if (Number.isFinite(at) && lastSeen !== undefined) {
+        if (Math.abs(at - lastSeen) < dedupeWindowMs) {
+          continue;
+        }
+      }
+      if (Number.isFinite(at)) {
+        seen.set(key, at);
+      }
+      deduped.push(item);
+    }
+
+    if (!changed && deduped.length === prev.length) {
+      let identical = true;
+      for (let i = 0; i < deduped.length; i += 1) {
+        const a = deduped[i];
+        const b = prev[i];
+        if (a !== b) {
+          identical = false;
+          break;
+        }
+      }
+      if (identical) {
+        return prev;
+      }
+    }
+
+    return deduped;
+  });
+}, []);
+
+  const clearThreadAttachTimers = useCallback(() => {
+    if (threadAttachTimersRef.current.length === 0) return;
+    threadAttachTimersRef.current.forEach((id) => {
+      try {
+        clearTimeout(id);
+      } catch {}
+    });
+    threadAttachTimersRef.current = [];
+  }, []);
+
+  const findThreadForCurrentSession = useCallback(async () => {
+    if (!pid) return null;
+    try {
+      const { data } = await supabase
+        .from('threads')
+        .select('id, created_at, additional_data, assignee_user_id, status, contacts(name)')
+        .eq('channel_id', pid)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (!data) return null;
+      const pendingInfo = pendingThreadInfoRef.current;
+      const target = data.find((row: any) => {
+        const additional = row?.additional_data as Record<string, any> | null;
+        const sessionMatch = sessionId ? additional?.session_id === sessionId : false;
+        const contactName = (row?.contacts?.name || '') as string;
+        const nameMatch = username ? contactName.trim().toLowerCase() === username.trim().toLowerCase() : false;
+        const unassigned = !row?.assignee_user_id;
+        if (!(sessionMatch || nameMatch) || !unassigned) {
+          return false;
+        }
+        if (pendingInfo) {
+          const createdAt = row?.created_at ? new Date(row.created_at).getTime() : 0;
+          const startedAt = new Date(pendingInfo.startedAt).getTime() - 15000; // tolerate clock skew
+          if (createdAt && createdAt < startedAt) {
+            return false;
+          }
+          const aliasMatch = pendingInfo.alias.trim().toLowerCase() === contactName.trim().toLowerCase();
+          if (!aliasMatch && !sessionMatch) {
+            return false;
+          }
+        }
+        return true;
+      });
+      if (target?.id) {
+        return target.id;
+      }
+      // Fallback: take the most recent thread for this channel so we can attach and resume realtime updates.
+      return data[0]?.id ?? null;
+    } catch (err) {
+      console.warn('[LiveChat] findThreadForCurrentSession failed', err);
+      return null;
+    }
+  }, [pid, sessionId, username]);
+
+  const scheduleThreadAttachRetries = useCallback(
+    (delays: number[] = []) => {
+      clearThreadAttachTimers();
+      if (!delays.length) return;
+      threadAttachTimersRef.current = delays.map((delay) =>
+        window.setTimeout(async () => {
+          if (!pendingThreadAttachRef.current || threadIdRef.current) return;
+          const found = await findThreadForCurrentSession();
+          if (found) {
+            try {
+              await attachToThreadRef.current?.(found);
+            } catch (err) {
+              console.warn('[LiveChat] retry attach failed', err);
+            }
+          }
+        }, delay),
+      );
+    },
+    [clearThreadAttachTimers, findThreadForCurrentSession],
+  );
+
+  useEffect(() => () => clearThreadAttachTimers(), [clearThreadAttachTimers]);
+
   useEffect(() => {
     let sub: any = null;
     let threadsSub: any = null;
-    
-    const upsertFromRows = (rows: any[]) => {
-      if (!rows || rows.length === 0) return;
-      
-      
-      setMessages((prev) => {
-        const map = new Map<string, ChatMessage>();
-        prev.forEach((m) => map.set(m.id, m));
-        
-        for (const r of rows) {
-          if (!r?.id) continue;
-          if (r.role === 'system') {
-            notifySystemMessage(r);
-            continue;
-          }
-          const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
-          let inheritedOrder: number | null = null;
-          if (role === 'assistant' && streamingMessageId) {
-            for (const [key, value] of map.entries()) {
-              if (value.id === streamingMessageId) {
-                inheritedOrder = value.order;
-                map.delete(key);
-                break;
-              }
-            }
-          }
-          const existing = map.get(r.id);
-          const item: ChatMessage = existing ?? {
-            id: r.id,
-            role,
-            body: r.body || '',
-            at: r.created_at || new Date().toISOString(),
-            order: inheritedOrder ?? nextOrder(),
-          };
-          if (!existing) {
-            item.body = r.body || '';
-            item.at = r.created_at || new Date().toISOString();
-          }
-          
-          // For user messages, check if we already have a temp message to replace
-          if (role === 'user') {
-            // Find and remove any temp message with same content
-            for (const [key, value] of map.entries()) {
-              if (value.id.startsWith('temp-') && 
-                  value.role === 'user' && 
-                  value.body === r.body &&
-                  Math.abs(new Date(value.at).getTime() - new Date(r.created_at).getTime()) < 10000) { // Within 10 seconds
-                map.delete(key);
-                
-                break; // Only replace one temp message
-              }
-            }
-          }
-          
-          // Only add if we don't already have this message
-          if (!map.has(item.id)) {
-            map.set(item.id, item);
-          } else {
-            
-          }
-        }
-        
-        const arr = Array.from(map.values());
-        arr.sort((a,b)=> a.order - b.order);
-        
-        return arr;
-      });
-    };
 
     const attachToThread = async (tid: string) => {
-      setThreadId(tid);
+      if (threadIdRef.current === tid && sub) {
+        pendingThreadAttachRef.current = false;
+        scheduleCatchUps(tid, upsertFromRows, [0, 1200]);
+        return;
+      }
+      if (sub) {
+        try {
+          supabase.removeChannel(sub);
+        } catch {}
+        sub = null;
+      }
+      setThreadId((current) => (current === tid ? current : tid));
+      threadIdRef.current = tid;
+      pendingThreadAttachRef.current = false;
+      pendingThreadInfoRef.current = null;
+      clearThreadAttachTimers();
       systemNotificationIdsRef.current = new Set();
       notificationsReadyRef.current = false;
+      clearCatchUpTimers();
       try {
         const { data } = await supabase
           .from('messages')
@@ -302,84 +619,133 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
           .eq('thread_id', tid)
           .order('created_at', { ascending: true });
         if (Array.isArray(data)) upsertFromRows(data);
-        sub = supabase
-          .channel(`livechat-msgs-${tid}`)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${tid}` }, (payload: any) => {
-            const ev = payload?.eventType;
-            const row = payload?.new || payload?.old;
-            if (!row) return;
-            
-            
-            
-            // COMPLETELY SKIP user messages from realtime to prevent duplicates
-            if (row?.role === 'user') {
-              
-              return;
-            }
-            if (row?.role === 'system') {
-              notifySystemMessage(row);
-              return;
-            }
-            
-            // Only process agent/assistant messages from realtime
-            if (row?.role === 'agent' || row?.role === 'assistant') {
-              
-              upsertFromRows([row]);
-            }
-            
-            // Clear streaming message ID if we get a real agent message
-            if (ev === 'INSERT' && row?.role === 'agent' && streamingMessageId) {
-              setStreamingMessageId(null);
-            }
-          })
-          .subscribe();
+        const subscribeToThread = (thread: string) =>
+          supabase
+            .channel(`livechat-msgs-${thread}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `thread_id=eq.${thread}` }, (payload: any) => {
+              const ev = payload?.eventType;
+              const row = payload?.new || payload?.old;
+              if (!row) return;
+              if (row?.role === 'system') {
+                notifySystemMessage(row);
+                return;
+              }
+              if (ev === 'DELETE') {
+                return;
+              }
+              if (row?.role === 'user' || row?.role === 'agent' || row?.role === 'assistant') {
+                upsertFromRows([row]);
+              }
+            })
+            .subscribe((status) => {
+              if (status === 'SUBSCRIBED') {
+                notificationsReadyRef.current = true;
+              } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                console.warn('[LiveChat] realtime channel status', status);
+                scheduleCatchUps(threadIdRef.current, upsertFromRows, [0, 1500]);
+                if (sub) {
+                  try {
+                    supabase.removeChannel(sub);
+                  } catch {}
+                }
+                sub = subscribeToThread(thread);
+              }
+            });
+        sub = subscribeToThread(tid);
+        scheduleCatchUps(tid, upsertFromRows, [0, 800, 2000, 5000, 10000]);
+        if (sessionThreadKeyRef.current && typeof window !== 'undefined') {
+          try { window.sessionStorage.setItem(sessionThreadKeyRef.current, tid); } catch {}
+        }
       } finally {
         notificationsReadyRef.current = true;
         setBooting(false);
       }
     };
 
-    const init = async () => {
+    attachToThreadRef.current = attachToThread;
+
+    const storedThreadId =
+      sessionThreadKeyRef.current && typeof window !== 'undefined'
+        ? window.sessionStorage.getItem(sessionThreadKeyRef.current)
+        : null;
+
+    const attachStoredThread = async () => {
+      if (!storedThreadId) return false;
       try {
-        // Try to find recent thread for this platform and contact name === username
         const { data } = await supabase
           .from('threads')
-          .select('id, contact_id, contacts(name)')
-          .eq('channel_id', pid)
-          .eq('contacts.name', username)
-          .order('created_at', { ascending: false })
-          .limit(1)
+          .select('id, additional_data')
+          .eq('id', storedThreadId)
           .maybeSingle();
-        if (data?.id) { await attachToThread(data.id); return; }
-      } catch {}
-      // If not found or access denied, watch for new threads for this platform and match by contact name
-      threadsSub = supabase
-        .channel(`livechat-threads-${pid}`)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, async (payload: any) => {
-          const tid = payload?.new?.id;
-          const contactId = payload?.new?.contact_id;
-          if (!tid || !contactId) return;
-          try {
-            const { data: c } = await supabase.from('contacts').select('id, name').eq('id', contactId).maybeSingle();
-            if (c?.name && username && c.name === username) {
-              await attachToThread(tid);
-            }
-          } catch {}
-        })
-        .subscribe(() => setBooting(false));
+        const sessionFromThread = (data?.additional_data as Record<string, any> | null)?.session_id;
+        if (!data || sessionFromThread !== sessionId) {
+          throw new Error('thread-session mismatch');
+        }
+        await attachToThread(storedThreadId);
+        return true;
+      } catch {
+        if (sessionThreadKeyRef.current && typeof window !== 'undefined') {
+          try { window.sessionStorage.removeItem(sessionThreadKeyRef.current); } catch {}
+        }
+        return false;
+      }
     };
 
-    init();
+    const initialize = async () => {
+      const restored = await attachStoredThread();
+      if (restored) return;
+      const found = await findThreadForCurrentSession();
+      if (found) {
+        await attachToThread(found);
+      }
+    };
+
+    initialize();
+
+    threadsSub = supabase
+      .channel(`livechat-threads-${pid}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, async (payload: any) => {
+        const tid = payload?.new?.id;
+        if (!tid || tid === threadIdRef.current) return;
+        const sessionFromAdditional = payload?.new?.additional_data?.session_id;
+        const matchesSession = sessionFromAdditional && sessionFromAdditional === sessionId;
+        const waitingForThread = !sessionFromAdditional && pendingThreadAttachRef.current && !threadIdRef.current;
+        if (!matchesSession && !waitingForThread) return;
+        try {
+          if (matchesSession) {
+            await attachToThread(tid);
+          } else {
+            const found = await findThreadForCurrentSession();
+            if (found) {
+              await attachToThread(found);
+            }
+          }
+        } catch (err) {
+          console.warn('[LiveChat] failed to attach from realtime', err);
+        }
+      })
+      .subscribe(() => setBooting(false));
 
     return () => {
       try { if (sub) supabase.removeChannel(sub); } catch {}
       try { if (threadsSub) supabase.removeChannel(threadsSub); } catch {}
+      attachToThreadRef.current = null;
     };
-  }, [pid, username]);
+  }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession]);
 
   const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
+    const createdAt = new Date().toISOString();
+
+    if (!threadIdRef.current) {
+      pendingThreadAttachRef.current = true;
+      pendingThreadInfoRef.current = {
+        alias: username,
+        startedAt: new Date().toISOString(),
+      };
+      scheduleThreadAttachRetries([0, 600, 1500, 3000, 6000]);
+    }
 
     // Check AI message limit before sending user message
     if (threadId) {
@@ -419,7 +785,8 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
     setDraft("");
     // Optimistic preview while waiting for DB insert (will be replaced by realtime row)
     const tempId = `temp-${Date.now()}`;
-    setMessages((prev) => [...prev, { id: tempId, role: "user", body: text, at: new Date().toISOString(), order: nextOrder() }]);
+    setMessages((prev) => [...prev, { id: tempId, role: "user", body: text, at: createdAt, order: nextOrder() }]);
+    lastOptimisticIdRef.current = tempId;
     playLow();
     setLoading(true);
 
@@ -440,17 +807,12 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
     // Create a streaming message for AI response (but don't add to messages until content arrives)
     const streamingId = `streaming-${Date.now()}`;
     setStreamingMessageId(streamingId);
+    streamingDraftIdRef.current = streamingId;
 
     // Set a timeout to fallback to realtime if streaming doesn't work
     const streamingTimeout = setTimeout(() => {
-      if (streamingMessageId === streamingId) {
-        
-        setStreamingMessageId(null);
-        setMessages((prev) => prev.map(m => 
-          m.id === streamingId 
-            ? { ...m, streaming: false, body: m.body || "Waiting for response..." }
-            : m
-        ));
+      if (streamingDraftIdRef.current === streamingId) {
+        finalizeAssistantMessage(streamingId, "Waiting for response...");
       }
     }, 10000); // 10 second timeout
 
@@ -458,48 +820,66 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
       const body = {
         message: text,
         session_id: sessionId,
-        timestamp: new Date().toISOString(),
+        timestamp: createdAt,
         channel_id: pid,
         username: username || undefined,
         ai_profile_id: aiProfileId,
         stream: true, // Request streaming response
       } as const;
 
-      
-      
+      let attempt = 0;
       let resp: Response | null = null;
       let proxyStatus: number | null = null;
-      try {
-        resp = await callWebhook(
-          WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          },
-          { forceLegacy: false },
-        );
-      } catch (proxyError) {
-        console.warn('[LiveChat] proxy webhook call failed', proxyError);
-      }
 
-      if (!resp || !resp.ok) {
+      while (attempt < sendMessageMaxAttempts) {
+        try {
+          resp = await callWebhook(
+            WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            },
+            { forceLegacy: attempt > 0 },
+          );
+        } catch (proxyError) {
+          console.warn('[LiveChat] proxy webhook call failed', proxyError);
+          resp = null;
+        }
+
+        if (resp && resp.ok) break;
+
         proxyStatus = resp?.status ?? null;
-        resp = await callWebhook(
-          WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          },
-          { forceLegacy: true },
-        );
+        attempt += 1;
+        if (attempt < sendMessageMaxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, sendMessageRetryDelay));
+        }
       }
 
       if (!resp.ok) {
         const statusDetails = proxyStatus ? ` (proxy status ${proxyStatus})` : '';
         throw new Error(`Webhook failed ${resp.status}${statusDetails}`);
       }
+
+      // Ensure the newly created thread (if any) is attached for this session
+      let attachedThreadId: string | null = null;
+      try {
+        const foundThreadId = await findThreadForCurrentSession();
+        if (foundThreadId) {
+          attachedThreadId = foundThreadId;
+          if (threadIdRef.current !== foundThreadId) {
+            await attachToThreadRef.current?.(foundThreadId);
+          }
+        } else if (pendingThreadAttachRef.current && !threadIdRef.current) {
+          scheduleThreadAttachRetries([400, 1200, 2500, 5000, 8000]);
+        }
+      } catch (attachErr) {
+        console.warn('[LiveChat] failed to attach thread after send', attachErr);
+      }
+      
+      // Immediately fetch latest state after backend processes the message
+      const targetThreadId = attachedThreadId ?? threadIdRef.current;
+      scheduleCatchUps(targetThreadId, upsertFromRows, [0, 600, 1800, 4000, 9000, 15000]);
       
       // Handle streaming response
       if (resp.body) {
@@ -525,97 +905,25 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
                 if (line.startsWith('data: ')) {
                   const data = line.slice(6);
                   if (data === '[DONE]') {
-                    // Streaming complete
-                    setMessages((prev) => prev.map(m => 
-                      m.id === streamingId 
-                        ? { ...m, streaming: false }
-                        : m
-                    ));
-                    setStreamingMessageId(null);
+                    finalizeAssistantMessage(streamingId);
                     break;
                   }
                   
                   const parsed = JSON.parse(data);
                   
                   if (parsed.content || parsed.delta) {
-                    const content = parsed.content || parsed.delta;
-                    
-                    setMessages((prev) => {
-                      const existingIdx = prev.findIndex(m => m.id === streamingId);
-                      if (existingIdx >= 0) {
-                        // Update existing streaming message
-                        const next = prev.slice();
-                        next[existingIdx] = { ...next[existingIdx], body: next[existingIdx].body + content };
-                        return next;
-                      } else {
-                        // Create new streaming message with content
-                        return [
-                          ...prev,
-                          {
-                            id: streamingId,
-                            role: "assistant",
-                            body: content,
-                            at: nextAssistantTimestamp(),
-                            order: nextOrder(),
-                            streaming: true,
-                          },
-                        ];
-                      }
-                    });
+                    appendAssistantChunk(streamingId, parsed.content || parsed.delta);
                   }
                 } else {
                   // Try to parse as JSON directly
                   const parsed = JSON.parse(line);
                   if (parsed.content || parsed.delta) {
-                    const content = parsed.content || parsed.delta;
-                    setMessages((prev) => {
-                      const existingIdx = prev.findIndex(m => m.id === streamingId);
-                      if (existingIdx >= 0) {
-                        // Update existing streaming message
-                        const next = prev.slice();
-                        next[existingIdx] = { ...next[existingIdx], body: next[existingIdx].body + content };
-                        return next;
-                      } else {
-                        // Create new streaming message with content
-                        return [
-                          ...prev,
-                          {
-                            id: streamingId,
-                            role: "assistant",
-                            body: content,
-                            at: nextAssistantTimestamp(),
-                            order: nextOrder(),
-                            streaming: true,
-                          },
-                        ];
-                      }
-                    });
+                    appendAssistantChunk(streamingId, parsed.content || parsed.delta);
                   }
                 }
               } catch (parseError) {
                 // If it's not JSON, treat as plain text
-                setMessages((prev) => {
-                  const existingIdx = prev.findIndex(m => m.id === streamingId);
-                  if (existingIdx >= 0) {
-                    // Update existing streaming message
-                    const next = prev.slice();
-                    next[existingIdx] = { ...next[existingIdx], body: next[existingIdx].body + line };
-                    return next;
-                  } else {
-                    // Create new streaming message with content
-                    return [
-                      ...prev,
-                      {
-                        id: streamingId,
-                        role: "assistant",
-                        body: line,
-                        at: nextAssistantTimestamp(),
-                        order: nextOrder(),
-                        streaming: true,
-                      },
-                    ];
-                  }
-                });
+                appendAssistantChunk(streamingId, line);
               }
             }
           }
@@ -630,44 +938,11 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
           
           const responseText = data.output || data.content || data.message || "Sorry, I couldn't process your message.";
           
-          setMessages((prev) => {
-            const existingIdx = prev.findIndex(m => m.id === streamingId);
-            if (existingIdx >= 0) {
-              // Update existing streaming message
-              const next = prev.slice();
-              next[existingIdx] = { ...next[existingIdx], body: responseText, streaming: false };
-              return next;
-            } else {
-              // Create new message if streaming message doesn't exist
-              return [
-                ...prev,
-                {
-                  id: streamingId,
-                  role: "assistant",
-                  body: responseText,
-                  at: nextAssistantTimestamp(),
-                  order: nextOrder(),
-                  streaming: false,
-                },
-              ];
-            }
-          });
-          setStreamingMessageId(null);
+          finalizeAssistantMessage(streamingId, responseText);
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
           // Create a fallback message
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: streamingId,
-              role: "assistant",
-              body: "I'm processing your message, please wait...",
-              at: nextAssistantTimestamp(),
-              order: nextOrder(),
-              streaming: false,
-            },
-          ]);
-          setStreamingMessageId(null);
+          finalizeAssistantMessage(streamingId, "I'm processing your message, please wait...");
         }
       }
       
@@ -715,11 +990,13 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
                       item.body = r.body || '';
                       item.at = r.created_at || new Date().toISOString();
                     }
-                    if (streamingMessageId) {
+                    const draftId = streamingDraftIdRef.current;
+                    if (draftId) {
                       for (const [key, value] of map.entries()) {
-                        if (value.id === streamingMessageId) {
+                        if (value.id === draftId) {
                           inheritedOrder = value.order;
                           map.delete(key);
+                          streamingDraftIdRef.current = null;
                           break;
                         }
                       }
@@ -742,18 +1019,8 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
     } catch (e) {
       console.error('Streaming error:', e);
       // Replace streaming message with error
-      setMessages((prev) =>
-        prev
-          .filter((m) => m.id !== streamingId)
-          .concat({
-            id: crypto.randomUUID(),
-            role: "assistant",
-            body: "Sorry, I'm having trouble right now. Please try again later.",
-            at: nextAssistantTimestamp(),
-            order: nextOrder(),
-          }),
-      );
-      setStreamingMessageId(null);
+      finalizeAssistantMessage(streamingId, "Sorry, I'm having trouble right now. Please try again later.");
+      pendingThreadAttachRef.current = false;
       playHigh();
     } finally {
       clearTimeout(streamingTimeout);
@@ -851,5 +1118,6 @@ const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
     </div>
   );
 }
+
 
 
