@@ -1,4 +1,11 @@
 # Change Log
+# [0.1.35] FE WEB CEKAT 2026-01-10
+### Housekeeping
+- **Line-ending normalization (no logic changes)**: Synchronized CRLF/LF on chat/contact pages and hooks to keep diffs clean without altering runtime behavior.
+  - Touched: `src/components/chat/ConversationPage.tsx`, `src/components/contacts/Contacts.tsx`, `src/hooks/useContacts.ts`, `src/hooks/useConversations.ts`, `src/pages/LiveChat.tsx`
+- **Migration formatting**: Tidied whitespace in the `thread_status` enum migration to match our SQL formatting conventions.
+  - Updated: `supabase/migrations/20260109000000_add_assigned_thread_status.sql`
+
 # [0.1.34] FE WEB CEKAT 2026-01-09
 ### Live Chat & Messaging
 - **Realtime Message Recovery**: Fixed a bug where customer messages (role: 'user') were filtered out of the realtime feed, ensuring the chat window correctly updates when messages are persisted to the database.
