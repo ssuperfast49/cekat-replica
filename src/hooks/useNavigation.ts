@@ -21,6 +21,12 @@ export function useNavigation() {
     const navItem = NAVIGATION_CONFIG[navKey];
     if (!navItem) return false;
 
+    const roleBlocked = Array.isArray(navItem.forbiddenRoles) && navItem.forbiddenRoles.length > 0
+      ? hasAnyRole(navItem.forbiddenRoles)
+      : false;
+
+    if (roleBlocked) return false;
+
     const roleBypassGranted = Array.isArray(navItem.roleBypass) && navItem.roleBypass.length > 0
       ? hasAnyRole(navItem.roleBypass)
       : false;

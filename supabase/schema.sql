@@ -369,13 +369,22 @@ CREATE OR REPLACE FUNCTION "public"."get_handover_by_agent"("p_from" timestamp w
     from scoped t
     where (t.ai_handoff_at is not null or t.assignee_user_id is not null or t.assigned_by_user_id is not null)
   ),
-  humans as (
-    select coalesce(t.assignee_user_id, tc.user_id) as agent_user_id,
-           coalesce(sam.super_agent_id, t.assignee_user_id) as super_agent_id,
-           count(distinct t.id)::bigint as human_count
+  participants as (
+    select t.id as thread_id, t.assignee_user_id as agent_user_id
     from human_threads t
-    left join public.thread_collaborators tc on tc.thread_id = t.id
-    left join public.super_agent_members sam on sam.agent_user_id = coalesce(t.assignee_user_id, tc.user_id)
+    where t.assignee_user_id is not null
+    union all
+    select t.id as thread_id, t.collaborator_user_id as agent_user_id
+    from human_threads t
+    where t.collaborator_user_id is not null
+  ),
+  humans as (
+    select p.agent_user_id,
+           coalesce(sam.super_agent_id, ht.assignee_user_id, p.agent_user_id) as super_agent_id,
+           count(distinct p.thread_id)::bigint as human_count
+    from participants p
+    join human_threads ht on ht.id = p.thread_id
+    left join public.super_agent_members sam on sam.agent_user_id = p.agent_user_id
     group by 1,2
   ),
   humans_total as (
@@ -415,12 +424,25 @@ CREATE OR REPLACE FUNCTION "public"."get_handover_by_super_agent"("p_from" times
     from scoped t
     where (t.ai_handoff_at is not null or t.assignee_user_id is not null or t.assigned_by_user_id is not null)
   ),
-  humans as (
-    select coalesce(sam.super_agent_id, t.assignee_user_id, t.assigned_by_user_id) as super_agent_id,
-           count(distinct t.id)::bigint as human_count
+  participants as (
+    select t.id as thread_id, t.assignee_user_id as agent_user_id
     from human_threads t
-    left join public.thread_collaborators tc on tc.thread_id = t.id
-    left join public.super_agent_members sam on sam.agent_user_id = coalesce(t.assignee_user_id, t.assigned_by_user_id, tc.user_id)
+    where t.assignee_user_id is not null
+    union all
+    select t.id as thread_id, t.assigned_by_user_id as agent_user_id
+    from human_threads t
+    where t.assigned_by_user_id is not null
+    union all
+    select t.id as thread_id, t.collaborator_user_id as agent_user_id
+    from human_threads t
+    where t.collaborator_user_id is not null
+  ),
+  humans as (
+    select coalesce(sam.super_agent_id, ht.assignee_user_id, ht.assigned_by_user_id, p.agent_user_id) as super_agent_id,
+           count(distinct p.thread_id)::bigint as human_count
+    from participants p
+    join human_threads ht on ht.id = p.thread_id
+    left join public.super_agent_members sam on sam.agent_user_id = p.agent_user_id
     group by 1
   ),
   humans_total as (
@@ -1850,16 +1872,6 @@ ALTER SEQUENCE "public"."sync_deletions_id_seq" OWNED BY "public"."sync_deletion
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."thread_collaborators" (
-    "thread_id" "uuid" NOT NULL,
-    "user_id" "uuid" NOT NULL,
-    "added_at" timestamp with time zone DEFAULT "now"() NOT NULL
-);
-
-
-ALTER TABLE "public"."thread_collaborators" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."threads" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "org_id" "uuid" NOT NULL,
@@ -1867,6 +1879,7 @@ CREATE TABLE IF NOT EXISTS "public"."threads" (
     "channel_id" "uuid" NOT NULL,
     "status" "public"."thread_status" DEFAULT 'open'::"public"."thread_status" NOT NULL,
     "assignee_user_id" "uuid",
+    "collaborator_user_id" "uuid",
     "last_msg_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "assigned_by_user_id" "uuid",
@@ -2347,11 +2360,6 @@ ALTER TABLE ONLY "public"."sync_deletions"
 
 
 
-ALTER TABLE ONLY "public"."thread_collaborators"
-    ADD CONSTRAINT "thread_collaborators_pkey" PRIMARY KEY ("thread_id", "user_id");
-
-
-
 ALTER TABLE ONLY "public"."threads"
     ADD CONSTRAINT "threads_pkey" PRIMARY KEY ("id");
 
@@ -2679,10 +2687,6 @@ CREATE OR REPLACE TRIGGER "sync_deletion_log" AFTER DELETE ON "public"."super_ag
 
 
 
-CREATE OR REPLACE TRIGGER "sync_deletion_log" AFTER DELETE ON "public"."thread_collaborators" FOR EACH ROW EXECUTE FUNCTION "public"."log_sync_deletion"();
-
-
-
 CREATE OR REPLACE TRIGGER "sync_deletion_log" AFTER DELETE ON "public"."threads" FOR EACH ROW EXECUTE FUNCTION "public"."log_sync_deletion"();
 
 
@@ -2708,10 +2712,6 @@ CREATE OR REPLACE TRIGGER "sync_deletion_log" AFTER DELETE ON "public"."user_rol
 
 
 CREATE OR REPLACE TRIGGER "sync_deletion_log" AFTER DELETE ON "public"."users_profile" FOR EACH ROW EXECUTE FUNCTION "public"."log_sync_deletion"();
-
-
-
-CREATE OR REPLACE TRIGGER "tr_add_default_collaborators" AFTER INSERT ON "public"."threads" FOR EACH ROW EXECUTE FUNCTION "public"."add_default_collaborators"();
 
 
 
@@ -2951,6 +2951,11 @@ ALTER TABLE ONLY "public"."threads"
 
 ALTER TABLE ONLY "public"."threads"
     ADD CONSTRAINT "threads_assignee_user_id_fkey" FOREIGN KEY ("assignee_user_id") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."threads"
+    ADD CONSTRAINT "threads_collaborator_user_id_fkey" FOREIGN KEY ("collaborator_user_id") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE SET NULL;
 
 
 
@@ -3258,10 +3263,6 @@ CREATE POLICY "auth delete" ON "public"."roles" FOR DELETE TO "authenticated" US
 
 
 
-CREATE POLICY "auth delete" ON "public"."thread_collaborators" FOR DELETE TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
-
-
-
 CREATE POLICY "auth delete" ON "public"."threads" FOR DELETE TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
 
 
@@ -3347,10 +3348,6 @@ CREATE POLICY "auth insert" ON "public"."orgs" FOR INSERT TO "authenticated" WIT
 
 
 CREATE POLICY "auth insert" ON "public"."roles" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
-
-
-
-CREATE POLICY "auth insert" ON "public"."thread_collaborators" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
 
 
 
@@ -3446,10 +3443,6 @@ CREATE POLICY "auth read" ON "public"."roles" FOR SELECT TO "authenticated" USIN
 
 
 
-CREATE POLICY "auth read" ON "public"."thread_collaborators" FOR SELECT TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
-
-
-
 CREATE POLICY "auth read" ON "public"."token_balances" FOR SELECT TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
 
 
@@ -3472,9 +3465,7 @@ CREATE POLICY "auth read" ON "public"."users_profile" FOR SELECT TO "authenticat
 
 CREATE POLICY "auth read messages" ON "public"."messages" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."threads" "t"
-  WHERE (("t"."id" = "messages"."thread_id") AND (("t"."assignee_user_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
-           FROM "public"."thread_collaborators" "tc"
-          WHERE (("tc"."thread_id" = "t"."id") AND ("tc"."user_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
+  WHERE (("t"."id" = "messages"."thread_id") AND (("t"."assignee_user_id" = "auth"."uid"()) OR ("t"."collaborator_user_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
            FROM "public"."channel_agents" "ca"
           WHERE (("ca"."channel_id" = "t"."channel_id") AND ("ca"."user_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
            FROM ("public"."user_roles" "ur"
@@ -3550,10 +3541,6 @@ CREATE POLICY "auth update" ON "public"."orgs" FOR UPDATE TO "authenticated" USI
 
 
 CREATE POLICY "auth update" ON "public"."roles" FOR UPDATE TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL)) WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
-
-
-
-CREATE POLICY "auth update" ON "public"."thread_collaborators" FOR UPDATE TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL)) WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
 
 
 
@@ -3732,8 +3719,6 @@ CREATE POLICY "sam_super_read" ON "public"."super_agent_members" FOR SELECT USIN
 CREATE POLICY "sam_super_write" ON "public"."super_agent_members" FOR INSERT WITH CHECK (("super_agent_id" = "auth"."uid"()));
 
 
-
-ALTER TABLE "public"."thread_collaborators" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."threads" ENABLE ROW LEVEL SECURITY;
@@ -4226,11 +4211,6 @@ GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO 
 
 
 
-
-
-GRANT ALL ON FUNCTION "public"."add_default_collaborators"() TO "anon";
-GRANT ALL ON FUNCTION "public"."add_default_collaborators"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."add_default_collaborators"() TO "service_role";
 
 
 
@@ -5431,11 +5411,6 @@ GRANT ALL ON SEQUENCE "public"."sync_deletions_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."sync_deletions_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."sync_deletions_id_seq" TO "service_role";
 
-
-
-GRANT ALL ON TABLE "public"."thread_collaborators" TO "anon";
-GRANT ALL ON TABLE "public"."thread_collaborators" TO "authenticated";
-GRANT ALL ON TABLE "public"."thread_collaborators" TO "service_role";
 
 
 

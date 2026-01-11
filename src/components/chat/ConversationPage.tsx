@@ -70,6 +70,24 @@ const formatPlatformLabel = (providerRaw: string) => {
   return providerRaw;
 };
 
+type FlowTab = 'assigned' | 'unassigned' | 'done';
+
+const getFlowTabForThread = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null): FlowTab | null => {
+  if (!thread) return null;
+  if (thread.status === 'closed') return 'done';
+  if (thread.status === 'assigned' && thread.collaborator_user_id) return 'assigned';
+  if (thread.status === 'pending' && !thread.collaborator_user_id) return 'unassigned';
+  // Fallback: prefer assigned if there's a collaborator, otherwise unassigned.
+  return thread.collaborator_user_id ? 'assigned' : 'unassigned';
+};
+
+const isFlowAssigned = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null) =>
+  getFlowTabForThread(thread) === 'assigned';
+const isFlowUnassigned = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null) =>
+  getFlowTabForThread(thread) === 'unassigned';
+const isFlowDone = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null) =>
+  getFlowTabForThread(thread) === 'done';
+
 interface MessageBubbleProps {
   message: MessageWithDetails;
   isLastMessage: boolean;
@@ -227,7 +245,7 @@ export default function ConversationPage() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'assigned' | 'unassigned' | 'resolved'>("assigned");
+  const [activeTab, setActiveTab] = useState<FlowTab>("assigned");
   const [showParticipants, setShowParticipants] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
@@ -248,13 +266,12 @@ export default function ConversationPage() {
     fetchMessages,
     sendMessage,
     createConversation,
-    addThreadParticipant,
-    removeThreadParticipant,
     addThreadLabel,
     removeThreadLabel,
     assignThread,
     assignThreadToUser,
     deleteThread,
+    setThreadCollaborator,
   } = useConversations();
 
   // Use the contacts and human agents hooks
@@ -267,7 +284,8 @@ export default function ConversationPage() {
   const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent;
   const canSendMessagesPermission = hasPermission('messages.create');
   const currentUserId = user?.id ?? null;
-  const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
+  // Track optimistic collaborator updates per thread
+  const [collaboratorOverride, setCollaboratorOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const canDeleteConversation = hasPermission('contacts.delete');
@@ -278,10 +296,6 @@ export default function ConversationPage() {
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
   
-  // NOTE: thread_collaborators is used for access control (assignee + super agent auto-added).
-  // We keep the full set of collaborator user_ids from DB here, but the UI "Collaborators" control
-  // will manage *at most one* additional agent collaborator under the selected super agent.
-  const [collaborators, setCollaborators] = useState<string[]>([]);
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
   const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
@@ -340,6 +354,7 @@ export default function ConversationPage() {
     }
   }, [selectedThreadId, derivedHandledById, handledByOverride]);
 
+
   // Fetch allowed collaborator agents for the selected handled-by (super agent)
   useEffect(() => {
     if (!handledById) {
@@ -364,146 +379,6 @@ export default function ConversationPage() {
     fetchMembers();
     return () => { active = false; };
   }, [handledById]);
-
-  // Load display labels for any collaborator/member IDs not present in humanAgents
-  useEffect(() => {
-    const ids = Array.from(new Set([
-      ...(handledById ? [handledById] : []),
-      ...collaborators,
-      ...superAgentMemberAgentIds,
-    ].filter(Boolean))) as string[];
-
-    if (ids.length === 0) return;
-
-    const missing = ids.filter(id => !humanAgentIdToLabel[id] && !userIdToLabel[id]);
-    if (missing.length === 0) return;
-
-    let active = true;
-    const fetchLabels = async () => {
-      try {
-        const { data, error } = await protectedSupabase
-          .from('users_profile')
-          .select('user_id, display_name')
-          .in('user_id', missing);
-
-        if (!active) return;
-        if (error) throw error;
-
-        const nextMap: Record<string, string> = Object.fromEntries(
-          (data || []).map((p: any) => [String(p.user_id), String(p.display_name || '')])
-        );
-
-        setUserIdToLabel(prev => ({ ...prev, ...nextMap }));
-      } catch (e) {
-        // non-fatal: fallback will still show ids
-        console.warn('Failed to fetch user labels', e);
-      }
-    };
-    fetchLabels();
-    return () => { active = false; };
-  }, [handledById, collaborators, superAgentMemberAgentIds, humanAgentIdToLabel, userIdToLabel]);
-
-  const collaboratorOptions = useMemo(() => {
-    if (!handledById) return [];
-    const allowed = new Set(superAgentMemberAgentIds);
-    return agentOptions
-      .filter(o => allowed.has(o.value))
-      .map(o => ({ ...o, label: labelForUserId(o.value) }));
-  }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
-
-  const collaboratorUserIds = useMemo(() => (collaborators || []).map(String), [collaborators]);
-
-  const agentCollaboratorIds = useMemo(() => {
-    if (!handledById) return [];
-    const allowed = new Set(superAgentMemberAgentIds);
-    return collaboratorUserIds.filter((id) => allowed.has(id));
-  }, [collaboratorUserIds, handledById, superAgentMemberAgentIds]);
-
-  const selectedCollaboratorId = agentCollaboratorIds.length > 0 ? agentCollaboratorIds[0] : null;
-
-  const collaboratorOptionsWithSelected = useMemo(() => {
-    // Ensure selected collaborator always has a label, even if they aren't in the allowed list/options.
-    const map = new Map<string, { value: string; label: string }>();
-    collaboratorOptions.forEach(o => map.set(o.value, o));
-    if (selectedCollaboratorId && !map.has(selectedCollaboratorId)) {
-      map.set(selectedCollaboratorId, { value: selectedCollaboratorId, label: labelForUserId(selectedCollaboratorId) });
-    }
-    return Array.from(map.values());
-  }, [collaboratorOptions, selectedCollaboratorId, labelForUserId]);
-
-  const isCurrentUserCollaborator = useMemo(() => {
-    if (!currentUserId) return false;
-    return collaboratorUserIds.includes(currentUserId);
-  }, [collaboratorUserIds, currentUserId]);
-
-  const roleAllowsSend = useMemo(() => {
-    if (isMasterAgent || isSuperAgent) return true;
-    if (handledById && currentUserId && handledById === currentUserId) return true;
-    if (selectedCollaboratorId && currentUserId && selectedCollaboratorId === currentUserId) return true;
-    if (isRegularAgentOnly && isCurrentUserCollaborator) return true;
-    return false;
-  }, [isMasterAgent, isSuperAgent, handledById, currentUserId, selectedCollaboratorId, isRegularAgentOnly, isCurrentUserCollaborator]);
-
-  const canCurrentUserSend = canSendMessagesPermission || roleAllowsSend;
-
-  const sendDisabledReason = useMemo(() => {
-    if (canCurrentUserSend) return undefined;
-    if (!canSendMessagesPermission && !roleAllowsSend) {
-      return 'You do not have permission to send messages.';
-    }
-    if (!roleAllowsSend && isRegularAgentOnly) {
-      return 'Only the assigned collaborator can send messages.';
-    }
-    return undefined;
-  }, [canCurrentUserSend, canSendMessagesPermission, roleAllowsSend, isRegularAgentOnly]);
-
-  // Fetch collaborators when thread is selected
-  useEffect(() => {
-    if (!selectedThreadId) {
-      setCollaborators([]);
-      return;
-    }
-    let active = true;
-    const fetchCollaborators = async () => {
-        const { data } = await protectedSupabase
-            .from('thread_collaborators')
-            .select('user_id')
-            .eq('thread_id', selectedThreadId);
-        if (active && data) {
-            setCollaborators(data.map(d => d.user_id));
-        }
-    };
-    fetchCollaborators();
-    return () => { active = false; };
-  }, [selectedThreadId]);
-
-  // Enforce single "agent collaborator" under the handled-by super agent by trimming extras (non-fatal best-effort).
-  useEffect(() => {
-    if (!selectedThreadId) return;
-    if (!handledById) return;
-    if (agentCollaboratorIds.length <= 1) return;
-    let cancelled = false;
-    const trim = async () => {
-      try {
-        const keep = agentCollaboratorIds[0];
-        const extras = agentCollaboratorIds.slice(1);
-        if (!keep || extras.length === 0) return;
-        await protectedSupabase
-          .from('thread_collaborators')
-          .delete()
-          .eq('thread_id', selectedThreadId)
-          .in('user_id', extras as any);
-        if (!cancelled) {
-          setCollaborators(prev => prev.filter((id) => !extras.includes(String(id))));
-        }
-      } catch (e) {
-        // non-fatal
-        console.warn('Failed to trim collaborators', e);
-      }
-    };
-    trim();
-    return () => { cancelled = true; };
-  }, [selectedThreadId, handledById, agentCollaboratorIds]);
 
   const messageMatches = useMemo<MessageSearchMatch[]>(() => {
     if (!trimmedSearch) {
@@ -743,8 +618,9 @@ export default function ConversationPage() {
   useEffect(() => {
     if (!tabParam) return;
     if (isPushingTabRef.current) return; // ignore echo from our own push
-    if (tabParam === 'assigned' || tabParam === 'unassigned' || tabParam === 'resolved') {
-      if (tabParam !== activeTab) setActiveTab(tabParam as any);
+    const normalized = tabParam === 'resolved' ? 'done' : tabParam;
+    if (normalized === 'assigned' || normalized === 'unassigned' || normalized === 'done') {
+      if (normalized !== activeTab) setActiveTab(normalized as FlowTab);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabParam]);
@@ -837,20 +713,17 @@ export default function ConversationPage() {
   useEffect(() => {
     if (loading || conversations.length === 0) return;
 
-    // Calculate counts based on the raw (RLS-filtered) data
-    const assignedCount = conversations.filter(c => c.status !== 'closed' && c.assigned).length;
-    const unassignedCount = conversations.filter(c => c.status !== 'closed' && !c.assigned).length;
-    const resolvedCount = conversations.filter(c => c.status === 'closed').length;
+    const assignedCount = conversations.filter((c) => isFlowAssigned(c)).length;
+    const unassignedCount = conversations.filter((c) => isFlowUnassigned(c)).length;
+    const doneCount = conversations.filter((c) => isFlowDone(c)).length;
 
-    // If we are on 'assigned' but it's empty, and we have unassigned chats, switch.
     if (activeTab === 'assigned' && assignedCount === 0 && unassignedCount > 0) {
       setActiveTab('unassigned');
       return;
     }
 
-    // If we are on 'assigned' or 'unassigned' but both are empty, and we have resolved chats, switch.
-    if ((activeTab === 'assigned' || activeTab === 'unassigned') && assignedCount === 0 && unassignedCount === 0 && resolvedCount > 0) {
-      setActiveTab('resolved');
+    if ((activeTab === 'assigned' || activeTab === 'unassigned') && assignedCount === 0 && unassignedCount === 0 && doneCount > 0) {
+      setActiveTab('done');
       return;
     }
   }, [conversations, loading, activeTab]);
@@ -871,23 +744,19 @@ export default function ConversationPage() {
   // Auto-select by explicit thread param (preferred). This disambiguates multi-channel contacts.
   useEffect(() => {
     if (!threadParam) return;
-    // Don't re-apply if user already selected (or we already applied it)
+    if (selectedThreadId === threadParam) return; // already synced
     if (filteredConversations.length === 0) return;
 
     const target = filteredConversations.find(c => c.id === threadParam);
     if (!target) return;
 
     setSelectedThreadId(target.id);
-    if (target.status === 'closed') {
-      setActiveTab('resolved');
-    } else {
-      setActiveTab(target.assigned ? 'assigned' : 'unassigned');
-    }
+    setActiveTab(getFlowTabForThread(target) ?? 'unassigned');
     void fetchMessages(target.id);
     if (target.channel?.provider) {
       setSendMessageProvider(target.channel.provider);
     }
-  }, [threadParam, filteredConversations]);
+  }, [threadParam, filteredConversations, selectedThreadId]);
 
   // Auto-select by contactId only on first load for this navigation; do not override manual selection
   useEffect(() => {
@@ -899,11 +768,7 @@ export default function ConversationPage() {
     if (!target) return;
     setSelectedThreadId(target.id);
     // Ensure tab reflects the selected conversation
-    if (target.status === 'closed') {
-      setActiveTab('resolved');
-    } else {
-      setActiveTab(target.assigned ? 'assigned' : 'unassigned');
-    }
+    setActiveTab(getFlowTabForThread(target) ?? 'unassigned');
     // Fetch messages and set provider when auto-selecting
     void fetchMessages(target.id);
     if (target.channel?.provider) {
@@ -918,31 +783,118 @@ export default function ConversationPage() {
     }
     return filteredConversations.find(c => c.id === selectedThreadId) || null;
   }, [selectedThreadId, filteredConversations]);
-  const isSelectedConversationResolved = selectedConversation?.status === 'closed';
+  const isSelectedConversationDone = isFlowDone(selectedConversation);
+  const selectedConversationFlow = getFlowTabForThread(selectedConversation);
 
-  // Check if current user is a collaborator on selected thread
+  const derivedCollaboratorId = useMemo(() => {
+    if (!selectedThreadId) return null;
+    return selectedConversation?.collaborator_user_id ?? null;
+  }, [selectedThreadId, selectedConversation?.collaborator_user_id]);
+
+  const collaboratorId = useMemo(() => {
+    if (!selectedThreadId) return null;
+    if (collaboratorOverride?.threadId === selectedThreadId) {
+      return collaboratorOverride.userId ?? null;
+    }
+    return derivedCollaboratorId;
+  }, [selectedThreadId, collaboratorOverride, derivedCollaboratorId]);
+
+  // Load display labels for any collaborator/member IDs not present in humanAgents
   useEffect(() => {
-    const checkCollab = async () => {
+    const ids = Array.from(new Set([
+      ...(handledById ? [handledById] : []),
+      ...(collaboratorId ? [collaboratorId] : []),
+      ...superAgentMemberAgentIds,
+    ].filter(Boolean))) as string[];
+
+    if (ids.length === 0) return;
+
+    const missing = ids.filter(id => !humanAgentIdToLabel[id] && !userIdToLabel[id]);
+    if (missing.length === 0) return;
+
+    let active = true;
+    const fetchLabels = async () => {
       try {
-        if (!selectedConversation?.id || !user?.id) {
-          setIsCollaborator(false);
-          return;
-        }
         const { data, error } = await protectedSupabase
-          .from('thread_collaborators')
-          .select('user_id')
-          .eq('thread_id', selectedConversation.id)
-          .eq('user_id', user.id)
-          .limit(1);
+          .from('users_profile')
+          .select('user_id, display_name')
+          .in('user_id', missing);
+
+        if (!active) return;
         if (error) throw error;
-        setIsCollaborator(!!data && data.length > 0);
+
+        const nextMap: Record<string, string> = Object.fromEntries(
+          (data || []).map((p: any) => [String(p.user_id), String(p.display_name || '')])
+        );
+
+        setUserIdToLabel(prev => ({ ...prev, ...nextMap }));
       } catch (e) {
-        console.warn('Failed to check collaborator status', e);
-        setIsCollaborator(false);
+        // non-fatal: fallback will still show ids
+        console.warn('Failed to fetch user labels', e);
       }
     };
-    checkCollab();
-  }, [selectedConversation?.id, user?.id]);
+    fetchLabels();
+    return () => { active = false; };
+  }, [handledById, collaboratorId, superAgentMemberAgentIds, humanAgentIdToLabel, userIdToLabel]);
+
+  const collaboratorOptions = useMemo(() => {
+    if (!handledById) return [];
+    const allowed = new Set(superAgentMemberAgentIds);
+    return agentOptions
+      .filter(o => allowed.has(o.value))
+      .map(o => ({ ...o, label: labelForUserId(o.value) }));
+  }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
+
+  const selectedCollaboratorId = collaboratorId ? String(collaboratorId) : null;
+
+  const collaboratorOptionsWithSelected = useMemo(() => {
+    // Ensure selected collaborator always has a label, even if they aren't in the allowed list/options.
+    const map = new Map<string, { value: string; label: string }>();
+    collaboratorOptions.forEach(o => map.set(o.value, o));
+    if (selectedCollaboratorId && !map.has(selectedCollaboratorId)) {
+      map.set(selectedCollaboratorId, { value: selectedCollaboratorId, label: labelForUserId(selectedCollaboratorId) });
+    }
+    return Array.from(map.values());
+  }, [collaboratorOptions, selectedCollaboratorId, labelForUserId]);
+
+  const isCurrentUserCollaborator = useMemo(() => {
+    if (!currentUserId || !selectedCollaboratorId) return false;
+    return selectedCollaboratorId === currentUserId;
+  }, [selectedCollaboratorId, currentUserId]);
+
+  const roleAllowsSend = useMemo(() => {
+    if (isMasterAgent || isSuperAgent) return true;
+    if (handledById && currentUserId && handledById === currentUserId) return true;
+    if (selectedCollaboratorId && currentUserId && selectedCollaboratorId === currentUserId) return true;
+    if (isRegularAgentOnly && isCurrentUserCollaborator) return true;
+    return false;
+  }, [isMasterAgent, isSuperAgent, handledById, currentUserId, selectedCollaboratorId, isRegularAgentOnly, isCurrentUserCollaborator]);
+
+  const canCurrentUserSend = canSendMessagesPermission || roleAllowsSend;
+
+  const sendDisabledReason = useMemo(() => {
+    if (canCurrentUserSend) return undefined;
+    if (!canSendMessagesPermission && !roleAllowsSend) {
+      return 'You do not have permission to send messages.';
+    }
+    if (!roleAllowsSend && isRegularAgentOnly) {
+      return 'Only the assigned collaborator can send messages.';
+    }
+    return undefined;
+  }, [canCurrentUserSend, canSendMessagesPermission, roleAllowsSend, isRegularAgentOnly]);
+
+  useEffect(() => {
+    if (!selectedThreadId) {
+      setCollaboratorOverride(null);
+      return;
+    }
+    if (
+      collaboratorOverride?.threadId === selectedThreadId &&
+      derivedCollaboratorId === collaboratorOverride.userId
+    ) {
+      setCollaboratorOverride(null);
+    }
+  }, [selectedThreadId, derivedCollaboratorId, collaboratorOverride]);
 
   const handleTakeoverChat = async () => {
     if (!selectedConversation) return;
@@ -952,22 +904,16 @@ export default function ConversationPage() {
     }
     try {
       const isAdmin = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT);
+      const alreadyCollaborator = collaboratorId === user.id;
       // Ensure collaborator status before takeover
-      if (!isCollaborator) {
+      if (!alreadyCollaborator) {
         if (isAdmin) {
           try {
-            const { data: existing } = await protectedSupabase
-              .from('thread_collaborators')
-              .select('user_id')
-              .eq('thread_id', selectedConversation.id)
-              .eq('user_id', user.id)
-              .limit(1);
-            if (!existing || existing.length === 0) {
-              await addThreadParticipant(selectedConversation.id, user.id);
-            }
-            setIsCollaborator(true);
+            setCollaboratorOverride({ threadId: selectedConversation.id, userId: user.id });
+            await setThreadCollaborator(selectedConversation.id, user.id);
           } catch (err) {
             console.warn('Failed to ensure collaborator before takeover', err);
+            setCollaboratorOverride(prev => (prev?.threadId === selectedConversation.id ? null : prev));
             toast.error('Please join as collaborator before taking over');
             return; // Block takeover if collaborator insert/check failed
           }
@@ -1014,21 +960,18 @@ export default function ConversationPage() {
     await fetchMessages(threadId);
   };
 
-  // Keep selection aligned to the active tab so "Assigned/Unassigned" doesn't show a resolved thread (and vice versa).
+  // Keep selection aligned to the active tab so each tab shows a matching thread category.
   useEffect(() => {
     const selectFirstForTab = () => {
-      if (activeTab === 'resolved') {
-        return filteredConversations.find(c => c.status === 'closed') || null;
+      if (activeTab === 'done') {
+        return filteredConversations.find(conv => isFlowDone(conv)) || null;
       }
       if (activeTab === 'assigned') {
-        return filteredConversations.find(c => c.status !== 'closed' && !!c.assigned) || null;
+        return filteredConversations.find(conv => isFlowAssigned(conv)) || null;
       }
       // unassigned
-      return filteredConversations.find(c => c.status !== 'closed' && !c.assigned) || null;
+      return filteredConversations.find(conv => isFlowUnassigned(conv)) || null;
     };
-
-    const shouldBeResolved = activeTab === 'resolved';
-    const isResolvedSelected = selectedConversation?.status === 'closed';
 
     // If nothing selected, pick the first thread in the current tab (if any).
     if (!selectedThreadId) {
@@ -1037,8 +980,9 @@ export default function ConversationPage() {
       return;
     }
 
+    const selectedCategory = getFlowTabForThread(selectedConversation);
     // If selected thread doesn't match current tab, switch selection to the first thread in the tab.
-    if (selectedConversation && shouldBeResolved !== isResolvedSelected) {
+    if (selectedConversation && selectedCategory !== activeTab) {
       const first = selectFirstForTab();
       if (first?.id) {
         void handleConversationSelect(first.id);
@@ -1145,18 +1089,6 @@ export default function ConversationPage() {
     }
   }, [selectedConversation?.channel?.provider]);
 
-  // Add participant to thread
-  const handleAddParticipant = async (userId: string) => {
-    if (!selectedThreadId) return;
-
-    try {
-      await addThreadParticipant(selectedThreadId, userId);
-      toast.success("Participant added successfully");
-    } catch (error) {
-      toast.error("Failed to add participant");
-    }
-  };
-
   // Helpers for thread list UI
   const formatListTime = (iso: string) => {
     if (!iso) return '';
@@ -1180,31 +1112,19 @@ export default function ConversationPage() {
   };
 
   const renderStatus = (conv: ConversationWithDetails) => {
-    if (conv.status === 'closed') {
-      return <Badge className="bg-green-100 text-green-700 border-0">Resolved</Badge>;
+    const category = getFlowTabForThread(conv);
+    if (category === 'done') {
+      return <Badge className="bg-green-100 text-green-700 border-0">Done</Badge>;
     }
-    return (
-      <Badge className={conv.assigned ? 'bg-blue-100 text-blue-700 border-0' : 'bg-secondary text-secondary-foreground'}>
-        {conv.assigned ? 'Assigned' : 'Unassigned'}
-      </Badge>
-    );
+    if (category === 'assigned') {
+      return <Badge className="bg-blue-100 text-blue-700 border-0">Assigned</Badge>;
+    }
+    return <Badge className="bg-secondary text-secondary-foreground">Unassigned</Badge>;
   };
 
   const getListTimestamp = (conv: any) => {
     const ts = (conv as any).last_msg_at || (conv as any).updated_at || (conv as any).created_at || '';
     return formatListTime(ts);
-  };
-
-  // Remove participant from thread
-  const handleRemoveParticipant = async (userId: string) => {
-    if (!selectedThreadId) return;
-
-    try {
-      await removeThreadParticipant(selectedThreadId, userId);
-      toast.success("Participant removed successfully");
-    } catch (error) {
-      toast.error("Failed to remove participant");
-    }
   };
 
   const handleConfirmDelete = async () => {
@@ -1317,7 +1237,7 @@ export default function ConversationPage() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
         </div>
-        <Tabs value={activeTab} onValueChange={(v) => { if (v !== activeTab) setActiveTab(v as any); }} className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => { if (v !== activeTab) setActiveTab(v as FlowTab); }} className="w-full">
           <TabsList className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
             <TabsTrigger
               value="assigned"
@@ -1328,7 +1248,7 @@ export default function ConversationPage() {
                   <span className="flex items-center">
                     Assigned
                     <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c => c.status !== 'closed' && c.assigned).length}
+                      {filteredConversations.filter(conv => isFlowAssigned(conv)).length}
                     </Badge>
                   </span>
                 </TooltipTrigger>
@@ -1346,7 +1266,7 @@ export default function ConversationPage() {
                   <span className="flex items-center">
                     Unassigned
                     <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c => c.status !== 'closed' && !c.assigned).length}
+                      {filteredConversations.filter(conv => isFlowUnassigned(conv)).length}
                     </Badge>
                   </span>
                 </TooltipTrigger>
@@ -1356,21 +1276,21 @@ export default function ConversationPage() {
               </Tooltip>
             </TabsTrigger>
             <TabsTrigger
-              value="resolved"
+              value="done"
               className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
-              aria-label="Resolved"
+              aria-label="Done"
             >
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-1">
                     <CheckCircle className="h-4 w-4" />
                     <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c => c.status === 'closed').length}
+                      {filteredConversations.filter(conv => isFlowDone(conv)).length}
                     </Badge>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Lihat percakapan yang telah diselesaikan</p>
+                  <p>Lihat percakapan yang selesai</p>
                 </TooltipContent>
               </Tooltip>
             </TabsTrigger>
@@ -1378,7 +1298,7 @@ export default function ConversationPage() {
           <TabsContent value="assigned" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
-                {filteredConversations.filter(c => c.status !== 'closed' && c.assigned).map(conv => (
+                {filteredConversations.filter(conv => isFlowAssigned(conv)).map(conv => (
                   <div key={conv.id} className="relative">
                     <button
                       type="button"
@@ -1440,7 +1360,7 @@ export default function ConversationPage() {
           <TabsContent value="unassigned" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
-                {filteredConversations.filter(c => c.status !== 'closed' && !c.assigned).map(conv => (
+                {filteredConversations.filter(conv => isFlowUnassigned(conv)).map(conv => (
                   <div key={conv.id} className="relative">
                     <button
                       type="button"
@@ -1499,11 +1419,10 @@ export default function ConversationPage() {
               </div>
             </div>
           </TabsContent>
-
-          <TabsContent value="resolved" className="mt-0">
+          <TabsContent value="done" className="mt-0">
             <div className="h-[calc(100vh-280px)] overflow-y-auto">
               <div className="space-y-1">
-                {filteredConversations.filter(c => c.status === 'closed').map(conv => (
+                {filteredConversations.filter(conv => isFlowDone(conv)).map(conv => (
                   <div key={conv.id} className="relative">
                     <button
                       type="button"
@@ -1654,13 +1573,25 @@ export default function ConversationPage() {
                   <Button
                     size="sm"
                     className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                    onClick={async () => { if (selectedConversation.status === 'closed') return; const { error } = await protectedSupabase.from('threads').update({ status: 'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if (error) { toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(undefined, { silent: true }); setActiveTab('resolved'); } }}
+                    onClick={async () => { if (selectedConversation.status === 'closed') return; const { error } = await protectedSupabase.from('threads').update({ status: 'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if (error) { toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(undefined, { silent: true }); setActiveTab('done'); } }}
                   >
                     Resolve
                   </Button>
                 }
-                <Badge className={selectedConversation.assigned ? "bg-success text-success-foreground hover:bg-success" : "bg-secondary text-secondary-foreground hover:bg-secondary"}>
-                  {selectedConversation.assigned ? 'Assigned' : 'Unassigned'}
+                <Badge
+                  className={
+                    selectedConversationFlow === 'done'
+                      ? "bg-green-100 text-green-700 border-0"
+                      : selectedConversationFlow === 'assigned'
+                        ? "bg-success text-success-foreground hover:bg-success"
+                        : "bg-secondary text-secondary-foreground hover:bg-secondary"
+                  }
+                >
+                  {selectedConversationFlow === 'done'
+                    ? 'Done'
+                    : selectedConversationFlow === 'assigned'
+                      ? 'Assigned'
+                      : 'Unassigned'}
                 </Badge>
               </div>
             </div>
@@ -1728,7 +1659,7 @@ export default function ConversationPage() {
                 ) : (
                   <PermissionGate permission={'threads.update'}>
                     {(() => {
-                      const hasAgentCollaborator = agentCollaboratorIds.length > 0;
+                      const hasAgentCollaborator = Boolean(selectedCollaboratorId);
                       const takeoverAllowedByRole =
                         isMasterAgent ||
                         isSuperAgent ||
@@ -1820,39 +1751,24 @@ export default function ConversationPage() {
                   if (!handledById) return;
 
                   const allowed = new Set(superAgentMemberAgentIds);
-                  const agentIdsToRemove = (collaborators || []).map(String).filter((id) => allowed.has(id));
+                  if (val && !allowed.has(val)) {
+                    toast.error("Collaborator must be a member of the handled-by super agent");
+                    return;
+                  }
 
+                  setCollaboratorOverride({ threadId: selectedThreadId, userId: val });
                   try {
-                    // Remove all existing agent-collaborators for this super agent scope
-                    if (agentIdsToRemove.length > 0) {
-                      await protectedSupabase
-                        .from('thread_collaborators')
-                        .delete()
-                        .eq('thread_id', selectedThreadId)
-                        .in('user_id', agentIdsToRemove as any);
-                    }
-
-                    // Add the newly selected one (if any)
-                    if (val) {
-                      await addThreadParticipant(selectedThreadId, val);
-                    }
-
-                    // Update local state: keep non-agent collaborators (assignee/super agent), replace agent-collabs with val
-                    setCollaborators(prev => {
-                      const prevStr = (prev || []).map(String);
-                      const kept = prevStr.filter((id) => !allowed.has(id));
-                      return val ? [...kept, val] : kept;
-                    });
-
+                    await setThreadCollaborator(selectedThreadId, val);
                     toast.success(val ? "Collaborator updated" : "Collaborator cleared");
                   } catch (e) {
-                    // Hook/DB will handle errors; keep UI stable
+                    setCollaboratorOverride(prev => (prev?.threadId === selectedThreadId ? null : prev));
+                    toast.error("Failed to update collaborator");
                   }
                 }}
                 placeholder={handledById ? "Select Collaborator" : "Select handled by first"}
                 searchPlaceholder="Search agent..."
                 className="w-full"
-                disabled={!handledById || isSelectedConversationResolved}
+                disabled={!handledById || isSelectedConversationDone}
                 allowClear
                 clearLabel="Clear collaborator"
               />

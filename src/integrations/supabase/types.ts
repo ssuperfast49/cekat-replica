@@ -985,24 +985,6 @@ export type Database = {
           },
         ]
       }
-      thread_collaborators: {
-        Row: {
-          added_at: string
-          thread_id: string
-          user_id: string
-        }
-        Insert: {
-          added_at?: string
-          thread_id: string
-          user_id: string
-        }
-        Update: {
-          added_at?: string
-          thread_id?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       threads: {
         Row: {
           additional_data: Json
@@ -1011,6 +993,7 @@ export type Database = {
           assigned_at: string | null
           assigned_by_user_id: string | null
           assignee_user_id: string | null
+          collaborator_user_id: string | null
           channel_id: string
           contact_id: string
           created_at: string
@@ -1033,6 +1016,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_by_user_id?: string | null
           assignee_user_id?: string | null
+          collaborator_user_id?: string | null
           channel_id: string
           contact_id: string
           created_at?: string
@@ -1055,6 +1039,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_by_user_id?: string | null
           assignee_user_id?: string | null
+          collaborator_user_id?: string | null
           channel_id?: string
           contact_id?: string
           created_at?: string
@@ -1074,6 +1059,13 @@ export type Database = {
           {
             foreignKeyName: "threads_assignee_user_id_fkey"
             columns: ["assignee_user_id"]
+            isOneToOne: false
+            referencedRelation: "v_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "threads_collaborator_user_id_fkey"
+            columns: ["collaborator_user_id"]
             isOneToOne: false
             referencedRelation: "v_users"
             referencedColumns: ["id"]

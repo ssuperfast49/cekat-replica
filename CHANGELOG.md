@@ -1,4 +1,22 @@
 # Change Log
+# [0.1.36] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+- **Three-state workflow overhaul**: Replaced the legacy status heuristic with an explicit `Assigned / Unassigned / Done` flow that keys off `status` plus the presence of a collaborator. Counts, badges, tab filters, and auto-selection now stay in sync with the new rules and never fall back to the deprecated multi-collaborator state.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Collaborator switch stability**: Guarded the URL/thread synchronization logic so picking a collaborator no longer triggers a rapid tab flip that spammed list/message fetches.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Collaboration Data Model & Permissions
+- **Single-column collaborator model**: Added a migration that backfills `threads.collaborator_user_id`, rewires all RLS policies to reference that column, and drops the obsolete `thread_collaborators` table plus its triggers.
+  - New: `supabase/migrations/20260110_remove_thread_collaborators.sql`
+  - Updated: `supabase/migrations/permissions_update_and_policies_updates.sql`, `supabase/migrations/20251124230847_baseline.sql`, `supabase/schema.sql`, `sync/tables.config.json`
+- **Typed API parity**: Regenerated Supabase types so the frontend integrations include the new `collaborator_user_id` field and foreign key metadata.
+  - Updated: `src/integrations/supabase/types.ts`
+
+### Navigation & RBAC
+- **Hide AI Agents for regular agents**: Sidebar configuration now outright hides the AI Agents menu when the signed-in user only has the `agent` role, preventing them from entering AI profile management.
+  - Updated: `src/config/navigation.ts`, `src/hooks/useNavigation.ts`
+
 # [0.1.35] FE WEB CEKAT 2026-01-10
 ### Housekeeping
 - **Line-ending normalization (no logic changes)**: Synchronized CRLF/LF on chat/contact pages and hooks to keep diffs clean without altering runtime behavior.

@@ -58,6 +58,7 @@ export interface Thread {
   channel_id: string;
   status: 'open' | 'pending' | 'closed' | 'assigned';
   assignee_user_id: string | null;
+  collaborator_user_id?: string | null;
   assigned_by_user_id?: string | null;
   resolved_by_user_id?: string | null;
   ai_handoff_at?: string | null;
@@ -963,44 +964,32 @@ export const useConversations = () => {
     }
   };
 
-  // Add collaborator to thread
-  const addThreadParticipant = async (threadId: string, userId: string) => {
+  // Set collaborator on a thread (single value stored on threads)
+  const setThreadCollaborator = async (threadId: string, userId: string | null) => {
     try {
       setError(null);
-
       const { error } = await supabase
-        .from('thread_collaborators')
-        .insert([{ thread_id: threadId, user_id: userId }]);
+        .from('threads')
+        .update({ collaborator_user_id: userId })
+        .eq('id', threadId);
 
       if (error) throw error;
 
-      try { await logAction({ action: 'thread.add_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch { }
+      setConversations(prev =>
+        prev.map(conv => (conv.id === threadId ? { ...conv, collaborator_user_id: userId } : conv))
+      );
 
+      try {
+        await logAction({
+          action: userId ? 'thread.set_collaborator' : 'thread.clear_collaborator',
+          resource: 'thread',
+          resourceId: threadId,
+          context: { collaborator_user_id: userId },
+        });
+      } catch { }
     } catch (error) {
-      console.error('Error adding thread participant:', error);
-      setError(error instanceof Error ? error.message : 'Failed to add thread participant');
-      throw error;
-    }
-  };
-
-  // Remove collaborator from thread
-  const removeThreadParticipant = async (threadId: string, userId: string) => {
-    try {
-      setError(null);
-
-      const { error } = await supabase
-        .from('thread_collaborators')
-        .delete()
-        .eq('thread_id', threadId)
-        .eq('user_id', userId);
-
-      if (error) throw error;
-
-      try { await logAction({ action: 'thread.remove_participant', resource: 'thread', resourceId: threadId, context: { user_id: userId } }); } catch { }
-
-    } catch (error) {
-      console.error('Error removing thread participant:', error);
-      setError(error instanceof Error ? error.message : 'Failed to remove thread participant');
+      console.error('Error updating thread collaborator:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update collaborator');
       throw error;
     }
   };
@@ -1324,8 +1313,7 @@ export const useConversations = () => {
     updateThreadStatus,
     assignThread,
     assignThreadToUser,
-    addThreadParticipant,
-    removeThreadParticipant,
+    setThreadCollaborator,
     addThreadLabel,
     removeThreadLabel,
     deleteThread,

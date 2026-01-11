@@ -36,6 +36,10 @@ export interface NavigationItem {
    * Optional: allow these roles to bypass permission checks for the nav item.
    */
   roleBypass?: RoleName[];
+  /**
+   * Optional: hide nav item for these roles regardless of permissions.
+   */
+  forbiddenRoles?: RoleName[];
 }
 
 // Helper: build list of read permissions for a resource from PERMISSIONS_SCHEMA
@@ -112,7 +116,8 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     icon: Bot,
     permissions: readPerms('ai_profiles'),
     requireAll: false,
-    description: "Configure and manage AI agents"
+    description: "Configure and manage AI agents",
+    forbiddenRoles: [ROLES.AGENT],
   },
   
   humanagents: {
