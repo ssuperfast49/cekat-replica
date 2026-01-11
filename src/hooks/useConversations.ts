@@ -771,58 +771,73 @@ export const useConversations = () => {
 
   // Update thread status
   // Assign thread to current user (ensures DB assignment and audit fields)
-  const assignThread = async (threadId: string, _userId: string) => {
+  const assignThread = async (threadId: string, _userId: string, options?: { setAssignee?: boolean }) => {
     try {
       setError(null);
 
-      // Try RPC first (preferred path)
-      const { error: rpcError } = await supabase
-        .rpc('takeover_thread', { p_thread_id: threadId });
-
-      if (rpcError) {
-        console.warn('takeover_thread RPC failed; will attempt direct update', rpcError);
-      }
-
-      // Ensure the thread is actually assigned to current user
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id || null;
-
       const assignedStatusValue = dbSupportsAssignedStatus ? 'assigned' : 'open';
+      const shouldSetAssignee = options?.setAssignee ?? true;
 
-      try {
-        const { data: threadAfterRpc } = await supabase
-          .from('threads')
-          .select('assignee_user_id, status')
-          .eq('id', threadId)
-          .single();
+      if (shouldSetAssignee) {
+        // Try RPC first (preferred path)
+        const { error: rpcError } = await supabase
+          .rpc('takeover_thread', { p_thread_id: threadId });
 
-        const alreadyAssigned = !!threadAfterRpc?.assignee_user_id;
-        const statusNeedsUpdate = (threadAfterRpc?.status || '').toLowerCase() !== assignedStatusValue;
-        if ((statusNeedsUpdate || !alreadyAssigned) && currentUserId) {
-          const updatePayload: Record<string, any> = {
-            assigned_at: new Date().toISOString(),
-            handover_reason: 'other:manual_takeover',
-            ai_access_enabled: false,
-            status: assignedStatusValue as any,
-          };
-          if (!alreadyAssigned) {
-            updatePayload.assignee_user_id = currentUserId;
-            updatePayload.assigned_by_user_id = currentUserId;
-          }
-
-          const { error: updateErr } = await supabase
-            .from('threads')
-            .update(updatePayload)
-            .eq('id', threadId);
-          if (updateErr) {
-            console.warn('Fallback assignment/status update failed', updateErr);
-          }
+        if (rpcError) {
+          console.warn('takeover_thread RPC failed; will attempt direct update', rpcError);
         }
-      } catch (verifyErr) {
-        console.warn('Failed verifying assignment state', verifyErr);
+
+        try {
+          const { data: threadAfterRpc } = await supabase
+            .from('threads')
+            .select('assignee_user_id, status')
+            .eq('id', threadId)
+            .single();
+
+          const alreadyAssigned = !!threadAfterRpc?.assignee_user_id;
+          const statusNeedsUpdate = (threadAfterRpc?.status || '').toLowerCase() !== assignedStatusValue;
+          if ((statusNeedsUpdate || !alreadyAssigned) && currentUserId) {
+            const updatePayload: Record<string, any> = {
+              assigned_at: new Date().toISOString(),
+              handover_reason: 'other:manual_takeover',
+              ai_access_enabled: false,
+              status: assignedStatusValue as any,
+            };
+            if (!alreadyAssigned) {
+              updatePayload.assignee_user_id = currentUserId;
+              updatePayload.assigned_by_user_id = currentUserId;
+            }
+
+            const { error: updateErr } = await supabase
+              .from('threads')
+              .update(updatePayload)
+              .eq('id', threadId);
+            if (updateErr) {
+              console.warn('Fallback assignment/status update failed', updateErr);
+            }
+          }
+        } catch (verifyErr) {
+          console.warn('Failed verifying assignment state', verifyErr);
+        }
+      } else {
+        // Regular agent takeover: only flip status/AI flags, leave assignee untouched
+        const nowIso = new Date().toISOString();
+        const { error: statusErr } = await supabase
+          .from('threads')
+          .update({
+            status: assignedStatusValue as any,
+            ai_access_enabled: false,
+            ai_handoff_at: nowIso,
+          })
+          .eq('id', threadId);
+        if (statusErr) {
+          throw statusErr;
+        }
       }
 
-      // Ensure AI access is disabled even if already assigned
+      // Ensure AI access is disabled
       try { await protectedSupabase.from('threads').update({ ai_access_enabled: false }).eq('id', threadId); } catch { }
 
       // Create a system event message noting the takeover

@@ -924,25 +924,13 @@ export default function ConversationPage() {
     try {
       const isAdmin = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT);
       const alreadyCollaborator = collaboratorId === user.id;
-      // Ensure collaborator status before takeover
-      if (!alreadyCollaborator) {
-        if (isAdmin) {
-          try {
-            setCollaboratorOverride({ threadId: selectedConversation.id, userId: user.id });
-            await setThreadCollaborator(selectedConversation.id, user.id);
-          } catch (err) {
-            console.warn('Failed to ensure collaborator before takeover', err);
-            setCollaboratorOverride(prev => (prev?.threadId === selectedConversation.id ? null : prev));
-            toast.error('Please join as collaborator before taking over');
-            return; // Block takeover if collaborator insert/check failed
-          }
-        } else {
-          toast.error('Please join as collaborator before taking over');
-          return;
-        }
+      if (!alreadyCollaborator && !isAdmin) {
+        toast.error('Please join as collaborator before taking over');
+        return;
       }
 
-      await assignThread(selectedConversation.id, user.id);
+      // Takeover only changes status from pending to assigned, never modifies handled by
+      await assignThread(selectedConversation.id, user.id, { setAssignee: false });
       toast.success('You are now assigned to this chat');
       // Move UI to Assigned tab and enable composer immediately
       setActiveTab('assigned');

@@ -1,9 +1,22 @@
 # Change Log
+# [0.1.39] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+- **Takeover preserves handled by**: Takeover chat action now only changes thread status from "pending" (Unassigned) to "assigned", without modifying the "Handled By" field. This ensures the original super agent assignment is preserved regardless of who takes over the conversation.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Conditional assignee updates**: Added `setAssignee` option to `assignThread` function for explicit assignment control. Takeover always uses `setAssignee: false` to preserve existing assignments.
+  - Updated: `src/hooks/useConversations.ts`
+
+### UI/UX Improvements
+- **Login form cleanup**: Removed redundant UI text elements from login form (one-time code message and forgot password link) to streamline the authentication interface.
+  - Updated: `src/components/auth/Login.tsx`
+
 # [0.1.38] FE WEB CEKAT 2026-01-11
 ### Conversations & Assignment Flow
 - **Inline status controls**: Assigned threads now show a “Move to Unassigned” button next to Resolve, keeping status transitions and the list state in sync without page refreshes.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 - **Server-truth status updates**: Removed optimistic status toggles (and stopped writing the unsupported `'assigned'` enum) so moving or taking over a single thread no longer makes other rows flicker; UI now waits for Supabase to confirm before updating.
+- **Takeover preserves handled-by**: Regular agents now claim chats without overwriting the super agent’s “Handled By” field; only masters/supers promote themselves while collaborators simply flip the status and log the event.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 
 # [0.1.37] FE WEB CEKAT 2026-01-11
 ### Conversations & Assignment Flow
