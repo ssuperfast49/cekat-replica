@@ -42,7 +42,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ROLES } from "@/types/rbac";
 import { setSendMessageProvider } from "@/config/webhook";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
-import PermissionGate from "@/components/rbac/PermissionGate";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,20 +71,20 @@ const formatPlatformLabel = (providerRaw: string) => {
 
 type FlowTab = 'assigned' | 'unassigned' | 'done';
 
-const getFlowTabForThread = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null): FlowTab | null => {
+const getFlowTabForThread = (thread?: Pick<ConversationWithDetails, 'status'> | null): FlowTab | null => {
   if (!thread) return null;
-  if (thread.status === 'closed') return 'done';
-  if (thread.status === 'assigned' && thread.collaborator_user_id) return 'assigned';
-  if (thread.status === 'pending' && !thread.collaborator_user_id) return 'unassigned';
-  // Fallback: prefer assigned if there's a collaborator, otherwise unassigned.
-  return thread.collaborator_user_id ? 'assigned' : 'unassigned';
+  const status = String(thread.status || '').toLowerCase();
+  if (status === 'closed') return 'done';
+  if (status === 'open' || status === 'assigned') return 'assigned';
+  if (status === 'pending') return 'unassigned';
+  return 'unassigned';
 };
 
-const isFlowAssigned = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null) =>
+const isFlowAssigned = (thread?: Pick<ConversationWithDetails, 'status'> | null) =>
   getFlowTabForThread(thread) === 'assigned';
-const isFlowUnassigned = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null) =>
+const isFlowUnassigned = (thread?: Pick<ConversationWithDetails, 'status'> | null) =>
   getFlowTabForThread(thread) === 'unassigned';
-const isFlowDone = (thread?: Pick<ConversationWithDetails, 'status' | 'collaborator_user_id'> | null) =>
+const isFlowDone = (thread?: Pick<ConversationWithDetails, 'status'> | null) =>
   getFlowTabForThread(thread) === 'done';
 
 interface MessageBubbleProps {
@@ -286,6 +285,8 @@ export default function ConversationPage() {
   const currentUserId = user?.id ?? null;
   // Track optimistic collaborator updates per thread
   const [collaboratorOverride, setCollaboratorOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
+  const [moveToUnassignedLoading, setMoveToUnassignedLoading] = useState(false);
+  const [resolveLoading, setResolveLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const canDeleteConversation = hasPermission('contacts.delete');
@@ -865,26 +866,41 @@ export default function ConversationPage() {
     return selectedCollaboratorId === currentUserId;
   }, [selectedCollaboratorId, currentUserId]);
 
+  const selectedStatus = (selectedConversation?.status || '').toLowerCase();
+  const aiAllowedByStatus = selectedStatus === 'pending';
+
   const roleAllowsSend = useMemo(() => {
     if (isMasterAgent || isSuperAgent) return true;
     if (handledById && currentUserId && handledById === currentUserId) return true;
     if (selectedCollaboratorId && currentUserId && selectedCollaboratorId === currentUserId) return true;
     if (isRegularAgentOnly && isCurrentUserCollaborator) return true;
     return false;
-  }, [isMasterAgent, isSuperAgent, handledById, currentUserId, selectedCollaboratorId, isRegularAgentOnly, isCurrentUserCollaborator]);
+  }, [
+    isMasterAgent,
+    isSuperAgent,
+    handledById,
+    currentUserId,
+    selectedCollaboratorId,
+    isRegularAgentOnly,
+    isCurrentUserCollaborator,
+  ]);
 
-  const canCurrentUserSend = canSendMessagesPermission || roleAllowsSend;
+  const aiSendAllowed = canSendMessagesPermission && aiAllowedByStatus;
+  const canCurrentUserSend = roleAllowsSend || aiSendAllowed;
 
   const sendDisabledReason = useMemo(() => {
     if (canCurrentUserSend) return undefined;
-    if (!canSendMessagesPermission && !roleAllowsSend) {
+    if (!roleAllowsSend && !aiSendAllowed) {
       return 'You do not have permission to send messages.';
+    }
+    if (!aiAllowedByStatus && canSendMessagesPermission && !roleAllowsSend) {
+      return 'AI replies are disabled once the thread leaves Pending.';
     }
     if (!roleAllowsSend && isRegularAgentOnly) {
       return 'Only the assigned collaborator can send messages.';
     }
     return undefined;
-  }, [canCurrentUserSend, canSendMessagesPermission, roleAllowsSend, isRegularAgentOnly]);
+  }, [canCurrentUserSend, roleAllowsSend, aiSendAllowed, canSendMessagesPermission, aiAllowedByStatus, isRegularAgentOnly]);
 
   useEffect(() => {
     if (!selectedThreadId) {
@@ -933,6 +949,47 @@ export default function ConversationPage() {
       await fetchConversations(undefined, { silent: true });
     } catch (e) {
       toast.error('Failed to take over chat');
+    }
+  };
+
+  const handleMoveToUnassigned = async () => {
+    if (!selectedConversation) return;
+    setMoveToUnassignedLoading(true);
+    try {
+      await assignThreadToUser(selectedConversation.id, null);
+      toast.success('Conversation moved to Unassigned');
+      setActiveTab('unassigned');
+      await fetchConversations(undefined, { silent: true });
+      await fetchMessages(selectedConversation.id);
+    } catch (error) {
+      toast.error('Failed to move conversation to Unassigned');
+    } finally {
+      setMoveToUnassignedLoading(false);
+    }
+  };
+
+  const handleResolveConversation = async () => {
+    if (!selectedConversation) return;
+    setResolveLoading(true);
+    try {
+      const { error } = await protectedSupabase
+        .from('threads')
+        .update({
+          status: 'closed',
+          resolved_at: new Date().toISOString(),
+          resolved_by_user_id: user?.id ?? null,
+          handover_reason: null,
+        })
+        .eq('id', selectedConversation.id);
+      if (error) throw error;
+      toast.success('Conversation resolved');
+      setActiveTab('done');
+      await fetchConversations(undefined, { silent: true });
+      await fetchMessages(selectedConversation.id);
+    } catch (error) {
+      toast.error('Failed to resolve');
+    } finally {
+      setResolveLoading(false);
     }
   };
 
@@ -1572,15 +1629,28 @@ export default function ConversationPage() {
                     </div>
                   )}
                 </div>
-                {selectedConversation.status !== 'closed' &&
-                  <Button
-                    size="sm"
-                    className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                    onClick={async () => { if (selectedConversation.status === 'closed') return; const { error } = await protectedSupabase.from('threads').update({ status: 'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if (error) { toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(undefined, { silent: true }); setActiveTab('done'); } }}
-                  >
-                    Resolve
-                  </Button>
-                }
+                <div className="flex items-center gap-2">
+                  {selectedConversationFlow === 'assigned' && (
+                    <Button
+                      size="sm"
+                      className="h-8 bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-60"
+                      onClick={handleMoveToUnassigned}
+                      disabled={moveToUnassignedLoading}
+                    >
+                      {moveToUnassignedLoading ? 'Moving…' : 'Move to Unassigned'}
+                    </Button>
+                  )}
+                  {selectedConversation.status !== 'closed' && (
+                    <Button
+                      size="sm"
+                      className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
+                      onClick={handleResolveConversation}
+                      disabled={resolveLoading}
+                    >
+                      {resolveLoading ? 'Resolving…' : 'Resolve'}
+                    </Button>
+                  )}
+                </div>
                 <Badge
                   className={
                     selectedConversationFlow === 'done'
@@ -1636,69 +1706,54 @@ export default function ConversationPage() {
             </ScrollArea>
 
             {/* Message Input or Takeover / Join */}
-            <div className="border-t p-3">
-              {(() => {
-                if (selectedConversationFlow === 'done') return null;
-
-                const composer = (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      placeholder={`Message ${selectedConversation.contact_name}...`}
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      className="flex-1"
-                      disabled={!canCurrentUserSend}
-                      title={sendDisabledReason}
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleSendMessage}
-                      disabled={!draft.trim() || !canCurrentUserSend}
-                      title={sendDisabledReason || 'Send message'}
-                      aria-label="Send message"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
+            <div className="border-t p-3 space-y-2">
+              {selectedConversationFlow === 'assigned' && (
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder={`Message ${selectedConversation.contact_name}...`}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    className="flex-1"
+                    disabled={!canCurrentUserSend}
+                    title={sendDisabledReason}
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={!draft.trim() || !canCurrentUserSend}
+                    title={sendDisabledReason || 'Send message'}
+                    aria-label="Send message"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {selectedConversationFlow === 'unassigned' && (() => {
+                const hasAgentCollaborator = Boolean(selectedCollaboratorId);
+                const takeoverAllowedByRole =
+                  isMasterAgent ||
+                  isSuperAgent ||
+                  (!hasAgentCollaborator || isCurrentUserCollaborator);
+                const takeoverDisabled = !user?.id || !takeoverAllowedByRole;
+                const takeoverTooltip = !user?.id
+                  ? 'You must be signed in'
+                  : takeoverAllowedByRole
+                    ? undefined
+                    : hasAgentCollaborator && !isCurrentUserCollaborator
+                      ? 'Collaborator already assigned; join before taking over.'
+                      : 'Only master or super agents can take over.';
+                return (
+                  <Button
+                    type="button"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleTakeoverChat}
+                    disabled={takeoverDisabled}
+                    title={takeoverTooltip}
+                  >
+                    Takeover Chat
+                  </Button>
                 );
-
-                const takeover = (
-                  <PermissionGate permission={'threads.update'}>
-                    {(() => {
-                      const hasAgentCollaborator = Boolean(selectedCollaboratorId);
-                      const takeoverAllowedByRole =
-                        isMasterAgent ||
-                        isSuperAgent ||
-                        (isRegularAgentOnly && !hasAgentCollaborator);
-                      const takeoverDisabled = !user?.id || !takeoverAllowedByRole;
-                      const takeoverTooltip = !user?.id
-                        ? 'You must be signed in'
-                        : takeoverAllowedByRole
-                          ? undefined
-                          : isRegularAgentOnly && hasAgentCollaborator
-                            ? 'Collaborator already assigned; agents cannot take over.'
-                            : 'Only master or super agents can take over.';
-                      return (
-                        <Button
-                          type="button"
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                          onClick={handleTakeoverChat}
-                          disabled={takeoverDisabled}
-                          title={takeoverTooltip}
-                        >
-                          Takeover Chat
-                        </Button>
-                      );
-                    })()}
-                  </PermissionGate>
-                );
-
-                if (selectedConversationFlow === 'unassigned') {
-                  return canCurrentUserSend ? composer : takeover;
-                }
-
-                return composer;
               })()}
             </div>
           </>

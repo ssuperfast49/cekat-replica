@@ -14,7 +14,7 @@ let lastNotificationTime = 0;
 const NOTIFICATION_DEBOUNCE_MS = 1000; // Prevent duplicate sounds within 1 second
 
 // Global flag to track if the 'assigned' enum value is supported by the database
-let dbSupportsAssignedStatus = true;
+let dbSupportsAssignedStatus = false;
 
 const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
   try {
@@ -770,30 +770,6 @@ export const useConversations = () => {
   };
 
   // Update thread status
-  const updateThreadStatus = async (threadId: string, status: 'open' | 'pending' | 'closed' | 'assigned') => {
-    try {
-      setError(null);
-
-      const { error } = await supabase
-        .from('threads')
-        .update({ status } as any)
-        .eq('id', threadId);
-
-      if (error) throw error;
-
-      // Refresh conversations
-      await fetchConversations(undefined, { silent: true });
-
-      // Audit log
-      try { await logAction({ action: 'thread.update_status', resource: 'thread', resourceId: threadId, context: { status } }); } catch { }
-
-    } catch (error) {
-      console.error('Error updating thread status:', error);
-      setError(error instanceof Error ? error.message : 'Failed to update thread status');
-      throw error;
-    }
-  };
-
   // Assign thread to current user (ensures DB assignment and audit fields)
   const assignThread = async (threadId: string, _userId: string) => {
     try {
@@ -811,28 +787,35 @@ export const useConversations = () => {
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id || null;
 
+      const assignedStatusValue = dbSupportsAssignedStatus ? 'assigned' : 'open';
+
       try {
         const { data: threadAfterRpc } = await supabase
           .from('threads')
-          .select('assignee_user_id')
+          .select('assignee_user_id, status')
           .eq('id', threadId)
           .single();
 
         const alreadyAssigned = !!threadAfterRpc?.assignee_user_id;
-        if (!alreadyAssigned && currentUserId) {
+        const statusNeedsUpdate = (threadAfterRpc?.status || '').toLowerCase() !== assignedStatusValue;
+        if ((statusNeedsUpdate || !alreadyAssigned) && currentUserId) {
+          const updatePayload: Record<string, any> = {
+            assigned_at: new Date().toISOString(),
+            handover_reason: 'other:manual_takeover',
+            ai_access_enabled: false,
+            status: assignedStatusValue as any,
+          };
+          if (!alreadyAssigned) {
+            updatePayload.assignee_user_id = currentUserId;
+            updatePayload.assigned_by_user_id = currentUserId;
+          }
+
           const { error: updateErr } = await supabase
             .from('threads')
-            .update({
-              assignee_user_id: currentUserId,
-              assigned_by_user_id: currentUserId,
-              assigned_at: new Date().toISOString(),
-              handover_reason: 'other:manual_takeover',
-              ai_access_enabled: false,
-              status: 'assigned' as any
-            })
+            .update(updatePayload)
             .eq('id', threadId);
           if (updateErr) {
-            console.warn('Fallback assignment update failed', updateErr);
+            console.warn('Fallback assignment/status update failed', updateErr);
           }
         }
       } catch (verifyErr) {
@@ -893,11 +876,13 @@ export const useConversations = () => {
       const currentUserId = authData?.user?.id || null;
 
       const nowIso = new Date().toISOString();
+      const assignedStatusValue = dbSupportsAssignedStatus ? 'assigned' : 'open';
       const updatePayload: Record<string, any> = {
         assignee_user_id: assigneeUserId,
         handover_reason: assigneeUserId ? 'other:manual_assign' : 'other:manual_unassign',
-        ai_access_enabled: false,
-        status: assigneeUserId ? 'assigned' : 'open',
+        ai_access_enabled: assigneeUserId ? false : true,
+        ai_handoff_at: assigneeUserId ? nowIso : null,
+        status: assigneeUserId ? assignedStatusValue : 'pending',
       };
 
       if (assigneeUserId) {
@@ -928,6 +913,7 @@ export const useConversations = () => {
         }
 
         const assignedByName = (currentUserId && (nameMap[currentUserId] || authData?.user?.email)) || 'agent';
+        const assignedToName = assigneeUserId ? (nameMap[assigneeUserId] || 'agent') : '—';
         const eventEntry = {
           thread_id: threadId,
           direction: null,
@@ -938,7 +924,6 @@ export const useConversations = () => {
         };
 
         if (assigneeUserId) {
-          const assignedToName = nameMap[assigneeUserId] || 'agent';
           eventEntry.body = `Conversation assigned to ${assignedToName} by ${assignedByName}.`;
           eventEntry.payload = { event: 'assign', assigned_to: assigneeUserId, assigned_by: currentUserId };
         } else {
@@ -1310,7 +1295,6 @@ export const useConversations = () => {
     disableAudioNotifications: () => { localStorage.setItem('audioNotifications', 'false'); },
     testAudioNotification: () => { playNotificationSound('incoming'); },
     createConversation,
-    updateThreadStatus,
     assignThread,
     assignThreadToUser,
     setThreadCollaborator,

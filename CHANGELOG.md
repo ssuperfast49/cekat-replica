@@ -1,7 +1,13 @@
 # Change Log
+# [0.1.38] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+- **Inline status controls**: Assigned threads now show a “Move to Unassigned” button next to Resolve, keeping status transitions and the list state in sync without page refreshes.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Server-truth status updates**: Removed optimistic status toggles (and stopped writing the unsupported `'assigned'` enum) so moving or taking over a single thread no longer makes other rows flicker; UI now waits for Supabase to confirm before updating.
+
 # [0.1.37] FE WEB CEKAT 2026-01-11
 ### Conversations & Assignment Flow
-  - Updated: `src/components/chat/ConversationPage.tsx`
+- Updated: `src/components/chat/ConversationPage.tsx`
 - **Takeover scoped to Unassigned**: The Takeover Chat CTA now renders only when a thread is truly in the Unassigned state, preventing accidental reassignment attempts from other tabs.
   - Updated: `src/components/chat/ConversationPage.tsx`
 - **Role-based composer rules**: Collaborators (when they’re the logged-in user), super agents, and master agents now get the message composer even on unassigned threads, while other agents still see the takeover prompt until they claim the chat.
