@@ -1,9 +1,19 @@
 # Change Log
+# [0.1.37] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Takeover scoped to Unassigned**: The Takeover Chat CTA now renders only when a thread is truly in the Unassigned state, preventing accidental reassignment attempts from other tabs.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Role-based composer rules**: Collaborators (when they’re the logged-in user), super agents, and master agents now get the message composer even on unassigned threads, while other agents still see the takeover prompt until they claim the chat.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Hide master agents from selectors**: Master agents can still act on any thread, but they no longer appear in the Handled By or Collaborator dropdowns to avoid accidental assignment to all-powerful accounts.
+
 # [0.1.36] FE WEB CEKAT 2026-01-11
 ### Conversations & Assignment Flow
 - **Three-state workflow overhaul**: Replaced the legacy status heuristic with an explicit `Assigned / Unassigned / Done` flow that keys off `status` plus the presence of a collaborator. Counts, badges, tab filters, and auto-selection now stay in sync with the new rules and never fall back to the deprecated multi-collaborator state.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 - **Collaborator switch stability**: Guarded the URL/thread synchronization logic so picking a collaborator no longer triggers a rapid tab flip that spammed list/message fetches.
+
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 ### Collaboration Data Model & Permissions

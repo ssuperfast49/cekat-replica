@@ -311,9 +311,12 @@ export default function ConversationPage() {
     [humanAgents]
   );
 
-  // Options for general agent picking (collaborators, etc.): all human agents
+  // Options for general agent picking (collaborators, etc.): all non-master agents
   const agentOptions = useMemo(
-    () => humanAgents.map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
+    () =>
+      humanAgents
+        .filter((a: any) => String(a?.primaryRole || '').toLowerCase() !== 'master_agent')
+        .map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
     [humanAgents]
   );
 
@@ -1634,8 +1637,10 @@ export default function ConversationPage() {
 
             {/* Message Input or Takeover / Join */}
             <div className="border-t p-3">
-              {selectedConversation.status !== 'closed' && (
-                selectedConversation.assigned ? (
+              {(() => {
+                if (selectedConversationFlow === 'done') return null;
+
+                const composer = (
                   <div className="flex items-center gap-2">
                     <Input
                       placeholder={`Message ${selectedConversation.contact_name}...`}
@@ -1656,7 +1661,9 @@ export default function ConversationPage() {
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
-                ) : (
+                );
+
+                const takeover = (
                   <PermissionGate permission={'threads.update'}>
                     {(() => {
                       const hasAgentCollaborator = Boolean(selectedCollaboratorId);
@@ -1685,8 +1692,14 @@ export default function ConversationPage() {
                       );
                     })()}
                   </PermissionGate>
-                )
-              )}
+                );
+
+                if (selectedConversationFlow === 'unassigned') {
+                  return canCurrentUserSend ? composer : takeover;
+                }
+
+                return composer;
+              })()}
             </div>
           </>
         ) : (
