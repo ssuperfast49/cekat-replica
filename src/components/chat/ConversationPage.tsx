@@ -75,8 +75,14 @@ const getFlowTabForThread = (thread?: Pick<ConversationWithDetails, 'status'> | 
   if (!thread) return null;
   const status = String(thread.status || '').toLowerCase();
   if (status === 'closed') return 'done';
-  if (status === 'open' || status === 'assigned') return 'assigned';
-  if (status === 'pending') return 'unassigned';
+  // FE flow rule:
+  // - Unassigned = status "open"
+  // - Assigned   = status "pending"
+  // - Done       = status "closed"
+  if (status === 'open') return 'unassigned';
+  if (status === 'pending') return 'assigned';
+  // Back-compat (older enum value). Treat as assigned.
+  if (status === 'assigned') return 'assigned';
   return 'unassigned';
 };
 
