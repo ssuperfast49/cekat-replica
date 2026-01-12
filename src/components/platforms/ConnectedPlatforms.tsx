@@ -137,7 +137,13 @@ const ConnectedPlatforms = () => {
   const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
   const assignedHumanAgents = selectedPlatformData?.human_agents || [];
   const canEditAgents = hasRole('master_agent') || hasRole('super_agent');
-  const availableAgentsToAdd = humanAgents.filter(a => a.primaryRole === 'agent' && !assignedHumanAgents.some(x => x.user_id === a.user_id));
+  // Only surface agents that belong to the platform's super agent to keep ownership aligned
+  const platformSuperAgentId = (selectedPlatformData as any)?.super_agent_id || null;
+  const availableAgentsToAdd = humanAgents.filter(a =>
+    a.primaryRole === 'agent' &&
+    (!platformSuperAgentId || a.super_agent_id === platformSuperAgentId) &&
+    !assignedHumanAgents.some(x => x.user_id === a.user_id)
+  );
   const multiSelectOptions: MultiSelectOption[] = availableAgentsToAdd.map(a => ({ value: a.user_id, label: a.display_name || a.email || a.user_id.slice(0,8) }));
 
   const handlePendingAgentsChange = async (values: string[]) => {

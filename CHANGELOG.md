@@ -1,4 +1,13 @@
 # Change Log
+# [0.1.40] FE WEB CEKAT 2026-01-13
+### Conversations & Assignment Flow
+- **Realtime tab-safe updates**: Thread status/assignee changes now patch the conversation list via realtime updates without needing a manual refresh; tabs stay put even when counts change underneath.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Tab UX hardening**: Tabs remain clickable/selectable even when empty; user-selected tabs no longer auto-bounce when counts shift.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Resolve re-enables AI**: Resolving a conversation now flips `ai_access_enabled` back on and clears `ai_handoff_at` so AI can respond immediately after resolution.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
 # [0.1.39] FE WEB CEKAT 2026-01-11
 ### Conversations & Assignment Flow
 - **Takeover preserves handled by**: Takeover chat action now only changes thread status from "pending" (Unassigned) to "assigned", without modifying the "Handled By" field. This ensures the original super agent assignment is preserved regardless of who takes over the conversation.

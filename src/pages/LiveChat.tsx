@@ -526,7 +526,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
     try {
       const { data } = await supabase
         .from('threads')
-        .select('id, created_at, additional_data, assignee_user_id, status, contacts(name)')
+        .select('id, created_at, additional_data, assignee_user_id, status, resolved_at, resolved_by_user_id, contacts(name)')
         .eq('channel_id', pid)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -537,10 +537,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
         const sessionMatch = sessionId ? additional?.session_id === sessionId : false;
         const contactName = (row?.contacts?.name || '') as string;
         const nameMatch = username ? contactName.trim().toLowerCase() === username.trim().toLowerCase() : false;
-        const unassigned = !row?.assignee_user_id;
-        if (!(sessionMatch || nameMatch) || !unassigned) {
-          return false;
-        }
+        if (!(sessionMatch || nameMatch)) return false;
         if (pendingInfo) {
           const createdAt = row?.created_at ? new Date(row.created_at).getTime() : 0;
           const startedAt = new Date(pendingInfo.startedAt).getTime() - 15000; // tolerate clock skew
@@ -548,22 +545,33 @@ const upsertFromRows = useCallback((rows: any[]) => {
             return false;
           }
           const aliasMatch = pendingInfo.alias.trim().toLowerCase() === contactName.trim().toLowerCase();
-          if (!aliasMatch && !sessionMatch) {
-            return false;
-          }
+          if (!aliasMatch && !sessionMatch) return false;
         }
         return true;
       });
-      if (target?.id) {
-        return target.id;
-      }
-      // Fallback: take the most recent thread for this channel so we can attach and resume realtime updates.
-      return data[0]?.id ?? null;
+      return target ?? null;
     } catch (err) {
       console.warn('[LiveChat] findThreadForCurrentSession failed', err);
       return null;
     }
   }, [pid, sessionId, username]);
+
+  const reopenThreadIfResolved = useCallback(async (row: any) => {
+    const status = (row?.status || '').toString().toLowerCase();
+    const isClosed = status === 'closed' || status === 'done' || status === 'resolved';
+    if (!isClosed || !row?.id) return row?.id || null;
+    try {
+      const { error } = await supabase
+        .from('threads')
+        .update({ status: 'pending', assignee_user_id: null, resolved_at: null, resolved_by_user_id: null })
+        .eq('id', row.id);
+      if (error) throw error;
+      return row.id;
+    } catch (err) {
+      console.warn('[LiveChat] failed to reopen resolved thread', err);
+      return row?.id || null;
+    }
+  }, []);
 
   const scheduleThreadAttachRetries = useCallback(
     (delays: number[] = []) => {
@@ -573,9 +581,12 @@ const upsertFromRows = useCallback((rows: any[]) => {
         window.setTimeout(async () => {
           if (!pendingThreadAttachRef.current || threadIdRef.current) return;
           const found = await findThreadForCurrentSession();
-          if (found) {
+          if (found?.id) {
             try {
-              await attachToThreadRef.current?.(found);
+              const reopenedId = await reopenThreadIfResolved(found);
+              if (reopenedId) {
+                await attachToThreadRef.current?.(reopenedId);
+              }
             } catch (err) {
               console.warn('[LiveChat] retry attach failed', err);
             }
@@ -583,7 +594,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
         }, delay),
       );
     },
-    [clearThreadAttachTimers, findThreadForCurrentSession],
+    [clearThreadAttachTimers, findThreadForCurrentSession, reopenThreadIfResolved],
   );
 
   useEffect(() => () => clearThreadAttachTimers(), [clearThreadAttachTimers]);
@@ -674,14 +685,18 @@ const upsertFromRows = useCallback((rows: any[]) => {
       try {
         const { data } = await supabase
           .from('threads')
-          .select('id, additional_data')
+          .select('id, additional_data, status')
           .eq('id', storedThreadId)
           .maybeSingle();
         const sessionFromThread = (data?.additional_data as Record<string, any> | null)?.session_id;
         if (!data || sessionFromThread !== sessionId) {
           throw new Error('thread-session mismatch');
         }
-        await attachToThread(storedThreadId);
+        const reopenedId = await reopenThreadIfResolved(data);
+        if (reopenedId) {
+          await attachToThread(reopenedId);
+          return true;
+        }
         return true;
       } catch {
         if (sessionThreadKeyRef.current && typeof window !== 'undefined') {
@@ -695,8 +710,11 @@ const upsertFromRows = useCallback((rows: any[]) => {
       const restored = await attachStoredThread();
       if (restored) return;
       const found = await findThreadForCurrentSession();
-      if (found) {
-        await attachToThread(found);
+      if (found?.id) {
+        const reopenedId = await reopenThreadIfResolved(found);
+        if (reopenedId) {
+          await attachToThread(reopenedId);
+        }
       }
     };
 
@@ -709,17 +727,23 @@ const upsertFromRows = useCallback((rows: any[]) => {
         if (!tid || tid === threadIdRef.current) return;
         const sessionFromAdditional = payload?.new?.additional_data?.session_id;
         const matchesSession = sessionFromAdditional && sessionFromAdditional === sessionId;
-        const waitingForThread = !sessionFromAdditional && pendingThreadAttachRef.current && !threadIdRef.current;
-        if (!matchesSession && !waitingForThread) return;
-        try {
-          if (matchesSession) {
-            await attachToThread(tid);
-          } else {
+        if (!matchesSession) {
+          try {
             const found = await findThreadForCurrentSession();
-            if (found) {
-              await attachToThread(found);
+            if (found?.id) {
+              const reopenedId = await reopenThreadIfResolved(found);
+              if (reopenedId) {
+                await attachToThread(reopenedId);
+              }
             }
+          } catch (err) {
+            console.warn('[LiveChat] failed to attach from realtime (non-session match)', err);
           }
+          return;
+        }
+        try {
+          const reopenedId = await reopenThreadIfResolved(payload?.new);
+          await attachToThread(reopenedId || tid);
         } catch (err) {
           console.warn('[LiveChat] failed to attach from realtime', err);
         }
@@ -731,12 +755,26 @@ const upsertFromRows = useCallback((rows: any[]) => {
       try { if (threadsSub) supabase.removeChannel(threadsSub); } catch {}
       attachToThreadRef.current = null;
     };
-  }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession]);
+  }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession, reopenThreadIfResolved]);
 
   const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
     const createdAt = new Date().toISOString();
+
+    if (!threadIdRef.current) {
+      try {
+        const existingThread = await findThreadForCurrentSession();
+        if (existingThread?.id) {
+          const reopenedId = await reopenThreadIfResolved(existingThread);
+          if (reopenedId) {
+            await attachToThreadRef.current?.(reopenedId);
+          }
+        }
+      } catch (err) {
+        console.warn('[LiveChat] failed to attach existing thread before send', err);
+      }
+    }
 
     if (!threadIdRef.current) {
       pendingThreadAttachRef.current = true;
@@ -864,11 +902,12 @@ const upsertFromRows = useCallback((rows: any[]) => {
       // Ensure the newly created thread (if any) is attached for this session
       let attachedThreadId: string | null = null;
       try {
-        const foundThreadId = await findThreadForCurrentSession();
-        if (foundThreadId) {
-          attachedThreadId = foundThreadId;
-          if (threadIdRef.current !== foundThreadId) {
-            await attachToThreadRef.current?.(foundThreadId);
+        const foundThread = await findThreadForCurrentSession();
+        if (foundThread?.id) {
+          const reopenedId = await reopenThreadIfResolved(foundThread);
+          attachedThreadId = reopenedId || foundThread.id;
+          if (threadIdRef.current !== attachedThreadId) {
+            await attachToThreadRef.current?.(attachedThreadId);
           }
         } else if (pendingThreadAttachRef.current && !threadIdRef.current) {
           scheduleThreadAttachRetries([400, 1200, 2500, 5000, 8000]);

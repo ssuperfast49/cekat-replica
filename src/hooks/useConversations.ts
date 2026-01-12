@@ -525,6 +525,52 @@ export const useConversations = () => {
     }
   };
 
+  // Light-weight realtime patch when a thread updates (e.g., status/assignee changes)
+  const applyThreadRealtimePatch = (row: any) => {
+    if (!row?.id) return;
+    setConversations((prev) => {
+      const idx = prev.findIndex((c) => c.id === row.id);
+      if (idx === -1) return prev;
+      const current = prev[idx];
+      const channelSuperAgentId = current.channel?.super_agent_id ?? current.super_agent_id ?? null;
+      const assignment = computeAssignmentState({
+        ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
+        assigned_at: row.assigned_at ?? current.assigned_at,
+        assignee_user_id: row.assignee_user_id ?? current.assignee_user_id,
+        channel_super_agent_id: channelSuperAgentId,
+        status: row.status ?? current.status,
+        ai_handoff_at: row.ai_handoff_at ?? (current as any).ai_handoff_at ?? null,
+      });
+      const normalizedStatus = (() => {
+        const s = String(row.status ?? current.status ?? '').toLowerCase();
+        if (s === 'closed') return 'closed';
+        if (s === 'assigned') return 'assigned';
+        if (s === 'pending') return 'pending';
+        if (s === 'open') return assignment.assigned ? 'assigned' : 'open';
+        return assignment.assigned ? 'assigned' : 'open';
+      })() as Thread['status'];
+      const patched = {
+        ...current,
+        status: normalizedStatus,
+        assignee_user_id: assignment.assignee_user_id,
+        assigned_at: row.assigned_at ?? current.assigned_at,
+        resolved_at: row.resolved_at ?? current.resolved_at,
+        resolved_by_user_id: row.resolved_by_user_id ?? current.resolved_by_user_id,
+        ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
+        last_msg_at: row.last_msg_at ?? current.last_msg_at,
+        assigned: assignment.assigned,
+      };
+      const next = [...prev];
+      next[idx] = patched;
+      next.sort((a, b) => {
+        const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
+        const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
+        return bTime - aTime;
+      });
+      return next;
+    });
+  };
+
   // Fetch messages for a specific thread
   const fetchMessages = async (threadId: string) => {
     try {
@@ -1132,9 +1178,21 @@ export const useConversations = () => {
   useEffect(() => {
     const channel = supabase
       .channel('threads-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'threads' }, () => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'threads' }, (payload) => {
+        applyThreadRealtimePatch(payload.new);
         if (document.visibilityState === 'visible') {
-          scheduleConversationsRefresh(200);
+          scheduleConversationsRefresh(400);
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads' }, (payload) => {
+        // Inserts may come from other clients; do a light refresh to surface them
+        if (document.visibilityState === 'visible') {
+          scheduleConversationsRefresh(300);
+        }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'threads' }, () => {
+        if (document.visibilityState === 'visible') {
+          scheduleConversationsRefresh(300);
         }
       })
       .subscribe();

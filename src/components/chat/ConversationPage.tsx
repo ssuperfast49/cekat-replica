@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChatFilter } from "./ChatFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -245,6 +244,7 @@ export default function ConversationPage() {
   const [draft, setDraft] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FlowTab>("assigned");
+  const [tabLocked, setTabLocked] = useState(false); // lock smart auto-switch once user manually selects a tab
   const [showParticipants, setShowParticipants] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
@@ -715,6 +715,7 @@ export default function ConversationPage() {
 
   // Smart Tab Switching: If the current tab is empty but another tab has data (based on RLS results), switch to it.
   useEffect(() => {
+    if (tabLocked) return;
     if (loading || conversations.length === 0) return;
 
     const assignedCount = conversations.filter((c) => isFlowAssigned(c)).length;
@@ -730,7 +731,7 @@ export default function ConversationPage() {
       setActiveTab('done');
       return;
     }
-  }, [conversations, loading, activeTab]);
+  }, [conversations, loading, activeTab, tabLocked]);
 
   // Keep URL in sync with current tab for deep-linkability (write-only)
   useEffect(() => {
@@ -964,6 +965,8 @@ export default function ConversationPage() {
         .from('threads')
         .update({
           status: 'closed',
+          ai_access_enabled: true, // reopen AI access after resolve
+          ai_handoff_at: null,
           resolved_at: new Date().toISOString(),
           resolved_by_user_id: user?.id ?? null,
           handover_reason: null,
@@ -1285,251 +1288,125 @@ export default function ConversationPage() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
         </div>
-        <Tabs value={activeTab} onValueChange={(v) => { if (v !== activeTab) setActiveTab(v as FlowTab); }} className="w-full">
-          <TabsList className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
-            <TabsTrigger
-              value="assigned"
-              className="text-xs border-b-2 border-transparent data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:border-blue-500"
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="flex items-center">
-                    Assigned
-                    <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(conv => isFlowAssigned(conv)).length}
-                    </Badge>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Lihat percakapan yang ditugaskan ke agen</p>
-                </TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
-            <TabsTrigger
-              value="unassigned"
-              className="text-xs border-b-2 border-transparent data-[state=active]:bg-red-50 data-[state=active]:text-red-600 data-[state=active]:border-red-500"
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="flex items-center">
-                    Unassigned
-                    <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(conv => isFlowUnassigned(conv)).length}
-                    </Badge>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Lihat percakapan yang menunggu penugasan</p>
-                </TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
-            <TabsTrigger
-              value="done"
-              className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
-              aria-label="Done"
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1">
-                    <CheckCircle className="h-4 w-4" />
-                    <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(conv => isFlowDone(conv)).length}
-                    </Badge>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Lihat percakapan yang selesai</p>
-                </TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="assigned" className="mt-0">
-            <div className="h-[calc(100vh-280px)] overflow-y-auto">
-              <div className="space-y-1">
-                {filteredConversations.filter(conv => isFlowAssigned(conv)).map(conv => (
-                  <div key={conv.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={conv.channel_logo_url || ''} />
-                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                            <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
-                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                              <span className="text-xs text-gray-600 truncate">
-                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                              </span>
-                            </div>
+        {(() => {
+          const assignedList = filteredConversations.filter(conv => isFlowAssigned(conv));
+          const unassignedList = filteredConversations.filter(conv => isFlowUnassigned(conv));
+          const doneList = filteredConversations.filter(conv => isFlowDone(conv));
+          const tabs: Array<{ key: FlowTab; label: string; count: number; className: string; tooltip: string }> = [
+            { key: 'assigned', label: 'Assigned', count: assignedList.length, className: 'bg-blue-50 text-blue-600 border-blue-500', tooltip: 'Lihat percakapan yang ditugaskan ke agen' },
+            { key: 'unassigned', label: 'Unassigned', count: unassignedList.length, className: 'bg-red-50 text-red-600 border-red-500', tooltip: 'Lihat percakapan yang menunggu penugasan' },
+            { key: 'done', label: 'Done', count: doneList.length, className: 'bg-green-50 text-green-600 border-green-500', tooltip: 'Lihat percakapan yang selesai' },
+          ];
+          const renderEmpty = (label: string) => (
+            <div className="h-[calc(100vh-280px)] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground bg-muted/40">
+              No {label} threads found
+            </div>
+          );
+          const renderList = (list: typeof filteredConversations) => (
+            <div className="space-y-1">
+              {list.map(conv => (
+                <div key={conv.id} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => handleConversationSelect(conv.id)}
+                    className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={conv.channel_logo_url || ''} />
+                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
+                          <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
+                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            <span className="text-xs text-gray-600 truncate">
+                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                            </span>
                           </div>
-                        </div>
-                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                            <div className="mt-1">{renderStatus(conv)}</div>
-                          </div>
-                          {(conv.channel_provider || conv.channel?.provider) ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                            </Badge>
-                          ) : <span />}
                         </div>
                       </div>
-                    </button>
-                    {!conv.contact_id && canDeleteConversation && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delete conversation</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="unassigned" className="mt-0">
-            <div className="h-[calc(100vh-280px)] overflow-y-auto">
-              <div className="space-y-1">
-                {filteredConversations.filter(conv => isFlowUnassigned(conv)).map(conv => (
-                  <div key={conv.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src="" />
-                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                            <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
-                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                              <span className="text-xs text-gray-600 truncate">
-                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                              </span>
-                            </div>
-                          </div>
+                      <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                          <div className="mt-1">{renderStatus(conv)}</div>
                         </div>
-                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                            <div className="mt-1">{renderStatus(conv)}</div>
-                          </div>
-                          {(conv.channel_provider || conv.channel?.provider) ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                            </Badge>
-                          ) : <span />}
-                        </div>
+                        {(conv.channel_provider || conv.channel?.provider) ? (
+                          <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                            {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                          </Badge>
+                        ) : <span />}
                       </div>
-                    </button>
-                    {!conv.contact_id && canDeleteConversation && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delete conversation</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
+                    </div>
+                  </button>
+                  {!conv.contact_id && canDeleteConversation && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Delete conversation</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+          const renderContent = () => {
+            if (activeTab === 'assigned') {
+              return assignedList.length === 0 ? renderEmpty('assigned') : renderList(assignedList);
+            }
+            if (activeTab === 'unassigned') {
+              return unassignedList.length === 0 ? renderEmpty('unassigned') : renderList(unassignedList);
+            }
+            return doneList.length === 0 ? renderEmpty('done') : renderList(doneList);
+          };
+
+          return (
+            <>
+              <div className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
+                {tabs.map((tab) => (
+                  <Tooltip key={tab.key}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => { setTabLocked(true); setActiveTab(tab.key); }}
+                        className={`text-xs h-8 rounded-md border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${
+                          activeTab === tab.key
+                            ? `${tab.className}`
+                            : 'text-muted-foreground border-transparent hover:bg-muted'
+                        }`}
+                        aria-pressed={activeTab === tab.key}
+                      >
+                        {tab.key === 'done' ? <CheckCircle className="h-4 w-4" /> : null}
+                        <span>{tab.label}</span>
+                        <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
+                          {tab.count}
+                        </Badge>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{tab.tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 ))}
               </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="done" className="mt-0">
-            <div className="h-[calc(100vh-280px)] overflow-y-auto">
-              <div className="space-y-1">
-                {filteredConversations.filter(conv => isFlowDone(conv)).map(conv => (
-                  <div key={conv.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src="" />
-                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                            <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
-                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                              <span className="text-xs text-gray-600 truncate">
-                                {conv.channel?.display_name || 'Unknown'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                            <div className="mt-1">{renderStatus(conv)}</div>
-                          </div>
-                          {(conv.channel_provider || conv.channel?.provider) ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                            </Badge>
-                          ) : <span />}
-                        </div>
-                      </div>
-                    </button>
-                    {!conv.contact_id && canDeleteConversation && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delete conversation</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                ))}
+              <div className="h-[calc(100vh-280px)] overflow-y-auto">
+                {renderContent()}
               </div>
-            </div>
-          </TabsContent>
-        </Tabs>
+            </>
+          );
+        })()}
         <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
           <AlertDialogContent>
             <AlertDialogHeader>
