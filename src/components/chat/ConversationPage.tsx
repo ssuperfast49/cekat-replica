@@ -74,8 +74,14 @@ const getFlowTabForThread = (thread?: Pick<ConversationWithDetails, 'status'> | 
   if (!thread) return null;
   const status = String(thread.status || '').toLowerCase();
   if (status === 'closed') return 'done';
-  if (status === 'open' || status === 'assigned') return 'assigned';
-  if (status === 'pending') return 'unassigned';
+  // FE flow rule:
+  // - Unassigned = status "open"
+  // - Assigned   = status "pending"
+  // - Done       = status "closed"
+  if (status === 'open') return 'unassigned';
+  if (status === 'pending') return 'assigned';
+  // Back-compat (older enum value). Treat as assigned.
+  if (status === 'assigned') return 'assigned';
   return 'unassigned';
 };
 
@@ -281,6 +287,7 @@ export default function ConversationPage() {
   const isMasterAgent = hasRole('master_agent');
   const isSuperAgent = hasRole('super_agent');
   const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent;
+  const canMoveToUnassigned = isMasterAgent || isSuperAgent;
   const canSendMessagesPermission = hasPermission('messages.create');
   const currentUserId = user?.id ?? null;
   // Track optimistic collaborator updates per thread
@@ -943,6 +950,10 @@ export default function ConversationPage() {
 
   const handleMoveToUnassigned = async () => {
     if (!selectedConversation) return;
+    if (!canMoveToUnassigned) {
+      toast.error('Only master or super agents can move conversations to Unassigned');
+      return;
+    }
     setMoveToUnassignedLoading(true);
     try {
       await assignThreadToUser(selectedConversation.id, null);
@@ -1495,7 +1506,7 @@ export default function ConversationPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {selectedConversationFlow === 'assigned' && (
+                  {selectedConversationFlow === 'assigned' && canMoveToUnassigned && (
                     <Button
                       size="sm"
                       className="h-8 bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-60"

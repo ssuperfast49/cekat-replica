@@ -1,5 +1,5 @@
 # Change Log
-# [0.1.40] FE WEB CEKAT 2026-01-13
+# [0.1.42] FE WEB CEKAT 2026-01-13
 ### Conversations & Assignment Flow
 - **Realtime tab-safe updates**: Thread status/assignee changes now patch the conversation list via realtime updates without needing a manual refresh; tabs stay put even when counts change underneath.
   - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
@@ -8,6 +8,17 @@
 - **Resolve re-enables AI**: Resolving a conversation now flips `ai_access_enabled` back on and clears `ai_handoff_at` so AI can respond immediately after resolution.
   - Updated: `src/components/chat/ConversationPage.tsx`
 
+# [0.1.41] FE WEB CEKAT 2026-01-12
+- **Thread controls respect roles & stay real-time**: “Move to Unassigned” now only renders and functions for master/super agents (regular agents get a toast if they try), and the focused conversation keeps subscribing to its thread plus calling `fetchMessages` in a stable hook so status changes surface instantly.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Super agents can edit platform human agents**: The human-agent multi-select inside platform details now bypasses the `channel_agents.update` gate for `super_agent` roles so they can add/remove collaborators without an extra permission.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+# [0.1.40] FE WEB CEKAT 2026-01-12
+### Conversations & Assignment Flow
+- **Correct tab mapping for statuses**: “Assigned” now strictly maps to `status === "pending"` while “Unassigned” maps to `status === "open"` so the sidebar tally matches the database truth, and the legacy `assigned` enum is only treated as assigned for backward compatibility.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Render unassigned threads as open**: Assignment-sensitive logic now only considers a thread assigned when an assignee (or similar signal) exists; a bare `pending` status without an assignee rewrites to `open`, ensuring those rows appear under the Unassigned tab.
+  - Updated: `src/hooks/useConversations.ts`
 # [0.1.39] FE WEB CEKAT 2026-01-11
 ### Conversations & Assignment Flow
 - **Takeover preserves handled by**: Takeover chat action now only changes thread status from "pending" (Unassigned) to "assigned", without modifying the "Handled By" field. This ensures the original super agent assignment is preserved regardless of who takes over the conversation.

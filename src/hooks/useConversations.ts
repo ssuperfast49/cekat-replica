@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
 import { defaultFallbackHandler } from '@/lib/fallbackHandler';
 import { waitForAuthReady } from '@/lib/authReady';
@@ -185,8 +185,12 @@ export const useConversations = () => {
 
     const assignedFromSignals =
       Boolean(source?.assigned_at) ||
+      Boolean(source?.assignee_user_id) ||
       (!aiActive && source?.ai_access_enabled === false) ||
       (!!source?.ai_handoff_at) ||
+      // Treat status-level pending as assigned only when we already know there is an assignee.
+      (status === 'pending' && Boolean(source?.assignee_user_id)) ||
+      // Back-compat: some environments may still emit "assigned".
       status === 'assigned';
 
     const assigned = !isClosed && assignedFromSignals;
@@ -218,14 +222,16 @@ export const useConversations = () => {
                 ? conv.super_agent_name || conv.assignee_name || '—'
                 : conv.assignee_name || '—'
               : '—';
+          // FE status rule:
+          // - "open"   = Unassigned
+          // - "pending"= Assigned
+          // - "closed" = Done
           const nextStatus: Thread['status'] =
             conv.status === 'closed'
               ? 'closed'
-              : conv.status === 'pending' && !assignment.assigned
+              : assignment.assigned
                 ? 'pending'
-                : assignment.assigned
-                  ? 'assigned'
-                  : 'open';
+                : 'open';
 
           return {
             ...conv,
@@ -382,28 +388,24 @@ export const useConversations = () => {
           : '—';
 
         const currentStatus = (thread.status || 'open') as Thread['status'];
-        let desiredStatus: Thread['status'] = currentStatus;
-        if (currentStatus === 'closed') {
-          desiredStatus = 'closed';
-        } else if (currentStatus === 'pending') {
-          desiredStatus = assignment.assigned ? 'assigned' : 'pending';
-        } else if (assignment.assigned) {
-          desiredStatus = 'assigned';
-        } else {
-          desiredStatus = 'open';
-        }
-
-        // If the database doesn't support 'assigned', fall back to 'open'
-        if (desiredStatus === 'assigned' && !dbSupportsAssignedStatus) {
-          desiredStatus = 'open';
-        }
+        // FE status rule:
+        // - "open"   = Unassigned
+        // - "pending"= Assigned
+        // - "closed" = Done
+        // assignment.assigned is derived from multiple signals (incl. status === pending)
+        const desiredStatus: Thread['status'] =
+          currentStatus === 'closed'
+            ? 'closed'
+            : assignment.assigned
+              ? 'pending'
+              : 'open';
 
         if (desiredStatus !== currentStatus) {
           statusUpdates.push({
             id: thread.id,
             status: desiredStatus,
             assignee_user_id: assignment.assignee_user_id ?? null,
-            needsAssignedAt: desiredStatus === 'assigned' && !thread.assigned_at && !!assignment.assignee_user_id,
+            needsAssignedAt: desiredStatus === 'pending' && !thread.assigned_at && !!assignment.assignee_user_id,
             shouldClearAssignee: assignment.assignee_user_id == null,
           });
         }
@@ -482,7 +484,7 @@ export const useConversations = () => {
           for (const update of statusUpdates) {
             try {
               const payload: Record<string, any> = { status: update.status };
-              if (update.status === 'assigned') {
+              if (update.status === 'pending') {
                 if (update.assignee_user_id) {
                   payload.assignee_user_id = update.assignee_user_id;
                 }
@@ -500,15 +502,7 @@ export const useConversations = () => {
                 .eq('id', update.id);
               
               if (error) {
-                // If we get an invalid enum value error, it means the migration hasn't been applied
-                if (error.code === '22P02' && update.status === 'assigned') {
-                  console.warn('[useConversations] Database does not support "assigned" status. Falling back to "open".');
-                  dbSupportsAssignedStatus = false;
-                  // Try falling back to 'open' if it was meant to be 'assigned'
-                  await protectedSupabase.from('threads').update({ ...payload, status: 'open' }).eq('id', update.id);
-                } else {
-                  throw error;
-                }
+                throw error;
               }
             } catch (err) {
               console.warn('Failed to sync thread status', err);
@@ -572,7 +566,7 @@ export const useConversations = () => {
   };
 
   // Fetch messages for a specific thread
-  const fetchMessages = async (threadId: string) => {
+  const fetchMessages = useCallback(async (threadId: string) => {
     try {
 
       setError(null);
@@ -626,7 +620,7 @@ export const useConversations = () => {
       console.error('Error fetching messages:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch messages');
     }
-  };
+  }, []);
 
   // Send a new message
   const sendMessage = async (
@@ -823,7 +817,8 @@ export const useConversations = () => {
 
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id || null;
-      const assignedStatusValue = dbSupportsAssignedStatus ? 'assigned' : 'open';
+      // FE uses "pending" as the assigned state
+      const assignedStatusValue: Thread['status'] = 'pending';
       const shouldSetAssignee = options?.setAssignee ?? true;
 
       if (shouldSetAssignee) {
@@ -937,13 +932,16 @@ export const useConversations = () => {
       const currentUserId = authData?.user?.id || null;
 
       const nowIso = new Date().toISOString();
-      const assignedStatusValue = dbSupportsAssignedStatus ? 'assigned' : 'open';
+      // FE uses:
+      // - "pending" = Assigned
+      // - "open"    = Unassigned
+      const assignedStatusValue: Thread['status'] = 'pending';
       const updatePayload: Record<string, any> = {
         assignee_user_id: assigneeUserId,
         handover_reason: assigneeUserId ? 'other:manual_assign' : 'other:manual_unassign',
         ai_access_enabled: assigneeUserId ? false : true,
         ai_handoff_at: assigneeUserId ? nowIso : null,
-        status: assigneeUserId ? assignedStatusValue : 'pending',
+        status: assigneeUserId ? assignedStatusValue : 'open',
       };
 
       if (assigneeUserId) {
@@ -1352,6 +1350,27 @@ export const useConversations = () => {
       try { supabase.removeChannel(channel); } catch { }
     };
   }, [selectedThreadId]);
+
+  useEffect(() => {
+    if (!selectedThreadId) return;
+    const channel = supabase
+      .channel(`thread-detail-${selectedThreadId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'threads',
+        filter: `id=eq.${selectedThreadId}`
+      }, () => {
+        if (document.visibilityState !== 'visible') return;
+        scheduleConversationsRefresh(150);
+        fetchMessages(selectedThreadId);
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, [selectedThreadId, fetchMessages]);
 
   return {
     conversations,
