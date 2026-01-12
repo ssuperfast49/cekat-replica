@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.41] FE WEB CEKAT 2026-01-12
+- **Thread controls respect roles & stay real-time**: “Move to Unassigned” now only renders and functions for master/super agents (regular agents get a toast if they try), and the focused conversation keeps subscribing to its thread plus calling `fetchMessages` in a stable hook so status changes surface instantly.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Super agents can edit platform human agents**: The human-agent multi-select inside platform details now bypasses the `channel_agents.update` gate for `super_agent` roles so they can add/remove collaborators without an extra permission.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
 # [0.1.40] FE WEB CEKAT 2026-01-12
 ### Conversations & Assignment Flow
 - **Correct tab mapping for statuses**: “Assigned” now strictly maps to `status === "pending"` while “Unassigned” maps to `status === "open"` so the sidebar tally matches the database truth, and the legacy `assigned` enum is only treated as assigned for backward compatibility.

@@ -25,6 +25,7 @@ import { useRBAC } from "@/contexts/RBACContext";
 import PermissionGate from "@/components/rbac/PermissionGate";
 import { MultiSelect, MultiSelectOption } from "@/components/ui/multi-select";
 import { APP_ORIGIN, WAHA_BASE_URL, livechatUrl } from "@/config/urls";
+import { ROLES } from "@/types/rbac";
 
 const ConnectedPlatforms = () => {
   const { toast } = useToast();
@@ -299,7 +300,7 @@ const ConnectedPlatforms = () => {
 
           {canEditAgents && selectedPlatformData && (
             <div className="mt-3 flex items-center gap-2">
-              <PermissionGate permission={'channel_agents.update'}>
+              <PermissionGate permission={'channel_agents.update'} roleBypass={[ROLES.SUPER_AGENT]}>
                 <MultiSelect
                   options={multiSelectOptions}
                   value={pendingAgentIds}

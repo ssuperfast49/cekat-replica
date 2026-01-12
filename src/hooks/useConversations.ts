@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, logAction, protectedSupabase } from '@/lib/supabase';
 import { defaultFallbackHandler } from '@/lib/fallbackHandler';
 import { waitForAuthReady } from '@/lib/authReady';
@@ -520,7 +520,7 @@ export const useConversations = () => {
   };
 
   // Fetch messages for a specific thread
-  const fetchMessages = async (threadId: string) => {
+  const fetchMessages = useCallback(async (threadId: string) => {
     try {
 
       setError(null);
@@ -574,7 +574,7 @@ export const useConversations = () => {
       console.error('Error fetching messages:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch messages');
     }
-  };
+  }, []);
 
   // Send a new message
   const sendMessage = async (
@@ -1292,6 +1292,27 @@ export const useConversations = () => {
       try { supabase.removeChannel(channel); } catch { }
     };
   }, [selectedThreadId]);
+
+  useEffect(() => {
+    if (!selectedThreadId) return;
+    const channel = supabase
+      .channel(`thread-detail-${selectedThreadId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'threads',
+        filter: `id=eq.${selectedThreadId}`
+      }, () => {
+        if (document.visibilityState !== 'visible') return;
+        scheduleConversationsRefresh(150);
+        fetchMessages(selectedThreadId);
+      })
+      .subscribe();
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, [selectedThreadId, fetchMessages]);
 
   return {
     conversations,
