@@ -837,13 +837,6 @@ const upsertFromRows = useCallback((rows: any[]) => {
     setStreamingMessageId(streamingId);
     streamingDraftIdRef.current = streamingId;
 
-    // Set a timeout to fallback to realtime if streaming doesn't work
-    const streamingTimeout = setTimeout(() => {
-      if (streamingDraftIdRef.current === streamingId) {
-        finalizeAssistantMessage(streamingId, "Waiting for response...");
-      }
-    }, 10000); // 10 second timeout
-
     try {
       const body = {
         message: text,
@@ -1053,7 +1046,6 @@ const upsertFromRows = useCallback((rows: any[]) => {
       pendingThreadAttachRef.current = false;
       playHigh();
     } finally {
-      clearTimeout(streamingTimeout);
       clearTimeout(userMessageTimeout);
       setLoading(false);
     }

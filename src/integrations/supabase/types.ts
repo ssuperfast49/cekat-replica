@@ -994,6 +994,7 @@ export type Database = {
           assigned_by_user_id: string | null
           assignee_user_id: string | null
           collaborator_user_id: string | null
+          account_id: string | null
           channel_id: string
           contact_id: string
           created_at: string
@@ -1017,6 +1018,7 @@ export type Database = {
           assigned_by_user_id?: string | null
           assignee_user_id?: string | null
           collaborator_user_id?: string | null
+          account_id?: string | null
           channel_id: string
           contact_id: string
           created_at?: string
@@ -1040,6 +1042,7 @@ export type Database = {
           assigned_by_user_id?: string | null
           assignee_user_id?: string | null
           collaborator_user_id?: string | null
+          account_id?: string | null
           channel_id?: string
           contact_id?: string
           created_at?: string

@@ -1,4 +1,12 @@
 # Change Log
+# [0.1.45] FE WEB CEKAT 2026-01-13
+### Live Chat & Types
+- **Account-scoped attach only**: Live chat now only attaches to threads that match the current `account_id`/session and no longer reuses stored thread IDs; if none exist, it waits for an external creator (e.g., n8n) rather than auto-creating.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Supabase types parity**: Added `account_id` to the `threads` types to match the schema changes and avoid TS errors on account-based selects.
+  - Updated: `src/integrations/supabase/types.ts`
+- **Commit**: `chore: livechat account attach only & fix supabase types`
+
 # [0.1.44] FE WEB CEKAT 2026-01-13
 ### WhatsApp / n8n Proxy Hardening
 - **Session disconnect via proxy-n8n**: WhatsApp disconnect now calls the `session.logout` proxy route (no legacy Railways) before disconnecting, matching the n8n route table.
