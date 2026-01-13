@@ -367,7 +367,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const { user } = useAuth();
   const isMasterAgent = hasRole?.('master_agent');
   const isSuperAgent = hasRole?.('super_agent');
-  const canUploadAgentFiles = hasPermission('ai_agent_files.manage') || hasPermission('ai_agent_files.create');
+  const canUploadAgentFiles =
+    hasPermission('ai_agent_files.manage') ||
+    hasPermission('ai_agent_files.create') ||
+    Boolean(isMasterAgent) ||
+    Boolean(isSuperAgent);
   
   const clampNumber = (value: number, minVal: number, maxVal: number) => {
     if (Number.isNaN(value)) return minVal;

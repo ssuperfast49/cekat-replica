@@ -1,4 +1,13 @@
 # Change Log
+# [0.1.47] FE WEB CEKAT 2026-01-13
+### Conversation Ownership
+- **Handled By now respects real assignees**: `computeAssignmentState` keeps the `assignee_user_id` if the thread is assigned, so `ConversationPage` can show the handler’s display name again instead of rendering “—”.
+  - Updated: `src/hooks/useConversations.ts`
+
+### Platform Ownership
+- **Super-agent scoped human/AI selection**: The Connected Platforms sidebar only lists human agents and AI profiles that belong to the channel’s assigned super agent while keeping the already selected options visible, keeping ownership aligned across collaborators and bots.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
 # [0.1.46] FE WEB CEKAT 2026-01-13
 ### Live Chat
 - **Stable account names**: Friendly username is now stored per `account_id` (localStorage) instead of per session, so the same account can’t generate multiple display names across sessions.

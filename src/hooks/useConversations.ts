@@ -166,12 +166,14 @@ export const useConversations = () => {
     }, delayMs) as unknown as number;
   };
 
-  const computeAssignmentState = (source: {
-    ai_access_enabled?: boolean | null;
-    assigned_at?: string | null;
-    status?: string | null;
-    ai_handoff_at?: string | null;
-  }) => {
+const computeAssignmentState = (source: {
+  ai_access_enabled?: boolean | null;
+  assigned_at?: string | null;
+  status?: string | null;
+  ai_handoff_at?: string | null;
+  assignee_user_id?: string | null;
+  channel_super_agent_id?: string | null;
+}) => {
     const status = (source?.status || '').toLowerCase();
     const isClosed = status === 'closed';
     const aiActive = source?.ai_access_enabled === true && !source?.ai_handoff_at;
@@ -187,7 +189,7 @@ export const useConversations = () => {
 
     return {
       assigned,
-      assignee_user_id: null,
+    assignee_user_id: assigned ? source?.assignee_user_id || null : null,
       handled_by_super_agent: false,
     };
   };

@@ -137,15 +137,20 @@ const ConnectedPlatforms = () => {
   }, [fetchPlatforms]);
   const currentPlatformType = selectedPlatformData ? getPlatformType(selectedPlatformData) : null;
   const assignedHumanAgents = selectedPlatformData?.human_agents || [];
+  const channelSuperAgentId = selectedPlatformData?.super_agent_id ?? null;
   const canEditAgents = hasRole('master_agent') || hasRole('super_agent');
-  // Only surface agents that belong to the platform's super agent to keep ownership aligned
-  const platformSuperAgentId = (selectedPlatformData as any)?.super_agent_id || null;
-  const availableAgentsToAdd = humanAgents.filter(a =>
-    a.primaryRole === 'agent' &&
-    (!platformSuperAgentId || a.super_agent_id === platformSuperAgentId) &&
-    !assignedHumanAgents.some(x => x.user_id === a.user_id)
-  );
+  const availableAgentsToAdd = humanAgents.filter((a: any) => {
+    const belongsToSuperAgent = channelSuperAgentId ? a.super_agent_id === channelSuperAgentId : true;
+    return (
+      a.primaryRole === 'agent' &&
+      belongsToSuperAgent &&
+      !assignedHumanAgents.some(x => x.user_id === a.user_id)
+    );
+  });
   const multiSelectOptions: MultiSelectOption[] = availableAgentsToAdd.map(a => ({ value: a.user_id, label: a.display_name || a.email || a.user_id.slice(0,8) }));
+  const aiAgentsForChannel = channelSuperAgentId
+    ? aiAgents.filter(agent => agent.super_agent_id === channelSuperAgentId || agent.id === selectedPlatformData?.ai_profile_id)
+    : aiAgents;
 
   const handlePendingAgentsChange = async (values: string[]) => {
     if (!selectedPlatformData || !canEditAgents) {
@@ -172,47 +177,7 @@ const ConnectedPlatforms = () => {
 
   const renderPlatformDetails = (includeWebExtras: boolean) => (
     <>
-      {/* AI Agent */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            AI Agent
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Agen AI yang akan menangani percakapan otomatis di platform ini</p>
-              </TooltipContent>
-            </Tooltip>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {aiAgentsLoading ? (
-            <div className="text-sm text-muted-foreground">Loading AI agents...</div>
-          ) : (
-            <Select 
-              value={selectedAgent || ""} 
-              onValueChange={async (value) => {
-                if (!selectedPlatformData) return;
-                await updatePlatform(selectedPlatformData.id, { ai_profile_id: value || undefined });
-                setSelectedAgent(value);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Choose an AI agent" />
-              </SelectTrigger>
-              <SelectContent>
-                {aiAgents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      🤖 {agent.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          )}
-        </CardContent>
-      </Card>
+     
 
       {/* Super Agent */}
       <Card>
@@ -249,6 +214,47 @@ const ConnectedPlatforms = () => {
               </div>
             );
           })()}
+        </CardContent>
+      </Card>
+       {/* AI Agent */}
+       <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            AI Agent
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Agen AI yang akan menangani percakapan otomatis di platform ini</p>
+              </TooltipContent>
+            </Tooltip>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {aiAgentsLoading ? (
+            <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+          ) : (
+            <Select 
+              value={selectedAgent || ""} 
+              onValueChange={async (value) => {
+                if (!selectedPlatformData) return;
+                await updatePlatform(selectedPlatformData.id, { ai_profile_id: value || undefined });
+                setSelectedAgent(value);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Choose an AI agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {aiAgentsForChannel.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      🤖 {agent.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardContent>
       </Card>
 
