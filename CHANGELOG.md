@@ -1,4 +1,8 @@
 # Change Log
+# [0.1.49] FE WEB CEKAT 2026-01-13
+### Add delete button in contacts
+- **Added button for delete contact**: button delete contact is available for role master agent and super agent.
+
 # [0.1.48] FE WEB CEKAT 2026-01-13
 ### Conversation Sidebar
 - **Handled By visible in all tabs**: We now preserve `assignee_user_id` even when a thread is open or closed, so “Handled By” displays correctly across Assigned, Unassigned, and Done views.
