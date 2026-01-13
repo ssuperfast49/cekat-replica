@@ -1,4 +1,14 @@
 # Change Log
+# [0.1.44] FE WEB CEKAT 2026-01-13
+### WhatsApp / n8n Proxy Hardening
+- **Session disconnect via proxy-n8n**: WhatsApp disconnect now calls the `session.logout` proxy route (no legacy Railways) before disconnecting, matching the n8n route table.
+- **Scoped polling on disconnect**: Only WhatsApp sessions are refreshed during disconnect polling, using a fresh `sessionsRef` to avoid stale state; no broad platform refresh.
+- **Spam-proof delete**: Danger zone delete button is guarded by the in-flight flag to prevent repeated clicks while deletion is in progress.
+
+### Supabase (live chat reference)
+- **Account-scoped anon access**: Policies persisted in migrations (`20260113000001`, `20260113000002`) enforce `account_id` + `x-account-id` for threads/messages; legacy null-account fallback removed. Anonymous users cannot fetch other accounts’ threads or messages.
+- **Edge function routing**: `proxy-n8n` is the path for WhatsApp session actions; `session.disconnect` route added to n8n route table; `DISCONNECT_SESSION` now points to `session.logout`.
+
 # [0.1.43] FE WEB CEKAT 2026-01-13
 ### Live Chat (Account-scoped reuse)
 - **One thread per account (frontend & DB guard)**: Live chat now reads `account_id` from `localStorage` and reuses/reopens the existing thread for that account/channel (falls back to session/alias if no account). Added `account_id` column plus a unique index on `(channel_id, account_id)` when set to prevent duplicate threads.

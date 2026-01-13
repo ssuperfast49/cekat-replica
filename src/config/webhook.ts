@@ -51,7 +51,7 @@ export const WEBHOOK_CONFIG = {
       LOGOUT_SESSION: `${ROUTE_PREFIX}session.logout`,
       CREATE_PLATFORM: "/whatsapp/create-platform",
       CREATE_SESSION: `${ROUTE_PREFIX}session.create`,
-      DISCONNECT_SESSION: "/disconnect_session",
+      DISCONNECT_SESSION: `${ROUTE_PREFIX}session.logout`,
       DELETE_SESSION: `${ROUTE_PREFIX}session.delete`,
     },
     // Telegram endpoints

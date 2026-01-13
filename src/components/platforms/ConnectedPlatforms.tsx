@@ -554,6 +554,9 @@ const ConnectedPlatforms = () => {
 
 
   // Fetch existing WhatsApp sessions from WAHA API
+  // Keep a ref for latest sessions to avoid stale closures in polling
+  const sessionsRef = useRef<WahaSession[]>([]);
+
   const fetchWhatsAppSessions = async () => {
     if (isFetchingSessionsRef.current) return;
     isFetchingSessionsRef.current = true;
@@ -566,6 +569,7 @@ const ConnectedPlatforms = () => {
       const json = await response.json();
       const list: WahaSession[] = Array.isArray(json) ? json : [json];
       setSessions(list);
+      sessionsRef.current = list;
       await syncSessionsToChannels(list);
       // Avoid tight refresh loops: only refresh platforms at most once every 2s
       if (Date.now() >= nextPlatformsRefreshAtRef.current) {
@@ -839,19 +843,28 @@ const ConnectedPlatforms = () => {
     if (!sessionName) return;
     setLoggingOutSessions((prev) => new Set(prev).add(sessionName));
     try {
+      // Hit proxy-n8n session.logout first
+      const logoutRes = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.LOGOUT_SESSION, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_name: sessionName }),
+      });
+      if (!logoutRes.ok) throw new Error(`Logout failed ${logoutRes.status}`);
+
       const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DISCONNECT_SESSION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_name: sessionName }),
       });
       if (!res.ok) throw new Error(`Disconnect failed ${res.status}`);
-      // Poll sessions until status is not working
+      // Poll sessions until status is not working (WhatsApp only)
       const started = Date.now();
       while (Date.now() - started < 20000) {
+        // Always refresh directly to avoid stale captured sessions array
         await fetchWhatsAppSessions();
-        const s = sessions.find((x) => (x.name || "") === sessionName);
-        const rawStatus = String(s?.status || "").toUpperCase();
-        const hasNumber = Boolean(s?.me?.id);
+        const latest = sessionsRef.current?.find?.((x: any) => (x?.name || "") === sessionName) || null;
+        const rawStatus = String(latest?.status || "").toUpperCase();
+        const hasNumber = Boolean(latest?.me?.id);
         const isLoggedIn = rawStatus === "WORKING" && hasNumber;
         if (!isLoggedIn) break;
         await new Promise(r => setTimeout(r, 2000));
@@ -1490,7 +1503,7 @@ const ConnectedPlatforms = () => {
                             aria-busy={isDeletingChannel}
                             disabled={isDeletingChannel}
                             onClick={async () => {
-                              if (!selectedPlatformData) return;
+                              if (!selectedPlatformData || isDeletingChannel) return;
                               try {
                                 setIsDeletingChannel(true);
                                 await deleteChannelByProvider(selectedPlatformData);
