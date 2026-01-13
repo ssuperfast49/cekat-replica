@@ -10,7 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Send } from "lucide-react";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { callWebhook } from "@/lib/webhookClient";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/config/supabase";
+import type { Database } from "@/integrations/supabase/types";
 
 declare global {
   interface Window {
@@ -33,6 +35,22 @@ export default function LiveChat() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
+  const [accountId, setAccountId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const storage = window.localStorage;
+    // If storage is empty, generate a fresh account_id per channel
+    const channelKey = `livechat_account_${window.location.pathname}`;
+    const candidateKeys = ['user_id', 'userId', 'account_id', 'accountId'];
+    for (const k of candidateKeys) {
+      const val = storage.getItem(k);
+      if (val) return val;
+    }
+    const existingAnon = storage.getItem(channelKey);
+    if (existingAnon) return existingAnon;
+    const generated = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `anon_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    try { storage.setItem(channelKey, generated); } catch {}
+    return generated;
+  });
   const [sessionId, setSessionId] = useState(() => {
     if (typeof window === 'undefined') return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const key = `livechat_session_${platform_id || platformId || "unknown"}`;
@@ -42,6 +60,14 @@ export default function LiveChat() {
     window.sessionStorage.setItem(key, generated);
     return generated;
   });
+  const supabase = useMemo(() => {
+    return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: {
+        headers: accountId ? { 'x-account-id': accountId } : undefined,
+      },
+    });
+  }, [accountId]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
   const [aiProfileId, setAiProfileId] = useState<string | null>(null);
@@ -132,7 +158,8 @@ export default function LiveChat() {
     setStreamingMessageId(null);
     lastOptimisticIdRef.current = null;
   };
-  const sessionThreadKey = typeof window !== 'undefined' ? `livechat_thread_${pid}_${sessionId}` : null;
+  // Disable stored thread reuse; always derive from account/session lookup
+  const sessionThreadKey = null;
   useEffect(() => {
     sessionThreadKeyRef.current = sessionThreadKey;
   }, [sessionThreadKey]);
@@ -341,22 +368,6 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
   useEffect(() => () => clearCatchUpTimers(), []);
 
   // Test Supabase connection
-  useEffect(() => {
-    const testConnection = async () => {
-      try {
-        const { data, error } = await supabase.from('channels').select('count').limit(1);
-        if (error) {
-          console.error('Supabase connection error:', error);
-        } else {
-          
-        }
-      } catch (err) {
-        console.error('Supabase connection test failed:', err);
-      }
-    };
-    testConnection();
-  }, []);
-
   // Cleanup streaming messages on unmount
   useEffect(() => {
     return () => {
@@ -374,17 +385,14 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
   useEffect(() => {
     const fetchAiProfileId = async () => {
       try {
-        
         const { data: channel, error } = await supabase
           .from('channels')
           .select('ai_profile_id')
           .eq('id', pid)
           .maybeSingle();
-        
+
         if (!error && channel?.ai_profile_id) {
-          
           setAiProfileId(channel.ai_profile_id);
-          
         }
       } catch (error) {
         console.error('Error fetching AI profile ID:', error);
@@ -526,18 +534,25 @@ const upsertFromRows = useCallback((rows: any[]) => {
     try {
       const { data } = await supabase
         .from('threads')
-        .select('id, created_at, additional_data, assignee_user_id, status, resolved_at, resolved_by_user_id, contacts(name)')
+        .select('id, created_at, additional_data, assignee_user_id, status, account_id, resolved_at, resolved_by_user_id, contacts(name)')
         .eq('channel_id', pid)
+        .order('last_msg_at', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(50);
       if (!data) return null;
       const pendingInfo = pendingThreadInfoRef.current;
       const target = data.find((row: any) => {
         const additional = row?.additional_data as Record<string, any> | null;
+        const accountMatch = accountId ? (row?.account_id === accountId || additional?.account_id === accountId) : false;
         const sessionMatch = sessionId ? additional?.session_id === sessionId : false;
         const contactName = (row?.contacts?.name || '') as string;
         const nameMatch = username ? contactName.trim().toLowerCase() === username.trim().toLowerCase() : false;
-        if (!(sessionMatch || nameMatch)) return false;
+        // If we have an accountId, only accept account/session matches; do NOT fall back to name
+        if (accountId) {
+          if (!(accountMatch || sessionMatch)) return false;
+        } else {
+          if (!(sessionMatch || nameMatch)) return false;
+        }
         if (pendingInfo) {
           const createdAt = row?.created_at ? new Date(row.created_at).getTime() : 0;
           const startedAt = new Date(pendingInfo.startedAt).getTime() - 15000; // tolerate clock skew
@@ -545,16 +560,23 @@ const upsertFromRows = useCallback((rows: any[]) => {
             return false;
           }
           const aliasMatch = pendingInfo.alias.trim().toLowerCase() === contactName.trim().toLowerCase();
-          if (!aliasMatch && !sessionMatch) return false;
+          if (accountId) {
+            if (!sessionMatch && !accountMatch) return false;
+          } else {
+            if (!aliasMatch && !sessionMatch && !accountMatch) return false;
+          }
         }
         return true;
       });
-      return target ?? null;
+      if (target?.id) return target;
+      // Fallback for legacy threads without account_id: reuse the most recent thread for this channel.
+      const legacy = data.find((row: any) => !row?.account_id && !(row?.additional_data as any)?.account_id);
+      return legacy ?? null;
     } catch (err) {
       console.warn('[LiveChat] findThreadForCurrentSession failed', err);
       return null;
     }
-  }, [pid, sessionId, username]);
+  }, [pid, sessionId, username, accountId, supabase]);
 
   const reopenThreadIfResolved = useCallback(async (row: any) => {
     const status = (row?.status || '').toString().toLowerCase();
@@ -664,9 +686,6 @@ const upsertFromRows = useCallback((rows: any[]) => {
             });
         sub = subscribeToThread(tid);
         scheduleCatchUps(tid, upsertFromRows, [0, 800, 2000, 5000, 10000]);
-        if (sessionThreadKeyRef.current && typeof window !== 'undefined') {
-          try { window.sessionStorage.setItem(sessionThreadKeyRef.current, tid); } catch {}
-        }
       } finally {
         notificationsReadyRef.current = true;
         setBooting(false);
@@ -675,47 +694,18 @@ const upsertFromRows = useCallback((rows: any[]) => {
 
     attachToThreadRef.current = attachToThread;
 
-    const storedThreadId =
-      sessionThreadKeyRef.current && typeof window !== 'undefined'
-        ? window.sessionStorage.getItem(sessionThreadKeyRef.current)
-        : null;
-
-    const attachStoredThread = async () => {
-      if (!storedThreadId) return false;
-      try {
-        const { data } = await supabase
-          .from('threads')
-          .select('id, additional_data, status')
-          .eq('id', storedThreadId)
-          .maybeSingle();
-        const sessionFromThread = (data?.additional_data as Record<string, any> | null)?.session_id;
-        if (!data || sessionFromThread !== sessionId) {
-          throw new Error('thread-session mismatch');
-        }
-        const reopenedId = await reopenThreadIfResolved(data);
-        if (reopenedId) {
-          await attachToThread(reopenedId);
-          return true;
-        }
-        return true;
-      } catch {
-        if (sessionThreadKeyRef.current && typeof window !== 'undefined') {
-          try { window.sessionStorage.removeItem(sessionThreadKeyRef.current); } catch {}
-        }
-        return false;
-      }
-    };
-
     const initialize = async () => {
-      const restored = await attachStoredThread();
-      if (restored) return;
+      // Only reuse threads that match account/session/name; do not attach arbitrary latest when storage is empty
       const found = await findThreadForCurrentSession();
       if (found?.id) {
         const reopenedId = await reopenThreadIfResolved(found);
         if (reopenedId) {
           await attachToThread(reopenedId);
         }
+        return;
       }
+      setBooting(false);
+      pendingThreadAttachRef.current = false;
     };
 
     initialize();
@@ -755,7 +745,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
       try { if (threadsSub) supabase.removeChannel(threadsSub); } catch {}
       attachToThreadRef.current = null;
     };
-  }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession, reopenThreadIfResolved]);
+  }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession, reopenThreadIfResolved, accountId]);
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -782,7 +772,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
         alias: username,
         startedAt: new Date().toISOString(),
       };
-      scheduleThreadAttachRetries([0, 600, 1500, 3000, 6000]);
+      scheduleThreadAttachRetries([0, 300, 900, 2000]);
     }
 
     // Check AI message limit before sending user message
@@ -858,6 +848,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
       const body = {
         message: text,
         session_id: sessionId,
+        account_id: accountId || undefined,
         timestamp: createdAt,
         channel_id: pid,
         username: username || undefined,
@@ -899,7 +890,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
         throw new Error(`Webhook failed ${resp.status}${statusDetails}`);
       }
 
-      // Ensure the newly created thread (if any) is attached for this session
+      // Ensure the newly created thread (if any) is attached for this session/account
       let attachedThreadId: string | null = null;
       try {
         const foundThread = await findThreadForCurrentSession();

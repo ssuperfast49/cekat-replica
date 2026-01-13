@@ -1,4 +1,26 @@
 # Change Log
+# [0.1.43] FE WEB CEKAT 2026-01-13
+### Live Chat (Account-scoped reuse)
+- **One thread per account (frontend & DB guard)**: Live chat now reads `account_id` from `localStorage` and reuses/reopens the existing thread for that account/channel (falls back to session/alias if no account). Added `account_id` column plus a unique index on `(channel_id, account_id)` when set to prevent duplicate threads.
+  - Updated: `src/pages/LiveChat.tsx`, `src/hooks/useConversations.ts`
+  - New: `supabase/migrations/20260113000001_add_account_id_to_threads.sql`
+- **Anonymous: new thread per cleared storage**: If local/session storage is empty, a fresh `account_id` is generated per channel and legacy thread auto-attach is disabled, so each new browser/cleared storage starts a new thread.
+  - Updated: `src/pages/LiveChat.tsx`
+  
+### Live Chat (anon account-id hardening)
+- **Fetch-only on load (no auto-create)**: Live chat no longer creates threads on refresh; it only attaches to existing threads that match the current `account_id` (and session). Threads are expected to be created externally (e.g., n8n) and delivered via realtime or subsequent fetch.
+- **Thread reuse by account only**: Stored thread reuse was removed; lookup now requires account/session match (no name fallback when account_id exists).
+- **Headers for anon RLS**: The live chat Supabase client sends `x-account-id` for all requests so anon RLS policies apply.
+
+### Supabase (migration/reference)
+- **account_id column & unique index**: Added `account_id` to `public.threads` and a unique index `(channel_id, account_id)` when `account_id` is set (`supabase/migrations/20260113000001_add_account_id_to_threads.sql`).
+- **Edge function auth**: `proxy-n8n` redeployed with `verify_jwt=false` to allow anonymous calls (still HMAC-signs to n8n).
+- **RLS (anon by account_id)**:
+  - Threads: `anon_threads_by_account` (SELECT) and `anon_threads_insert_by_account` (INSERT) require `account_id` = `x-account-id`.
+  - Messages: `anon_messages_by_account` (SELECT) and `anon_messages_insert_by_account` (INSERT) require parent thread `account_id` = `x-account-id`.
+  - Channels: `anon_channels_web_minimal` allows anon SELECT on web channels to read minimal metadata.
+  - Legacy null-account fallback policies were removed; anon access now hinges on matching `account_id`.
+
 # [0.1.42] FE WEB CEKAT 2026-01-13
 ### Conversations & Assignment Flow
 - **Realtime tab-safe updates**: Thread status/assignee changes now patch the conversation list via realtime updates without needing a manual refresh; tabs stay put even when counts change underneath.

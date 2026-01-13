@@ -56,6 +56,7 @@ export interface Thread {
   org_id: string;
   contact_id: string;
   channel_id: string;
+  account_id?: string | null;
   status: 'open' | 'pending' | 'closed' | 'assigned';
   assignee_user_id: string | null;
   collaborator_user_id?: string | null;
@@ -168,37 +169,26 @@ export const useConversations = () => {
   const computeAssignmentState = (source: {
     ai_access_enabled?: boolean | null;
     assigned_at?: string | null;
-    assignee_user_id?: string | null;
-    channel_super_agent_id?: string | null;
     status?: string | null;
     ai_handoff_at?: string | null;
   }) => {
-    const explicitAssignee = source?.assignee_user_id ?? null;
-    const channelSuperAgentId = source?.channel_super_agent_id ?? null;
     const status = (source?.status || '').toLowerCase();
-
-    const assignee_user_id = explicitAssignee ?? channelSuperAgentId ?? null;
-    const handled_by_super_agent = !!assignee_user_id && assignee_user_id === channelSuperAgentId;
-
     const isClosed = status === 'closed';
     const aiActive = source?.ai_access_enabled === true && !source?.ai_handoff_at;
 
+    // Assignment no longer derives from assignee_user_id/channel super agent.
     const assignedFromSignals =
       Boolean(source?.assigned_at) ||
-      Boolean(source?.assignee_user_id) ||
       (!aiActive && source?.ai_access_enabled === false) ||
       (!!source?.ai_handoff_at) ||
-      // Treat status-level pending as assigned only when we already know there is an assignee.
-      (status === 'pending' && Boolean(source?.assignee_user_id)) ||
-      // Back-compat: some environments may still emit "assigned".
       status === 'assigned';
 
     const assigned = !isClosed && assignedFromSignals;
 
     return {
       assigned,
-      assignee_user_id,
-      handled_by_super_agent,
+      assignee_user_id: null,
+      handled_by_super_agent: false,
     };
   };
 
@@ -526,12 +516,9 @@ export const useConversations = () => {
       const idx = prev.findIndex((c) => c.id === row.id);
       if (idx === -1) return prev;
       const current = prev[idx];
-      const channelSuperAgentId = current.channel?.super_agent_id ?? current.super_agent_id ?? null;
       const assignment = computeAssignmentState({
         ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
         assigned_at: row.assigned_at ?? current.assigned_at,
-        assignee_user_id: row.assignee_user_id ?? current.assignee_user_id,
-        channel_super_agent_id: channelSuperAgentId,
         status: row.status ?? current.status,
         ai_handoff_at: row.ai_handoff_at ?? (current as any).ai_handoff_at ?? null,
       });
@@ -546,13 +533,14 @@ export const useConversations = () => {
       const patched = {
         ...current,
         status: normalizedStatus,
-        assignee_user_id: assignment.assignee_user_id,
+          assignee_user_id: current.assignee_user_id,
         assigned_at: row.assigned_at ?? current.assigned_at,
         resolved_at: row.resolved_at ?? current.resolved_at,
         resolved_by_user_id: row.resolved_by_user_id ?? current.resolved_by_user_id,
         ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
         last_msg_at: row.last_msg_at ?? current.last_msg_at,
         assigned: assignment.assigned,
+          account_id: row.account_id ?? current.account_id ?? null,
       };
       const next = [...prev];
       next[idx] = patched;
