@@ -1,4 +1,12 @@
 # Change Log
+# [0.1.46] FE WEB CEKAT 2026-01-13
+### Live Chat
+- **Stable account names**: Friendly username is now stored per `account_id` (localStorage) instead of per session, so the same account can’t generate multiple display names across sessions.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Supabase types parity**: `threads` types include `account_id` to match the schema and avoid TS errors on account-based queries.
+  - Updated: `src/integrations/supabase/types.ts`
+- **Commit**: `chore: bind livechat name to account and fix threads types`
+
 # [0.1.45] FE WEB CEKAT 2026-01-13
 ### Live Chat & Types
 - **Account-scoped attach only**: Live chat now only attaches to threads that match the current `account_id`/session and no longer reuses stored thread IDs; if none exist, it waits for an external creator (e.g., n8n) rather than auto-creating.

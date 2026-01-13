@@ -317,12 +317,17 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
 };
 
 
-  // Ensure we have a session-scoped friendly username
+  // Ensure we have a friendly username; bind to account_id when available (one name per account)
   useEffect(() => {
     try {
-      const storage = typeof window !== 'undefined' ? window.sessionStorage : null;
+      const hasAccount = Boolean(accountId);
+      const storage = typeof window !== 'undefined'
+        ? (hasAccount ? window.localStorage : window.sessionStorage)
+        : null;
       if (!storage) return;
-      const key = `livechat_username_${pid}_${sessionId}`;
+      const key = hasAccount
+        ? `livechat_username_${pid}_acct_${accountId}`
+        : `livechat_username_${pid}_${sessionId}`;
       let value = '';
       try { value = storage.getItem(key) || ''; } catch {}
       if (!value) {
@@ -336,7 +341,7 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
       }
       setUsername(value);
     } catch {}
-  }, [pid, sessionId]);
+  }, [pid, sessionId, accountId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
