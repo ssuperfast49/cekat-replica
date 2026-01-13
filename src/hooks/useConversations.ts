@@ -187,11 +187,12 @@ const computeAssignmentState = (source: {
 
     const assigned = !isClosed && assignedFromSignals;
 
-    return {
-      assigned,
-    assignee_user_id: assigned ? source?.assignee_user_id || null : null,
-      handled_by_super_agent: false,
-    };
+  return {
+    assigned,
+    // Always surface the stored assignee for display (even if the thread is closed or considered unassigned)
+    assignee_user_id: source?.assignee_user_id ?? null,
+    handled_by_super_agent: false,
+  };
   };
 
   // More targeted refresh for specific thread updates

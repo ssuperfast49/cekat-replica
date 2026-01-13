@@ -1,4 +1,11 @@
 # Change Log
+# [0.1.48] FE WEB CEKAT 2026-01-13
+### Conversation Sidebar
+- **Handled By visible in all tabs**: We now preserve `assignee_user_id` even when a thread is open or closed, so “Handled By” displays correctly across Assigned, Unassigned, and Done views.
+  - Updated: `src/hooks/useConversations.ts`
+- **Collaborators gated by role**: Only master agents and super agents can edit collaborators; regular agents see the control disabled.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
 # [0.1.47] FE WEB CEKAT 2026-01-13
 ### Conversation Ownership
 - **Handled By now respects real assignees**: `computeAssignmentState` keeps the `assignee_user_id` if the thread is assigned, so `ConversationPage` can show the handler’s display name again instead of rendering “—”.

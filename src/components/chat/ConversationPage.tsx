@@ -1712,7 +1712,11 @@ export default function ConversationPage() {
                 placeholder={handledById ? "Select Collaborator" : "Select handled by first"}
                 searchPlaceholder="Search agent..."
                 className="w-full"
-                disabled={!handledById || isSelectedConversationDone}
+                disabled={
+                  isSelectedConversationDone ||
+                  !handledById ||
+                  (!isMasterAgent && !isSuperAgent)
+                }
                 allowClear
                 clearLabel="Clear collaborator"
               />
