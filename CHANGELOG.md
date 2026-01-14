@@ -1,16 +1,18 @@
 # Change Log
+# [0.1.50] FE WEB CEKAT 2026-01-14
+### Conversations & Ownership
+- **Collaborators are now read-only**: The sidebar shows the current collaborator label while only “Takeover Chat” reclaims the slot; the select was removed to enforce the one-collaborator invariant.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Takeover/Unassign RPCs respect status**: `takeover_thread`/`unassign_thread` now only swap `collaborator_user_id` / status/assigned_at, and the frontend trusts the returned `status` so “Move to Unassigned” stays open after refresh.
+  - Updated: `src/hooks/useConversations.ts`
+- **RPC definitions and constraints**: Supabase migration adds status/collaborator invariants plus SECURITY DEFINER RPCs (`takeover_thread`, `unassign_thread`) that preserve `assignee_user_id` while updating collaborators.
+  - Updated: `supabase/migrations/20260114090000_thread_collab_takeover.sql`
+
 # [0.1.49] FE WEB CEKAT 2026-01-13
 ### Add delete button in contacts
 - **Added button for delete contact**: button delete contact is available for role master agent and super agent.
 
 # [0.1.48] FE WEB CEKAT 2026-01-13
-### Conversation Sidebar
-- **Handled By visible in all tabs**: We now preserve `assignee_user_id` even when a thread is open or closed, so “Handled By” displays correctly across Assigned, Unassigned, and Done views.
-  - Updated: `src/hooks/useConversations.ts`
-- **Collaborators gated by role**: Only master agents and super agents can edit collaborators; regular agents see the control disabled.
-  - Updated: `src/components/chat/ConversationPage.tsx`
-
-# [0.1.47] FE WEB CEKAT 2026-01-13
 ### Conversation Ownership
 - **Handled By now respects real assignees**: `computeAssignmentState` keeps the `assignee_user_id` if the thread is assigned, so `ConversationPage` can show the handler’s display name again instead of rendering “—”.
   - Updated: `src/hooks/useConversations.ts`

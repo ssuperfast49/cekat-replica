@@ -275,6 +275,8 @@ export default function ConversationPage() {
     removeThreadLabel,
     assignThread,
     assignThreadToUser,
+    takeoverThread,
+    unassignThread,
     deleteThread,
     setThreadCollaborator,
   } = useConversations();
@@ -306,7 +308,6 @@ export default function ConversationPage() {
   
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
-  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
   
@@ -339,6 +340,8 @@ export default function ConversationPage() {
   }, [humanAgentIdToLabel, userIdToLabel]);
 
   // Derive current handled-by (assignee) without referencing selectedConversation (avoid TDZ)
+  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
+
   const derivedHandledById = useMemo(() => {
     if (!selectedThreadId) return null;
     const t = conversations.find(c => c.id === selectedThreadId) as any;
@@ -351,7 +354,6 @@ export default function ConversationPage() {
     return derivedHandledById;
   }, [selectedThreadId, handledByOverride, derivedHandledById]);
 
-  // Keep override in sync (clear it once server state catches up, or when selection changes)
   useEffect(() => {
     if (!selectedThreadId) {
       setHandledByOverride(null);
@@ -930,17 +932,9 @@ export default function ConversationPage() {
       return;
     }
     try {
-      const isAdmin = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT);
-      const alreadyCollaborator = collaboratorId === user.id;
-      if (!alreadyCollaborator && !isAdmin) {
-        toast.error('Please join as collaborator before taking over');
-        return;
-      }
-
-      // Takeover only changes status from pending to assigned, never modifies handled by
-      await assignThread(selectedConversation.id, user.id, { setAssignee: false });
+      await takeoverThread(selectedConversation.id);
+      setCollaboratorOverride({ threadId: selectedConversation.id, userId: user.id });
       toast.success('You are now assigned to this chat');
-      // Move UI to Assigned tab and enable composer immediately
       setActiveTab('assigned');
       await fetchConversations(undefined, { silent: true });
     } catch (e) {
@@ -956,7 +950,8 @@ export default function ConversationPage() {
     }
     setMoveToUnassignedLoading(true);
     try {
-      await assignThreadToUser(selectedConversation.id, null);
+      await unassignThread(selectedConversation.id);
+      setCollaboratorOverride({ threadId: selectedConversation.id, userId: null });
       toast.success('Conversation moved to Unassigned');
       setActiveTab('unassigned');
       await fetchConversations(undefined, { silent: true });
@@ -1583,7 +1578,7 @@ export default function ConversationPage() {
 
             {/* Message Input or Takeover / Join */}
             <div className="border-t p-3 space-y-2">
-              {selectedConversationFlow === 'assigned' && (
+              {!isSelectedConversationDone && collaboratorId === user?.id && (
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder={`Message ${selectedConversation.contact_name}...`}
@@ -1605,32 +1600,17 @@ export default function ConversationPage() {
                   </Button>
                 </div>
               )}
-              {selectedConversationFlow === 'unassigned' && (() => {
-                const hasAgentCollaborator = Boolean(selectedCollaboratorId);
-                const takeoverAllowedByRole =
-                  isMasterAgent ||
-                  isSuperAgent ||
-                  (!hasAgentCollaborator || isCurrentUserCollaborator);
-                const takeoverDisabled = !user?.id || !takeoverAllowedByRole;
-                const takeoverTooltip = !user?.id
-                  ? 'You must be signed in'
-                  : takeoverAllowedByRole
-                    ? undefined
-                    : hasAgentCollaborator && !isCurrentUserCollaborator
-                      ? 'Collaborator already assigned; join before taking over.'
-                      : 'Only master or super agents can take over.';
-                return (
-                  <Button
-                    type="button"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                    onClick={handleTakeoverChat}
-                    disabled={takeoverDisabled}
-                    title={takeoverTooltip}
-                  >
-                    Takeover Chat
-                  </Button>
-                );
-              })()}
+              {(!isSelectedConversationDone && collaboratorId !== user?.id) && (
+                <Button
+                  type="button"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={handleTakeoverChat}
+                  disabled={!user?.id}
+                  title={user?.id ? undefined : 'You must be signed in'}
+                >
+                  Takeover Chat
+                </Button>
+              )}
             </div>
           </>
         ) : (
@@ -1685,41 +1665,11 @@ export default function ConversationPage() {
 
             {/* Collaborators */}
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">Collaborators</h3>
-              <SearchableSelect
-                options={collaboratorOptionsWithSelected}
-                value={selectedCollaboratorId}
-                onChange={async (val) => {
-                  if (!selectedConversation || selectedConversation.status === 'closed') return;
-                  if (!selectedThreadId) return;
-                  if (!handledById) return;
+              <h3 className="text-sm font-medium">Collaborator</h3>
+              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {selectedCollaboratorId ? (labelForUserId(selectedCollaboratorId) || '—') : '—'}
+              </div>
 
-                  const allowed = new Set(superAgentMemberAgentIds);
-                  if (val && !allowed.has(val)) {
-                    toast.error("Collaborator must be a member of the handled-by super agent");
-                    return;
-                  }
-
-                  setCollaboratorOverride({ threadId: selectedThreadId, userId: val });
-                  try {
-                    await setThreadCollaborator(selectedThreadId, val);
-                    toast.success(val ? "Collaborator updated" : "Collaborator cleared");
-                  } catch (e) {
-                    setCollaboratorOverride(prev => (prev?.threadId === selectedThreadId ? null : prev));
-                    toast.error("Failed to update collaborator");
-                  }
-                }}
-                placeholder={handledById ? "Select Collaborator" : "Select handled by first"}
-                searchPlaceholder="Search agent..."
-                className="w-full"
-                disabled={
-                  isSelectedConversationDone ||
-                  !handledById ||
-                  (!isMasterAgent && !isSuperAgent)
-                }
-                allowClear
-                clearLabel="Clear collaborator"
-              />
             </div>
 
             {/* Notes */}
