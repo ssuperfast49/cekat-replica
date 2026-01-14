@@ -438,18 +438,29 @@ const upsertFromRows = useCallback((rows: any[]) => {
       }
 
       if (role === 'user') {
+        // Match real user row to any pending optimistic temp message with the same body,
+        // even if the backend response arrives much later (e.g., after AI finishes).
+        const incomingAt = new Date(r.created_at || Date.now()).getTime();
+        let bestKey: string | null = null;
+        let bestOrder: number | null = null;
+        let bestDiff = Number.POSITIVE_INFINITY;
         for (const [key, value] of map.entries()) {
-          if (
-            value.id.startsWith('temp-') &&
-            value.role === 'user' &&
-            value.body === r.body &&
-            Math.abs(new Date(value.at).getTime() - new Date(r.created_at).getTime()) < 10000
-          ) {
-            inheritedOrder = value.order;
-            map.delete(key);
-            changed = true;
-            break;
+          if (!key.startsWith('temp-')) continue;
+          if (value.role !== 'user') continue;
+          if ((value.body || '').trim() !== (r.body || '').trim()) continue;
+          const tempAt = new Date(value.at).getTime();
+          const diff = Number.isFinite(tempAt) ? Math.abs(incomingAt - tempAt) : 0;
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestKey = key;
+            bestOrder = value.order ?? null;
           }
+        }
+        if (bestKey) {
+          inheritedOrder = bestOrder;
+          map.delete(bestKey);
+          lastOptimisticIdRef.current = null;
+          changed = true;
         }
       }
 

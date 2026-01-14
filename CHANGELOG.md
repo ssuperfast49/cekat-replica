@@ -1,4 +1,10 @@
 # Change Log
+# [0.1.53] FE WEB CEKAT 2026-01-15
+### Live Chat
+- **Late-arriving user rows replace optimistics**: If the backend inserts the real user message after the AI reply, the message now replaces its optimistic twin instead of showing twice, eliminating double “Hello” bubbles.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Commit**: `fix: livechat dedupe optimistic user messages`
+
 # [0.1.52] FE WEB CEKAT 2026-01-14
 ### Conversations & Assignment Flow
 - **Unassign keeps handled-by, clears collaborator**: Moving a chat to Unassigned now only nulls `collaborator_user_id`, reopens AI, and keeps the handled-by assignee intact while placing the thread in the Unassigned tab.
