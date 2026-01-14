@@ -176,14 +176,10 @@ const computeAssignmentState = (source: {
 }) => {
     const status = (source?.status || '').toLowerCase();
     const isClosed = status === 'closed';
-    const aiActive = source?.ai_access_enabled === true && !source?.ai_handoff_at;
 
-    // Assignment no longer derives from assignee_user_id/channel super agent.
-    const assignedFromSignals =
-      Boolean(source?.assigned_at) ||
-      (!aiActive && source?.ai_access_enabled === false) ||
-      (!!source?.ai_handoff_at) ||
-      status === 'assigned';
+  // IMPORTANT: Trust DB status. We do NOT infer "assigned" from ai_handoff_at/ai_access_enabled/etc.
+  // This avoids front-end "status correction" overriding the RPC result (e.g. unassign -> open).
+  const assignedFromSignals = status === 'pending' || status === 'assigned';
 
     const assigned = !isClosed && assignedFromSignals;
 
@@ -215,17 +211,6 @@ const computeAssignmentState = (source: {
                 ? conv.super_agent_name || conv.assignee_name || '—'
                 : conv.assignee_name || '—'
               : '—';
-          // FE status rule:
-          // - "open"   = Unassigned
-          // - "pending"= Assigned
-          // - "closed" = Done
-          const nextStatus: Thread['status'] =
-            conv.status === 'closed'
-              ? 'closed'
-              : assignment.assigned
-                ? 'pending'
-                : 'open';
-
           return {
             ...conv,
             last_message_preview: (lastMessage?.body || '').toString().replace(/\s+/g, ' ').trim() || '—',
@@ -236,7 +221,7 @@ const computeAssignmentState = (source: {
             assigned: assignment.assigned,
             assignee_user_id: assignment.assignee_user_id,
             assignee_name: assigneeName,
-            status: nextStatus,
+            status: conv.status,
           };
         }
         return conv;
@@ -346,14 +331,6 @@ const computeAssignmentState = (source: {
         userIdToName = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.display_name || '—']));
       }
 
-      const statusUpdates: Array<{
-        id: string;
-        status: Thread['status'];
-        assignee_user_id: string | null;
-        needsAssignedAt: boolean;
-        shouldClearAssignee: boolean;
-      }> = [];
-
       // Transform data to match the expected format
       const transformedData: ConversationWithDetails[] = (data || []).map((thread: any) => {
         const last = Array.isArray(thread.messages) && thread.messages.length > 0 ? thread.messages[0] : null;
@@ -381,27 +358,6 @@ const computeAssignmentState = (source: {
           : '—';
 
         const currentStatus = (thread.status || 'open') as Thread['status'];
-        // FE status rule:
-        // - "open"   = Unassigned
-        // - "pending"= Assigned
-        // - "closed" = Done
-        // assignment.assigned is derived from multiple signals (incl. status === pending)
-        const desiredStatus: Thread['status'] =
-          currentStatus === 'closed'
-            ? 'closed'
-            : assignment.assigned
-              ? 'pending'
-              : 'open';
-
-        if (desiredStatus !== currentStatus) {
-          statusUpdates.push({
-            id: thread.id,
-            status: desiredStatus,
-            assignee_user_id: assignment.assignee_user_id ?? null,
-            needsAssignedAt: desiredStatus === 'pending' && !thread.assigned_at && !!assignment.assignee_user_id,
-            shouldClearAssignee: assignment.assignee_user_id == null,
-          });
-        }
 
         return {
           ...thread,
@@ -435,7 +391,7 @@ const computeAssignmentState = (source: {
           ai_access_enabled: thread.ai_access_enabled ?? false,
           super_agent_id: channelSuperAgentId,
           super_agent_name: channelSuperAgentName,
-          status: desiredStatus,
+          status: currentStatus,
           unreplied,
         } as ConversationWithDetails;
       });
@@ -471,38 +427,8 @@ const computeAssignmentState = (source: {
 
       setConversations(sortedData);
 
-      if (statusUpdates.length > 0) {
-        // Run updates in background to avoid blocking the UI flow
-        (async () => {
-          for (const update of statusUpdates) {
-            try {
-              const payload: Record<string, any> = { status: update.status };
-              if (update.status === 'pending') {
-                if (update.assignee_user_id) {
-                  payload.assignee_user_id = update.assignee_user_id;
-                }
-                if (update.needsAssignedAt && update.assignee_user_id) {
-                  payload.assigned_at = new Date().toISOString();
-                }
-              }
-              if (update.shouldClearAssignee) {
-                payload.assignee_user_id = null;
-                payload.assigned_at = null;
-              }
-              const { error } = await protectedSupabase
-                .from('threads')
-                .update(payload)
-                .eq('id', update.id);
-              
-              if (error) {
-                throw error;
-              }
-            } catch (err) {
-              console.warn('Failed to sync thread status', err);
-            }
-          }
-        })();
-      }
+      // IMPORTANT: Do not auto-sync/overwrite status from the frontend.
+      // Status transitions are server-owned (RPCs / backend workflows).
 
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -525,18 +451,11 @@ const computeAssignmentState = (source: {
         status: row.status ?? current.status,
         ai_handoff_at: row.ai_handoff_at ?? (current as any).ai_handoff_at ?? null,
       });
-      const normalizedStatus = (() => {
-        const s = String(row.status ?? current.status ?? '').toLowerCase();
-        if (s === 'closed') return 'closed';
-        if (s === 'assigned') return 'assigned';
-        if (s === 'pending') return 'pending';
-        if (s === 'open') return assignment.assigned ? 'assigned' : 'open';
-        return assignment.assigned ? 'assigned' : 'open';
-      })() as Thread['status'];
       const patched = {
         ...current,
-        status: normalizedStatus,
-          assignee_user_id: current.assignee_user_id,
+        status: (row.status ?? current.status) as any,
+        assignee_user_id: row.assignee_user_id ?? current.assignee_user_id,
+        collaborator_user_id: row.collaborator_user_id ?? current.collaborator_user_id,
         assigned_at: row.assigned_at ?? current.assigned_at,
         resolved_at: row.resolved_at ?? current.resolved_at,
         resolved_by_user_id: row.resolved_by_user_id ?? current.resolved_by_user_id,
@@ -1023,6 +942,40 @@ const computeAssignmentState = (source: {
     }
   };
 
+  // Takeover: set collaborator to current user, status -> pending, do NOT touch assignee_user_id
+  const takeoverThread = async (threadId: string) => {
+    const { error: rpcError, data: rpcData } = await protectedSupabase.rpc('takeover_thread', { p_thread_id: threadId });
+    if (rpcError) {
+      console.warn('takeover_thread RPC failed, falling back to direct update', rpcError);
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+      if (!currentUserId) throw rpcError;
+      const nowIso = new Date().toISOString();
+      const { error: updErr } = await protectedSupabase
+        .from('threads')
+        .update({
+          collaborator_user_id: currentUserId,
+          status: 'pending',
+          assigned_at: nowIso,
+        })
+        .eq('id', threadId);
+      if (updErr) throw updErr;
+    }
+
+    await fetchConversations(undefined, { silent: true });
+    await fetchMessages(threadId);
+    return rpcData as any;
+  };
+
+  // Unassign: clear collaborator, status -> open, leave assignee_user_id alone
+  const unassignThread = async (threadId: string) => {
+    const { data, error } = await protectedSupabase.rpc('unassign_thread', { p_thread_id: threadId });
+    if (error) throw error;
+    await fetchConversations(undefined, { silent: true });
+    await fetchMessages(threadId);
+    return data as any;
+  };
+
   // Set collaborator on a thread (single value stored on threads)
   const setThreadCollaborator = async (threadId: string, userId: string | null) => {
     try {
@@ -1404,6 +1357,8 @@ const computeAssignmentState = (source: {
     createConversation,
     assignThread,
     assignThreadToUser,
+    takeoverThread,
+    unassignThread,
     clearCollaborator,
     setThreadCollaborator,
     addThreadLabel,
