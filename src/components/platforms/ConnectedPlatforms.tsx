@@ -1493,7 +1493,18 @@ const ConnectedPlatforms = () => {
                     </div>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button className="bg-red-600 hover:bg-red-700 text-white">Delete Channel</Button>
+                        <Button
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                          disabled={isDeletingChannel}
+                          aria-busy={isDeletingChannel}
+                        >
+                          {isDeletingChannel ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Deleting…</span>
+                            </span>
+                          ) : 'Delete Channel'}
+                        </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <DangerHeader>

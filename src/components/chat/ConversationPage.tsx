@@ -277,6 +277,7 @@ export default function ConversationPage() {
     assignThreadToUser,
     takeoverThread,
     unassignThread,
+    clearCollaborator,
     deleteThread,
     setThreadCollaborator,
   } = useConversations();
@@ -879,38 +880,18 @@ export default function ConversationPage() {
   const selectedStatus = (selectedConversation?.status || '').toLowerCase();
   const aiAllowedByStatus = selectedStatus === 'pending';
 
+  // Only the collaborator who took over can send replies
   const roleAllowsSend = useMemo(() => {
-    if (isMasterAgent || isSuperAgent) return true;
-    if (handledById && currentUserId && handledById === currentUserId) return true;
-    if (selectedCollaboratorId && currentUserId && selectedCollaboratorId === currentUserId) return true;
-    if (isRegularAgentOnly && isCurrentUserCollaborator) return true;
-    return false;
-  }, [
-    isMasterAgent,
-    isSuperAgent,
-    handledById,
-    currentUserId,
-    selectedCollaboratorId,
-    isRegularAgentOnly,
-    isCurrentUserCollaborator,
-  ]);
+    if (!currentUserId) return false;
+    return selectedCollaboratorId === currentUserId;
+  }, [currentUserId, selectedCollaboratorId]);
 
-  const aiSendAllowed = canSendMessagesPermission && aiAllowedByStatus;
-  const canCurrentUserSend = roleAllowsSend || aiSendAllowed;
+  const canCurrentUserSend = roleAllowsSend;
 
   const sendDisabledReason = useMemo(() => {
     if (canCurrentUserSend) return undefined;
-    if (!roleAllowsSend && !aiSendAllowed) {
-      return 'You do not have permission to send messages.';
-    }
-    if (!aiAllowedByStatus && canSendMessagesPermission && !roleAllowsSend) {
-      return 'AI replies are disabled once the thread leaves Pending.';
-    }
-    if (!roleAllowsSend && isRegularAgentOnly) {
-      return 'Only the assigned collaborator can send messages.';
-    }
-    return undefined;
-  }, [canCurrentUserSend, roleAllowsSend, aiSendAllowed, canSendMessagesPermission, aiAllowedByStatus, isRegularAgentOnly]);
+    return 'Only the collaborator who took over can send messages.';
+  }, [canCurrentUserSend]);
 
   useEffect(() => {
     if (!selectedThreadId) {
@@ -950,6 +931,7 @@ export default function ConversationPage() {
     }
     setMoveToUnassignedLoading(true);
     try {
+      // Use RPC-backed unassign to clear collaborator and reopen AI without changing handled-by
       await unassignThread(selectedConversation.id);
       setCollaboratorOverride({ threadId: selectedConversation.id, userId: null });
       toast.success('Conversation moved to Unassigned');

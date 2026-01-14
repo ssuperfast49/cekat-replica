@@ -1,4 +1,12 @@
 # Change Log
+# [0.1.52] FE WEB CEKAT 2026-01-14
+### Conversations & Assignment Flow
+- **Unassign keeps handled-by, clears collaborator**: Moving a chat to Unassigned now only nulls `collaborator_user_id`, reopens AI, and keeps the handled-by assignee intact while placing the thread in the Unassigned tab.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Takeover sets collaborator**: Takeover without reassignment now sets `collaborator_user_id` to the agent who took over, without touching handled-by.
+  - Updated: `src/hooks/useConversations.ts`
+- **Commit**: `chore: unassign clears collaborator only; takeover sets collaborator; lock collaborator replies`
+
 # [0.1.51] FE WEB CEKAT 2026-01-15
 ### Conversations & System Events
 - **System logs for assignment actions**: Takeover, Move to Unassigned, and Resolve now add system `event` messages to the thread timeline with actor details, keeping the audit trail visible in chat.
