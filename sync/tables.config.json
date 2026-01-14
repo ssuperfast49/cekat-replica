@@ -22,7 +22,6 @@
     { "name": "super_agent_members", "primaryKeys": ["super_agent_id", "agent_user_id"] },
     { "name": "channels", "primaryKeys": ["id"] },
     { "name": "channel_agents", "primaryKeys": ["channel_id", "user_id"] },
-    { "name": "thread_collaborators", "primaryKeys": ["thread_id", "user_id"] },
     { "name": "threads", "primaryKeys": ["id"], "incrementalFields": ["updated_at", "created_at"] },
     { "name": "messages", "primaryKeys": ["id"], "incrementalFields": ["updated_at", "created_at"] },
     { "name": "contacts", "primaryKeys": ["id"] },

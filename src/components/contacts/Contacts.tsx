@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, Key } from "lucide-react";
+import { Filter, Search, MessageSquare, Edit, ChevronLeft, ChevronRight, Loader2, RefreshCw, X, Copy, Eye, User, Phone, Mail, Calendar, MessageCircle, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, Key, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,7 @@ import { protectedSupabase } from "@/lib/supabase";
 export default function Contacts() {
   const { hasRole } = useRBAC();
   const isMasterAgent = hasRole('master_agent');
+  const isSuperAgent = hasRole('super_agent');
   
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -258,8 +259,17 @@ export default function Contacts() {
 
   const renderChatStatus = (status?: string) => {
     if (!status || status === '—') return <span className="text-muted-foreground">—</span>;
-    const color = status === 'open' ? 'bg-blue-100 text-blue-700' : status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700';
-    return <Badge className={`${color} border-0`}>{status}</Badge>;
+    const normalized = status.toLowerCase();
+    const color =
+      normalized === 'open'
+        ? 'bg-blue-100 text-blue-700'
+        : normalized === 'assigned'
+          ? 'bg-indigo-100 text-indigo-700'
+          : normalized === 'pending'
+            ? 'bg-amber-100 text-amber-700'
+            : 'bg-green-100 text-green-700';
+    const label = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    return <Badge className={`${color} border-0`}>{label}</Badge>;
   };
 
   return (
@@ -311,7 +321,7 @@ export default function Contacts() {
                             <HelpCircle className="w-4 h-4 text-muted-foreground cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Filter berdasarkan status percakapan: Open (terbuka), Pending (menunggu), atau Closed (tertutup)</p>
+                            <p>Filter berdasarkan status percakapan: Open (terbuka), Assigned (ditangani), Pending (menunggu), atau Closed (tertutup)</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -330,6 +340,7 @@ export default function Contacts() {
                         <SelectContent>
                           <SelectItem value="all">All statuses</SelectItem>
                           <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="assigned">Assigned</SelectItem>
                           <SelectItem value="pending">Pending</SelectItem>
                           <SelectItem value="closed">Closed</SelectItem>
                         </SelectContent>
@@ -768,6 +779,23 @@ export default function Contacts() {
                           </TooltipTrigger>
                           <TooltipContent>Edit contact</TooltipContent>
                         </Tooltip>
+                        {(isMasterAgent || isSuperAgent) && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                aria-label="Delete contact"
+                                onClick={() => handleDeleteContact(contact.id)}
+                                variant="ghost"
+                                title="Delete contact"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Delete contact</TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="font-medium">

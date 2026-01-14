@@ -256,7 +256,6 @@ export default function Login({ onBack }: LoginProps) {
                       required
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">We’ll send a one-time code after login.</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="login-password">Password</Label>
@@ -289,9 +288,6 @@ export default function Login({ onBack }: LoginProps) {
                         <Eye className="h-4 w-4" />
                       )}
                     </Button>
-                  </div>
-                  <div className="flex items-center justify-end text-xs">
-                    <Link to="/reset-password" className="hover:underline">Forgot password?</Link>
                   </div>
                 </div>
                 {/* CAPTCHA */}

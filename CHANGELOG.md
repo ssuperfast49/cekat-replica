@@ -1,4 +1,228 @@
 # Change Log
+# [0.1.52] FE WEB CEKAT 2026-01-14
+### Conversations & Assignment Flow
+- **Unassign keeps handled-by, clears collaborator**: Moving a chat to Unassigned now only nulls `collaborator_user_id`, reopens AI, and keeps the handled-by assignee intact while placing the thread in the Unassigned tab.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Takeover sets collaborator**: Takeover without reassignment now sets `collaborator_user_id` to the agent who took over, without touching handled-by.
+  - Updated: `src/hooks/useConversations.ts`
+- **Commit**: `chore: unassign clears collaborator only; takeover sets collaborator; lock collaborator replies`
+
+# [0.1.51] FE WEB CEKAT 2026-01-15
+### Conversations & System Events
+- **System logs for assignment actions**: Takeover, Move to Unassigned, and Resolve now add system `event` messages to the thread timeline with actor details, keeping the audit trail visible in chat.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+
+# [0.1.50] FE WEB CEKAT 2026-01-14
+### Conversations & Ownership
+- **Collaborators are now read-only**: The sidebar shows the current collaborator label while only “Takeover Chat” reclaims the slot; the select was removed to enforce the one-collaborator invariant.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Takeover/Unassign RPCs respect status**: `takeover_thread`/`unassign_thread` now only swap `collaborator_user_id` / status/assigned_at, and the frontend trusts the returned `status` so “Move to Unassigned” stays open after refresh.
+  - Updated: `src/hooks/useConversations.ts`
+- **RPC definitions and constraints**: Supabase migration adds status/collaborator invariants plus SECURITY DEFINER RPCs (`takeover_thread`, `unassign_thread`) that preserve `assignee_user_id` while updating collaborators.
+  - Updated: `supabase/migrations/20260114090000_thread_collab_takeover.sql`
+
+# [0.1.49] FE WEB CEKAT 2026-01-13
+### Add delete button in contacts
+- **Added button for delete contact**: button delete contact is available for role master agent and super agent.
+
+# [0.1.48] FE WEB CEKAT 2026-01-13
+### Conversation Ownership
+- **Handled By now respects real assignees**: `computeAssignmentState` keeps the `assignee_user_id` if the thread is assigned, so `ConversationPage` can show the handler’s display name again instead of rendering “—”.
+  - Updated: `src/hooks/useConversations.ts`
+
+### Platform Ownership
+- **Super-agent scoped human/AI selection**: The Connected Platforms sidebar only lists human agents and AI profiles that belong to the channel’s assigned super agent while keeping the already selected options visible, keeping ownership aligned across collaborators and bots.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
+# [0.1.46] FE WEB CEKAT 2026-01-13
+### Live Chat
+- **Stable account names**: Friendly username is now stored per `account_id` (localStorage) instead of per session, so the same account can’t generate multiple display names across sessions.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Supabase types parity**: `threads` types include `account_id` to match the schema and avoid TS errors on account-based queries.
+  - Updated: `src/integrations/supabase/types.ts`
+- **Commit**: `chore: bind livechat name to account and fix threads types`
+
+# [0.1.45] FE WEB CEKAT 2026-01-13
+### Live Chat & Types
+- **Account-scoped attach only**: Live chat now only attaches to threads that match the current `account_id`/session and no longer reuses stored thread IDs; if none exist, it waits for an external creator (e.g., n8n) rather than auto-creating.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Supabase types parity**: Added `account_id` to the `threads` types to match the schema changes and avoid TS errors on account-based selects.
+  - Updated: `src/integrations/supabase/types.ts`
+- **Commit**: `chore: livechat account attach only & fix supabase types`
+
+# [0.1.44] FE WEB CEKAT 2026-01-13
+### WhatsApp / n8n Proxy Hardening
+- **Session disconnect via proxy-n8n**: WhatsApp disconnect now calls the `session.logout` proxy route (no legacy Railways) before disconnecting, matching the n8n route table.
+- **Scoped polling on disconnect**: Only WhatsApp sessions are refreshed during disconnect polling, using a fresh `sessionsRef` to avoid stale state; no broad platform refresh.
+- **Spam-proof delete**: Danger zone delete button is guarded by the in-flight flag to prevent repeated clicks while deletion is in progress.
+
+### Supabase (live chat reference)
+- **Account-scoped anon access**: Policies persisted in migrations (`20260113000001`, `20260113000002`) enforce `account_id` + `x-account-id` for threads/messages; legacy null-account fallback removed. Anonymous users cannot fetch other accounts’ threads or messages.
+- **Edge function routing**: `proxy-n8n` is the path for WhatsApp session actions; `session.disconnect` route added to n8n route table; `DISCONNECT_SESSION` now points to `session.logout`.
+
+# [0.1.43] FE WEB CEKAT 2026-01-13
+### Live Chat (Account-scoped reuse)
+- **One thread per account (frontend & DB guard)**: Live chat now reads `account_id` from `localStorage` and reuses/reopens the existing thread for that account/channel (falls back to session/alias if no account). Added `account_id` column plus a unique index on `(channel_id, account_id)` when set to prevent duplicate threads.
+  - Updated: `src/pages/LiveChat.tsx`, `src/hooks/useConversations.ts`
+  - New: `supabase/migrations/20260113000001_add_account_id_to_threads.sql`
+- **Anonymous: new thread per cleared storage**: If local/session storage is empty, a fresh `account_id` is generated per channel and legacy thread auto-attach is disabled, so each new browser/cleared storage starts a new thread.
+  - Updated: `src/pages/LiveChat.tsx`
+  
+### Live Chat (anon account-id hardening)
+- **Fetch-only on load (no auto-create)**: Live chat no longer creates threads on refresh; it only attaches to existing threads that match the current `account_id` (and session). Threads are expected to be created externally (e.g., n8n) and delivered via realtime or subsequent fetch.
+- **Thread reuse by account only**: Stored thread reuse was removed; lookup now requires account/session match (no name fallback when account_id exists).
+- **Headers for anon RLS**: The live chat Supabase client sends `x-account-id` for all requests so anon RLS policies apply.
+
+### Supabase (migration/reference)
+- **account_id column & unique index**: Added `account_id` to `public.threads` and a unique index `(channel_id, account_id)` when `account_id` is set (`supabase/migrations/20260113000001_add_account_id_to_threads.sql`).
+- **Edge function auth**: `proxy-n8n` redeployed with `verify_jwt=false` to allow anonymous calls (still HMAC-signs to n8n).
+- **RLS (anon by account_id)**:
+  - Threads: `anon_threads_by_account` (SELECT) and `anon_threads_insert_by_account` (INSERT) require `account_id` = `x-account-id`.
+  - Messages: `anon_messages_by_account` (SELECT) and `anon_messages_insert_by_account` (INSERT) require parent thread `account_id` = `x-account-id`.
+  - Channels: `anon_channels_web_minimal` allows anon SELECT on web channels to read minimal metadata.
+  - Legacy null-account fallback policies were removed; anon access now hinges on matching `account_id`.
+
+# [0.1.42] FE WEB CEKAT 2026-01-13
+### Conversations & Assignment Flow
+- **Realtime tab-safe updates**: Thread status/assignee changes now patch the conversation list via realtime updates without needing a manual refresh; tabs stay put even when counts change underneath.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Tab UX hardening**: Tabs remain clickable/selectable even when empty; user-selected tabs no longer auto-bounce when counts shift.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Resolve re-enables AI**: Resolving a conversation now flips `ai_access_enabled` back on and clears `ai_handoff_at` so AI can respond immediately after resolution.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+# [0.1.41] FE WEB CEKAT 2026-01-12
+- **Thread controls respect roles & stay real-time**: “Move to Unassigned” now only renders and functions for master/super agents (regular agents get a toast if they try), and the focused conversation keeps subscribing to its thread plus calling `fetchMessages` in a stable hook so status changes surface instantly.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Super agents can edit platform human agents**: The human-agent multi-select inside platform details now bypasses the `channel_agents.update` gate for `super_agent` roles so they can add/remove collaborators without an extra permission.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+# [0.1.40] FE WEB CEKAT 2026-01-12
+### Conversations & Assignment Flow
+- **Correct tab mapping for statuses**: “Assigned” now strictly maps to `status === "pending"` while “Unassigned” maps to `status === "open"` so the sidebar tally matches the database truth, and the legacy `assigned` enum is only treated as assigned for backward compatibility.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Render unassigned threads as open**: Assignment-sensitive logic now only considers a thread assigned when an assignee (or similar signal) exists; a bare `pending` status without an assignee rewrites to `open`, ensuring those rows appear under the Unassigned tab.
+  - Updated: `src/hooks/useConversations.ts`
+# [0.1.39] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+- **Takeover preserves handled by**: Takeover chat action now only changes thread status from "pending" (Unassigned) to "assigned", without modifying the "Handled By" field. This ensures the original super agent assignment is preserved regardless of who takes over the conversation.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Conditional assignee updates**: Added `setAssignee` option to `assignThread` function for explicit assignment control. Takeover always uses `setAssignee: false` to preserve existing assignments.
+  - Updated: `src/hooks/useConversations.ts`
+
+### UI/UX Improvements
+- **Login form cleanup**: Removed redundant UI text elements from login form (one-time code message and forgot password link) to streamline the authentication interface.
+  - Updated: `src/components/auth/Login.tsx`
+
+# [0.1.38] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+- **Inline status controls**: Assigned threads now show a “Move to Unassigned” button next to Resolve, keeping status transitions and the list state in sync without page refreshes.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Server-truth status updates**: Removed optimistic status toggles (and stopped writing the unsupported `'assigned'` enum) so moving or taking over a single thread no longer makes other rows flicker; UI now waits for Supabase to confirm before updating.
+- **Takeover preserves handled-by**: Regular agents now claim chats without overwriting the super agent’s “Handled By” field; only masters/supers promote themselves while collaborators simply flip the status and log the event.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+
+# [0.1.37] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+- Updated: `src/components/chat/ConversationPage.tsx`
+- **Takeover scoped to Unassigned**: The Takeover Chat CTA now renders only when a thread is truly in the Unassigned state, preventing accidental reassignment attempts from other tabs.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Role-based composer rules**: Collaborators (when they’re the logged-in user), super agents, and master agents now get the message composer even on unassigned threads, while other agents still see the takeover prompt until they claim the chat.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Hide master agents from selectors**: Master agents can still act on any thread, but they no longer appear in the Handled By or Collaborator dropdowns to avoid accidental assignment to all-powerful accounts.
+
+# [0.1.36] FE WEB CEKAT 2026-01-11
+### Conversations & Assignment Flow
+- **Three-state workflow overhaul**: Replaced the legacy status heuristic with an explicit `Assigned / Unassigned / Done` flow that keys off `status` plus the presence of a collaborator. Counts, badges, tab filters, and auto-selection now stay in sync with the new rules and never fall back to the deprecated multi-collaborator state.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Collaborator switch stability**: Guarded the URL/thread synchronization logic so picking a collaborator no longer triggers a rapid tab flip that spammed list/message fetches.
+
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Collaboration Data Model & Permissions
+- **Single-column collaborator model**: Added a migration that backfills `threads.collaborator_user_id`, rewires all RLS policies to reference that column, and drops the obsolete `thread_collaborators` table plus its triggers.
+  - New: `supabase/migrations/20260110_remove_thread_collaborators.sql`
+  - Updated: `supabase/migrations/permissions_update_and_policies_updates.sql`, `supabase/migrations/20251124230847_baseline.sql`, `supabase/schema.sql`, `sync/tables.config.json`
+- **Typed API parity**: Regenerated Supabase types so the frontend integrations include the new `collaborator_user_id` field and foreign key metadata.
+  - Updated: `src/integrations/supabase/types.ts`
+
+### Navigation & RBAC
+- **Hide AI Agents for regular agents**: Sidebar configuration now outright hides the AI Agents menu when the signed-in user only has the `agent` role, preventing them from entering AI profile management.
+  - Updated: `src/config/navigation.ts`, `src/hooks/useNavigation.ts`
+
+# [0.1.35] FE WEB CEKAT 2026-01-10
+### Housekeeping
+- **Line-ending normalization (no logic changes)**: Synchronized CRLF/LF on chat/contact pages and hooks to keep diffs clean without altering runtime behavior.
+  - Touched: `src/components/chat/ConversationPage.tsx`, `src/components/contacts/Contacts.tsx`, `src/hooks/useContacts.ts`, `src/hooks/useConversations.ts`, `src/pages/LiveChat.tsx`
+- **Migration formatting**: Tidied whitespace in the `thread_status` enum migration to match our SQL formatting conventions.
+  - Updated: `supabase/migrations/20260109000000_add_assigned_thread_status.sql`
+
+# [0.1.34] FE WEB CEKAT 2026-01-09
+### Live Chat & Messaging
+- **Realtime Message Recovery**: Fixed a bug where customer messages (role: 'user') were filtered out of the realtime feed, ensuring the chat window correctly updates when messages are persisted to the database.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Smart Message Deduplication**: Added a client-side deduplication pass that prevents "double bubbles" when both an optimistic send and a database insert arrive near-simultaneously (2-second window).
+  - Updated: `src/pages/LiveChat.tsx`
+- **Resilient Thread Attachment**: Relaxed the thread lookup logic so the widget gracefully falls back to the most recent channel activity if a session-id match isn't immediately found—no more hanging on "Waiting for response".
+  - Updated: `src/pages/LiveChat.tsx`
+
+### Assignment & Status Management
+- **Thread Status Enum Extension**: Added a new `assigned` value to the database `thread_status` enum to properly distinguish between new inquiries and those handled by a super agent or human.
+  - New: `supabase/migrations/20260109000000_add_assigned_thread_status.sql`
+- **Automated Assignment Flow**: Threads now automatically transition to `assigned` status when a bot hands off or a super agent is linked to the platform, while remaining in `open` for fresh inquiries.
+  - Updated: `src/hooks/useConversations.ts`
+- **Enum Safety Fallback**: Added a catch for Supabase error `22P02` so the app gracefully falls back to `open` status if the new `assigned` enum value hasn't been applied to the database yet.
+  - Updated: `src/hooks/useConversations.ts`
+- **Handled-By Display Logic**: Refactored the UI to show the platform's super agent as the default handler for bot-managed threads without incorrectly flagging them as "Assigned" until a real handoff occurs.
+  - Updated: `src/hooks/useConversations.ts`
+
+### UI/UX Polish
+- **Silent Background Refresh**: Implemented a "silent" fetch mode for conversation lists that bypasses global loading states, eliminating the screen "blinking" effect when sending messages or receiving updates.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Toaster Cleanup**: Removed redundant "Message sent successfully" notifications to reduce UI clutter, keeping toasts reserved for actual errors or critical events.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Enhanced Contact Filtering**: Surfaced the new `assigned` status in the Contacts view with proper badge coloring and filter support.
+  - Updated: `src/components/contacts/Contacts.tsx`, `src/hooks/useContacts.ts`
+- **Live Chat Realtime Resync**: Added a lightweight catch-up mechanism that rehydrates conversations if the Supabase realtime channel drops or the tab wakes from suspension—no constant polling required.
+  - Updated: `src/pages/LiveChat.tsx`
+- **New Thread Subscription Fix**: Realtime subscriptions now hydrate newly created live chat threads immediately without requiring a manual refresh.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Queued Catch-Up Requests**: Ensures live chat queues multiple background fetches when the first message creates a thread so the AI reply appears without manual reloads, retries the AI webhook on transient failures, and preserves message order for streaming replies.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Session-Scoped Live Chat Threads**: Persist the live chat thread per browser session and only attach to threads created for the current session username, so concurrent visitors no longer see mixed conversations.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Streaming Placeholder Cleanup**: Replace temporary assistant bubbles with the persisted Supabase message as soon as it arrives, preventing the UI from flickering or reordering when replies land.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Thread Restore Fallbacks**: If Supabase hasn't stamped a `session_id`, the live chat gracefully falls back to the contact alias when restoring or attaching to a thread—no more blank states or scrolling jumps.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Realtime Catch-Up Safety Net**: After each API send, the widget aggressively refetches the thread so AI replies render even if realtime events arrive late.
+  - Updated: `src/pages/LiveChat.tsx`
+
+# [0.1.33] FE WEB CEKAT 2026-01-08
+### Conversations
+- **Role-aware Message Composer**: Chat input now enables whenever a user has `messages.create`, is a master/super agent, is the current handled-by assignee, or is the selected collaborator—ensuring the right people can reply without manual overrides.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+# [0.1.32] FE WEB CEKAT 2026-01-08
+### Platform Management
+- **Live Chat Link Quality-of-Life**: Added copy-to-clipboard buttons with toast feedback for both the live chat URL and embed snippet so teammates can drop links/widgets faster without selecting text manually.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
+### Navigation & RBAC
+- **Guaranteed Human Agents Menu for Supervisors**: Super agents now always see the Human Agents sidebar item (role bypass) and can open the roster even if their read permissions are still syncing.
+  - Updated: `src/config/navigation.ts`, `src/hooks/useNavigation.ts`, `src/components/navigation/PermissionNavItem.tsx`, `src/pages/Index.tsx`
+
+### Human Agent Management
+- **Super Agent Focused View**: When a super agent opens the roster the Create button and Pending tab disappear, role/status filters are hidden, and all action buttons (status, limits, delete) are automatically allowed for members in their own cluster thanks to the new `roleBypass` helper.
+  - Updated: `src/components/humanagents/HumanAgents.tsx`, `src/components/rbac/PermissionGate.tsx`
+
+### Conversation Sidebar
+- **Handled By Read-Only**: The “Handled By” field is now display-only, preventing mid-conversation reassignment from the info pane while still showing who currently owns the thread.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+# [0.1.31] FE WEB CEKAT 2026-01-08
+- **Live Chat Realtime-Only Sync**: Removed the 2-second polling loop from the live chat widget so updates rely solely on Supabase realtime subscriptions, cutting unnecessary network and memory usage.
+  - Updated: `src/pages/LiveChat.tsx`
+
 # [0.1.30] FE WEB CEKAT 2026-01-07
 ### Platform Management
 - **Live Chat Takeover Notices**: System takeover events now render as toast notifications instead of chat bubbles, keeping conversation history clean while still informing customers.
