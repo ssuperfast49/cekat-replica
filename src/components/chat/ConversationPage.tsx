@@ -979,6 +979,27 @@ export default function ConversationPage() {
         })
         .eq('id', selectedConversation.id);
       if (error) throw error;
+
+      // Log system event for resolve
+      try {
+        const { data: profile } = await supabase
+          .from('users_profile')
+          .select('display_name')
+          .eq('user_id', user?.id ?? '')
+          .single();
+
+        await protectedSupabase.from('messages').insert([{
+          thread_id: selectedConversation.id,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Conversation resolved by ${profile?.display_name || user?.email || 'agent'}.`,
+          payload: { event: 'resolve', user_id: user?.id ?? null },
+        }]);
+      } catch (eventErr) {
+        console.warn('Failed to insert resolve event message', eventErr);
+      }
+
       toast.success('Conversation resolved');
       setActiveTab('done');
       await fetchConversations(undefined, { silent: true });

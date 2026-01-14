@@ -1023,10 +1023,9 @@ begin
     update public.threads
        set status = 'open',
            resolved_at = null,
-           resolved_by_user_id = null,
-           assignee_user_id = null,
-           assigned_at = null,
-           assigned_by_user_id = null
+           resolved_by_user_id = null
+           -- Removed: assignee_user_id = null, assigned_at = null, assigned_by_user_id = null
+           -- This preserves the "handled by" value when reopening threads
      where id = new.thread_id
        and status = 'closed';
   end if;

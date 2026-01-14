@@ -938,6 +938,33 @@ const computeAssignmentState = (source: {
       if (updErr) throw updErr;
     }
 
+    // Log system event for takeover
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const currentUserId = userRes?.user?.id || null;
+
+      let displayName: string | null = null;
+      if (currentUserId) {
+        const { data: profile } = await supabase
+          .from('users_profile')
+          .select('display_name')
+          .eq('user_id', currentUserId)
+          .single();
+        displayName = profile?.display_name || null;
+      }
+
+      await protectedSupabase.from('messages').insert([{
+        thread_id: threadId,
+        direction: null,
+        role: 'system',
+        type: 'event',
+        body: `Conversation taken over by ${displayName || userRes?.user?.email || 'agent'}.`,
+        payload: { event: 'takeover', user_id: currentUserId },
+      }]);
+    } catch (eventErr) {
+      console.warn('Failed to insert takeover event message', eventErr);
+    }
+
     await fetchConversations(undefined, { silent: true });
     await fetchMessages(threadId);
     return rpcData as any;
@@ -947,6 +974,34 @@ const computeAssignmentState = (source: {
   const unassignThread = async (threadId: string) => {
     const { data, error } = await protectedSupabase.rpc('unassign_thread', { p_thread_id: threadId });
     if (error) throw error;
+
+    // Log system event for unassign action
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const currentUserId = userRes?.user?.id || null;
+
+      let displayName: string | null = null;
+      if (currentUserId) {
+        const { data: profile } = await supabase
+          .from('users_profile')
+          .select('display_name')
+          .eq('user_id', currentUserId)
+          .single();
+        displayName = profile?.display_name || null;
+      }
+
+      await protectedSupabase.from('messages').insert([{
+        thread_id: threadId,
+        direction: null,
+        role: 'system',
+        type: 'event',
+        body: `Conversation moved to Unassigned by ${displayName || userRes?.user?.email || 'agent'}.`,
+        payload: { event: 'unassign', user_id: currentUserId },
+      }]);
+    } catch (eventErr) {
+      console.warn('Failed to insert unassign event message', eventErr);
+    }
+
     await fetchConversations(undefined, { silent: true });
     await fetchMessages(threadId);
     return data as any;

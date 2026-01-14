@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.51] FE WEB CEKAT 2026-01-15
+### Conversations & System Events
+- **System logs for assignment actions**: Takeover, Move to Unassigned, and Resolve now add system `event` messages to the thread timeline with actor details, keeping the audit trail visible in chat.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+
 # [0.1.50] FE WEB CEKAT 2026-01-14
 ### Conversations & Ownership
 - **Collaborators are now read-only**: The sidebar shows the current collaborator label while only “Takeover Chat” reclaims the slot; the select was removed to enforce the one-collaborator invariant.
