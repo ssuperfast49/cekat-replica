@@ -275,6 +275,7 @@ export default function ConversationPage() {
     removeThreadLabel,
     assignThread,
     assignThreadToUser,
+    clearCollaborator,
     deleteThread,
     setThreadCollaborator,
   } = useConversations();
@@ -956,13 +957,14 @@ export default function ConversationPage() {
     }
     setMoveToUnassignedLoading(true);
     try {
-      await assignThreadToUser(selectedConversation.id, null);
-      toast.success('Conversation moved to Unassigned');
+      // Only clear collaborator; keep handled-by intact, move to Unassigned status
+      await clearCollaborator(selectedConversation.id);
+      toast.success('Conversation moved to Unassigned (handled-by kept)');
       setActiveTab('unassigned');
       await fetchConversations(undefined, { silent: true });
       await fetchMessages(selectedConversation.id);
     } catch (error) {
-      toast.error('Failed to move conversation to Unassigned');
+      toast.error('Failed to clear collaborator');
     } finally {
       setMoveToUnassignedLoading(false);
     }

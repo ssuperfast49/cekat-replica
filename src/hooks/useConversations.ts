@@ -859,6 +859,7 @@ const computeAssignmentState = (source: {
         const { error: statusErr } = await supabase
           .from('threads')
           .update({
+            collaborator_user_id: currentUserId,
             status: assignedStatusValue as any,
             ai_access_enabled: false,
             ai_handoff_at: nowIso,
@@ -911,6 +912,29 @@ const computeAssignmentState = (source: {
       console.error('Error assigning thread:', error);
       setError(error instanceof Error ? error.message : 'Failed to assign thread');
       throw error;
+    }
+  };
+
+  // Clear collaborator without touching handled-by assignee
+  const clearCollaborator = async (threadId: string) => {
+    try {
+      setError(null);
+      const { error: updateErr } = await supabase
+        .from('threads')
+        .update({
+          collaborator_user_id: null,
+          status: 'open', // move to Unassigned tab without clearing handled-by
+          ai_access_enabled: true,
+          ai_handoff_at: null,
+        })
+        .eq('id', threadId);
+      if (updateErr) throw updateErr;
+      await fetchConversations(undefined, { silent: true });
+      await fetchMessages(threadId);
+    } catch (err) {
+      console.error('Error clearing collaborator:', err);
+      setError(err instanceof Error ? err.message : 'Failed to clear collaborator');
+      throw err;
     }
   };
 
@@ -1380,6 +1404,7 @@ const computeAssignmentState = (source: {
     createConversation,
     assignThread,
     assignThreadToUser,
+    clearCollaborator,
     setThreadCollaborator,
     addThreadLabel,
     removeThreadLabel,

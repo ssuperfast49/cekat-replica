@@ -1,4 +1,12 @@
 # Change Log
+# [0.1.50] FE WEB CEKAT 2026-01-13
+### Conversations & Assignment Flow
+- **Unassign keeps handled-by, clears collaborator**: Moving a chat to Unassigned now only nulls `collaborator_user_id`, reopens AI, and keeps the handled-by assignee intact while placing the thread in the Unassigned tab.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Takeover sets collaborator**: Takeover without reassignment now sets `collaborator_user_id` to the agent who took over, without touching handled-by.
+  - Updated: `src/hooks/useConversations.ts`
+- **Commit**: `chore: unassign clears collaborator only; takeover sets collaborator`
+
 # [0.1.49] FE WEB CEKAT 2026-01-13
 ### Add delete button in contacts
 - **Added button for delete contact**: button delete contact is available for role master agent and super agent.
