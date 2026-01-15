@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.55] Supabase Trigger/Function Parity 2026-01-15
+### Supabase (main aligned to development)
+- **Trigger parity**: Removed main-only thread triggers and added the channel super-agent sync trigger (`tr_update_contacts_threads_on_channel_super_agent_change`) to mirror development. New migration: `20260115113000_align_triggers.sql`.
+- **Function parity**: Added missing `unassign_thread` SECURITY DEFINER function to main. New migration: `20260115114000_add_unassign_thread.sql`.
+
 # [0.1.54] Supabase Schema 2026-01-15
 ### Supabase (schema & RLS alignment)
 - **Contacts owned by super agents**: Added `contacts.super_agent_id`, backfilled from channel ownership, dropped `channel_id`, and rewrote contacts RLS to super-agent scope. New migration: `20260115100000_contacts_super_agent.sql`.
