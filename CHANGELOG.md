@@ -1,10 +1,36 @@
 # Change Log
-# [0.1.53] FE WEB CEKAT 2026-01-15
+# [0.1.58] FE WEB CEKAT 2026-01-15
 ### Contacts
 - **Removed per-row delete button**: Contacts list no longer shows the single-contact delete action; bulk multi-select delete now covers this flow for master/super agents.
   - Updated: `src/components/contacts/Contacts.tsx`
 - **Handled-by filter cleanup**: Filter uses a truthy check instead of comparing to an empty string, keeping TS types aligned while filtering assigned vs unassigned contacts.
   - Updated: `src/components/contacts/Contacts.tsx`
+
+# [0.1.57] Supabase Policy Cleanup 2026-01-15
+### Supabase
+- Removed main-only public/anon policies on `job`, `job_run_details`, and `storage.objects` to match development. Migration: `20260115123000_remove_extra_public_policies.sql`.
+
+# [0.1.56] Supabase Function Alignment 2026-01-15
+### Supabase
+- **takeover_thread matches dev**: returns the updated thread, sets `collaborator_user_id`, `status='pending'`, keeps `assigned_at` if present. Migration: `20260115120000_align_functions.sql`.
+- **reopen_thread_on_user_message matches dev**: reopens closed threads without clearing handled-by fields. Migration: `20260115120000_align_functions.sql`.
+
+# [0.1.55] Supabase Trigger/Function Parity 2026-01-15
+### Supabase (main aligned to development)
+- **Trigger parity**: Removed main-only thread triggers and added the channel super-agent sync trigger (`tr_update_contacts_threads_on_channel_super_agent_change`) to mirror development. New migration: `20260115113000_align_triggers.sql`.
+- **Function parity**: Added missing `unassign_thread` SECURITY DEFINER function to main. New migration: `20260115114000_add_unassign_thread.sql`.
+
+# [0.1.54] Supabase Schema 2026-01-15
+### Supabase (schema & RLS alignment)
+- **Contacts owned by super agents**: Added `contacts.super_agent_id`, backfilled from channel ownership, dropped `channel_id`, and rewrote contacts RLS to super-agent scope. New migration: `20260115100000_contacts_super_agent.sql`.
+- **Scope-based RLS**: Introduced helper functions (`can_access_super_scope`, `can_access_channel_scope`, `can_access_message_scope`) and replaced channels/threads/messages policies with scope-based, account-aware, and web-widget rules. New migration: `20260115103000_scope_based_policies.sql`.
+- **Audit/channel agents RLS parity**: Tightened `audit_logs` to permission-based read and simplified `channel_agents` to a single authenticated policy. New migration: `20260115110000_audit_logs_channel_agents_policies.sql`.
+
+# [0.1.53] FE WEB CEKAT 2026-01-15
+### Live Chat
+- **Late-arriving user rows replace optimistics**: If the backend inserts the real user message after the AI reply, the message now replaces its optimistic twin instead of showing twice, eliminating double “Hello” bubbles.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Commit**: `fix: livechat dedupe optimistic user messages`
 
 # [0.1.52] FE WEB CEKAT 2026-01-14
 ### Conversations & Assignment Flow
