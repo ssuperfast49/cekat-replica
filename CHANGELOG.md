@@ -1,4 +1,10 @@
 # Change Log
+# [0.1.54] Supabase Schema 2026-01-15
+### Supabase (schema & RLS alignment)
+- **Contacts owned by super agents**: Added `contacts.super_agent_id`, backfilled from channel ownership, dropped `channel_id`, and rewrote contacts RLS to super-agent scope. New migration: `20260115100000_contacts_super_agent.sql`.
+- **Scope-based RLS**: Introduced helper functions (`can_access_super_scope`, `can_access_channel_scope`, `can_access_message_scope`) and replaced channels/threads/messages policies with scope-based, account-aware, and web-widget rules. New migration: `20260115103000_scope_based_policies.sql`.
+- **Audit/channel agents RLS parity**: Tightened `audit_logs` to permission-based read and simplified `channel_agents` to a single authenticated policy. New migration: `20260115110000_audit_logs_channel_agents_policies.sql`.
+
 # [0.1.53] FE WEB CEKAT 2026-01-15
 ### Live Chat
 - **Late-arriving user rows replace optimistics**: If the backend inserts the real user message after the AI reply, the message now replaces its optimistic twin instead of showing twice, eliminating double “Hello” bubbles.
