@@ -1,4 +1,8 @@
 # Change Log
+# [0.1.57] Supabase Policy Cleanup 2026-01-15
+### Supabase
+- Removed main-only public/anon policies on `job`, `job_run_details`, and `storage.objects` to match development. Migration: `20260115123000_remove_extra_public_policies.sql`.
+
 # [0.1.56] Supabase Function Alignment 2026-01-15
 ### Supabase
 - **takeover_thread matches dev**: returns the updated thread, sets `collaborator_user_id`, `status='pending'`, keeps `assigned_at` if present. Migration: `20260115120000_align_functions.sql`.
