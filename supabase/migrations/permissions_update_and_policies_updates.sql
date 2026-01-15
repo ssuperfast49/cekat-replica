@@ -382,9 +382,14 @@ USING (
   has_perm('read_collaborator', 'messages')
   AND EXISTS (
     SELECT 1
-    FROM public.thread_collaborators tc
-    WHERE tc.thread_id = public.messages.thread_id
-      AND tc.user_id   = auth.uid()
+    FROM public.threads t
+    JOIN public.channels c ON c.id = t.channel_id
+    WHERE t.id = public.messages.thread_id
+      AND (
+        auth.uid() = t.assignee_user_id
+        OR auth.uid() = t.collaborator_user_id
+        OR auth.uid() = c.super_agent_id
+      )
   )
 );
 
@@ -420,9 +425,14 @@ WITH CHECK (
   has_perm('create', 'messages')
   AND EXISTS (
     SELECT 1
-    FROM public.thread_collaborators tc
-    WHERE tc.thread_id = public.messages.thread_id
-      AND tc.user_id   = auth.uid()
+    FROM public.threads t
+    JOIN public.channels c ON c.id = t.channel_id
+    WHERE t.id = public.messages.thread_id
+      AND (
+        auth.uid() = t.assignee_user_id
+        OR auth.uid() = t.collaborator_user_id
+        OR auth.uid() = c.super_agent_id
+      )
   )
 );
 
@@ -524,9 +534,13 @@ USING (
   has_perm('read_collaborator', 'threads')
   AND EXISTS (
     SELECT 1
-    FROM public.thread_collaborators tc
-    WHERE tc.thread_id = public.threads.id
-      AND tc.user_id   = auth.uid()
+    FROM public.channels c
+    WHERE c.id = public.threads.channel_id
+      AND (
+        auth.uid() = public.threads.assignee_user_id
+        OR auth.uid() = public.threads.collaborator_user_id
+        OR auth.uid() = c.super_agent_id
+      )
   )
 );
 

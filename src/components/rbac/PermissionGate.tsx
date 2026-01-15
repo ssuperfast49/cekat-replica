@@ -1,7 +1,7 @@
 import { ReactNode, forwardRef } from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { useRBAC } from '@/contexts/RBACContext';
-import type { PermissionName } from '@/types/rbac';
+import type { PermissionName, RoleName } from '@/types/rbac';
 
 interface PermissionGateProps {
   permission: PermissionName | string;
@@ -9,6 +9,11 @@ interface PermissionGateProps {
   requireAll?: boolean; // If true, requires ALL permissions; if false, requires ANY permission
   fallback?: ReactNode;
   children: ReactNode;
+  /**
+   * Optional list of roles that automatically pass this gate.
+   * Useful for simple role-based bypass logic (e.g., master/super agent overrides).
+   */
+  roleBypass?: RoleName[];
 }
 
 /**
@@ -25,14 +30,21 @@ const PermissionGate = forwardRef<any, PermissionGateProps>(({
   permissions = [],
   requireAll = false,
   fallback = null,
-  children
+  children,
+  roleBypass = [],
 }, ref) => {
-  const { hasAnyPermission, hasAllPermissions, loading } = useRBAC();
+  const { hasAnyPermission, hasAllPermissions, hasAnyRole, loading } = useRBAC();
 
   if (loading) return null;
 
   const allPermissions = permission ? [permission, ...permissions] : permissions;
-  const hasAccess = requireAll ? hasAllPermissions(allPermissions) : hasAnyPermission(allPermissions);
+  const roleBypassGranted = roleBypass.length > 0 ? hasAnyRole(roleBypass) : false;
+  const permissionGranted = allPermissions.length === 0
+    ? true
+    : requireAll
+      ? hasAllPermissions(allPermissions)
+      : hasAnyPermission(allPermissions);
+  const hasAccess = roleBypassGranted || permissionGranted;
 
   // Only use Slot when there's exactly one valid React element child.
   const canUseSlot = !Array.isArray(children) && typeof children !== 'string' && typeof children !== 'number';

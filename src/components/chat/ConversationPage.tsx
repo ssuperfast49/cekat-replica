@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChatFilter } from "./ChatFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +41,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ROLES } from "@/types/rbac";
 import { setSendMessageProvider } from "@/config/webhook";
 import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
-import PermissionGate from "@/components/rbac/PermissionGate";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,6 +67,30 @@ const formatPlatformLabel = (providerRaw: string) => {
   if (p === "web") return "Web";
   return providerRaw;
 };
+
+type FlowTab = 'assigned' | 'unassigned' | 'done';
+
+const getFlowTabForThread = (thread?: Pick<ConversationWithDetails, 'status'> | null): FlowTab | null => {
+  if (!thread) return null;
+  const status = String(thread.status || '').toLowerCase();
+  if (status === 'closed') return 'done';
+  // FE flow rule:
+  // - Unassigned = status "open"
+  // - Assigned   = status "pending"
+  // - Done       = status "closed"
+  if (status === 'open') return 'unassigned';
+  if (status === 'pending') return 'assigned';
+  // Back-compat (older enum value). Treat as assigned.
+  if (status === 'assigned') return 'assigned';
+  return 'unassigned';
+};
+
+const isFlowAssigned = (thread?: Pick<ConversationWithDetails, 'status'> | null) =>
+  getFlowTabForThread(thread) === 'assigned';
+const isFlowUnassigned = (thread?: Pick<ConversationWithDetails, 'status'> | null) =>
+  getFlowTabForThread(thread) === 'unassigned';
+const isFlowDone = (thread?: Pick<ConversationWithDetails, 'status'> | null) =>
+  getFlowTabForThread(thread) === 'done';
 
 interface MessageBubbleProps {
   message: MessageWithDetails;
@@ -227,7 +249,8 @@ export default function ConversationPage() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'assigned' | 'unassigned' | 'resolved'>("assigned");
+  const [activeTab, setActiveTab] = useState<FlowTab>("assigned");
+  const [tabLocked, setTabLocked] = useState(false); // lock smart auto-switch once user manually selects a tab
   const [showParticipants, setShowParticipants] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
@@ -248,13 +271,15 @@ export default function ConversationPage() {
     fetchMessages,
     sendMessage,
     createConversation,
-    addThreadParticipant,
-    removeThreadParticipant,
     addThreadLabel,
     removeThreadLabel,
     assignThread,
     assignThreadToUser,
+    takeoverThread,
+    unassignThread,
+    clearCollaborator,
     deleteThread,
+    setThreadCollaborator,
   } = useConversations();
 
   // Use the contacts and human agents hooks
@@ -265,7 +290,13 @@ export default function ConversationPage() {
   const isMasterAgent = hasRole('master_agent');
   const isSuperAgent = hasRole('super_agent');
   const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent;
-  const [isCollaborator, setIsCollaborator] = useState<boolean>(false);
+  const canMoveToUnassigned = isMasterAgent || isSuperAgent;
+  const canSendMessagesPermission = hasPermission('messages.create');
+  const currentUserId = user?.id ?? null;
+  // Track optimistic collaborator updates per thread
+  const [collaboratorOverride, setCollaboratorOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
+  const [moveToUnassignedLoading, setMoveToUnassignedLoading] = useState(false);
+  const [resolveLoading, setResolveLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const canDeleteConversation = hasPermission('contacts.delete');
@@ -276,13 +307,8 @@ export default function ConversationPage() {
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
   
-  // NOTE: thread_collaborators is used for access control (assignee + super agent auto-added).
-  // We keep the full set of collaborator user_ids from DB here, but the UI "Collaborators" control
-  // will manage *at most one* additional agent collaborator under the selected super agent.
-  const [collaborators, setCollaborators] = useState<string[]>([]);
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
-  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
   
@@ -295,9 +321,12 @@ export default function ConversationPage() {
     [humanAgents]
   );
 
-  // Options for general agent picking (collaborators, etc.): all human agents
+  // Options for general agent picking (collaborators, etc.): all non-master agents
   const agentOptions = useMemo(
-    () => humanAgents.map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
+    () =>
+      humanAgents
+        .filter((a: any) => String(a?.primaryRole || '').toLowerCase() !== 'master_agent')
+        .map((a: any) => ({ value: a.user_id, label: a.display_name || a.email || 'Unknown Agent' })),
     [humanAgents]
   );
 
@@ -312,6 +341,8 @@ export default function ConversationPage() {
   }, [humanAgentIdToLabel, userIdToLabel]);
 
   // Derive current handled-by (assignee) without referencing selectedConversation (avoid TDZ)
+  const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
+
   const derivedHandledById = useMemo(() => {
     if (!selectedThreadId) return null;
     const t = conversations.find(c => c.id === selectedThreadId) as any;
@@ -324,7 +355,6 @@ export default function ConversationPage() {
     return derivedHandledById;
   }, [selectedThreadId, handledByOverride, derivedHandledById]);
 
-  // Keep override in sync (clear it once server state catches up, or when selection changes)
   useEffect(() => {
     if (!selectedThreadId) {
       setHandledByOverride(null);
@@ -337,6 +367,7 @@ export default function ConversationPage() {
       setHandledByOverride(null);
     }
   }, [selectedThreadId, derivedHandledById, handledByOverride]);
+
 
   // Fetch allowed collaborator agents for the selected handled-by (super agent)
   useEffect(() => {
@@ -362,118 +393,6 @@ export default function ConversationPage() {
     fetchMembers();
     return () => { active = false; };
   }, [handledById]);
-
-  // Load display labels for any collaborator/member IDs not present in humanAgents
-  useEffect(() => {
-    const ids = Array.from(new Set([
-      ...(handledById ? [handledById] : []),
-      ...collaborators,
-      ...superAgentMemberAgentIds,
-    ].filter(Boolean))) as string[];
-
-    if (ids.length === 0) return;
-
-    const missing = ids.filter(id => !humanAgentIdToLabel[id] && !userIdToLabel[id]);
-    if (missing.length === 0) return;
-
-    let active = true;
-    const fetchLabels = async () => {
-      try {
-        const { data, error } = await protectedSupabase
-          .from('users_profile')
-          .select('user_id, display_name')
-          .in('user_id', missing);
-
-        if (!active) return;
-        if (error) throw error;
-
-        const nextMap: Record<string, string> = Object.fromEntries(
-          (data || []).map((p: any) => [String(p.user_id), String(p.display_name || '')])
-        );
-
-        setUserIdToLabel(prev => ({ ...prev, ...nextMap }));
-      } catch (e) {
-        // non-fatal: fallback will still show ids
-        console.warn('Failed to fetch user labels', e);
-      }
-    };
-    fetchLabels();
-    return () => { active = false; };
-  }, [handledById, collaborators, superAgentMemberAgentIds, humanAgentIdToLabel, userIdToLabel]);
-
-  const collaboratorOptions = useMemo(() => {
-    if (!handledById) return [];
-    const allowed = new Set(superAgentMemberAgentIds);
-    return agentOptions
-      .filter(o => allowed.has(o.value))
-      .map(o => ({ ...o, label: labelForUserId(o.value) }));
-  }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
-
-  const agentCollaboratorIds = useMemo(() => {
-    if (!handledById) return [];
-    const allowed = new Set(superAgentMemberAgentIds);
-    return (collaborators || []).map(String).filter((id) => allowed.has(id));
-  }, [collaborators, handledById, superAgentMemberAgentIds]);
-
-  const selectedCollaboratorId = agentCollaboratorIds.length > 0 ? agentCollaboratorIds[0] : null;
-
-  const collaboratorOptionsWithSelected = useMemo(() => {
-    // Ensure selected collaborator always has a label, even if they aren't in the allowed list/options.
-    const map = new Map<string, { value: string; label: string }>();
-    collaboratorOptions.forEach(o => map.set(o.value, o));
-    if (selectedCollaboratorId && !map.has(selectedCollaboratorId)) {
-      map.set(selectedCollaboratorId, { value: selectedCollaboratorId, label: labelForUserId(selectedCollaboratorId) });
-    }
-    return Array.from(map.values());
-  }, [collaboratorOptions, selectedCollaboratorId, labelForUserId]);
-
-  // Fetch collaborators when thread is selected
-  useEffect(() => {
-    if (!selectedThreadId) {
-      setCollaborators([]);
-      return;
-    }
-    let active = true;
-    const fetchCollaborators = async () => {
-        const { data } = await protectedSupabase
-            .from('thread_collaborators')
-            .select('user_id')
-            .eq('thread_id', selectedThreadId);
-        if (active && data) {
-            setCollaborators(data.map(d => d.user_id));
-        }
-    };
-    fetchCollaborators();
-    return () => { active = false; };
-  }, [selectedThreadId]);
-
-  // Enforce single "agent collaborator" under the handled-by super agent by trimming extras (non-fatal best-effort).
-  useEffect(() => {
-    if (!selectedThreadId) return;
-    if (!handledById) return;
-    if (agentCollaboratorIds.length <= 1) return;
-    let cancelled = false;
-    const trim = async () => {
-      try {
-        const keep = agentCollaboratorIds[0];
-        const extras = agentCollaboratorIds.slice(1);
-        if (!keep || extras.length === 0) return;
-        await protectedSupabase
-          .from('thread_collaborators')
-          .delete()
-          .eq('thread_id', selectedThreadId)
-          .in('user_id', extras as any);
-        if (!cancelled) {
-          setCollaborators(prev => prev.filter((id) => !extras.includes(String(id))));
-        }
-      } catch (e) {
-        // non-fatal
-        console.warn('Failed to trim collaborators', e);
-      }
-    };
-    trim();
-    return () => { cancelled = true; };
-  }, [selectedThreadId, handledById, agentCollaboratorIds]);
 
   const messageMatches = useMemo<MessageSearchMatch[]>(() => {
     if (!trimmedSearch) {
@@ -713,8 +632,9 @@ export default function ConversationPage() {
   useEffect(() => {
     if (!tabParam) return;
     if (isPushingTabRef.current) return; // ignore echo from our own push
-    if (tabParam === 'assigned' || tabParam === 'unassigned' || tabParam === 'resolved') {
-      if (tabParam !== activeTab) setActiveTab(tabParam as any);
+    const normalized = tabParam === 'resolved' ? 'done' : tabParam;
+    if (normalized === 'assigned' || normalized === 'unassigned' || normalized === 'done') {
+      if (normalized !== activeTab) setActiveTab(normalized as FlowTab);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabParam]);
@@ -805,25 +725,23 @@ export default function ConversationPage() {
 
   // Smart Tab Switching: If the current tab is empty but another tab has data (based on RLS results), switch to it.
   useEffect(() => {
+    if (tabLocked) return;
     if (loading || conversations.length === 0) return;
 
-    // Calculate counts based on the raw (RLS-filtered) data
-    const assignedCount = conversations.filter(c => c.status !== 'closed' && c.assigned).length;
-    const unassignedCount = conversations.filter(c => c.status !== 'closed' && !c.assigned).length;
-    const resolvedCount = conversations.filter(c => c.status === 'closed').length;
+    const assignedCount = conversations.filter((c) => isFlowAssigned(c)).length;
+    const unassignedCount = conversations.filter((c) => isFlowUnassigned(c)).length;
+    const doneCount = conversations.filter((c) => isFlowDone(c)).length;
 
-    // If we are on 'assigned' but it's empty, and we have unassigned chats, switch.
     if (activeTab === 'assigned' && assignedCount === 0 && unassignedCount > 0) {
       setActiveTab('unassigned');
       return;
     }
 
-    // If we are on 'assigned' or 'unassigned' but both are empty, and we have resolved chats, switch.
-    if ((activeTab === 'assigned' || activeTab === 'unassigned') && assignedCount === 0 && unassignedCount === 0 && resolvedCount > 0) {
-      setActiveTab('resolved');
+    if ((activeTab === 'assigned' || activeTab === 'unassigned') && assignedCount === 0 && unassignedCount === 0 && doneCount > 0) {
+      setActiveTab('done');
       return;
     }
-  }, [conversations, loading, activeTab]);
+  }, [conversations, loading, activeTab, tabLocked]);
 
   // Keep URL in sync with current tab for deep-linkability (write-only)
   useEffect(() => {
@@ -841,23 +759,19 @@ export default function ConversationPage() {
   // Auto-select by explicit thread param (preferred). This disambiguates multi-channel contacts.
   useEffect(() => {
     if (!threadParam) return;
-    // Don't re-apply if user already selected (or we already applied it)
+    if (selectedThreadId === threadParam) return; // already synced
     if (filteredConversations.length === 0) return;
 
     const target = filteredConversations.find(c => c.id === threadParam);
     if (!target) return;
 
     setSelectedThreadId(target.id);
-    if (target.status === 'closed') {
-      setActiveTab('resolved');
-    } else {
-      setActiveTab(target.assigned ? 'assigned' : 'unassigned');
-    }
+    setActiveTab(getFlowTabForThread(target) ?? 'unassigned');
     void fetchMessages(target.id);
     if (target.channel?.provider) {
       setSendMessageProvider(target.channel.provider);
     }
-  }, [threadParam, filteredConversations]);
+  }, [threadParam, filteredConversations, selectedThreadId]);
 
   // Auto-select by contactId only on first load for this navigation; do not override manual selection
   useEffect(() => {
@@ -869,11 +783,7 @@ export default function ConversationPage() {
     if (!target) return;
     setSelectedThreadId(target.id);
     // Ensure tab reflects the selected conversation
-    if (target.status === 'closed') {
-      setActiveTab('resolved');
-    } else {
-      setActiveTab(target.assigned ? 'assigned' : 'unassigned');
-    }
+    setActiveTab(getFlowTabForThread(target) ?? 'unassigned');
     // Fetch messages and set provider when auto-selecting
     void fetchMessages(target.id);
     if (target.channel?.provider) {
@@ -888,31 +798,113 @@ export default function ConversationPage() {
     }
     return filteredConversations.find(c => c.id === selectedThreadId) || null;
   }, [selectedThreadId, filteredConversations]);
-  const isSelectedConversationResolved = selectedConversation?.status === 'closed';
+  const isSelectedConversationDone = isFlowDone(selectedConversation);
+  const selectedConversationFlow = getFlowTabForThread(selectedConversation);
 
-  // Check if current user is a collaborator on selected thread
+  const derivedCollaboratorId = useMemo(() => {
+    if (!selectedThreadId) return null;
+    return selectedConversation?.collaborator_user_id ?? null;
+  }, [selectedThreadId, selectedConversation?.collaborator_user_id]);
+
+  const collaboratorId = useMemo(() => {
+    if (!selectedThreadId) return null;
+    if (collaboratorOverride?.threadId === selectedThreadId) {
+      return collaboratorOverride.userId ?? null;
+    }
+    return derivedCollaboratorId;
+  }, [selectedThreadId, collaboratorOverride, derivedCollaboratorId]);
+
+  // Load display labels for any collaborator/member IDs not present in humanAgents
   useEffect(() => {
-    const checkCollab = async () => {
+    const ids = Array.from(new Set([
+      ...(handledById ? [handledById] : []),
+      ...(collaboratorId ? [collaboratorId] : []),
+      ...superAgentMemberAgentIds,
+    ].filter(Boolean))) as string[];
+
+    if (ids.length === 0) return;
+
+    const missing = ids.filter(id => !humanAgentIdToLabel[id] && !userIdToLabel[id]);
+    if (missing.length === 0) return;
+
+    let active = true;
+    const fetchLabels = async () => {
       try {
-        if (!selectedConversation?.id || !user?.id) {
-          setIsCollaborator(false);
-          return;
-        }
         const { data, error } = await protectedSupabase
-          .from('thread_collaborators')
-          .select('user_id')
-          .eq('thread_id', selectedConversation.id)
-          .eq('user_id', user.id)
-          .limit(1);
+          .from('users_profile')
+          .select('user_id, display_name')
+          .in('user_id', missing);
+
+        if (!active) return;
         if (error) throw error;
-        setIsCollaborator(!!data && data.length > 0);
+
+        const nextMap: Record<string, string> = Object.fromEntries(
+          (data || []).map((p: any) => [String(p.user_id), String(p.display_name || '')])
+        );
+
+        setUserIdToLabel(prev => ({ ...prev, ...nextMap }));
       } catch (e) {
-        console.warn('Failed to check collaborator status', e);
-        setIsCollaborator(false);
+        // non-fatal: fallback will still show ids
+        console.warn('Failed to fetch user labels', e);
       }
     };
-    checkCollab();
-  }, [selectedConversation?.id, user?.id]);
+    fetchLabels();
+    return () => { active = false; };
+  }, [handledById, collaboratorId, superAgentMemberAgentIds, humanAgentIdToLabel, userIdToLabel]);
+
+  const collaboratorOptions = useMemo(() => {
+    if (!handledById) return [];
+    const allowed = new Set(superAgentMemberAgentIds);
+    return agentOptions
+      .filter(o => allowed.has(o.value))
+      .map(o => ({ ...o, label: labelForUserId(o.value) }));
+  }, [agentOptions, handledById, superAgentMemberAgentIds, labelForUserId]);
+
+  const selectedCollaboratorId = collaboratorId ? String(collaboratorId) : null;
+
+  const collaboratorOptionsWithSelected = useMemo(() => {
+    // Ensure selected collaborator always has a label, even if they aren't in the allowed list/options.
+    const map = new Map<string, { value: string; label: string }>();
+    collaboratorOptions.forEach(o => map.set(o.value, o));
+    if (selectedCollaboratorId && !map.has(selectedCollaboratorId)) {
+      map.set(selectedCollaboratorId, { value: selectedCollaboratorId, label: labelForUserId(selectedCollaboratorId) });
+    }
+    return Array.from(map.values());
+  }, [collaboratorOptions, selectedCollaboratorId, labelForUserId]);
+
+  const isCurrentUserCollaborator = useMemo(() => {
+    if (!currentUserId || !selectedCollaboratorId) return false;
+    return selectedCollaboratorId === currentUserId;
+  }, [selectedCollaboratorId, currentUserId]);
+
+  const selectedStatus = (selectedConversation?.status || '').toLowerCase();
+  const aiAllowedByStatus = selectedStatus === 'pending';
+
+  // Only the collaborator who took over can send replies
+  const roleAllowsSend = useMemo(() => {
+    if (!currentUserId) return false;
+    return selectedCollaboratorId === currentUserId;
+  }, [currentUserId, selectedCollaboratorId]);
+
+  const canCurrentUserSend = roleAllowsSend;
+
+  const sendDisabledReason = useMemo(() => {
+    if (canCurrentUserSend) return undefined;
+    return 'Only the collaborator who took over can send messages.';
+  }, [canCurrentUserSend]);
+
+  useEffect(() => {
+    if (!selectedThreadId) {
+      setCollaboratorOverride(null);
+      return;
+    }
+    if (
+      collaboratorOverride?.threadId === selectedThreadId &&
+      derivedCollaboratorId === collaboratorOverride.userId
+    ) {
+      setCollaboratorOverride(null);
+    }
+  }, [selectedThreadId, derivedCollaboratorId, collaboratorOverride]);
 
   const handleTakeoverChat = async () => {
     if (!selectedConversation) return;
@@ -921,39 +913,83 @@ export default function ConversationPage() {
       return;
     }
     try {
-      const isAdmin = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT);
-      // Ensure collaborator status before takeover
-      if (!isCollaborator) {
-        if (isAdmin) {
-          try {
-            const { data: existing } = await protectedSupabase
-              .from('thread_collaborators')
-              .select('user_id')
-              .eq('thread_id', selectedConversation.id)
-              .eq('user_id', user.id)
-              .limit(1);
-            if (!existing || existing.length === 0) {
-              await addThreadParticipant(selectedConversation.id, user.id);
-            }
-            setIsCollaborator(true);
-          } catch (err) {
-            console.warn('Failed to ensure collaborator before takeover', err);
-            toast.error('Please join as collaborator before taking over');
-            return; // Block takeover if collaborator insert/check failed
-          }
-        } else {
-          toast.error('Please join as collaborator before taking over');
-          return;
-        }
-      }
-
-      await assignThread(selectedConversation.id, user.id);
+      await takeoverThread(selectedConversation.id);
+      setCollaboratorOverride({ threadId: selectedConversation.id, userId: user.id });
       toast.success('You are now assigned to this chat');
-      // Move UI to Assigned tab and enable composer immediately
       setActiveTab('assigned');
-      await fetchConversations();
+      await fetchConversations(undefined, { silent: true });
     } catch (e) {
       toast.error('Failed to take over chat');
+    }
+  };
+
+  const handleMoveToUnassigned = async () => {
+    if (!selectedConversation) return;
+    if (!canMoveToUnassigned) {
+      toast.error('Only master or super agents can move conversations to Unassigned');
+      return;
+    }
+    setMoveToUnassignedLoading(true);
+    try {
+      // Use RPC-backed unassign to clear collaborator and reopen AI without changing handled-by
+      await unassignThread(selectedConversation.id);
+      setCollaboratorOverride({ threadId: selectedConversation.id, userId: null });
+      toast.success('Conversation moved to Unassigned');
+      setActiveTab('unassigned');
+      await fetchConversations(undefined, { silent: true });
+      await fetchMessages(selectedConversation.id);
+    } catch (error) {
+      toast.error('Failed to move conversation to Unassigned');
+    } finally {
+      setMoveToUnassignedLoading(false);
+    }
+  };
+
+  const handleResolveConversation = async () => {
+    if (!selectedConversation) return;
+    setResolveLoading(true);
+    try {
+      const { error } = await protectedSupabase
+        .from('threads')
+        .update({
+          status: 'closed',
+          ai_access_enabled: true, // reopen AI access after resolve
+          ai_handoff_at: null,
+          resolved_at: new Date().toISOString(),
+          resolved_by_user_id: user?.id ?? null,
+          handover_reason: null,
+        })
+        .eq('id', selectedConversation.id);
+      if (error) throw error;
+
+      // Log system event for resolve
+      try {
+        const { data: profile } = await supabase
+          .from('users_profile')
+          .select('display_name')
+          .eq('user_id', user?.id ?? '')
+          .single();
+
+        await protectedSupabase.from('messages').insert([{
+          thread_id: selectedConversation.id,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Conversation resolved by ${profile?.display_name || user?.email || 'agent'}.`,
+          payload: { event: 'resolve', user_id: user?.id ?? null },
+        }]);
+      } catch (eventErr) {
+        console.warn('Failed to insert resolve event message', eventErr);
+      }
+
+      toast.success('Conversation resolved');
+      setActiveTab('done');
+      await fetchConversations(undefined, { silent: true });
+      await fetchMessages(selectedConversation.id);
+    } catch (error) {
+      toast.error('Failed to resolve');
+    } finally {
+      setResolveLoading(false);
     }
   };
 
@@ -984,21 +1020,18 @@ export default function ConversationPage() {
     await fetchMessages(threadId);
   };
 
-  // Keep selection aligned to the active tab so "Assigned/Unassigned" doesn't show a resolved thread (and vice versa).
+  // Keep selection aligned to the active tab so each tab shows a matching thread category.
   useEffect(() => {
     const selectFirstForTab = () => {
-      if (activeTab === 'resolved') {
-        return filteredConversations.find(c => c.status === 'closed') || null;
+      if (activeTab === 'done') {
+        return filteredConversations.find(conv => isFlowDone(conv)) || null;
       }
       if (activeTab === 'assigned') {
-        return filteredConversations.find(c => c.status !== 'closed' && !!c.assigned) || null;
+        return filteredConversations.find(conv => isFlowAssigned(conv)) || null;
       }
       // unassigned
-      return filteredConversations.find(c => c.status !== 'closed' && !c.assigned) || null;
+      return filteredConversations.find(conv => isFlowUnassigned(conv)) || null;
     };
-
-    const shouldBeResolved = activeTab === 'resolved';
-    const isResolvedSelected = selectedConversation?.status === 'closed';
 
     // If nothing selected, pick the first thread in the current tab (if any).
     if (!selectedThreadId) {
@@ -1007,8 +1040,9 @@ export default function ConversationPage() {
       return;
     }
 
+    const selectedCategory = getFlowTabForThread(selectedConversation);
     // If selected thread doesn't match current tab, switch selection to the first thread in the tab.
-    if (selectedConversation && shouldBeResolved !== isResolvedSelected) {
+    if (selectedConversation && selectedCategory !== activeTab) {
       const first = selectFirstForTab();
       if (first?.id) {
         void handleConversationSelect(first.id);
@@ -1041,7 +1075,7 @@ export default function ConversationPage() {
             `Percakapan telah dialihkan ke super agent dan AI access dinonaktifkan.`
           );
           // Refresh conversations to show updated assignment
-          await fetchConversations();
+          await fetchConversations(undefined, { silent: true });
           // Don't send message - let super agent handle it
           return;
         }
@@ -1095,7 +1129,6 @@ export default function ConversationPage() {
       // Clear input immediately and fire send without blocking UI
       setDraft("");
       void sendMessage(selectedThreadId, text, 'assistant');
-      toast.success("Message sent successfully");
     } catch (error) {
       toast.error("Failed to send message");
     }
@@ -1115,18 +1148,6 @@ export default function ConversationPage() {
       setSendMessageProvider(selectedConversation.channel.provider);
     }
   }, [selectedConversation?.channel?.provider]);
-
-  // Add participant to thread
-  const handleAddParticipant = async (userId: string) => {
-    if (!selectedThreadId) return;
-
-    try {
-      await addThreadParticipant(selectedThreadId, userId);
-      toast.success("Participant added successfully");
-    } catch (error) {
-      toast.error("Failed to add participant");
-    }
-  };
 
   // Helpers for thread list UI
   const formatListTime = (iso: string) => {
@@ -1151,31 +1172,19 @@ export default function ConversationPage() {
   };
 
   const renderStatus = (conv: ConversationWithDetails) => {
-    if (conv.status === 'closed') {
-      return <Badge className="bg-green-100 text-green-700 border-0">Resolved</Badge>;
+    const category = getFlowTabForThread(conv);
+    if (category === 'done') {
+      return <Badge className="bg-green-100 text-green-700 border-0">Done</Badge>;
     }
-    return (
-      <Badge className={conv.assigned ? 'bg-blue-100 text-blue-700 border-0' : 'bg-secondary text-secondary-foreground'}>
-        {conv.assigned ? 'Assigned' : 'Unassigned'}
-      </Badge>
-    );
+    if (category === 'assigned') {
+      return <Badge className="bg-blue-100 text-blue-700 border-0">Assigned</Badge>;
+    }
+    return <Badge className="bg-secondary text-secondary-foreground">Unassigned</Badge>;
   };
 
   const getListTimestamp = (conv: any) => {
     const ts = (conv as any).last_msg_at || (conv as any).updated_at || (conv as any).created_at || '';
     return formatListTime(ts);
-  };
-
-  // Remove participant from thread
-  const handleRemoveParticipant = async (userId: string) => {
-    if (!selectedThreadId) return;
-
-    try {
-      await removeThreadParticipant(selectedThreadId, userId);
-      toast.success("Participant removed successfully");
-    } catch (error) {
-      toast.error("Failed to remove participant");
-    }
   };
 
   const handleConfirmDelete = async () => {
@@ -1222,7 +1231,7 @@ export default function ConversationPage() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <p className="text-red-600 mb-2">Error: {error}</p>
-          <Button onClick={() => { void fetchConversations(); }} variant="outline">
+          <Button onClick={() => { void fetchConversations(undefined, { silent: true }); }} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry
           </Button>
@@ -1288,252 +1297,125 @@ export default function ConversationPage() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
         </div>
-        <Tabs value={activeTab} onValueChange={(v) => { if (v !== activeTab) setActiveTab(v as any); }} className="w-full">
-          <TabsList className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
-            <TabsTrigger
-              value="assigned"
-              className="text-xs border-b-2 border-transparent data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600 data-[state=active]:border-blue-500"
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="flex items-center">
-                    Assigned
-                    <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c => c.status !== 'closed' && c.assigned).length}
-                    </Badge>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Lihat percakapan yang ditugaskan ke agen</p>
-                </TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
-            <TabsTrigger
-              value="unassigned"
-              className="text-xs border-b-2 border-transparent data-[state=active]:bg-red-50 data-[state=active]:text-red-600 data-[state=active]:border-red-500"
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="flex items-center">
-                    Unassigned
-                    <Badge variant="secondary" className="ml-2 h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c => c.status !== 'closed' && !c.assigned).length}
-                    </Badge>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Lihat percakapan yang menunggu penugasan</p>
-                </TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
-            <TabsTrigger
-              value="resolved"
-              className="justify-self-end h-8 px-2 rounded-full border-b-2 border-transparent data-[state=active]:bg-green-50 data-[state=active]:text-green-600 data-[state=active]:border-green-500"
-              aria-label="Resolved"
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1">
-                    <CheckCircle className="h-4 w-4" />
-                    <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
-                      {filteredConversations.filter(c => c.status === 'closed').length}
-                    </Badge>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Lihat percakapan yang telah diselesaikan</p>
-                </TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="assigned" className="mt-0">
-            <div className="h-[calc(100vh-280px)] overflow-y-auto">
-              <div className="space-y-1">
-                {filteredConversations.filter(c => c.status !== 'closed' && c.assigned).map(conv => (
-                  <div key={conv.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={conv.channel_logo_url || ''} />
-                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                            <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
-                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                              <span className="text-xs text-gray-600 truncate">
-                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                              </span>
-                            </div>
+        {(() => {
+          const assignedList = filteredConversations.filter(conv => isFlowAssigned(conv));
+          const unassignedList = filteredConversations.filter(conv => isFlowUnassigned(conv));
+          const doneList = filteredConversations.filter(conv => isFlowDone(conv));
+          const tabs: Array<{ key: FlowTab; label: string; count: number; className: string; tooltip: string }> = [
+            { key: 'assigned', label: 'Assigned', count: assignedList.length, className: 'bg-blue-50 text-blue-600 border-blue-500', tooltip: 'Lihat percakapan yang ditugaskan ke agen' },
+            { key: 'unassigned', label: 'Unassigned', count: unassignedList.length, className: 'bg-red-50 text-red-600 border-red-500', tooltip: 'Lihat percakapan yang menunggu penugasan' },
+            { key: 'done', label: 'Done', count: doneList.length, className: 'bg-green-50 text-green-600 border-green-500', tooltip: 'Lihat percakapan yang selesai' },
+          ];
+          const renderEmpty = (label: string) => (
+            <div className="h-[calc(100vh-280px)] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground bg-muted/40">
+              No {label} threads found
+            </div>
+          );
+          const renderList = (list: typeof filteredConversations) => (
+            <div className="space-y-1">
+              {list.map(conv => (
+                <div key={conv.id} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => handleConversationSelect(conv.id)}
+                    className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={conv.channel_logo_url || ''} />
+                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
+                          <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
+                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            <span className="text-xs text-gray-600 truncate">
+                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                            </span>
                           </div>
-                        </div>
-                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                            <div className="mt-1">{renderStatus(conv)}</div>
-                          </div>
-                          {(conv.channel_provider || conv.channel?.provider) ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                            </Badge>
-                          ) : <span />}
                         </div>
                       </div>
-                    </button>
-                    {!conv.contact_id && canDeleteConversation && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delete conversation</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="unassigned" className="mt-0">
-            <div className="h-[calc(100vh-280px)] overflow-y-auto">
-              <div className="space-y-1">
-                {filteredConversations.filter(c => c.status !== 'closed' && !c.assigned).map(conv => (
-                  <div key={conv.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src="" />
-                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                            <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
-                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                              <span className="text-xs text-gray-600 truncate">
-                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                              </span>
-                            </div>
-                          </div>
+                      <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                          <div className="mt-1">{renderStatus(conv)}</div>
                         </div>
-                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                            <div className="mt-1">{renderStatus(conv)}</div>
-                          </div>
-                          {(conv.channel_provider || conv.channel?.provider) ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                            </Badge>
-                          ) : <span />}
-                        </div>
+                        {(conv.channel_provider || conv.channel?.provider) ? (
+                          <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                            {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                          </Badge>
+                        ) : <span />}
                       </div>
-                    </button>
-                    {!conv.contact_id && canDeleteConversation && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delete conversation</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                ))}
-              </div>
+                    </div>
+                  </button>
+                  {!conv.contact_id && canDeleteConversation && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Delete conversation</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              ))}
             </div>
-          </TabsContent>
+          );
+          const renderContent = () => {
+            if (activeTab === 'assigned') {
+              return assignedList.length === 0 ? renderEmpty('assigned') : renderList(assignedList);
+            }
+            if (activeTab === 'unassigned') {
+              return unassignedList.length === 0 ? renderEmpty('unassigned') : renderList(unassignedList);
+            }
+            return doneList.length === 0 ? renderEmpty('done') : renderList(doneList);
+          };
 
-          <TabsContent value="resolved" className="mt-0">
-            <div className="h-[calc(100vh-280px)] overflow-y-auto">
-              <div className="space-y-1">
-                {filteredConversations.filter(c => c.status === 'closed').map(conv => (
-                  <div key={conv.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src="" />
-                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-semibold truncate">{conv.contact_name}</h3>
-                            <p className="text-xs text-gray-600 truncate">{conv.last_message_preview}</p>
-                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                              <span className="text-xs text-gray-600 truncate">
-                                {conv.channel?.display_name || 'Unknown'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
-                            <div className="mt-1">{renderStatus(conv)}</div>
-                          </div>
-                          {(conv.channel_provider || conv.channel?.provider) ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                            </Badge>
-                          ) : <span />}
-                        </div>
-                      </div>
-                    </button>
-                    {!conv.contact_id && canDeleteConversation && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delete conversation</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
+          return (
+            <>
+              <div className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
+                {tabs.map((tab) => (
+                  <Tooltip key={tab.key}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => { setTabLocked(true); setActiveTab(tab.key); }}
+                        className={`text-xs h-8 rounded-md border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${
+                          activeTab === tab.key
+                            ? `${tab.className}`
+                            : 'text-muted-foreground border-transparent hover:bg-muted'
+                        }`}
+                        aria-pressed={activeTab === tab.key}
+                      >
+                        {tab.key === 'done' ? <CheckCircle className="h-4 w-4" /> : null}
+                        <span>{tab.label}</span>
+                        <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
+                          {tab.count}
+                        </Badge>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{tab.tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 ))}
               </div>
-            </div>
-          </TabsContent>
-        </Tabs>
+              <div className="h-[calc(100vh-280px)] overflow-y-auto">
+                {renderContent()}
+              </div>
+            </>
+          );
+        })()}
         <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -1621,17 +1503,42 @@ export default function ConversationPage() {
                     </div>
                   )}
                 </div>
-                {selectedConversation.status !== 'closed' &&
-                  <Button
-                    size="sm"
-                    className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                    onClick={async () => { if (selectedConversation.status === 'closed') return; const { error } = await protectedSupabase.from('threads').update({ status: 'closed', resolved_at: new Date().toISOString(), resolved_by_user_id: user?.id ?? null, handover_reason: null }).eq('id', selectedConversation.id); if (error) { toast.error('Failed to resolve'); } else { toast.success('Conversation resolved'); await fetchConversations(); setActiveTab('resolved'); } }}
-                  >
-                    Resolve
-                  </Button>
-                }
-                <Badge className={selectedConversation.assigned ? "bg-success text-success-foreground hover:bg-success" : "bg-secondary text-secondary-foreground hover:bg-secondary"}>
-                  {selectedConversation.assigned ? 'Assigned' : 'Unassigned'}
+                <div className="flex items-center gap-2">
+                  {selectedConversationFlow === 'assigned' && canMoveToUnassigned && (
+                    <Button
+                      size="sm"
+                      className="h-8 bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-60"
+                      onClick={handleMoveToUnassigned}
+                      disabled={moveToUnassignedLoading}
+                    >
+                      {moveToUnassignedLoading ? 'Moving…' : 'Move to Unassigned'}
+                    </Button>
+                  )}
+                  {selectedConversation.status !== 'closed' && (
+                    <Button
+                      size="sm"
+                      className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
+                      onClick={handleResolveConversation}
+                      disabled={resolveLoading}
+                    >
+                      {resolveLoading ? 'Resolving…' : 'Resolve'}
+                    </Button>
+                  )}
+                </div>
+                <Badge
+                  className={
+                    selectedConversationFlow === 'done'
+                      ? "bg-green-100 text-green-700 border-0"
+                      : selectedConversationFlow === 'assigned'
+                        ? "bg-success text-success-foreground hover:bg-success"
+                        : "bg-secondary text-secondary-foreground hover:bg-secondary"
+                  }
+                >
+                  {selectedConversationFlow === 'done'
+                    ? 'Done'
+                    : selectedConversationFlow === 'assigned'
+                      ? 'Assigned'
+                      : 'Unassigned'}
                 </Badge>
               </div>
             </div>
@@ -1673,58 +1580,39 @@ export default function ConversationPage() {
             </ScrollArea>
 
             {/* Message Input or Takeover / Join */}
-            <div className="border-t p-3">
-              {selectedConversation.status !== 'closed' && (
-                selectedConversation.assigned ? (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      placeholder={`Message ${selectedConversation.contact_name}...`}
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      className="flex-1"
-                      disabled={!hasPermission('messages.create')}
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleSendMessage}
-                      disabled={!draft.trim() || !hasPermission('messages.create')}
-                      title={!hasPermission('messages.create') ? 'No permission to send messages' : 'Send message'}
-                      aria-label="Send message"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <PermissionGate permission={'threads.update'}>
-                    {(() => {
-                      const hasAgentCollaborator = agentCollaboratorIds.length > 0;
-                      const takeoverAllowedByRole =
-                        isMasterAgent ||
-                        isSuperAgent ||
-                        (isRegularAgentOnly && !hasAgentCollaborator);
-                      const takeoverDisabled = !user?.id || !takeoverAllowedByRole;
-                      const takeoverTooltip = !user?.id
-                        ? 'You must be signed in'
-                        : takeoverAllowedByRole
-                          ? undefined
-                          : isRegularAgentOnly && hasAgentCollaborator
-                            ? 'Collaborator already assigned; agents cannot take over.'
-                            : 'Only master or super agents can take over.';
-                      return (
-                        <Button
-                          type="button"
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                          onClick={handleTakeoverChat}
-                          disabled={takeoverDisabled}
-                          title={takeoverTooltip}
-                        >
-                          Takeover Chat
-                        </Button>
-                      );
-                    })()}
-                  </PermissionGate>
-                )
+            <div className="border-t p-3 space-y-2">
+              {!isSelectedConversationDone && collaboratorId === user?.id && (
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder={`Message ${selectedConversation.contact_name}...`}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    className="flex-1"
+                    disabled={!canCurrentUserSend}
+                    title={sendDisabledReason}
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={!draft.trim() || !canCurrentUserSend}
+                    title={sendDisabledReason || 'Send message'}
+                    aria-label="Send message"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {(!isSelectedConversationDone && collaboratorId !== user?.id) && (
+                <Button
+                  type="button"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={handleTakeoverChat}
+                  disabled={!user?.id}
+                  title={user?.id ? undefined : 'You must be signed in'}
+                >
+                  Takeover Chat
+                </Button>
               )}
             </div>
           </>
@@ -1773,102 +1661,18 @@ export default function ConversationPage() {
             {/* Handled By */}
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Handled By</h3>
-              <SearchableSelect 
-                 options={superAgentOptions}
-                 value={handledById}
-                 onChange={async (val) => {
-                    if (!selectedConversation || selectedConversation.status === 'closed') return;
-                    const threadId = selectedConversation.id;
-                    // Optimistic: clear current UI chips immediately so users see a reset state.
-                    setCollaborators([]);
-
-                    // When handled-by changes, collaborator membership must be reset.
-                    try {
-                      if (val) {
-                        const keep = new Set<string>([val, user?.id || ''].filter(Boolean) as string[]);
-                        const { data } = await protectedSupabase
-                          .from('thread_collaborators')
-                          .select('user_id')
-                          .eq('thread_id', threadId);
-                        const existingIds = (data || []).map((r: any) => String(r.user_id));
-                        const idsToRemove = existingIds.filter((id: string) => !keep.has(id));
-                        if (idsToRemove.length > 0) {
-                          await protectedSupabase
-                            .from('thread_collaborators')
-                            .delete()
-                            .eq('thread_id', threadId)
-                            .in('user_id', idsToRemove as any);
-                        }
-                      } else {
-                        await protectedSupabase
-                          .from('thread_collaborators')
-                          .delete()
-                          .eq('thread_id', threadId);
-                      }
-                    } catch (e) {
-                      // Non-fatal; UI already cleared, and collaborator list will be rebuilt once a super agent is selected.
-                      console.warn('Failed to clear collaborators on handled-by change', e);
-                    }
-
-                    setHandledByOverride({ threadId, userId: val });
-                    await assignThreadToUser(threadId, val);
-                 }}
-                 placeholder="Assign Agent"
-                 searchPlaceholder="Search agent..."
-                 className="w-full"
-                 allowClear={!isSelectedConversationResolved}
-                 disabled={isSelectedConversationResolved}
-              />
+              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {handledById ? (labelForUserId(handledById) || '—') : '—'}
+              </div>
             </div>
 
             {/* Collaborators */}
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">Collaborators</h3>
-              <SearchableSelect
-                options={collaboratorOptionsWithSelected}
-                value={selectedCollaboratorId}
-                onChange={async (val) => {
-                  if (!selectedConversation || selectedConversation.status === 'closed') return;
-                  if (!selectedThreadId) return;
-                  if (!handledById) return;
+              <h3 className="text-sm font-medium">Collaborator</h3>
+              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {selectedCollaboratorId ? (labelForUserId(selectedCollaboratorId) || '—') : '—'}
+              </div>
 
-                  const allowed = new Set(superAgentMemberAgentIds);
-                  const agentIdsToRemove = (collaborators || []).map(String).filter((id) => allowed.has(id));
-
-                  try {
-                    // Remove all existing agent-collaborators for this super agent scope
-                    if (agentIdsToRemove.length > 0) {
-                      await protectedSupabase
-                        .from('thread_collaborators')
-                        .delete()
-                        .eq('thread_id', selectedThreadId)
-                        .in('user_id', agentIdsToRemove as any);
-                    }
-
-                    // Add the newly selected one (if any)
-                    if (val) {
-                      await addThreadParticipant(selectedThreadId, val);
-                    }
-
-                    // Update local state: keep non-agent collaborators (assignee/super agent), replace agent-collabs with val
-                    setCollaborators(prev => {
-                      const prevStr = (prev || []).map(String);
-                      const kept = prevStr.filter((id) => !allowed.has(id));
-                      return val ? [...kept, val] : kept;
-                    });
-
-                    toast.success(val ? "Collaborator updated" : "Collaborator cleared");
-                  } catch (e) {
-                    // Hook/DB will handle errors; keep UI stable
-                  }
-                }}
-                placeholder={handledById ? "Select Collaborator" : "Select handled by first"}
-                searchPlaceholder="Search agent..."
-                className="w-full"
-                disabled={!handledById || isSelectedConversationResolved}
-                allowClear
-                clearLabel="Clear collaborator"
-              />
             </div>
 
             {/* Notes */}

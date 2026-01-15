@@ -2468,6 +2468,7 @@ CREATE TABLE IF NOT EXISTS "public"."threads" (
     "channel_id" "uuid" NOT NULL,
     "status" "public"."thread_status" DEFAULT 'open'::"public"."thread_status" NOT NULL,
     "assignee_user_id" "uuid",
+    "collaborator_user_id" "uuid",
     "last_msg_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "assigned_by_user_id" "uuid",
@@ -3543,6 +3544,11 @@ ALTER TABLE ONLY "public"."threads"
 
 ALTER TABLE ONLY "public"."threads"
     ADD CONSTRAINT "threads_assignee_user_id_fkey" FOREIGN KEY ("assignee_user_id") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."threads"
+    ADD CONSTRAINT "threads_collaborator_user_id_fkey" FOREIGN KEY ("collaborator_user_id") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE SET NULL;
 
 
 

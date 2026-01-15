@@ -29,7 +29,7 @@ export interface ContactWithDetails extends Contact {
 }
 
 export interface ContactsFilter {
-  chatStatus?: 'open' | 'pending' | 'closed' | '';
+  chatStatus?: 'open' | 'pending' | 'closed' | 'assigned' | '';
   handledBy?: 'assigned' | 'unassigned' | '';
   dateRange?: { from?: string; to?: string };
 }
