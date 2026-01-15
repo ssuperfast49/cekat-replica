@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.56] Supabase Function Alignment 2026-01-15
+### Supabase
+- **takeover_thread matches dev**: returns the updated thread, sets `collaborator_user_id`, `status='pending'`, keeps `assigned_at` if present. Migration: `20260115120000_align_functions.sql`.
+- **reopen_thread_on_user_message matches dev**: reopens closed threads without clearing handled-by fields. Migration: `20260115120000_align_functions.sql`.
+
 # [0.1.55] Supabase Trigger/Function Parity 2026-01-15
 ### Supabase (main aligned to development)
 - **Trigger parity**: Removed main-only thread triggers and added the channel super-agent sync trigger (`tr_update_contacts_threads_on_channel_super_agent_change`) to mirror development. New migration: `20260115113000_align_triggers.sql`.
