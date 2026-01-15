@@ -1,4 +1,11 @@
 # Change Log
+# [0.1.53] FE WEB CEKAT 2026-01-15
+### Contacts
+- **Removed per-row delete button**: Contacts list no longer shows the single-contact delete action; bulk multi-select delete now covers this flow for master/super agents.
+  - Updated: `src/components/contacts/Contacts.tsx`
+- **Handled-by filter cleanup**: Filter uses a truthy check instead of comparing to an empty string, keeping TS types aligned while filtering assigned vs unassigned contacts.
+  - Updated: `src/components/contacts/Contacts.tsx`
+
 # [0.1.52] FE WEB CEKAT 2026-01-14
 ### Conversations & Assignment Flow
 - **Unassign keeps handled-by, clears collaborator**: Moving a chat to Unassigned now only nulls `collaborator_user_id`, reopens AI, and keeps the handled-by assignee intact while placing the thread in the Unassigned tab.
