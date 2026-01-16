@@ -1,7 +1,14 @@
 # Change Log
-# [0.1.58] Supabase Reopen Collaborator Reset 2026-01-15
+# [0.1.59] Supabase Reopen Collaborator Reset 2026-01-15
 ### Supabase
 - Reopen on inbound messages now clears `collaborator_user_id` so reopened/unassigned conversations have no collaborator. Migration: `20260115124500_reopen_clear_collaborator.sql`.
+
+# [0.1.58] FE WEB CEKAT 2026-01-15
+### Contacts
+- **Removed per-row delete button**: Contacts list no longer shows the single-contact delete action; bulk multi-select delete now covers this flow for master/super agents.
+  - Updated: `src/components/contacts/Contacts.tsx`
+- **Handled-by filter cleanup**: Filter uses a truthy check instead of comparing to an empty string, keeping TS types aligned while filtering assigned vs unassigned contacts.
+  - Updated: `src/components/contacts/Contacts.tsx`
 
 # [0.1.57] Supabase Policy Cleanup 2026-01-15
 ### Supabase
