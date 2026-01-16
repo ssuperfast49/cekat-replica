@@ -1,4 +1,8 @@
 # Change Log
+# [0.1.58] Supabase Reopen Collaborator Reset 2026-01-15
+### Supabase
+- Reopen on inbound messages now clears `collaborator_user_id` so reopened/unassigned conversations have no collaborator. Migration: `20260115124500_reopen_clear_collaborator.sql`.
+
 # [0.1.57] Supabase Policy Cleanup 2026-01-15
 ### Supabase
 - Removed main-only public/anon policies on `job`, `job_run_details`, and `storage.objects` to match development. Migration: `20260115123000_remove_extra_public_policies.sql`.
