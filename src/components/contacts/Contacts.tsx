@@ -249,7 +249,7 @@ export default function Contacts() {
 
   const filteredContacts = (() => {
     let result = sortedContacts;
-    if (filters.handledBy && filters.handledBy !== '') {
+    if (filters.handledBy) {
       result = result.filter(contact => contact.handledBy === filters.handledBy);
     }
     return result;
@@ -779,23 +779,6 @@ export default function Contacts() {
                           </TooltipTrigger>
                           <TooltipContent>Edit contact</TooltipContent>
                         </Tooltip>
-                        {(isMasterAgent || isSuperAgent) && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="sm"
-                                className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                                aria-label="Delete contact"
-                                onClick={() => handleDeleteContact(contact.id)}
-                                variant="ghost"
-                                title="Delete contact"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Delete contact</TooltipContent>
-                          </Tooltip>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell className="font-medium">

@@ -164,6 +164,7 @@ const AIAgents = () => {
   const { agents: humanAgents } = useHumanAgents();
   const [createSuperOpen, setCreateSuperOpen] = useState(false);
   const [selectedCreateSuperId, setSelectedCreateSuperId] = useState<string | null>(null);
+  const isSuperScoped = scopeMode === 'super' && !!superAgentId;
   
 const escapeIlike = (value: string) =>
   value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
@@ -359,6 +360,14 @@ const fetchAgents = useCallback(async () => {
     }
   }
 }, [debouncedSearch, modelFilter, providerFilter, sortOrder, modelMap, scopeMode, superAgentId, scopeLoading, scopeError]);
+
+  // Force super agents to create only for themselves
+  useEffect(() => {
+    if (isSuperScoped && superAgentId) {
+      setSelectedCreateSuperId(superAgentId);
+      setCreateSuperOpen(false);
+    }
+  }, [isSuperScoped, superAgentId]);
 
 const providerOptions = useMemo(() => {
   const providers = new Set<string>();
@@ -739,36 +748,50 @@ const confirmDeleteAgent = async () => {
               />
             </div>
 
-            {/* Super Agent picker with search */}
+            {/* Super Agent picker with search (super agents locked to self) */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Super Agent *</label>
-              <Popover open={createSuperOpen} onOpenChange={setCreateSuperOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" className="w-full justify-between">
-                    {(() => {
-                      const sup = humanAgents.find(a => a.primaryRole === 'super_agent' && a.user_id === selectedCreateSuperId);
-                      return sup?.display_name || sup?.email || selectedCreateSuperId || 'Choose a super agent';
-                    })()}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[360px] p-0">
-                  <Command>
-                    <CommandInput placeholder="Search super agents..." />
-                    <CommandEmpty>No super agents found.</CommandEmpty>
-                    <CommandGroup>
-                      {humanAgents
-                        .filter(a => a.primaryRole === 'super_agent')
-                        .map(sa => (
-                          <CommandItem key={sa.user_id} onSelect={() => { setSelectedCreateSuperId(sa.user_id); setCreateSuperOpen(false); }}>
-                            <span className="ml-2">{sa.display_name || sa.email || sa.user_id.slice(0,8)}</span>
-                          </CommandItem>
-                        ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              {isSuperScoped ? (
+                <Input
+                  readOnly
+                  disabled
+                  value={
+                    humanAgents.find(a => a.user_id === superAgentId)?.display_name ||
+                    humanAgents.find(a => a.user_id === superAgentId)?.email ||
+                    superAgentId ||
+                    'Current super agent'
+                  }
+                  className="w-full"
+                />
+              ) : (
+                <Popover open={createSuperOpen} onOpenChange={setCreateSuperOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                      {(() => {
+                        const sup = humanAgents.find(a => a.primaryRole === 'super_agent' && a.user_id === selectedCreateSuperId);
+                        return sup?.display_name || sup?.email || selectedCreateSuperId || 'Choose a super agent';
+                      })()}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[360px] p-0">
+                    <Command>
+                      <CommandInput placeholder="Search super agents..." />
+                      <CommandEmpty>No super agents found.</CommandEmpty>
+                      <CommandGroup>
+                        {humanAgents
+                          .filter(a => a.primaryRole === 'super_agent')
+                          .map(sa => (
+                            <CommandItem key={sa.user_id} onSelect={() => { setSelectedCreateSuperId(sa.user_id); setCreateSuperOpen(false); }}>
+                              <span className="ml-2">{sa.display_name || sa.email || sa.user_id.slice(0,8)}</span>
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              )}
               <p className="text-xs text-muted-foreground">
-                Assign a super agent who will own and manage this AI agent.
+                Super agents can only create AI Agents for themselves.
               </p>
             </div>
 
