@@ -1,4 +1,8 @@
 # Change Log
+# [0.1.62] FE WEB CEKAT 2026-01-18
+### Connected Platforms
+- **Fixed chat takeover AI still has access to reply**: Added the variable change of ai_access_enabled to false when taking over whatsapp chat.
+
 # [0.1.61] FE WEB CEKAT 2026-01-18
 ### Connected Platforms
 - **Removed toLowerCase for session_name**: Session names are now preserved with their original casing when sent to WhatsApp API endpoints, maintaining case-sensitive session identifiers.
