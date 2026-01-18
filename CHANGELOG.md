@@ -1,4 +1,14 @@
 # Change Log
+# [0.1.61] FE WEB CEKAT 2026-01-18
+### Connected Platforms
+- **Removed toLowerCase for session_name**: Session names are now preserved with their original casing when sent to WhatsApp API endpoints, maintaining case-sensitive session identifiers.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
+# [0.1.60] FE WEB CEKAT 2026-01-15
+### Chat Filter
+- **Removed redundant inbox filter**: Filter modal drops the inbox selector since channel type already scopes conversations, keeping the dialog lean.
+  - Updated: `src/components/chat/ChatFilter.tsx`
+
 # [0.1.59] Supabase Reopen Collaborator Reset 2026-01-15
 ### Supabase
 - Reopen on inbound messages now clears `collaborator_user_id` so reopened/unassigned conversations have no collaborator. Migration: `20260115124500_reopen_clear_collaborator.sql`.

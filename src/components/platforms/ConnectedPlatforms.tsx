@@ -823,7 +823,7 @@ const ConnectedPlatforms = () => {
     }
     if (provider === 'whatsapp') {
       // Normalize session name from display name (same rule used elsewhere)
-      const sessionName = String(channel?.display_name || '').toLowerCase().replace(/\s/g, '');
+      const sessionName = String(channel?.display_name || '').replace(/\s/g, '');
       const res = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.DELETE_SESSION, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
