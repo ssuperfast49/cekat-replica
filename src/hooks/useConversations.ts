@@ -957,6 +957,7 @@ const computeAssignmentState = (source: {
           collaborator_user_id: currentUserId,
           status: 'pending',
           assigned_at: nowIso,
+          ai_access_enabled: false,
         })
         .eq('id', threadId);
       if (updErr) throw updErr;
