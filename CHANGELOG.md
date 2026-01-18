@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.61] FE WEB CEKAT 2026-01-18
+### Connected Platforms
+- **Removed toLowerCase for session_name**: Session names are now preserved with their original casing when sent to WhatsApp API endpoints, maintaining case-sensitive session identifiers.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
 # [0.1.60] FE WEB CEKAT 2026-01-15
 ### Chat Filter
 - **Removed redundant inbox filter**: Filter modal drops the inbox selector since channel type already scopes conversations, keeping the dialog lean.
