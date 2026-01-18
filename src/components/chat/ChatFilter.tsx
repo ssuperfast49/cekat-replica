@@ -26,7 +26,6 @@ interface FilterState {
     from?: Date;
     to?: Date;
   };
-  inbox: string;
   label: string[];
   agent: string;
   status: string;
@@ -49,7 +48,6 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ value, onFilterChange })
   const [platforms, setPlatforms] = useState<Array<{ id: string; display_name: string | null; provider: string | null; type: string | null }>>([]);
   const [filters, setFilters] = useState<FilterState>({
     dateRange: {},
-    inbox: '',
     label: [],
     agent: '',
     status: '',
@@ -75,7 +73,6 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ value, onFilterChange })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     open,
-    value?.inbox,
     value?.agent,
     value?.status,
     value?.resolvedBy,
@@ -132,7 +129,6 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ value, onFilterChange })
   const handleReset = () => {
     const resetFilters: FilterState = {
       dateRange: {},
-      inbox: '',
       label: [],
       agent: '',
       status: '',
@@ -160,7 +156,7 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ value, onFilterChange })
 
         <div className="grid gap-6 py-4">
           {/* Date Range */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Date Range</label>
               <div className="flex gap-2">
@@ -214,21 +210,6 @@ export const ChatFilter: React.FC<ChatFilterProps> = ({ value, onFilterChange })
               </div>
             </div>
 
-            {/* Inbox */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Inbox</label>
-              <Select value={filters.inbox} onValueChange={(value) => handleFilterChange('inbox', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Inbox" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Inbox</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="telegram">Telegram</SelectItem>
-                  <SelectItem value="email">Email</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           {/* Label and Resolved By */}

@@ -1,4 +1,9 @@
 # Change Log
+# [0.1.60] FE WEB CEKAT 2026-01-15
+### Chat Filter
+- **Removed redundant inbox filter**: Filter modal drops the inbox selector since channel type already scopes conversations, keeping the dialog lean.
+  - Updated: `src/components/chat/ChatFilter.tsx`
+
 # [0.1.59] Supabase Reopen Collaborator Reset 2026-01-15
 ### Supabase
 - Reopen on inbound messages now clears `collaborator_user_id` so reopened/unassigned conversations have no collaborator. Migration: `20260115124500_reopen_clear_collaborator.sql`.
