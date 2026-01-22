@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, logAction } from '@/lib/supabase';
+import type { Json } from '@/integrations/supabase/types';
 
 export interface AIProfile {
   id: string;
@@ -11,10 +12,10 @@ export interface AIProfile {
   transfer_conditions: string;
   stop_ai_after_handoff: boolean;
   response_temperature?: string | null;
-  model_id?: string | null;
+  model?: string | null;
   super_agent_id?: string | null;
   created_at: string;
-  qna?: ({ q: string; a: string } | { question: string; answer: string })[] | null;
+  qna?: import("@/integrations/supabase/types").Json | null;
   auto_resolve_after_minutes?: number | null;
   enable_resolve?: boolean | null;
 }
@@ -56,7 +57,7 @@ export const useAIProfiles = (profileId?: string) => {
   };
 
   // Save AI profile
-  const saveProfile = async (updateData: Partial<AIProfile>) => {
+  const saveProfile = async (updateData: Partial<AIProfile> & { name: string }) => {
     try {
       setSaving(true);
       setError(null);

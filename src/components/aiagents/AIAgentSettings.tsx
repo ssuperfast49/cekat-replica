@@ -557,7 +557,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     if (!modelId && (profile as any)?.model_id && availableModels.some(m => m.id === (profile as any).model_id)) {
       setModelId((profile as any).model_id);
     }
-  }, [availableModels, profile?.model_id]);
+  }, [availableModels]);
 
   useEffect(() => {
     if (!profile) return;
@@ -2297,6 +2297,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                   setKnowledgeTab('qa');
                                   try {
                                     await saveProfile({
+                                      name: agentName,
                                       qna: qaPairs
                                         .filter((p) => (p.question?.trim() || p.answer?.trim()))
                                         .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),

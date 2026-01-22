@@ -1405,6 +1405,14 @@ export type Database = {
         }
         Relationships: []
       }
+      v_human_agents: {
+        Row: {
+          agent_name: string | null
+          email: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       binary_quantize: {

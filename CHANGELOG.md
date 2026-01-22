@@ -1,4 +1,29 @@
 # Change Log
+# [0.1.64] FE WEB CEKAT 2026-01-22
+### AI Agent Management
+- **Enhanced AI Agent Creation & Editing UI**: Improved interface with better organization and validation
+  - Separated AI Agent creation into dedicated dialog with enhanced form layout
+  - Added comprehensive model selection system with pricing and provider information
+  - Implemented fallback model selection for automatic failover when primary model unavailable
+  - Updated model display with cost per 1M tokens, provider badges, and descriptions
+  - Improved AI Agent Settings with better input handling and validation
+  - Updated: `src/components/aiagents/AIAgents.tsx`, `src/components/aiagents/AIAgentSettings.tsx`
+  - Updated: `src/hooks/useAIProfiles.ts`
+
+### Supabase Integration
+- **Type System Updates**: Enhanced type definitions for AI profiles and database integration
+  - Added `model_id` and `fallback_model_id` fields to AI profile types
+  - Updated type definitions to match database schema changes
+  - Improved type safety across AI agent operations
+  - Updated: `src/integrations/supabase/types.ts`
+
+### Webhook Configuration
+- **Webhook URL Enhancements**: Improved webhook payload structure and URL handling
+  - Enhanced webhook configuration with better URL construction
+  - Updated webhook payload format for file uploads
+  - Improved error handling and validation
+  - Updated: `src/config/webhook.ts`
+
 # [0.1.63] FE WEB CEKAT 2026-01-22
 ### AI Agent Knowledge Files
 - **PDF Upload Reliability**: Fixed `crypto.subtle.digest` crash in non-secure contexts by adding fallback hash generation using file metadata.
