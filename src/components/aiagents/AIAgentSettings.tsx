@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTemperatureValue } from '@/lib/temperatureUtils';
+import { SUPABASE_URL } from '@/config/supabase';
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -35,16 +36,16 @@ interface ChatMessage {
 
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
-const ChatPreview = ({ 
-  welcomeMessage, 
-  systemPrompt, 
+const ChatPreview = ({
+  welcomeMessage,
+  systemPrompt,
   modelDisplay,
   profile,
   profileId,
   modelName,
   temperature: legacyTemperature,
   transfer_conditions
-}: { 
+}: {
   welcomeMessage: string;
   systemPrompt: string;
   modelDisplay: string;
@@ -57,7 +58,7 @@ const ChatPreview = ({
   // Get the actual temperature value from response_temperature preset
   // Use the mapped value from response_temperature if available, otherwise fallback to legacy temperature
   const responseTemperature = (profile as any)?.response_temperature;
-  const actualTemperature = responseTemperature 
+  const actualTemperature = responseTemperature
     ? getTemperatureValue(responseTemperature, legacyTemperature || 0.5)
     : (legacyTemperature || 0.5);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -91,7 +92,7 @@ const ChatPreview = ({
       setSessionId(sessionId);
       console.log('Generated session ID:', sessionId);
     };
-    
+
     generateSessionId();
   }, []);
 
@@ -146,7 +147,7 @@ const ChatPreview = ({
 
       const data = await response.json();
       console.log('API Response:', data);
-      
+
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         content: data.output || "Sorry, I couldn't process your message.",
@@ -161,7 +162,7 @@ const ChatPreview = ({
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
       setIsConnected(false);
-      
+
       // Add error message to chat
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -199,7 +200,7 @@ const ChatPreview = ({
     const random = Math.random().toString(36).substring(2, 15);
     const newSessionId = `session_${timestamp}_${random}`;
     setSessionId(newSessionId);
-    
+
     // Clear chat and reset to welcome message
     setMessages([
       {
@@ -209,7 +210,7 @@ const ChatPreview = ({
         timestamp: new Date()
       }
     ]);
-    
+
     toast.success('Session refreshed! New session ID: ' + newSessionId);
     console.log('New session ID:', newSessionId);
   };
@@ -268,7 +269,7 @@ const ChatPreview = ({
           </Tooltip>
         </div>
       </div>
-      
+
       <div ref={scrollContainerRef} className="flex-1 p-4 space-y-4 overflow-auto max-h-[400px]">
         {messages.map((message) => (
           <div
@@ -276,11 +277,10 @@ const ChatPreview = ({
             className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[80%] p-3 rounded-lg ${
-                message.sender === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
-              }`}
+              className={`max-w-[80%] p-3 rounded-lg ${message.sender === 'user'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted'
+                }`}
             >
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               <p className="text-xs opacity-70 mt-1">
@@ -301,7 +301,7 @@ const ChatPreview = ({
         )}
         <div ref={messagesEndRef} />
       </div>
-      
+
       <div className="p-4 border-t bg-muted/30">
         <div className="flex gap-2">
           <textarea
@@ -316,8 +316,8 @@ const ChatPreview = ({
           />
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 onClick={sendMessage}
                 disabled={!inputMessage.trim() || isLoading}
                 className="px-4"
@@ -354,14 +354,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     welcome: true,
     transfer: false
   });
-  
+
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
   };
-  
+
   const isNewAgent = !profileId;
   const { hasPermission, hasRole } = useRBAC();
   const { user } = useAuth();
@@ -372,7 +372,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     hasPermission('ai_agent_files.create') ||
     Boolean(isMasterAgent) ||
     Boolean(isSuperAgent);
-  
+
   const clampNumber = (value: number, minVal: number, maxVal: number) => {
     if (Number.isNaN(value)) return minVal;
     return Math.min(maxVal, Math.max(minVal, value));
@@ -384,7 +384,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const MESSAGE_PRACTICAL_MAX = 1000;
   const READ_FILE_HARD_MAX = 25;
   const AUTO_RESOLVE_MAX_MINUTES = 24 * 60; // 24 hours
-  
+
   // Use the custom hook for AI profile management
   const { profile, loading, saving, error, saveProfile } = useAIProfiles(profileId);
   const [superAgentId, setSuperAgentId] = useState<string | null>(profile?.super_agent_id ?? null);
@@ -411,7 +411,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           setSuperAgentId(fromCreate);
           localStorage.removeItem('ai.new.super_agent_id');
         }
-      } catch {}
+      } catch { }
     }
   }, [isNewAgent, superAgentId]);
 
@@ -422,7 +422,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         setLoadingSuperAgents(true);
         setSuperAgentsError(null);
         const { data, error } = await supabase
-          .from('v_human_agents')
+          .from('v_human_agents' as any)
           .select('user_id, agent_name, email, role_name')
           .eq('org_id', profile?.org_id ?? DEFAULT_ORG_ID)
           .ilike('role_name', '%super%');
@@ -458,21 +458,21 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       isCancelled = true;
     };
   }, [profile?.org_id, profile?.super_agent_id, isSuperAgent, isMasterAgent, user?.id]);
-  
+
   // Form state - initialize with helpful placeholders for new agents or profile data
   const [systemPrompt, setSystemPrompt] = useState(
-    isNewAgent 
-      ? "You are a helpful AI assistant for customer service. Be friendly, professional, and helpful. Always respond in Indonesian unless the customer speaks in another language." 
+    isNewAgent
+      ? "You are a helpful AI assistant for customer service. Be friendly, professional, and helpful. Always respond in Indonesian unless the customer speaks in another language."
       : profile?.system_prompt || ""
   );
   const [welcomeMessage, setWelcomeMessage] = useState(
-    isNewAgent 
-      ? "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?" 
+    isNewAgent
+      ? "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?"
       : profile?.welcome_message || ""
   );
   const [transferConditions, setTransferConditions] = useState(
-    isNewAgent 
-      ? "Transfer to human agent when:\n- Customer requests to speak with a human\n- Complex technical issues arise\n- Customer is dissatisfied or angry\n- Payment or billing issues\n- Escalation is needed" 
+    isNewAgent
+      ? "Transfer to human agent when:\n- Customer requests to speak with a human\n- Complex technical issues arise\n- Customer is dissatisfied or angry\n- Payment or billing issues\n- Escalation is needed"
       : profile?.transfer_conditions || ""
   );
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
@@ -525,14 +525,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           .order('display_name', { ascending: true });
         if (error) throw error;
         const allModels = (data || []) as any[];
-        
+
         // Separate regular models from fallback models
         const regular = allModels.filter((m: any) => (m.display_name || '').toLowerCase() !== 'fallback');
         const fallback = allModels.filter((m: any) => (m.display_name || '').toLowerCase() === 'fallback');
-        
+
         setAvailableModels(regular);
         setFallbackModels(fallback);
-        
+
         // Initialize model IDs if not already set; prefer profile.model_id or initialModelId
         const preferredPrimary = (profile as any)?.model_id || initialModelId || '';
         if (!modelId) {
@@ -636,7 +636,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
-  
+
   // Resolve org and profile IDs for storage pathing
   const getUploadContext = async (): Promise<{ orgId: string; profileId: string }> => {
     // Require an existing profile to ensure profile-scoped path
@@ -666,7 +666,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
     return { orgId: resolvedOrgId, profileId: resolvedProfileId };
   };
-  
+
   // Upload PDF to Supabase Storage after webhook processes/returns fileHash
   const uploadFileToSupabase = async (file: File, fileId: number): Promise<{ url: string; filePath: string; documentId?: string }> => {
     try {
@@ -683,10 +683,29 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
 
       // Pre-compute content hash on the client to generate stable key and share with webhook
-      const buffer = await file.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const contentHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+      let contentHash = '';
+      try {
+        if (typeof crypto !== 'undefined' && crypto.subtle) {
+          const buffer = await file.arrayBuffer();
+          const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          contentHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        } else {
+          // Fallback for environments where crypto.subtle is not available (e.g. non-secure contexts)
+          console.warn('crypto.subtle not available, using fallback hash');
+          const pseudoKey = `${file.name}-${file.size}-${file.lastModified}-${Date.now()}`;
+          // Simple DJB2-like hash for fallback uniqueness
+          let hash = 5381;
+          for (let i = 0; i < pseudoKey.length; i++) {
+            hash = ((hash << 5) + hash) + pseudoKey.charCodeAt(i);
+          }
+          // Make it look somewhat like a hex hash using the number
+          contentHash = (Math.abs(hash) + Date.now()).toString(16).padStart(64, '0');
+        }
+      } catch (err) {
+        console.warn('Error computing hash, using standard fallback:', err);
+        contentHash = `fallback-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+      }
 
       // Build storage key using content hash and original base name
       const originalSafe = (file?.name || 'file.pdf').replace(/[^a-zA-Z0-9_.-]/g, '');
@@ -694,10 +713,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       const generatedName = `${contentHash}_${baseNoExt}.pdf`;
       const fileKey = `org_${orgId}/profile_${resolvedProfileId}/${generatedName}`;
 
+      const fileUrl = `${SUPABASE_URL}/storage/v1/object/ai-agent-files/${fileKey}`;
+
       // 1) Send to webhook for hashing, extraction, and knowledgebase indexing (include hash)
       const form = new FormData();
       form.append('file', file);
       form.append('file_name', file.name || 'file.pdf');
+      form.append('file_url', fileUrl);
       form.append('org_id', orgId);
       form.append('profile_id', resolvedProfileId);
       form.append('hashFile', contentHash);
@@ -708,7 +730,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       });
       if (!resp.ok) {
         let message = `Upload failed (${resp.status})`;
-        try { const j = await resp.json(); message = j?.message || message; } catch {}
+        try { const j = await resp.json(); message = j?.message || message; } catch { }
         throw new Error(message);
       }
       const data = await resp.json().catch(() => ({} as any));
@@ -833,9 +855,21 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   }, [knowledgeTab, profile?.id, profileId]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-    
+    const allFiles = Array.from(e.target.files || []);
+    if (allFiles.length === 0) return;
+
+    // Filter for PDF only
+    const files = allFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+
+    if (files.length < allFiles.length) {
+      toast.error('Only PDF files are supported. Some files were skipped.');
+    }
+
+    if (files.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     // Ensure IDs are available for pathing
     try {
       await getUploadContext();
@@ -844,9 +878,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    
+
     const now = new Date().toISOString();
-    
+
     // Add files with uploading status first
     const newItems: KnowledgeFile[] = files.map((f) => ({
       id: Date.now() + Math.random(),
@@ -855,20 +889,20 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       uploadedAt: now,
       status: 'uploading' as KnowledgeFileStatus,
     }));
-    
+
     setKnowledgeFiles((prev) => [...newItems, ...prev]);
-    
+
     // Upload each file
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const fileItem = newItems[i];
-      
+
       try {
         const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
 
         // Update file status to ready with URL
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
             ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath }
             : f
         ));
@@ -877,26 +911,26 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       } catch (error: any) {
         // Special-case duplicate: mark as ready and refresh listing without creating new object
         if (String(error?.message || '').toLowerCase().includes('duplicate') || error?.code === 'DUPLICATE_CONTENT') {
-          setKnowledgeFiles((prev) => prev.map((f) => 
-            f.id === fileItem.id 
+          setKnowledgeFiles((prev) => prev.map((f) =>
+            f.id === fileItem.id
               ? { ...f, status: 'ready' as KnowledgeFileStatus }
               : f
           ));
-          setTimeout(() => { (loadExistingKnowledgeFiles() as any)?.catch?.(() => {}); }, 0);
+          setTimeout(() => { (loadExistingKnowledgeFiles() as any)?.catch?.(() => { }); }, 0);
           toast.info(`${file.name} already exists. Skipped re-upload.`);
           continue;
         }
         // Update file status to failed
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
             ? { ...f, status: 'failed' as KnowledgeFileStatus }
             : f
         ));
-        
+
         toast.error(error.message || `Failed to upload ${file.name}`);
       }
     }
-    
+
     // reset input so same files can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -904,7 +938,16 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     e.preventDefault();
     const dtFiles = Array.from(e.dataTransfer.files || []);
     if (dtFiles.length === 0) return;
-    
+
+    // Filter for PDF only
+    const validFiles = dtFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+
+    if (validFiles.length < dtFiles.length) {
+      toast.error('Only PDF files are supported. Some files were skipped.');
+    }
+
+    if (validFiles.length === 0) return;
+
     // Ensure IDs are available for pathing
     try {
       await getUploadContext();
@@ -912,44 +955,44 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       toast.error(err?.message || 'Unable to upload at this time');
       return;
     }
-    
+
     const now = new Date().toISOString();
-    
+
     // Add files with uploading status first
-    const newItems: KnowledgeFile[] = dtFiles.map((f) => ({
+    const newItems: KnowledgeFile[] = validFiles.map((f) => ({
       id: Date.now() + Math.random(),
       name: f.name,
       size: f.size,
       uploadedAt: now,
       status: 'uploading' as KnowledgeFileStatus,
     }));
-    
+
     setKnowledgeFiles((prev) => [...newItems, ...prev]);
-    
+
     // Upload each file
-    for (let i = 0; i < dtFiles.length; i++) {
-      const file = dtFiles[i];
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
       const fileItem = newItems[i];
-      
+
       try {
         const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
-        
+
         // Update file status to ready with URL
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
             ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath }
             : f
         ));
-        
+
         toast.success(`${file.name} uploaded successfully!`);
       } catch (error: any) {
         // Update file status to failed
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
             ? { ...f, status: 'failed' as KnowledgeFileStatus }
             : f
         ));
-        
+
         toast.error(error.message || `Failed to upload ${file.name}`);
       }
     }
@@ -970,12 +1013,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         });
         if (!resp.ok) {
           let message = `Delete failed (${resp.status})`;
-          try { const j = await resp.json(); message = j?.message || message; } catch {}
+          try { const j = await resp.json(); message = j?.message || message; } catch { }
           throw new Error(message);
         }
         // Require explicit confirmation from webhook
         let payload: any = {};
-        try { payload = await resp.json(); } catch {}
+        try { payload = await resp.json(); } catch { }
         const st = String(payload?.status || '').toLowerCase();
         if (st !== 'deleted') {
           throw new Error(payload?.message || 'Delete not confirmed by webhook');
@@ -1032,12 +1075,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
             });
             if (!resp.ok) {
               let message = `Delete failed (${resp.status})`;
-              try { const j = await resp.json(); message = j?.message || message; } catch {}
+              try { const j = await resp.json(); message = j?.message || message; } catch { }
               console.warn('Delete webhook failed for', f.filePath, message);
             } else {
               // Confirm webhook success status
               let payload: any = {};
-              try { payload = await resp.json(); } catch {}
+              try { payload = await resp.json(); } catch { }
               const st = String(payload?.status || '').toLowerCase();
               if (st !== 'deleted') {
                 console.warn('Delete webhook did not confirm deletion for', f.filePath, st);
@@ -1086,7 +1129,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     }
     return q !== (base.question || '').trim() || a !== (base.answer || '').trim();
   };
-  
+
   // Followups state
   const [followups, setFollowups] = useState([
     { id: 1, prompt: "Hai! Ada yang bisa saya bantu lagi?", delay: 60, expanded: false },
@@ -1109,13 +1152,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   };
 
   const updateFollowup = (id: number, field: string, value: any) => {
-    setFollowups(followups.map(f => 
+    setFollowups(followups.map(f =>
       f.id === id ? { ...f, [field]: value } : f
     ));
   };
 
   const toggleOptions = (id: number) => {
-    setFollowups(followups.map(f => 
+    setFollowups(followups.map(f =>
       f.id === id ? { ...f, expanded: !f.expanded } : f
     ));
   };
@@ -1137,7 +1180,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
       setMessageAwait((profile as any)?.message_await ?? 3);
       setMessageLimitInput(String(clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX)));
-      const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
+      const qna = (profile as any)?.qna as ({ q: string; a: string } | { question: string; answer: string })[] | null | undefined;
       if (qna && Array.isArray(qna)) {
         const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
         setQaPairs(pairs);
@@ -1164,7 +1207,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     const autoResolveMinutes = clampNumber(parseNumericInput(autoResolveMinutesInput), 0, AUTO_RESOLVE_MAX_MINUTES);
     const historyLimit = clampNumber(parseNumericInput(historyLimitInput), 0, historyLimitMax);
     const messageLimit = clampNumber(parseNumericInput(messageLimitInput), 0, MESSAGE_PRACTICAL_MAX);
-    
+
     // Context window is no longer user-configurable in the UI.
     // Persist an existing value (or a sensible default) clamped to the selected model capability.
     const derivedContextLimitMaxK = (() => {
@@ -1498,7 +1541,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
               {/* AI Agent Behavior */}
               <Card className="p-4">
-                <div 
+                <div
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => toggleSection('behavior')}
                 >
@@ -1520,19 +1563,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   </div>
                   <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.behavior ? 'rotate-180' : ''}`} />
                 </div>
-                
+
                 {expandedSections.behavior && (
                   <div className="mt-4 space-y-4">
-                    <Textarea 
-                      className="min-h-[120px]" 
+                    <Textarea
+                      className="min-h-[120px]"
                       value={systemPrompt}
                       onChange={(e) => setSystemPrompt(e.target.value)}
-                      placeholder={isNewAgent ? 
-                        "Define your AI's personality, behavior, and capabilities here..." : 
+                      placeholder={isNewAgent ?
+                        "Define your AI's personality, behavior, and capabilities here..." :
                         "Enter system prompt..."
                       }
                     />
-                    
+
                     <div className="text-right text-xs text-muted-foreground">
                       {systemPrompt.length}/15000
                     </div>
@@ -1542,7 +1585,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
               {/* Welcome Message */}
               <Card className="p-4">
-                <div 
+                <div
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => toggleSection('welcome')}
                 >
@@ -1564,19 +1607,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   </div>
                   <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.welcome ? 'rotate-180' : ''}`} />
                 </div>
-                
+
                 {expandedSections.welcome && (
                   <div className="mt-4 space-y-4">
-                    <Textarea 
-                      className="min-h-[80px]" 
+                    <Textarea
+                      className="min-h-[80px]"
                       value={welcomeMessage}
                       onChange={(e) => setWelcomeMessage(e.target.value)}
-                      placeholder={isNewAgent ? 
-                        "This is the first message your AI will send to customers..." : 
+                      placeholder={isNewAgent ?
+                        "This is the first message your AI will send to customers..." :
                         "Enter welcome message..."
                       }
                     />
-                    
+
                     <div className="text-right text-xs text-muted-foreground">
                       {welcomeMessage.length}/5000
                     </div>
@@ -1586,7 +1629,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
               {/* Agent Transfer Conditions */}
               <Card className="p-4">
-                <div 
+                <div
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => toggleSection('transfer')}
                 >
@@ -1608,15 +1651,15 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   </div>
                   <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.transfer ? 'rotate-180' : ''}`} />
                 </div>
-                
+
                 {expandedSections.transfer && (
                   <div className="mt-4 space-y-4">
-                    <Textarea 
-                      className="min-h-[80px]" 
+                    <Textarea
+                      className="min-h-[80px]"
                       value={transferConditions}
                       onChange={(e) => setTransferConditions(e.target.value)}
-                      placeholder={isNewAgent ? 
-                        "Define when your AI should transfer the conversation to a human agent..." : 
+                      placeholder={isNewAgent ?
+                        "Define when your AI should transfer the conversation to a human agent..." :
                         "Enter transfer conditions..."
                       }
                     />
@@ -1670,75 +1713,75 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <ChevronDown className="w-5 h-5 transition-transform" />
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-4 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Enable auto-resolve</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mengaktifkan resolusi otomatis percakapan setelah waktu tertentu tanpa respons pelanggan</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <div className="mt-2">
-                      <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Auto-resolve timeout (minutes)</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Waktu dalam menit sebelum percakapan secara otomatis diselesaikan (0 = nonaktif)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="e.g. 30"
-                      value={autoResolveMinutesInput}
-                      onChange={(e) => handleAutoResolveChange(e.target.value)}
-                      disabled={!enableResolve}
-                      className={`mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}
-                    </p>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Conversation History (tokens)</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Batas maksimal riwayat percakapan yang dapat diingat AI (dalam token)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder={`Max ${historyLimitMax.toLocaleString()}`}
-                      value={historyLimitInput}
-                      onChange={(e) => handleHistoryLimitChange(e.target.value)}
-                      className="mt-1"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {selectedModel?.display_name ? `${selectedModel.display_name} supports up to ${historyLimitMax.toLocaleString()} tokens.` : `Supports up to ${historyLimitMax.toLocaleString()} tokens.`}
-                    </p>
-                  </div>
-                  {/* <div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Enable auto-resolve</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Mengaktifkan resolusi otomatis percakapan setelah waktu tertentu tanpa respons pelanggan</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <div className="mt-2">
+                          <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
+                        </div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Auto-resolve timeout (minutes)</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Waktu dalam menit sebelum percakapan secara otomatis diselesaikan (0 = nonaktif)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="e.g. 30"
+                          value={autoResolveMinutesInput}
+                          onChange={(e) => handleAutoResolveChange(e.target.value)}
+                          disabled={!enableResolve}
+                          className={`mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Conversation History (tokens)</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Batas maksimal riwayat percakapan yang dapat diingat AI (dalam token)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder={`Max ${historyLimitMax.toLocaleString()}`}
+                          value={historyLimitInput}
+                          onChange={(e) => handleHistoryLimitChange(e.target.value)}
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedModel?.display_name ? `${selectedModel.display_name} supports up to ${historyLimitMax.toLocaleString()} tokens.` : `Supports up to ${historyLimitMax.toLocaleString()} tokens.`}
+                        </p>
+                      </div>
+                      {/* <div>
                     <div className="flex items-center gap-2">
                       <label className="text-sm font-medium">AI Read File Limit</label>
                       <Tooltip>
@@ -1752,51 +1795,51 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     </div>
                     <Input type="number" min={0} value={readFileLimit} onChange={(e)=>setReadFileLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div> */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Creativity Preset</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Preset kreativitas AI: Conservative (akurat), Balanced (seimbang), Creative (kreatif)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <select value={responseTemperature} onChange={(e)=>setResponseTemperature(e.target.value)} className="w-full p-2 border rounded-lg mt-1">
-                      <option value="Conservative">Conservative</option>
-                      <option value="Balanced">Balanced</option>
-                      <option value="Creative">Creative</option>
-                    </select>
-                  </div>
-                  {/* <div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Creativity Preset</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Preset kreativitas AI: Conservative (akurat), Balanced (seimbang), Creative (kreatif)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <select value={responseTemperature} onChange={(e) => setResponseTemperature(e.target.value)} className="w-full p-2 border rounded-lg mt-1">
+                          <option value="Conservative">Conservative</option>
+                          <option value="Balanced">Balanced</option>
+                          <option value="Creative">Creative</option>
+                        </select>
+                      </div>
+                      {/* <div>
                     <label className="text-sm font-medium">Message Await (seconds)</label>
                     <Input type="number" min={0} value={messageAwait} onChange={(e)=>setMessageAwait(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div> */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">AI Message Cap</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Batas maksimal jumlah pesan yang dapat dikirim AI dalam satu percakapan</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">AI Message Cap</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Batas maksimal jumlah pesan yang dapat dikirim AI dalam satu percakapan</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="e.g. 1000"
+                          value={messageLimitInput}
+                          onChange={(e) => handleMessageLimitChange(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
                     </div>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="e.g. 1000"
-                      value={messageLimitInput}
-                      onChange={(e) => handleMessageLimitChange(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
                   </CollapsibleContent>
                 </Collapsible>
               </Card>
@@ -1804,8 +1847,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               {/* Save Button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    className="w-full" 
+                  <Button
+                    className="w-full"
                     onClick={handleSave}
                     disabled={saving}
                   >
@@ -1830,13 +1873,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
             {/* Chat Preview */}
             <div className="xl:col-span-2">
-              <ChatPreview 
-                welcomeMessage={welcomeMessage} 
-                systemPrompt={systemPrompt} 
+              <ChatPreview
+                welcomeMessage={welcomeMessage}
+                systemPrompt={systemPrompt}
                 modelDisplay={selectedModel?.display_name || selectedModel?.model_name || 'Not selected'}
                 profile={profile}
-                profileId={profileId} 
-                modelName={selectedModel?.model_name || ''} 
+                profileId={profileId}
+                modelName={selectedModel?.model_name || ''}
                 temperature={getTemperatureValue(responseTemperature)} // Use mapped value from response_temperature
                 transfer_conditions={transferConditions}
               />
@@ -1850,7 +1893,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
             <Tabs value={knowledgeTab} onValueChange={setKnowledgeTab} className="w-full">
               <TabsList className="grid w-full grid-cols-3 mb-6">
                 <TabsTrigger value="text" className="gap-2">
-                      <FileText className="w-4 h-4" />
+                  <FileText className="w-4 h-4" />
                   Text
                 </TabsTrigger>
                 {/* <TabsTrigger value="website" className="gap-2">
@@ -1862,7 +1905,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   File
                 </TabsTrigger>
                 <TabsTrigger value="qa" className="gap-2">
-                      <HelpCircle className="w-4 h-4" />
+                  <HelpCircle className="w-4 h-4" />
                   Q&A
                 </TabsTrigger>
                 {/* <TabsTrigger value="product" className="gap-2">
@@ -2089,10 +2132,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                 {/* Web Link Collector Section */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold">Web Link Collector</h3>
-                  
+
                   <div className="flex gap-2">
-                    <Input 
-                      placeholder="Link URL" 
+                    <Input
+                      placeholder="Link URL"
                       className="flex-1"
                     />
                     <Button className="bg-blue-600 hover:bg-blue-700">
@@ -2114,7 +2157,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                 {/* Trained Link Section */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold">Trained Link</h3>
-                  
+
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                       <input type="checkbox" id="select-all" className="rounded" />
@@ -2122,8 +2165,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                         Select
                       </label>
                     </div>
-                    <Input 
-                      placeholder="Search Links" 
+                    <Input
+                      placeholder="Search Links"
                       className="flex-1"
                     />
                   </div>
@@ -2172,16 +2215,15 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                             <div className="w-8 h-8 rounded bg-muted flex items-center justify-center"><FileIcon className="w-4 h-4" /></div>
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium">{f.name}</div>
-                              <div className="text-xs text-muted-foreground">{(f.size/1024).toFixed(1)} KB • {new Date(f.uploadedAt).toLocaleString()}</div>
+                              <div className="text-xs text-muted-foreground">{(f.size / 1024).toFixed(1)} KB • {new Date(f.uploadedAt).toLocaleString()}</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              f.status==='ready'?'bg-green-100 text-green-700':
-                              f.status==='uploading'?'bg-blue-100 text-blue-700':
-                              f.status==='processing'?'bg-amber-100 text-amber-700':
-                              'bg-red-100 text-red-700'
-                            }`}>
+                            <span className={`text-xs px-2 py-0.5 rounded ${f.status === 'ready' ? 'bg-green-100 text-green-700' :
+                              f.status === 'uploading' ? 'bg-blue-100 text-blue-700' :
+                                f.status === 'processing' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-red-100 text-red-700'
+                              }`}>
                               {f.status === 'uploading' ? (
                                 <div className="flex items-center gap-1">
                                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -2189,20 +2231,20 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                 </div>
                               ) : f.status}
                             </span>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => downloadKnowledgeFile(f)}
-                              disabled={f.status==='uploading'}
+                              disabled={f.status === 'uploading'}
                             >
                               Download
                             </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-red-600 hover:text-red-700" 
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-600 hover:text-red-700"
                               onClick={() => removeKnowledgeFile(f.id)}
-                              disabled={f.status==='uploading'}
+                              disabled={f.status === 'uploading'}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -2220,7 +2262,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <h3 className="text-lg font-semibold">Q&A Knowledge</h3>
                     <p className="text-sm text-muted-foreground">Add question–answer pairs the AI can reference.</p>
                   </div>
-                  <Button size="sm" onClick={()=>{ setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
+                  <Button size="sm" onClick={() => { setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
                 </div>
 
                 {qaPairs.length === 0 ? (
@@ -2234,13 +2276,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                             <Input
                               placeholder="Question"
                               value={pair.question}
-                              onChange={(e)=>updateQaPair(pair.id,'question', e.target.value)}
+                              onChange={(e) => updateQaPair(pair.id, 'question', e.target.value)}
                             />
                             <Textarea
                               placeholder="Answer"
                               className="min-h-[80px]"
                               value={pair.answer}
-                              onChange={(e)=>updateQaPair(pair.id,'answer', e.target.value)}
+                              onChange={(e) => updateQaPair(pair.id, 'answer', e.target.value)}
                             />
                           </div>
                           <div className="flex flex-col gap-2">
@@ -2248,7 +2290,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={async (e)=>{
+                                onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
                                   // Ensure we stay on the QA tab after saving
@@ -2262,7 +2304,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                     // Sync baseline to latest saved values
                                     setInitialQaPairs(JSON.parse(JSON.stringify(qaPairs)));
                                     toast.success('Q&A saved');
-                                  } catch (e:any) {
+                                  } catch (e: any) {
                                     toast.error(e?.message || 'Failed to save Q&A');
                                   }
                                 }}
@@ -2270,7 +2312,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                 Save
                               </Button>
                             )}
-                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={()=>removeQaPair(pair.id)}>
+                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => removeQaPair(pair.id)}>
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
@@ -2400,7 +2442,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           </Card>
         </TabsContent>
       </Tabs>
-      </div>
+    </div>
   );
 };
 

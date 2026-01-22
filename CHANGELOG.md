@@ -1,4 +1,19 @@
 # Change Log
+# [0.1.63] FE WEB CEKAT 2026-01-22
+### AI Agent Knowledge Files
+- **PDF Upload Reliability**: Fixed `crypto.subtle.digest` crash in non-secure contexts by adding fallback hash generation using file metadata.
+  - Primary: SHA-256 via Web Crypto API when available
+  - Fallback: DJB2-like hash from file name/size/timestamp for non-HTTPS contexts
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+- **Early PDF Validation**: Files are now validated as PDFs before entering the upload queue; non-PDF files are rejected with a toast error.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+- **Webhook Payload Enhancement**: File upload webhook now includes `file_url` (Supabase storage path) dynamically constructed from `SUPABASE_URL`.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+
+### Development Environment
+- **HTTPS Enabled in Dev**: Vite dev server now runs with `https: true`, enabling Web Crypto API support and aligning dev with production security context.
+  - Updated: `vite.config.ts`
+
 # [0.1.62] FE WEB CEKAT 2026-01-18
 ### Connected Platforms
 - **Fixed chat takeover AI still has access to reply**: Added the variable change of ai_access_enabled to false when taking over whatsapp chat.
