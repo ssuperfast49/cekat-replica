@@ -68,7 +68,7 @@ const ChatPreview = ({
     setMessages([
       {
         id: '1',
-        content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
+        content: welcomeMessage || profile?.welcome_message || "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?",
         sender: 'ai',
         timestamp: new Date()
       }
@@ -187,7 +187,7 @@ const ChatPreview = ({
     setMessages([
       {
         id: '1',
-        content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
+        content: welcomeMessage || profile?.welcome_message || "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?",
         sender: 'ai',
         timestamp: new Date()
       }
@@ -205,7 +205,7 @@ const ChatPreview = ({
     setMessages([
       {
         id: '1',
-        content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
+        content: welcomeMessage || profile?.welcome_message || "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?",
         sender: 'ai',
         timestamp: new Date()
       }
@@ -378,8 +378,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     return Math.min(maxVal, Math.max(minVal, value));
   };
 
-  const HISTORY_PRACTICAL_MAX = 24000;
-  const HISTORY_HARD_MAX = 200000;
+  const HISTORY_PRACTICAL_MAX = 50;
+  const HISTORY_HARD_MAX = 100;
   const CONTEXT_PRACTICAL_MAX = 40;
   const MESSAGE_PRACTICAL_MAX = 1000;
   const READ_FILE_HARD_MAX = 25;
@@ -506,6 +506,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
   const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
   const [messageLimitInput, setMessageLimitInput] = useState<string>("");
+  const [guideContent, setGuideContent] = useState<string>(
+    isNewAgent
+      ? ""
+      : (profile as any)?.guide_content || ""
+  );
 
   const sanitizeNumericInput = (value: string) => value.replace(/[^0-9]/g, "");
   const parseNumericInput = (value: string) => {
@@ -1186,6 +1191,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         setQaPairs(pairs);
         setInitialQaPairs(JSON.parse(JSON.stringify(pairs)));
       }
+      setGuideContent((profile as any)?.guide_content || "");
     }
   }, [profile, isNewAgent]);
 
@@ -1242,6 +1248,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       qna: qaPairs
         .filter((p) => (p.question?.trim() || p.answer?.trim()))
         .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
+      guide_content: guideContent,
     };
 
     try {
@@ -1758,13 +1765,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <label className="text-sm font-medium">Conversation History (tokens)</label>
+                          <label className="text-sm font-medium">Conversation History (messages)</label>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Batas maksimal riwayat percakapan yang dapat diingat AI (dalam token)</p>
+                              <p>Batas maksimal jumlah pesan riwayat percakapan yang dapat diingat AI</p>
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -1772,13 +1779,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          placeholder={`Max ${historyLimitMax.toLocaleString()}`}
+                          placeholder={`Max ${historyLimitMax}`}
                           value={historyLimitInput}
                           onChange={(e) => handleHistoryLimitChange(e.target.value)}
                           className="mt-1"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          {selectedModel?.display_name ? `${selectedModel.display_name} supports up to ${historyLimitMax.toLocaleString()} tokens.` : `Supports up to ${historyLimitMax.toLocaleString()} tokens.`}
+                          {`Supports up to ${historyLimitMax} messages.`}
                         </p>
                       </div>
                       {/* <div>
@@ -1915,196 +1922,25 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               </TabsList>
 
               <TabsContent value="text" className="space-y-4">
-                {/* Add Button and Default Button */}
-                <div className="flex gap-2 items-center">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button size="sm" className="gap-2">
-                        <Edit3 className="w-4 h-4" />
-                        Add
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Tambah item pengetahuan baru</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        Default
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Gunakan item pengetahuan default</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {/* Text Formatting Toolbar */}
-                <div className="flex items-center gap-1 p-2 border rounded-md bg-muted/30">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Undo className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Batal</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Redo className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Ulang</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="w-px h-6 bg-border mx-1" />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Bold className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Tebal</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Italic className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Miring</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="w-px h-6 bg-border mx-1" />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignLeft className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Kiri</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignCenter className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Tengah</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignRight className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Kanan</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignJustify className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Kiri-Kanan</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {/* Content Areas */}
+                {/* Knowledge Text Content */}
                 <div className="space-y-4">
-                  {/* Panduan Umum Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">📖</span>
-                      </div>
-                      <span>Panduan Umum: Deposit, Withdraw & Tambah Rekening</span>
-                    </div>
-                    <div className="pl-6 space-y-2 text-sm">
-                      <div className="flex items-start gap-2">
-                        <span className="text-orange-500">⚠️</span>
-                        <div>
-                          <p className="font-medium">Cara Isi Saldo / Deposit</p>
-                          <p className="text-muted-foreground">Lakukan transfer ke rekening tujuan yang tertera di menu DEPOSIT &gt; REKENING TUJUAN.</p>
-                          <p className="text-muted-foreground">Gunakan metode ATM atau M-Banking (tidak tersedia autodebet).</p>
-                          <p className="text-muted-foreground">Setelah transfer, wajib upload bukti transfer agar diproses lebih cepat.</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Khusus Bank BCA Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">🏦</span>
-                      </div>
-                      <span>Khusus Bank BCA</span>
-                    </div>
-                    <div className="pl-6 text-sm text-muted-foreground">
-                      <p>Wajib menggunakan rekening BCA atas nama yang terdaftar di website.</p>
-                      <p>Tidak bisa menggunakan rekening BCA milik orang lain.</p>
-                    </div>
-                  </div>
-
-                  {/* Tambah Rekening Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">💳</span>
-                      </div>
-                      <span>Tambah Rekening / E-Wallet</span>
-                    </div>
-                    <div className="pl-6 text-sm text-muted-foreground">
-                      <p>Bisa menambahkan rekening atau e-wallet selama nama pemiliknya sama dengan yang sudah terdaftar.</p>
-                      <p>Akses dari halaman utama &gt; klik menu REKENING &gt; TAMBAH REKENING.</p>
-                    </div>
-                  </div>
-
-                  {/* Additional Info */}
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <p>Minimal deposit Via Bank BCA, MANDIRI, BRI, BNI, CIMB, OCBC, BANK JAGO, & Dan Semua Jenis E-wallet adalah 5.000</p>
-                    <p>Minimal deposit QRIS = 10.000</p>
-                    <p>Minimal withdraw Bank & E-wallet = 50.000</p>
-                    <p>Jika menggunakan pulsa, akan dikenakan potongan 20%</p>
-                  </div>
-
-                  {/* Lupa User ID Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">🔐</span>
-                      </div>
-                      <span>Lupa User ID atau Password?</span>
-                    </div>
-                    <div className="pl-6 text-sm text-muted-foreground">
-                      <p>Format reset:</p>
-                      <p>Nama Rekening :</p>
-                      <p>Nomor Rekening :</p>
-                      <p>Bank / E-wallet :</p>
-                    </div>
+                  <div>
+                    <label className="text-sm font-medium">Knowledge Text Content</label>
+                    <p className="text-xs text-muted-foreground mt-1 mb-2">
+                      Add custom knowledge text that your AI agent can reference when responding to customers.
+                    </p>
+                    <Textarea
+                      className="min-h-[300px] font-mono text-sm"
+                      value={guideContent}
+                      onChange={(e) => setGuideContent(e.target.value)}
+                      placeholder="Enter your knowledge content here..."
+                    />
                   </div>
                 </div>
 
                 {/* Character Count */}
                 <div className="text-right text-xs text-muted-foreground">
-                  10931 Characters
+                  {guideContent.length} Characters
                 </div>
               </TabsContent>
 
