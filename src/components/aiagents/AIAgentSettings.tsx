@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+import { Checkbox } from "@/components/ui/checkbox";
+
 import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus } from "lucide-react";
 import useAIProfiles, { AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
@@ -630,7 +633,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   // Knowledge: Files
   type KnowledgeFileStatus = 'uploading' | 'ready' | 'processing' | 'failed';
   interface KnowledgeFile {
-    id: number;
+
+    id: number | string;
+    isEnabled?: boolean;
     name: string;
     size: number; // bytes
     uploadedAt: string; // ISO
@@ -673,7 +678,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   };
 
   // Upload PDF to Supabase Storage after webhook processes/returns fileHash
-  const uploadFileToSupabase = async (file: File, fileId: number): Promise<{ url: string; filePath: string; documentId?: string }> => {
+  const uploadFileToSupabase = async (file: File, fileId: number): Promise<{ url: string; filePath: string; documentId?: string; fileId?: string }> => {
     try {
       if (!canUploadAgentFiles) {
         throw new Error('You do not have permission to upload agent files.');
@@ -720,17 +725,42 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
       const fileUrl = `${SUPABASE_URL}/storage/v1/object/ai-agent-files/${fileKey}`;
 
+      // 0) Generate ID and insert into public.files to establish entity
+      const fileIdUUID = crypto.randomUUID();
+      const { error: dbErr } = await supabase.from('files').insert({
+        id: fileIdUUID,
+        org_id: orgId,
+        ai_profile_id: resolvedProfileId,
+        bucket: 'ai-agent-files',
+        path: fileKey,
+        filename: file.name,
+        mime_type: file.type || 'application/pdf',
+        byte_size: file.size,
+        checksum: contentHash,
+      });
+
+      if (dbErr) {
+        console.error('Error inserting into public.files:', dbErr);
+        throw new Error('Failed to record file metadata');
+      }
+
       // 1) Send to webhook for hashing, extraction, and knowledgebase indexing (include hash)
+      // Moving metadata to Headers for higher reliability in n8n parsing
       const form = new FormData();
       form.append('file', file);
-      form.append('file_name', file.name || 'file.pdf');
-      form.append('file_url', fileUrl);
-      form.append('org_id', orgId);
-      form.append('profile_id', resolvedProfileId);
-      form.append('hashFile', contentHash);
 
-      const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD, {
+      const headers: Record<string, string> = {
+        'x-file-name': file.name || 'file.pdf',
+        'x-file-url': fileUrl,
+        'x-org-id': orgId,
+        'x-profile-id': resolvedProfileId,
+        'x-file-hash': contentHash,
+        'x-file-id': fileIdUUID
+      };
+
+      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD), {
         method: 'POST',
+        headers: headers,
         body: form,
       });
       if (!resp.ok) {
@@ -779,75 +809,78 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         uploadedUrl = signedData.signedUrl;
       }
 
-      return { url: uploadedUrl || '', filePath: fileKey, documentId };
+      return { url: uploadedUrl || '', filePath: fileKey, documentId, fileId: fileIdUUID };
     } catch (error: any) {
       console.error('Error uploading file to Supabase:', error);
       throw new Error(`Failed to upload ${file.name}: ${error?.message || 'Unknown error'}`);
     }
   };
 
-  // Load existing files from storage for this agent
+  // Load existing files from DB for this agent (formerly storage)
   const loadExistingKnowledgeFiles = async () => {
     try {
       setLoadingFiles(true);
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
-      const primaryPrefix = `org_${orgId}/profile_${resolvedProfileId}`;
-      const fallbackPrefix = `profile_${resolvedProfileId}`; // legacy path fallback
 
-      const listPrefix = async (prefix: string) => {
-        const { data, error } = await supabase.storage
-          .from('ai-agent-files')
-          .list(prefix, { limit: 100 });
-        if (error) return [] as any[];
-        return (data || []).map((f: any) => ({ ...f, __prefix: prefix }));
-      };
+      // Fetch from publicly tracking 'files' table which includes 'is_enabled' status
+      const { data, error } = await supabase
+        .from('files')
+        .select('*')
+        .eq('ai_profile_id', resolvedProfileId)
+        .order('created_at', { ascending: false });
 
-      const [primary, fallback] = await Promise.all([
-        listPrefix(primaryPrefix),
-        listPrefix(fallbackPrefix),
-      ]);
+      if (error) throw error;
 
-      const objects = [...primary, ...fallback];
-      if (objects.length === 0) {
-        setKnowledgeFiles([]);
-        return;
-      }
+      const items: KnowledgeFile[] = (data || []).map((f: any) => ({
+        id: f.id,
+        name: f.filename,
+        size: f.byte_size || 0,
+        uploadedAt: f.created_at,
+        status: 'ready',
+        url: '', // Signed URLs can be generated on demand or pre-fetched if needed for download
+        filePath: f.path,
+        isEnabled: f.is_enabled ?? true,
+      }));
 
-      const items: KnowledgeFile[] = [];
-      for (const obj of objects) {
-        // Skip invalid entries, folder placeholders, and storage placeholders
-        if (!obj || !obj.name) continue;
-        const nameStr = String(obj.name);
-        if (nameStr.endsWith('/')) continue;
-        if (nameStr === '.emptyFolderPlaceholder' || nameStr === '.emptyfolderplaceholder') continue;
-        const fileKey = `${obj.__prefix}/${obj.name}`;
-        const sizeVal = (obj.metadata && (typeof obj.metadata.size !== 'undefined')) ? obj.metadata.size : 0;
-        const sizeBytes = typeof sizeVal === 'number' ? sizeVal : Number(sizeVal || 0);
-        let signedUrl = '';
-        const { data: signedData } = await supabase.storage
-          .from('ai-agent-files')
-          .createSignedUrl(fileKey, 60 * 60 * 24 * 7);
-        signedUrl = signedData?.signedUrl || '';
+      // Generate signed URLs for them (optional, but good for 'Download' button)
+      // We can do this in batch or just leave empty and let a download handler fetch it?
+      // For now, let's keep it simple. If we need download, we need signed URL.
+      // We can iterate and sign them.
+      await Promise.all(items.map(async (item) => {
+        if (item.filePath) {
+          const { data: signedData } = await supabase.storage
+            .from('ai-agent-files')
+            .createSignedUrl(item.filePath, 60 * 60 * 24 * 7);
+          if (signedData?.signedUrl) item.url = signedData.signedUrl;
+        }
+      }));
 
-        items.push({
-          id: Date.now() + Math.random(),
-          name: obj.name,
-          size: sizeBytes,
-          uploadedAt: (obj.updated_at || obj.created_at || new Date().toISOString()),
-          status: 'ready',
-          url: signedUrl,
-          filePath: fileKey,
-        });
-      }
-
-      // Sort latest first
-      items.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
       setKnowledgeFiles(items);
     } catch (e: any) {
       console.error('Failed to load knowledge files:', e);
-      // Do not toast here to avoid noise on tab switch without access
     } finally {
       setLoadingFiles(false);
+    }
+  };
+
+  const handleToggleFile = async (fileId: number | string, currentStatus: boolean) => {
+    // Optimistic update
+    setKnowledgeFiles(prev => prev.map(f => f.id === fileId ? { ...f, isEnabled: !currentStatus } : f));
+
+    // Only update DB if it's a real persistent ID (UUID string)
+    if (typeof fileId === 'string') {
+      try {
+        const { error } = await supabase
+          .from('files')
+          .update({ is_enabled: !currentStatus } as any)
+          .eq('id', fileId);
+
+        if (error) throw error;
+      } catch (err: any) {
+        toast.error('Failed to update status');
+        // Revert
+        setKnowledgeFiles(prev => prev.map(f => f.id === fileId ? { ...f, isEnabled: currentStatus } : f));
+      }
     }
   };
 
@@ -862,6 +895,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const allFiles = Array.from(e.target.files || []);
     if (allFiles.length === 0) return;
+    if (allFiles.length > 1) {
+      toast.error('Please upload one file at a time.');
+      return;
+    }
 
     // Filter for PDF only
     const files = allFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
@@ -903,12 +940,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       const fileItem = newItems[i];
 
       try {
-        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
+        const { url, filePath, fileId: newDbId } = await uploadFileToSupabase(file, fileItem.id as any);
 
-        // Update file status to ready with URL
+        // Update file status to ready with URL, swap to real DB ID, set enabled
         setKnowledgeFiles((prev) => prev.map((f) =>
           f.id === fileItem.id
-            ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath }
+            ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath, id: newDbId || f.id, isEnabled: true }
             : f
         ));
 
@@ -943,6 +980,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     e.preventDefault();
     const dtFiles = Array.from(e.dataTransfer.files || []);
     if (dtFiles.length === 0) return;
+    if (dtFiles.length > 1) {
+      toast.error('Please upload one file at a time.');
+      return;
+    }
 
     // Filter for PDF only
     const validFiles = dtFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
@@ -980,7 +1021,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       const fileItem = newItems[i];
 
       try {
-        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
+        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id as any);
 
         // Update file status to ready with URL
         setKnowledgeFiles((prev) => prev.map((f) =>
@@ -1005,29 +1046,32 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   };
-  const removeKnowledgeFile = async (id: number) => {
+  const removeKnowledgeFile = async (id: number | string) => {
     const file = knowledgeFiles.find(f => f.id === id);
     try {
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
-      // Call delete webhook if we have a filePath (storage key)
-      if (file?.filePath) {
-        const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: file.filePath, document_id: (file as any)?.documentId || undefined }),
-        });
-        if (!resp.ok) {
-          let message = `Delete failed (${resp.status})`;
-          try { const j = await resp.json(); message = j?.message || message; } catch { }
-          throw new Error(message);
-        }
-        // Require explicit confirmation from webhook
-        let payload: any = {};
-        try { payload = await resp.json(); } catch { }
-        const st = String(payload?.status || '').toLowerCase();
-        if (st !== 'deleted') {
-          throw new Error(payload?.message || 'Delete not confirmed by webhook');
-        }
+      const params = new URLSearchParams({
+        org_id: orgId,
+        profile_id: resolvedProfileId,
+        file_key: file?.filePath || '',
+        file_id: String(file?.id || ''),
+      });
+
+      const resp = await fetch(`${WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE)}?${params.toString()}`, {
+        method: 'POST'
+      });
+
+      if (!resp.ok) {
+        let message = `Delete failed (${resp.status})`;
+        try { const j = await resp.json(); message = j?.message || message; } catch { }
+        throw new Error(message);
+      }
+      // Require explicit confirmation from webhook
+      let payload: any = {};
+      try { payload = await resp.json(); } catch { }
+      const st = String(payload?.status || '').toLowerCase();
+      if (st !== 'deleted') {
+        throw new Error(payload?.message || 'Delete not confirmed by webhook');
       }
       setKnowledgeFiles((prev) => prev.filter((f) => f.id !== id));
       toast.info(`${file?.name || 'File'} removed`);
@@ -1073,11 +1117,18 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         const { orgId, profileId: resolvedProfileId } = await getUploadContext();
         await Promise.all(files.map(async (f) => {
           try {
-            const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: f.filePath, document_id: (f as any)?.documentId || undefined })
+            const params = new URLSearchParams({
+              org_id: orgId,
+              profile_id: resolvedProfileId,
+              file_key: f.filePath || '',
+              file_id: String(f.id || ''),
+              document_id: (f as any)?.documentId || ''
             });
+
+            const resp = await fetch(`${WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE)}?${params.toString()}`, {
+              method: 'POST'
+            });
+
             if (!resp.ok) {
               let message = `Delete failed (${resp.status})`;
               try { const j = await resp.json(); message = j?.message || message; } catch { }
@@ -2010,16 +2061,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               </TabsContent>
 
               <TabsContent value="file" className="space-y-6">
+
+
+
                 <div
                   onDrop={canUploadAgentFiles ? handleDrop : undefined}
                   onDragOver={canUploadAgentFiles ? handleDragOver : undefined}
                   className={`border border-dashed rounded-lg p-6 text-center ${canUploadAgentFiles ? 'bg-muted/30' : 'bg-muted/50 opacity-70'}`}
                 >
-                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} disabled={!canUploadAgentFiles} />
+                  <input ref={fileInputRef} type="file" hidden onChange={handleFileSelect} disabled={!canUploadAgentFiles} />
                   <FileIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
                   {canUploadAgentFiles ? (
                     <>
-                      <p className="text-sm text-muted-foreground mb-3">Drag & drop documents here, or</p>
+                      <p className="text-sm text-muted-foreground mb-3">Drag & drop a document here, or</p>
                       <Button size="sm" onClick={() => fileInputRef.current?.click()}>Browse Files</Button>
                       <p className="text-xs text-muted-foreground mt-2">Supported: PDF</p>
                     </>
@@ -2048,6 +2102,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       {knowledgeFiles.map((f) => (
                         <div key={f.id} className="flex items-center justify-between p-3">
                           <div className="flex items-center gap-3 min-w-0">
+                            <Checkbox
+                              checked={f.isEnabled ?? true}
+                              onCheckedChange={() => handleToggleFile(f.id, f.isEnabled ?? true)}
+                            />
                             <div className="w-8 h-8 rounded bg-muted flex items-center justify-center"><FileIcon className="w-4 h-4" /></div>
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium">{f.name}</div>

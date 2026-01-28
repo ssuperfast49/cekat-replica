@@ -1,5 +1,21 @@
 # Change Log
 
+# [0.1.66] FE WEB CEKAT 2026-01-28
+
+### AI Agent Knowledge Sources
+
+- **Simplified File Management**: Migrated knowledge sources to a unified `files` table architecture, removing complex intermediary tables.
+  - Enabled simpler toggling of file availability for AI agents via `is_enabled` flag.
+  - Added direct file toggle controls (Checkbox) in the Knowledge > File list.
+  - Improved retrieval performance by indexing documents directly to `file_id`.
+  - Updated: `supabase/migrations/20260126000000_knowledge_sources_v1.sql`, `src/components/aiagents/AIAgentSettings.tsx`
+
+### Authentication & User Management
+
+- **Account Status Guard**: Implemented immediate account status check after login.
+  - Users with `is_active: false` profile status are now instantly redirected to `/account-deactivated` upon sign-in.
+  - Updated: `src/components/auth/Login.tsx`
+
 # [0.1.65] FE WEB CEKAT 2026-01-24
 
 ### Dark Mode Support
@@ -1776,7 +1792,7 @@
 
 ### AIAgentSettings
 
-* Added new state variables:
+- Added new state variables:
   - `historyLimit`
   - `readFileLimit`
   - `contextLimit`
@@ -1784,11 +1800,13 @@
   - `messageAwait`
   - `messageLimit`
   - `timezone`
+
 - Improved overall usage tracking and configurability.
 
 ### HumanAgent
 
-* Introduced **usage range option** for better monitoring.
+- Introduced **usage range option** for better monitoring.
+
 - Refactored **agent visibility logic** for clearer access control.
 - Enhanced handling of **agent roles and statuses** for more robust management.
 

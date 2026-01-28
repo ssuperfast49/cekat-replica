@@ -129,17 +129,17 @@ export default function ResetPassword() {
 
       setSuccess(true);
       toast.success('Password updated successfully!');
-      
+
       // Ensure the recovery session is fully cleared so refresh does not auto-login
       try {
         await supabase.auth.signOut();
-      } catch {}
+      } catch { }
       try {
         localStorage.removeItem('otpVerified');
         localStorage.removeItem('otpRequired');
         localStorage.removeItem('app.lastAuthEvent');
         localStorage.removeItem('auth.intent');
-      } catch {}
+      } catch { }
 
       // Redirect to login after a short delay
       setTimeout(() => {
@@ -164,7 +164,7 @@ export default function ResetPassword() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-950 dark:to-slate-900 p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold text-green-600">Success!</CardTitle>
@@ -183,7 +183,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-950 dark:to-slate-900 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <Button

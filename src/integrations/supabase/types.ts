@@ -568,6 +568,7 @@ export type Database = {
           org_id: string
           path: string
           uploaded_by: string | null
+          is_enabled: boolean
         }
         Insert: {
           ai_profile_id?: string | null
@@ -581,6 +582,7 @@ export type Database = {
           org_id: string
           path: string
           uploaded_by?: string | null
+          is_enabled?: boolean
         }
         Update: {
           ai_profile_id?: string | null
@@ -594,6 +596,7 @@ export type Database = {
           org_id?: string
           path?: string
           uploaded_by?: string | null
+          is_enabled?: boolean
         }
         Relationships: [
           {
@@ -1352,6 +1355,7 @@ export type Database = {
           timezone: string | null
           token_limit_enabled: boolean
           user_id: string
+          password_set: boolean | null
         }
         Insert: {
           avatar_url?: string | null
@@ -1364,6 +1368,7 @@ export type Database = {
           timezone?: string | null
           token_limit_enabled?: boolean
           user_id: string
+          password_set?: boolean | null
         }
         Update: {
           avatar_url?: string | null
@@ -1376,6 +1381,7 @@ export type Database = {
           timezone?: string | null
           token_limit_enabled?: boolean
           user_id?: string
+          password_set?: boolean | null
         }
         Relationships: [
           {
@@ -1421,10 +1427,6 @@ export type Database = {
       }
     }
     Functions: {
-      binary_quantize: {
-        Args: { "": string } | { "": unknown }
-        Returns: unknown
-      }
       create_email_2fa_challenge: {
         Args: { p_ttl_seconds?: number; p_user: string }
         Returns: {
@@ -1538,22 +1540,6 @@ export type Database = {
         Args: { p_perm: string; p_role: string }
         Returns: undefined
       }
-      halfvec_avg: {
-        Args: { "": number[] }
-        Returns: unknown
-      }
-      halfvec_out: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      halfvec_send: {
-        Args: { "": unknown }
-        Returns: string
-      }
-      halfvec_typmod_in: {
-        Args: { "": unknown[] }
-        Returns: number
-      }
       has_active_2fa: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1562,111 +1548,34 @@ export type Database = {
         Args: { p_action: string; p_resource: string }
         Returns: boolean
       }
-      hnsw_bit_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      hnsw_halfvec_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      hnsw_sparsevec_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      hnswhandler: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      ivfflat_bit_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      ivfflat_halfvec_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      ivfflathandler: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      l2_norm: {
-        Args: { "": unknown } | { "": unknown }
-        Returns: number
-      }
-      l2_normalize: {
-        Args: { "": string } | { "": unknown } | { "": unknown }
-        Returns: unknown
-      }
-      log_action: {
-        Args: {
-          p_action: string
-          p_context?: Json
-          p_ip?: string
-          p_org_id?: string
-          p_resource: string
-          p_resource_id?: string
-          p_user_agent?: string
-          p_user_id?: string
-        }
-        Returns: undefined
-      }
       match_documents: {
-        Args: { filter?: Json; match_count?: number; query_embedding: string }
+        Args: {
+          query_embedding: string
+          match_threshold: number
+          match_count: number
+          filter?: Json
+          p_file_ids?: string[]
+        }
         Returns: {
-          content: string
           id: number
+          content: string
           metadata: Json
           similarity: number
         }[]
       }
-      revoke_role_permission: {
-        Args: { p_perm: string; p_role: string }
-        Returns: undefined
-      }
-      sparsevec_out: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      sparsevec_send: {
-        Args: { "": unknown }
-        Returns: string
-      }
-      sparsevec_typmod_in: {
-        Args: { "": unknown[] }
-        Returns: number
-      }
-      takeover_thread: {
-        Args: { p_thread_id: string }
-        Returns: undefined
-      }
-      validate_handover_reason: {
-        Args: { new_handover: boolean; reason: string }
-        Returns: boolean
-      }
-      vector_avg: {
-        Args: { "": number[] }
-        Returns: string
-      }
-      vector_dims: {
-        Args: { "": string } | { "": unknown }
-        Returns: number
-      }
-      vector_norm: {
-        Args: { "": string }
-        Returns: number
-      }
-      vector_out: {
-        Args: { "": string }
-        Returns: unknown
-      }
-      vector_send: {
-        Args: { "": string }
-        Returns: string
-      }
-      vector_typmod_in: {
-        Args: { "": unknown[] }
-        Returns: number
+      search_knowledge: {
+        Args: {
+          ai_profile_id: string
+          query_embedding: string
+          match_threshold?: number
+          match_count?: number
+        }
+        Returns: {
+          id: number
+          content: string
+          metadata: Json
+          similarity: number
+        }[]
       }
       verify_email_2fa: {
         Args: { p_code: string; p_session_minutes?: number; p_user: string }
