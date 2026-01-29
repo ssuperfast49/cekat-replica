@@ -70,7 +70,7 @@ export const WEBHOOK_CONFIG = {
     // Knowledgebase endpoints
     KNOWLEDGE: {
       FILE_UPLOAD: "/knowledge/file-upload-dev",
-      FILE_DELETE: "/knowledge/file-delete-dev",
+      FILE_DELETE: `${ROUTE_PREFIX}knowledge.file_delete`,
     },
     
     // Message endpoints

@@ -1,57 +1,182 @@
 # Change Log
+
+# [0.1.66] FE WEB CEKAT 2026-01-28
+
+### AI Agent Knowledge Sources
+
+- **Simplified File Management**: Migrated knowledge sources to a unified `files` table architecture, removing complex intermediary tables.
+  - Enabled simpler toggling of file availability for AI agents via `is_enabled` flag.
+  - Added direct file toggle controls (Checkbox) in the Knowledge > File list.
+  - Improved retrieval performance by indexing documents directly to `file_id`.
+  - Updated: `supabase/migrations/20260126000000_knowledge_sources_v1.sql`, `src/components/aiagents/AIAgentSettings.tsx`
+
+### Authentication & User Management
+
+- **Account Status Guard**: Implemented immediate account status check after login.
+  - Users with `is_active: false` profile status are now instantly redirected to `/account-deactivated` upon sign-in.
+  - Updated: `src/components/auth/Login.tsx`
+
+# [0.1.65] FE WEB CEKAT 2026-01-24
+
+### Dark Mode Support
+
+- **Application-Wide Dark Mode**: Implemented comprehensive dark mode theming across the application
+  - Created `ThemeContext` (`src/contexts/ThemeContext.tsx`) for managing theme state (light/dark/system)
+  - Added `ThemeToggle` component (`src/components/ThemeToggle.tsx`) with dropdown for Light/Dark/System options
+  - Theme preference persists to localStorage and respects system preference when set to "System"
+  - Added ThemeToggle to main header (`src/pages/Index.tsx`) next to Online badge for easy access
+  - Added ThemeToggle to Profile page (`src/pages/Profile.tsx`) as secondary access point
+  - Wrapped app with `ThemeProvider` in `App.tsx` for global theme context
+
+- **Conversations Sidebar Dark Mode Fix**: Fixed hardcoded light colors that broke dark mode
+  - Updated tab buttons (Assigned/Unassigned/Done) with dark mode alternatives (`dark:bg-blue-950`, `dark:bg-red-950`, `dark:bg-green-950`)
+  - Changed conversation list item styles to use `dark:` variants for hover and selected states
+  - Replaced hardcoded `text-gray-600`/`text-gray-500` with theme-aware `text-muted-foreground`
+  - Fixed tab container background from `bg-white` to `bg-card`
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### AI Agent Settings
+
+- **Dynamic Guide Content**: Replaced hardcoded "Panduan Umum" with customizable knowledge text
+  - Added `guide_content` (TEXT) column to `ai_profiles` table for storing custom guide text
+  - Added `history_limit` (INTEGER) column for message-count based history limit
+  - Created migration: `supabase/migrations/20260124000000_add_guide_content_history_limit.sql`
+  - Updated `AIProfile` TypeScript interface in `src/hooks/useAIProfiles.ts`
+  - Updated Supabase types in `src/integrations/supabase/types.ts`
+
+- **Message-Based History Limit**: Changed conversation history from token-based to message-based
+  - Updated `HISTORY_PRACTICAL_MAX` (50 messages) and `HISTORY_HARD_MAX` (100 messages)
+  - Changed UI labels, tooltips, and helper text from "tokens" to "messages"
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+
+- **Knowledge Sources UI Cleanup**: Simplified the Text tab interface
+  - Removed non-functional "Add" and "Default" buttons
+  - Removed decorative formatting toolbar (Undo/Redo/Bold/Italic/Alignment buttons)
+  - Kept simple textarea for Knowledge Text Content that saves with main Save button
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+
+# [0.1.64] FE WEB CEKAT 2026-01-22
+
+### AI Agent Management
+
+- **Enhanced AI Agent Creation & Editing UI**: Improved interface with better organization and validation
+  - Separated AI Agent creation into dedicated dialog with enhanced form layout
+  - Added comprehensive model selection system with pricing and provider information
+  - Implemented fallback model selection for automatic failover when primary model unavailable
+  - Updated model display with cost per 1M tokens, provider badges, and descriptions
+  - Improved AI Agent Settings with better input handling and validation
+  - Updated: `src/components/aiagents/AIAgents.tsx`, `src/components/aiagents/AIAgentSettings.tsx`
+  - Updated: `src/hooks/useAIProfiles.ts`
+
+### Supabase Integration
+
+- **Type System Updates**: Enhanced type definitions for AI profiles and database integration
+  - Added `model_id` and `fallback_model_id` fields to AI profile types
+  - Updated type definitions to match database schema changes
+  - Improved type safety across AI agent operations
+  - Updated: `src/integrations/supabase/types.ts`
+
+### Webhook Configuration
+
+- **Webhook URL Enhancements**: Improved webhook payload structure and URL handling
+  - Enhanced webhook configuration with better URL construction
+  - Updated webhook payload format for file uploads
+  - Improved error handling and validation
+  - Updated: `src/config/webhook.ts`
+
+# [0.1.63] FE WEB CEKAT 2026-01-22
+
+### AI Agent Knowledge Files
+
+- **PDF Upload Reliability**: Fixed `crypto.subtle.digest` crash in non-secure contexts by adding fallback hash generation using file metadata.
+  - Primary: SHA-256 via Web Crypto API when available
+  - Fallback: DJB2-like hash from file name/size/timestamp for non-HTTPS contexts
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+- **Early PDF Validation**: Files are now validated as PDFs before entering the upload queue; non-PDF files are rejected with a toast error.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+- **Webhook Payload Enhancement**: File upload webhook now includes `file_url` (Supabase storage path) dynamically constructed from `SUPABASE_URL`.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+
+### Development Environment
+
+- **HTTPS Enabled in Dev**: Vite dev server now runs with `https: true`, enabling Web Crypto API support and aligning dev with production security context.
+  - Updated: `vite.config.ts`
+
 # [0.1.62] FE WEB CEKAT 2026-01-18
+
 ### Connected Platforms
+
 - **Fixed chat takeover AI still has access to reply**: Added the variable change of ai_access_enabled to false when taking over whatsapp chat.
 
 # [0.1.61] FE WEB CEKAT 2026-01-18
+
 ### Connected Platforms
+
 - **Removed toLowerCase for session_name**: Session names are now preserved with their original casing when sent to WhatsApp API endpoints, maintaining case-sensitive session identifiers.
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
 
 # [0.1.60] FE WEB CEKAT 2026-01-15
+
 ### Chat Filter
+
 - **Removed redundant inbox filter**: Filter modal drops the inbox selector since channel type already scopes conversations, keeping the dialog lean.
   - Updated: `src/components/chat/ChatFilter.tsx`
 
 # [0.1.59] Supabase Reopen Collaborator Reset 2026-01-15
+
 ### Supabase
+
 - Reopen on inbound messages now clears `collaborator_user_id` so reopened/unassigned conversations have no collaborator. Migration: `20260115124500_reopen_clear_collaborator.sql`.
 
 # [0.1.58] FE WEB CEKAT 2026-01-15
+
 ### Contacts
+
 - **Removed per-row delete button**: Contacts list no longer shows the single-contact delete action; bulk multi-select delete now covers this flow for master/super agents.
   - Updated: `src/components/contacts/Contacts.tsx`
 - **Handled-by filter cleanup**: Filter uses a truthy check instead of comparing to an empty string, keeping TS types aligned while filtering assigned vs unassigned contacts.
   - Updated: `src/components/contacts/Contacts.tsx`
 
 # [0.1.57] Supabase Policy Cleanup 2026-01-15
+
 ### Supabase
+
 - Removed main-only public/anon policies on `job`, `job_run_details`, and `storage.objects` to match development. Migration: `20260115123000_remove_extra_public_policies.sql`.
 
 # [0.1.56] Supabase Function Alignment 2026-01-15
+
 ### Supabase
+
 - **takeover_thread matches dev**: returns the updated thread, sets `collaborator_user_id`, `status='pending'`, keeps `assigned_at` if present. Migration: `20260115120000_align_functions.sql`.
 - **reopen_thread_on_user_message matches dev**: reopens closed threads without clearing handled-by fields. Migration: `20260115120000_align_functions.sql`.
 
 # [0.1.55] Supabase Trigger/Function Parity 2026-01-15
+
 ### Supabase (main aligned to development)
+
 - **Trigger parity**: Removed main-only thread triggers and added the channel super-agent sync trigger (`tr_update_contacts_threads_on_channel_super_agent_change`) to mirror development. New migration: `20260115113000_align_triggers.sql`.
 - **Function parity**: Added missing `unassign_thread` SECURITY DEFINER function to main. New migration: `20260115114000_add_unassign_thread.sql`.
 
 # [0.1.54] Supabase Schema 2026-01-15
+
 ### Supabase (schema & RLS alignment)
+
 - **Contacts owned by super agents**: Added `contacts.super_agent_id`, backfilled from channel ownership, dropped `channel_id`, and rewrote contacts RLS to super-agent scope. New migration: `20260115100000_contacts_super_agent.sql`.
 - **Scope-based RLS**: Introduced helper functions (`can_access_super_scope`, `can_access_channel_scope`, `can_access_message_scope`) and replaced channels/threads/messages policies with scope-based, account-aware, and web-widget rules. New migration: `20260115103000_scope_based_policies.sql`.
 - **Audit/channel agents RLS parity**: Tightened `audit_logs` to permission-based read and simplified `channel_agents` to a single authenticated policy. New migration: `20260115110000_audit_logs_channel_agents_policies.sql`.
 
 # [0.1.53] FE WEB CEKAT 2026-01-15
+
 ### Live Chat
+
 - **Late-arriving user rows replace optimistics**: If the backend inserts the real user message after the AI reply, the message now replaces its optimistic twin instead of showing twice, eliminating double “Hello” bubbles.
   - Updated: `src/pages/LiveChat.tsx`
 - **Commit**: `fix: livechat dedupe optimistic user messages`
 
 # [0.1.52] FE WEB CEKAT 2026-01-14
+
 ### Conversations & Assignment Flow
+
 - **Unassign keeps handled-by, clears collaborator**: Moving a chat to Unassigned now only nulls `collaborator_user_id`, reopens AI, and keeps the handled-by assignee intact while placing the thread in the Unassigned tab.
   - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
 - **Takeover sets collaborator**: Takeover without reassignment now sets `collaborator_user_id` to the agent who took over, without touching handled-by.
@@ -59,12 +184,16 @@
 - **Commit**: `chore: unassign clears collaborator only; takeover sets collaborator; lock collaborator replies`
 
 # [0.1.51] FE WEB CEKAT 2026-01-15
+
 ### Conversations & System Events
+
 - **System logs for assignment actions**: Takeover, Move to Unassigned, and Resolve now add system `event` messages to the thread timeline with actor details, keeping the audit trail visible in chat.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 
 # [0.1.50] FE WEB CEKAT 2026-01-14
+
 ### Conversations & Ownership
+
 - **Collaborators are now read-only**: The sidebar shows the current collaborator label while only “Takeover Chat” reclaims the slot; the select was removed to enforce the one-collaborator invariant.
   - Updated: `src/components/chat/ConversationPage.tsx`
 - **Takeover/Unassign RPCs respect status**: `takeover_thread`/`unassign_thread` now only swap `collaborator_user_id` / status/assigned_at, and the frontend trusts the returned `status` so “Move to Unassigned” stays open after refresh.
@@ -73,20 +202,27 @@
   - Updated: `supabase/migrations/20260114090000_thread_collab_takeover.sql`
 
 # [0.1.49] FE WEB CEKAT 2026-01-13
+
 ### Add delete button in contacts
+
 - **Added button for delete contact**: button delete contact is available for role master agent and super agent.
 
 # [0.1.48] FE WEB CEKAT 2026-01-13
+
 ### Conversation Ownership
+
 - **Handled By now respects real assignees**: `computeAssignmentState` keeps the `assignee_user_id` if the thread is assigned, so `ConversationPage` can show the handler’s display name again instead of rendering “—”.
   - Updated: `src/hooks/useConversations.ts`
 
 ### Platform Ownership
+
 - **Super-agent scoped human/AI selection**: The Connected Platforms sidebar only lists human agents and AI profiles that belong to the channel’s assigned super agent while keeping the already selected options visible, keeping ownership aligned across collaborators and bots.
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
 
 # [0.1.46] FE WEB CEKAT 2026-01-13
+
 ### Live Chat
+
 - **Stable account names**: Friendly username is now stored per `account_id` (localStorage) instead of per session, so the same account can’t generate multiple display names across sessions.
   - Updated: `src/pages/LiveChat.tsx`
 - **Supabase types parity**: `threads` types include `account_id` to match the schema and avoid TS errors on account-based queries.
@@ -94,7 +230,9 @@
 - **Commit**: `chore: bind livechat name to account and fix threads types`
 
 # [0.1.45] FE WEB CEKAT 2026-01-13
+
 ### Live Chat & Types
+
 - **Account-scoped attach only**: Live chat now only attaches to threads that match the current `account_id`/session and no longer reuses stored thread IDs; if none exist, it waits for an external creator (e.g., n8n) rather than auto-creating.
   - Updated: `src/pages/LiveChat.tsx`
 - **Supabase types parity**: Added `account_id` to the `threads` types to match the schema changes and avoid TS errors on account-based selects.
@@ -102,17 +240,22 @@
 - **Commit**: `chore: livechat account attach only & fix supabase types`
 
 # [0.1.44] FE WEB CEKAT 2026-01-13
+
 ### WhatsApp / n8n Proxy Hardening
+
 - **Session disconnect via proxy-n8n**: WhatsApp disconnect now calls the `session.logout` proxy route (no legacy Railways) before disconnecting, matching the n8n route table.
 - **Scoped polling on disconnect**: Only WhatsApp sessions are refreshed during disconnect polling, using a fresh `sessionsRef` to avoid stale state; no broad platform refresh.
 - **Spam-proof delete**: Danger zone delete button is guarded by the in-flight flag to prevent repeated clicks while deletion is in progress.
 
 ### Supabase (live chat reference)
+
 - **Account-scoped anon access**: Policies persisted in migrations (`20260113000001`, `20260113000002`) enforce `account_id` + `x-account-id` for threads/messages; legacy null-account fallback removed. Anonymous users cannot fetch other accounts’ threads or messages.
 - **Edge function routing**: `proxy-n8n` is the path for WhatsApp session actions; `session.disconnect` route added to n8n route table; `DISCONNECT_SESSION` now points to `session.logout`.
 
 # [0.1.43] FE WEB CEKAT 2026-01-13
+
 ### Live Chat (Account-scoped reuse)
+
 - **One thread per account (frontend & DB guard)**: Live chat now reads `account_id` from `localStorage` and reuses/reopens the existing thread for that account/channel (falls back to session/alias if no account). Added `account_id` column plus a unique index on `(channel_id, account_id)` when set to prevent duplicate threads.
   - Updated: `src/pages/LiveChat.tsx`, `src/hooks/useConversations.ts`
   - New: `supabase/migrations/20260113000001_add_account_id_to_threads.sql`
@@ -120,11 +263,13 @@
   - Updated: `src/pages/LiveChat.tsx`
   
 ### Live Chat (anon account-id hardening)
+
 - **Fetch-only on load (no auto-create)**: Live chat no longer creates threads on refresh; it only attaches to existing threads that match the current `account_id` (and session). Threads are expected to be created externally (e.g., n8n) and delivered via realtime or subsequent fetch.
 - **Thread reuse by account only**: Stored thread reuse was removed; lookup now requires account/session match (no name fallback when account_id exists).
 - **Headers for anon RLS**: The live chat Supabase client sends `x-account-id` for all requests so anon RLS policies apply.
 
 ### Supabase (migration/reference)
+
 - **account_id column & unique index**: Added `account_id` to `public.threads` and a unique index `(channel_id, account_id)` when `account_id` is set (`supabase/migrations/20260113000001_add_account_id_to_threads.sql`).
 - **Edge function auth**: `proxy-n8n` redeployed with `verify_jwt=false` to allow anonymous calls (still HMAC-signs to n8n).
 - **RLS (anon by account_id)**:
@@ -134,7 +279,9 @@
   - Legacy null-account fallback policies were removed; anon access now hinges on matching `account_id`.
 
 # [0.1.42] FE WEB CEKAT 2026-01-13
+
 ### Conversations & Assignment Flow
+
 - **Realtime tab-safe updates**: Thread status/assignee changes now patch the conversation list via realtime updates without needing a manual refresh; tabs stay put even when counts change underneath.
   - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
 - **Tab UX hardening**: Tabs remain clickable/selectable even when empty; user-selected tabs no longer auto-bounce when counts shift.
@@ -143,29 +290,39 @@
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 # [0.1.41] FE WEB CEKAT 2026-01-12
+
 - **Thread controls respect roles & stay real-time**: “Move to Unassigned” now only renders and functions for master/super agents (regular agents get a toast if they try), and the focused conversation keeps subscribing to its thread plus calling `fetchMessages` in a stable hook so status changes surface instantly.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 - **Super agents can edit platform human agents**: The human-agent multi-select inside platform details now bypasses the `channel_agents.update` gate for `super_agent` roles so they can add/remove collaborators without an extra permission.
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
 # [0.1.40] FE WEB CEKAT 2026-01-12
+
 ### Conversations & Assignment Flow
+
 - **Correct tab mapping for statuses**: “Assigned” now strictly maps to `status === "pending"` while “Unassigned” maps to `status === "open"` so the sidebar tally matches the database truth, and the legacy `assigned` enum is only treated as assigned for backward compatibility.
   - Updated: `src/components/chat/ConversationPage.tsx`
 - **Render unassigned threads as open**: Assignment-sensitive logic now only considers a thread assigned when an assignee (or similar signal) exists; a bare `pending` status without an assignee rewrites to `open`, ensuring those rows appear under the Unassigned tab.
   - Updated: `src/hooks/useConversations.ts`
+
 # [0.1.39] FE WEB CEKAT 2026-01-11
+
 ### Conversations & Assignment Flow
+
 - **Takeover preserves handled by**: Takeover chat action now only changes thread status from "pending" (Unassigned) to "assigned", without modifying the "Handled By" field. This ensures the original super agent assignment is preserved regardless of who takes over the conversation.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 - **Conditional assignee updates**: Added `setAssignee` option to `assignThread` function for explicit assignment control. Takeover always uses `setAssignee: false` to preserve existing assignments.
   - Updated: `src/hooks/useConversations.ts`
 
 ### UI/UX Improvements
+
 - **Login form cleanup**: Removed redundant UI text elements from login form (one-time code message and forgot password link) to streamline the authentication interface.
   - Updated: `src/components/auth/Login.tsx`
 
 # [0.1.38] FE WEB CEKAT 2026-01-11
+
 ### Conversations & Assignment Flow
+
 - **Inline status controls**: Assigned threads now show a “Move to Unassigned” button next to Resolve, keeping status transitions and the list state in sync without page refreshes.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 - **Server-truth status updates**: Removed optimistic status toggles (and stopped writing the unsupported `'assigned'` enum) so moving or taking over a single thread no longer makes other rows flicker; UI now waits for Supabase to confirm before updating.
@@ -173,7 +330,9 @@
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 
 # [0.1.37] FE WEB CEKAT 2026-01-11
+
 ### Conversations & Assignment Flow
+
 - Updated: `src/components/chat/ConversationPage.tsx`
 - **Takeover scoped to Unassigned**: The Takeover Chat CTA now renders only when a thread is truly in the Unassigned state, preventing accidental reassignment attempts from other tabs.
   - Updated: `src/components/chat/ConversationPage.tsx`
@@ -182,7 +341,9 @@
 - **Hide master agents from selectors**: Master agents can still act on any thread, but they no longer appear in the Handled By or Collaborator dropdowns to avoid accidental assignment to all-powerful accounts.
 
 # [0.1.36] FE WEB CEKAT 2026-01-11
+
 ### Conversations & Assignment Flow
+
 - **Three-state workflow overhaul**: Replaced the legacy status heuristic with an explicit `Assigned / Unassigned / Done` flow that keys off `status` plus the presence of a collaborator. Counts, badges, tab filters, and auto-selection now stay in sync with the new rules and never fall back to the deprecated multi-collaborator state.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 - **Collaborator switch stability**: Guarded the URL/thread synchronization logic so picking a collaborator no longer triggers a rapid tab flip that spammed list/message fetches.
@@ -190,6 +351,7 @@
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 ### Collaboration Data Model & Permissions
+
 - **Single-column collaborator model**: Added a migration that backfills `threads.collaborator_user_id`, rewires all RLS policies to reference that column, and drops the obsolete `thread_collaborators` table plus its triggers.
   - New: `supabase/migrations/20260110_remove_thread_collaborators.sql`
   - Updated: `supabase/migrations/permissions_update_and_policies_updates.sql`, `supabase/migrations/20251124230847_baseline.sql`, `supabase/schema.sql`, `sync/tables.config.json`
@@ -197,18 +359,23 @@
   - Updated: `src/integrations/supabase/types.ts`
 
 ### Navigation & RBAC
+
 - **Hide AI Agents for regular agents**: Sidebar configuration now outright hides the AI Agents menu when the signed-in user only has the `agent` role, preventing them from entering AI profile management.
   - Updated: `src/config/navigation.ts`, `src/hooks/useNavigation.ts`
 
 # [0.1.35] FE WEB CEKAT 2026-01-10
+
 ### Housekeeping
+
 - **Line-ending normalization (no logic changes)**: Synchronized CRLF/LF on chat/contact pages and hooks to keep diffs clean without altering runtime behavior.
   - Touched: `src/components/chat/ConversationPage.tsx`, `src/components/contacts/Contacts.tsx`, `src/hooks/useContacts.ts`, `src/hooks/useConversations.ts`, `src/pages/LiveChat.tsx`
 - **Migration formatting**: Tidied whitespace in the `thread_status` enum migration to match our SQL formatting conventions.
   - Updated: `supabase/migrations/20260109000000_add_assigned_thread_status.sql`
 
 # [0.1.34] FE WEB CEKAT 2026-01-09
+
 ### Live Chat & Messaging
+
 - **Realtime Message Recovery**: Fixed a bug where customer messages (role: 'user') were filtered out of the realtime feed, ensuring the chat window correctly updates when messages are persisted to the database.
   - Updated: `src/pages/LiveChat.tsx`
 - **Smart Message Deduplication**: Added a client-side deduplication pass that prevents "double bubbles" when both an optimistic send and a database insert arrive near-simultaneously (2-second window).
@@ -217,6 +384,7 @@
   - Updated: `src/pages/LiveChat.tsx`
 
 ### Assignment & Status Management
+
 - **Thread Status Enum Extension**: Added a new `assigned` value to the database `thread_status` enum to properly distinguish between new inquiries and those handled by a super agent or human.
   - New: `supabase/migrations/20260109000000_add_assigned_thread_status.sql`
 - **Automated Assignment Flow**: Threads now automatically transition to `assigned` status when a bot hands off or a super agent is linked to the platform, while remaining in `open` for fresh inquiries.
@@ -227,6 +395,7 @@
   - Updated: `src/hooks/useConversations.ts`
 
 ### UI/UX Polish
+
 - **Silent Background Refresh**: Implemented a "silent" fetch mode for conversation lists that bypasses global loading states, eliminating the screen "blinking" effect when sending messages or receiving updates.
   - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
 - **Toaster Cleanup**: Removed redundant "Message sent successfully" notifications to reduce UI clutter, keeping toasts reserved for actual errors or critical events.
@@ -249,33 +418,43 @@
   - Updated: `src/pages/LiveChat.tsx`
 
 # [0.1.33] FE WEB CEKAT 2026-01-08
+
 ### Conversations
+
 - **Role-aware Message Composer**: Chat input now enables whenever a user has `messages.create`, is a master/super agent, is the current handled-by assignee, or is the selected collaborator—ensuring the right people can reply without manual overrides.
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 # [0.1.32] FE WEB CEKAT 2026-01-08
+
 ### Platform Management
+
 - **Live Chat Link Quality-of-Life**: Added copy-to-clipboard buttons with toast feedback for both the live chat URL and embed snippet so teammates can drop links/widgets faster without selecting text manually.
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
 
 ### Navigation & RBAC
+
 - **Guaranteed Human Agents Menu for Supervisors**: Super agents now always see the Human Agents sidebar item (role bypass) and can open the roster even if their read permissions are still syncing.
   - Updated: `src/config/navigation.ts`, `src/hooks/useNavigation.ts`, `src/components/navigation/PermissionNavItem.tsx`, `src/pages/Index.tsx`
 
 ### Human Agent Management
+
 - **Super Agent Focused View**: When a super agent opens the roster the Create button and Pending tab disappear, role/status filters are hidden, and all action buttons (status, limits, delete) are automatically allowed for members in their own cluster thanks to the new `roleBypass` helper.
   - Updated: `src/components/humanagents/HumanAgents.tsx`, `src/components/rbac/PermissionGate.tsx`
 
 ### Conversation Sidebar
+
 - **Handled By Read-Only**: The “Handled By” field is now display-only, preventing mid-conversation reassignment from the info pane while still showing who currently owns the thread.
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 # [0.1.31] FE WEB CEKAT 2026-01-08
+
 - **Live Chat Realtime-Only Sync**: Removed the 2-second polling loop from the live chat widget so updates rely solely on Supabase realtime subscriptions, cutting unnecessary network and memory usage.
   - Updated: `src/pages/LiveChat.tsx`
 
 # [0.1.30] FE WEB CEKAT 2026-01-07
+
 ### Platform Management
+
 - **Live Chat Takeover Notices**: System takeover events now render as toast notifications instead of chat bubbles, keeping conversation history clean while still informing customers.
   - Updated: `src/pages/LiveChat.tsx`
 - **Human Agent Assignment UX**: Selecting agents in platform edit autosaves immediately; no more extra click to add collaborators.
@@ -284,7 +463,9 @@
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
 
 # [0.1.29] FE WEB CEKAT 2026-01-07
+
 ### Conversation Management
+
 - **Single Collaborator Restriction**: Changed Collaborators field from multi-select to single-select, allowing only one collaborator per thread.
   - Replaced `SearchableMultiSelect` with `SearchableSelect` component for collaborator selection.
   - When a new collaborator is selected, it automatically replaces any existing collaborator for that thread.
@@ -300,7 +481,9 @@
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 # [0.1.28] FE WEB CEKAT 2026-01-07
+
 ### Security & Data Access Control
+
 - **Super Agent Data Isolation**: Implemented Row Level Security (RLS) policies to ensure super agents can only view their own data in platform creation forms.
   - Secured `v_users` view to prevent data leakage by removing direct access to `auth.users` table.
   - View now anchors on `users_profile` table with proper RLS enforcement, ensuring super agents only see their own profile.
@@ -308,6 +491,7 @@
   - Database migration applied to enforce RLS policies at the database level for true security (not just frontend filtering).
 
 ### Platform Creation Forms
+
 - **Auto-Select Super Agent for Super Agent Users**: Enhanced platform creation forms (Telegram, WhatsApp, Web) to automatically select and lock the Super Agent dropdown when the current user is a super agent.
   - Super Agent field is automatically populated with the current user's ID when form opens for super agent users.
   - Field becomes read-only (disabled) with visual indication when user is a super agent, preventing them from changing their own assignment.
@@ -315,9 +499,10 @@
   - Master agents continue to see and can select from all available super agents in the dropdown.
   - Updated: `src/components/platforms/TelegramPlatformForm.tsx`, `src/components/platforms/WebPlatformForm.tsx`, `src/components/platforms/WhatsAppPlatformForm.tsx`
 
-
 # [0.1.27] FE WEB CEKAT 2026-01-02
+
 ### Conversation Management
+
 - **Handled By Clearing**: Users can now remove super agent assignments from conversations using a clear button in the "Handled By" selector.
   - Added `allowClear` prop to `SearchableSelect` component with inline clear button (X icon) that appears when a value is selected.
   - "Handled By" selector in conversation sidebar now supports clearing assignments, allowing conversations to be unassigned.
@@ -330,64 +515,82 @@
   - Updated: `src/components/ui/searchable-select.tsx`, `src/components/chat/ConversationPage.tsx`
 
 # [0.1.26] FE WEB CEKAT 2026-01-01
+
 ### Supabase Configuration
+
 - **Env-only credentials**: `src/config/supabase.ts` now reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (or `VITE_SUPABASE_PUBLISHABLE_KEY`) directly from the environment, with clear error messages when either is missing.
 - **Removed baked-in keys**: Any hardcoded DEV/PROD URLs or anonymous keys have been removed, eliminating mismatched-session logouts when the production build refreshes.
 - **Commit:** `chore: document proxy routing updates` — aligned the config with environment-driven credentials and documented the change.
 
 # [0.1.25] FE WEB CEKAT 2025-12-30
+
 ### Webhook Routing & Live Chat
+
 - **Proxy-aware production routing**: `src/config/webhook.ts` now prefers Supabase Edge proxy routes while still allowing explicit overrides and legacy fallbacks, ensuring production hits `proxy-n8n` even when `VITE_WEBHOOK_BASE_URL` is set to your Supabase host.
 - **Client auth resilience**: `src/lib/webhookClient.ts` attempts to attach a session token when available but no longer blocks calls if the viewer lacks one, so widget traffic still reaches the proxy (and surfaces 401s when the function enforces auth).
 - **Env guidance**: Documented the required `VITE_SUPABASE_ANON_KEY` in `src/config/supabase.ts` so deployments fail fast if keys are missing, and restored custom-domain detection so `api.cssuper.com` resolves to the production Supabase key when the variable is omitted.
 - **Commit:** `chore: document proxy routing updates` — removed hardcoded Supabase fallbacks so `src/config/supabase.ts` now reads only the environment-provided URL/key, preventing prod refresh logouts caused by mismatched credentials.
+
 ### Live Chat
+
 - **Streaming order stability**: `src/pages/LiveChat.tsx` now tracks a monotonic render order so assistant replies consistently appear beneath the triggering user message without requiring a refresh.
 - **Proxy-first webhook**: The Live Chat send flow always calls the Supabase `proxy-n8n` function before falling back to the legacy webhook, so both production and development environments continue to hit the proxy listener.
 
 # [0.1.24] FE WEB CEKAT 2025-12-30
+
 ### Contacts → Conversations (Multi-Thread Support)
+
 - **Thread Picker for “Open conversation”**: Contacts now open a thread/channel picker instead of jumping directly to `/chat` by contact, solving ambiguity when a contact has multiple threads across channels.
   - New component: `src/components/chat/ContactThreadPickerDialog.tsx`
   - Updated: `src/components/contacts/Contacts.tsx` now opens the picker and navigates with `menu=chat&contact=<id>&thread=<id>`
 
 ### Conversations: Deterministic Thread Selection
+
 - **URL-based thread deep link**: `ConversationPage` now supports `thread=<threadId>` and prioritizes it over `contact=<contactId>`, ensuring the correct thread opens even when the same contact has multiple channel threads.
   - Clicking a conversation updates the URL (`thread` + `contact`) so navigation is stable and shareable.
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 ### Conversations UI
+
 - **Platform tags**: Conversation rows now show provider badges (e.g. Telegram/Web/WhatsApp) for clearer channel context.
   - Updated: `src/components/chat/ConversationPage.tsx`
 
 ### Thread Picker UI Polish
+
 - **Better list layout**: Improved thread list rendering to avoid clipped/trimmed rows and to pin the platform chip to the bottom-right of each row (timestamp top-right).
   - Updated: `src/components/chat/ContactThreadPickerDialog.tsx`
 
 # [0.1.23] FE WEB CEKAT 2025-12-29
+
 ### Authentication & User Management
+
 - **Whitespace-Free Email & Password Inputs**: Login, reset-password, and agent creation forms now strip spaces and force lowercase emails while blocking space characters in passwords, preventing accidental invalid credentials.
   - `src/components/auth/Login.tsx` sanitizes email input across login, reset, and (future) signup tabs and blocks whitespace in password fields.
   - `src/pages/ResetPassword.tsx` applies the same input guards to new/confirm password fields.
   - `src/components/humanagents/HumanAgents.tsx` normalizes emails when creating agents to avoid duplicate entries caused by casing or trailing spaces.
 
 ### Conversations
+
 - **WhatsApp-Style Day Separators**: Chat threads display `Today`, `Yesterday`, or a formatted date badge between message clusters, making timelines easier to scan.
   - Implemented in `src/components/chat/ConversationPage.tsx` with memoized grouping so the list stays performant.
 
 ### Analytics
+
 - **Unified Date Range Picker**: Replaced separate `From`/`To` inputs with a single range calendar that mirrors the contacts page behavior and keeps queries bounded to today.
   - `src/components/analytics/Analytics.tsx` stores normalized `YYYY-MM-DD` strings and offers a quick “Clear” action.
 - **Stable Refresh Logic**: Prevented stale data by delaying metric/database fetches until the user finishes selecting the range (popover closes), ensuring the latest `from/to` pair drives every refresh.
 
 # [0.1.22] FE WEB CEKAT 2025-12-24
+
 ### Authentication & Environment
+
 - **Supabase Config Hardening**: Prevented “Invalid API key” errors in Netlify preview/dev deploys caused by URL/key mismatches.
   - `src/config/supabase.ts` now infers dev/prod pairing from the Supabase URL host when only one override is provided.
   - Defaults to a dev-safe target unless the URL clearly points to `api.cssuper.com`.
   - Still supports explicit `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` overrides.
 
 ### Platforms (WhatsApp)
+
 - **Delete Webhook Payload**: When deleting WhatsApp channels, the webhook call now includes the channel identifier.
   - `DELETE_SESSION` payload now sends `channel_id` and `org_id` alongside `session_name` for reliable backend cleanup.
 
@@ -396,8 +599,11 @@
   - WAHA session sync now upgrades `external_id` to the real WhatsApp `me.id` (e.g. `628...@c.us`) once available, and never wipes it back to null.
   - Added a fallback lookup to `GET /api/sessions/{name}` when the WAHA list endpoint does not include `me.id`.
   - Standardized WAHA session naming to `toLowerCase().replace(/\s/g,'')` for consistent matching.
+
 # [0.1.21] FE WEB CEKAT 2025-12-24
+
 ### Circuit Breaker Settings
+
 - **Date Range Validation**: Updated chat date filter to require both "From" and "To" values before applying.
   - Prevents half-filled date ranges from running and warns users when only one side is selected.
   - Disallows selecting an end date earlier than the start date and keeps calendars constrained to valid ranges.
@@ -407,7 +613,9 @@
   - Replaced separate date inputs with a single range calendar so start and end dates are chosen together.
 
 # [0.1.20] FE WEB CEKAT 2025-12-24
+
 ### Conversations: Filter UX & Correctness
+
 - **Channel Type Filter Fixed**: Channel Type now correctly filters threads at the query level.
   - Updated `useConversations` to use an inner join (`channels!inner(...)`) so `channels.provider` filters actually constrain `threads` results (PostgREST behavior).
   - Added defensive client-side filtering for `channelType`, `inbox`, and `platformId` to ensure consistent UI results.
@@ -421,6 +629,7 @@
   - `ChatFilter` modal is now controlled via a `value` prop so reopening the modal shows the currently applied values.
 
 ### Configuration & Environment Management
+
 - **Centralized URL Configuration**: Created comprehensive URL and environment configuration system
   - New `src/config/urls.ts` centralizes all app base URLs (APP_ORIGIN, WAHA_BASE_URL) with environment-aware defaults
   - New `src/config/supabase.ts` centralizes Supabase URL and key configuration with automatic dev/prod switching
@@ -436,6 +645,7 @@
   - All platform forms now reference single source of truth for base URLs
 
 ### AI Agent Settings Cleanup
+
 - **Removed Context Window Field**: Removed "Context Window (K tokens)" from Additional Settings UI
   - Field no longer visible or editable in AI Agent Settings interface
   - Removed all related state variables (`contextLimitInput`, `contextLimitMax`)
@@ -444,6 +654,7 @@
   - Ensures database writes continue to work without breaking changes
 
 ### Conversation Filtering
+
 - **Removed Pipeline Status Filter**: Cleaned up thread filter interface
   - Removed "Pipeline Status" dropdown from chat filter dialog
   - Removed `pipelineStatus` from filter state and type definitions
@@ -451,6 +662,7 @@
   - Simplified filter UI with cleaner, more focused options
 
 ### Technical Improvements
+
 - **Code Organization**: Improved maintainability and consistency
   - Single source of truth for all environment-specific URLs
   - Consistent configuration pattern across all services
@@ -458,7 +670,9 @@
   - Enhanced type safety with centralized config exports
 
 # [0.1.19] FE WEB CEKAT 2025-12-24
+
 ### Circuit Breaker Settings
+
 - **Robust Numeric Validation**: Reset timeout, monitoring period, request timeout, and threshold fields now accept temporary clears but enforce min/max bounds before saving.
   - Inline error messages and disabled save state prevent invalid submissions.
   - Inputs strip non-numeric characters, block scientific notation, and clamp values to their allowed ranges.
@@ -466,13 +680,16 @@
 - **Tooltip Refinement**: Repositioned tooltips to render beside their triggers, preventing clipping inside the modal.
 
 ### Adaptive Rate Limiter Configuration
+
 - **Precision Controls**: Base limits and multiplier inputs now sanitize numeric entry, limit decimals to three places, and sync their raw display strings with validated state.
 - **Validation Guardrails**: All adaptive fields surface inline errors and keep the save button disabled until values fall within allowed ranges.
 - **Enhanced Summary**: Read-only configuration card now surfaces latency thresholds (with seconds) alongside existing multiplier and interval details.
 - **Modal Tooltips**: Every helper tooltip aligns left/right relative to its column, ensuring full visibility within the dialog.
 
 # [0.1.18] FE WEB CEKAT 2025-12-24
+
 ### Bug Fixes
+
 - **Fixed Platform Filter Not Finding Channels**: Resolved critical bug where selecting a channel type (Telegram, WhatsApp, Web) would show no platforms.
   - Changed platform filtering from `channels.type` to `channels.provider` to match actual database schema.
   - In database, `channels.provider` contains transport values (`telegram`, `web`, `whatsapp`) while `channels.type` contains implementation details (`bot`, `inbox`).
@@ -480,6 +697,7 @@
   - Telegram and other channel types now correctly display their platforms when selected.
 
 ### Conversation Management
+
 - **Hierarchical Channel Type → Platform Filter**: Enhanced chat filter with parent-child filter relationship.
   - Platform filter now requires Channel Type selection first (Platform dropdown disabled until Channel Type is chosen).
   - Placeholder text changes to "Select channel type first" when Channel Type is not selected.
@@ -492,7 +710,9 @@
   - Platform display simplified to show only `display_name` without provider/type suffix for cleaner UI.
 
 # [0.1.17] FE WEB CEKAT 2025-12-22
+
 ### Bug Fixes
+
 - **Fixed Stale Data Persistence After Role Changes**: Resolved critical issue where threads and contacts persisted in the UI after role changes in the database.
   - Removed localStorage caching for threads (`app.cachedConversations`) to prevent stale data from persisting after authorization changes.
   - Disabled query caching for authorization-sensitive operations (threads, contacts) in `protectedSupabase` wrapper to ensure fresh data on role changes.
@@ -500,6 +720,7 @@
   - Fixed issue where changing a user's role from `master_agent` to `super_agent` (or vice versa) in the database would not immediately reflect in the UI.
 
 ### Technical Improvements
+
 - **Realtime Role Change Detection**: Implemented comprehensive authorization change detection system.
   - Added realtime subscription to `user_roles` table in `RBACContext` to detect role changes for the current user.
   - Created `authz.ts` utility module for centralized authorization change handling and cache invalidation.
@@ -514,7 +735,9 @@
   - Improved security by preventing cached data from persisting after role downgrades.
 
 # [0.1.16] FE WEB CEKAT 2025-12-20
+
 ### UI Components
+
 - **SearchableSelect Component**: Added a new reusable searchable single-select dropdown component.
   - Provides searchable dropdown functionality with keyboard navigation support.
   - Includes proper accessibility attributes and visual feedback for selected items.
@@ -526,6 +749,7 @@
   - Displays selected items as removable badges with clear visual indicators.
 
 ### Conversation Management
+
 - **Enhanced Agent Assignment UI**: Replaced popover-based assignment interface with searchable select components.
   - "Handled By" field now uses `SearchableSelect` for improved searchability and UX.
   - Streamlined assignment flow with better visual feedback and state management.
@@ -550,22 +774,27 @@
   - Provides fallback display names when profile data is unavailable.
 
 ### Bug Fixes
+
 - **Fixed Handled By State Leak**: Resolved critical bug where assigning a thread to an agent would incorrectly show that agent as assigned to all other threads.
   - Scoped `handledByOverride` state to specific thread IDs instead of using global state.
   - Optimistic UI updates now only apply to the thread being assigned, preventing state leakage when navigating between conversations.
   - Fixed issue where changing "Handled By" for one thread would temporarily display the same value for all threads until server refresh.
 
 # [0.1.15] FE WEB CEKAT 2025-12-19
+
 ### Database & Policies
+
 - **Threads Update Policy**: Master agents can now resolve conversations across all environments.
   - Updated the `threads update perm update_own` policy to allow updates when `is_master_agent_in_org(org_id)` is true.
   - Applied the policy change to main, development, and backup Supabase projects and added a migration for consistency.
 
 ### Conversation Management
+
 - **Resolved Thread Cleanup**: UI now hides take-over controls once a thread is closed.
   - Removed the takeover button and composer input when `status === 'closed'`, preventing accidental actions on resolved chats.
 
 ### Contacts
+
 - **Unassigned Filter Accuracy**: Ensured the contacts list reflects only unassigned records without altering assigned data.
   - Adjusted Supabase querying and client filtering so contacts with no assigned agent (or no thread yet) display correctly.
   - Total counters and pagination now show filtered counts (e.g. `12 of 16`) when a handled-by filter is active.
@@ -574,23 +803,30 @@
 - **Toolbar Cleanup**: Removed the unused “Customize Columns” button for a leaner toolbar experience.
 
 # [0.1.14] FE WEB CEKAT 2025-12-18
+
 ### Platform Forms (WhatsApp / Telegram / Web)
+
 - **Top Spacing Layout Fix**: Standardized form spacing under dialog headers for a cleaner, consistent layout across all platform setup forms.
 
 ### Telegram Platform
+
 - **Bot Token Validation (Required)**: Added a **Validate** button beside the Telegram Bot Token field and made validation mandatory before creating a Telegram platform.
   - Create is blocked with an error until the token has been validated.
 - **Token Verification via Supabase Edge Function**: Token verification now calls the Supabase Edge Function endpoint (`/functions/v1/telegram-verify-token`) with a strict response contract (`{ valid: boolean }`).
   - `callWebhook()` now auto-attaches Supabase auth headers for Supabase Edge Function URLs.
 
 # [0.1.13] FE WEB CEKAT 2025-12-17
+
 ### Conversation Management
+
 - **Date Filter Fix**: Resolved an issue where the date filter in the conversations menu would incorrectly exclude valid conversations.
   - Switched from server-side filtering on `created_at`/`last_msg_at` (which could be stale) to client-side filtering using the computed last message time.
   - Ensures the filter now perfectly matches the dates displayed in the UI, correctly showing threads active within the selected range.
 
 # [0.1.12] FE WEB CEKAT 2025-12-14
+
 ### Human Agents UI Protection
+
 - **Master Agent UI Safeguards**: Enhanced protection for master agent accounts in the Human Agents interface.
   - Status dropdown button is now disabled for master agents across all sections (master agents, super agents, regular agents, and pending invitations).
   - Chevron dropdown icon is conditionally hidden for master agents to provide clear visual indication that status cannot be changed.
@@ -599,24 +835,30 @@
   - Provides cleaner UI experience by removing non-functional controls rather than showing disabled states.
 
 ### Authentication & OTP
+
 - **2FA Email Edge Function Update**: Updated edge function reference for login-specific 2FA emails.
   - Changed edge function call from `send-2fa-email` to `send-2fa-login-email` in `AuthContext.tsx` and `Otp.tsx`.
   - Aligns with backend function naming convention for better clarity and separation of login vs other 2FA email flows.
 
 # [0.1.11] FE WEB CEKAT 2025-12-10
+
 ### Conversation Management
+
 - **Status Filter Cleanup**: Removed the redundant "Resolved" option from the conversation status filter.
   - The "Closed" status now serves as the single source of truth for completed conversations.
   - Simplified the filtering logic to remove unnecessary status checks.
 
 # [0.1.10] FE WEB CEKAT 2025-12-09
+
 ### Human Agents & Permissions
+
 - **Create Agent Permission Gate**: Simplified and hardened the Create Agent button on the Human Agents page.
   - Button is now directly gated by `users_profile.create` via `PermissionGate`, following the same pattern as other RBAC-protected actions.
   - When the user lacks permission, the button stays visible but disabled with a clear tooltip (“You do not have permission to create agents.”).
   - Removed the extra client-side lookup against the `permissions` table and associated state (`createPermissionKey`, `checkingCreatePermission`) to reduce complexity and runtime edge cases.
 
 ### Navigation & RBAC Consistency
+
 - **Super Agents Schema Alignment**: Updated `PERMISSIONS_SCHEMA` to include the full `super_agents` action set (`create`, `update`, `delete`, `read_all`, `read_own`), matching the backend `permissions` table.
 - **Navigation Read-Gates**: Centralized navigation gating to use read scopes consistently:
   - Added a defensive `readPerms(resource)` helper that safely derives `resource.read*` keys from `PERMISSIONS_SCHEMA`.
@@ -624,14 +866,18 @@
 - **useNavigation Stability**: Adjusted `useNavigation` to skip DB permission recomputation while RBAC is still loading, preventing transient context errors during hot reloads while keeping the existing has_perm-first behavior.
 
 # [0.1.9] FE WEB CEKAT 2025-12-03
+
 ### AI Agents
+
 - Replaced the browser `confirm()` with a first-class modal when deleting AI agents.
   - Uses the shared `AlertDialog` component with explicit cancel/confirm controls.
   - Shows the agent name inside the confirmation copy and blocks dismissal while the request is in flight.
   - Surfaces loader feedback and only closes when the Supabase delete succeeds.
 
 # [0.1.8] FE WEB CEKAT 2025-12-03
+
 ### Platform Forms: Super Agent Management & Scoping
+
 - **Explicit Super Agent Selection**: All platform forms (WhatsApp, Telegram, Web) now require explicit Super Agent selection before AI Agent selection
   - Super Agent field is now a required, selectable dropdown (previously derived from AI Agent)
   - Field appears above AI Agent selection with clear labeling and tooltips
@@ -659,6 +905,7 @@
   - Validation ensures Super Agent is selected before agent creation
 
 ### Navigation & Permissions Updates
+
 - **Navigation Configuration**: Updated navigation items and permission mappings
   - Refined permission checks for navigation visibility
   - Enhanced role-based access control for navigation items
@@ -669,6 +916,7 @@
   - Enhanced permission categorization and validation
 
 ### Live Chat Improvements
+
 - **Message Handling**: Enhanced message synchronization and streaming
   - Improved realtime message updates
   - Better handling of streaming responses
@@ -676,12 +924,14 @@
   - Enhanced user message timeout handling
 
 ### Webhook Configuration
+
 - **Webhook Routing**: Updated webhook endpoint configuration
   - Enhanced proxy-aware routing
   - Improved endpoint resolution for different providers
   - Better error handling for webhook calls
 
 ### Technical Improvements
+
 - **Hooks Enhancement**: Improved data fetching and scoping
   - Enhanced useAIAgents hook with better super agent scoping
   - Improved useNavigation hook with database permission checks
@@ -689,7 +939,9 @@
   - Optimized cache management
 
 # [0.1.7] FE WEB CEKAT 2025-12-03
+
 ### RBAC & Permissions (Finalized Alignment)
+
 - Standardized PERMISSIONS_SCHEMA to match production backend exactly:
   analytics, ai_profiles, ai_sessions, channels, contacts, contact_identities, threads, messages, ai_agent_files, admin_panel, roles, audit_logs, alerts.
 - Permission Matrix UX revamp (purely permission-driven):
@@ -704,6 +956,7 @@
 - Debounced RBAC refresh during bulk edits to prevent UI lag.
 
 ### Navigation & Visibility (Policy-First)
+
 - Menu visibility now depends on DB has_perm checks; items are hidden if the user lacks any read scope for that section.
 - Updated gating keys to align with schema:
   - Admin Panel: admin_panel.read (menu), admin_panel.update (controls)
@@ -715,15 +968,19 @@
 - Reduced has_perm spam: policy checks recompute only when RBAC roles/permissions change.
 
 ### Admin Panel
+
 - Replaced legacy access_rules.configure gates:
   - Controls now use admin_panel.update; navigation uses admin_panel.read.
 
 ### Misc
+
 - Added contact_identities to schema.
 - Consistency/cleanup across labels, ordering, and spacing in Permission Matrix.
 
 # [0.1.6] FE WEB CEKAT 2025-11-30
+
 ### Cache Management & Session Reliability
+
 - **Comprehensive Cache Clearing on Logout**: Enhanced logout functionality to clear all cached data
   - Clears all localStorage items (including `app.cached*`, `app.currentUserId`, etc.)
   - Clears all sessionStorage items
@@ -738,32 +995,43 @@
   - Ensures consistent user identification even when Supabase session is temporarily unavailable
 
 ### Bug Fixes
+
 - **Merge Conflict Resolution**: Resolved merge conflict in `useAIAgents.ts` by combining `scopeMode` and `superAgentId` logic
 - **Policy Role Fix**: Fixed `threads_master_read` policy to use `authenticated` role instead of `public` role
 - **Cache Persistence**: Fixed issue where cached data persisted after logout, causing users to see unauthorized data
 
 # [0.1.5] FE WEB CEKAT 2025-11-30
+
 ### Webhook & Supabase URL Consistency
+
 - **Single Source for Supabase URL**: Exported a shared `SUPABASE_URL` constant from the Supabase client so all front-end integrations reference the same base URL sinstead of duplicating it.
 - **Proxy Edge Function Alignment**: Updated `WEBHOOK_CONFIG` to derive the proxy base (`/functions/v1/proxy-n8n`) from the shared `SUPABASE_URL`, removing the old hardcoded Supabase project host and keeping proxy routing aligned with the active project.
 - **WhatsApp WAHA Webhook Normalization**: Swapped the hardcoded Railway webhook host in `WhatsAppPlatformForm` for `WEBHOOK_CONFIG.BASE_URL`, ensuring WAHA sessions always post back into the currently configured webhook environment.
 
 # [0.1.4] FE WEB CEKAT 2025-11-28
+
 ### Bug Fixes
+
 - **PermissionsPage Duplicate Declaration Fix**: Resolved "Identifier 'permissionSearch' has already been declared" syntax error
   - Removed duplicate state declarations for `permissionSearch`, `permissionResourceFilter`, and `permissionActionFilter`
   - Kept the properly typed versions of these state variables
   - Fixed runtime error that prevented the Permissions page from loading
 
 # [0.1.3] FE WEB CEKAT 2025-11-28
+
 ### AI Agent Visibility
+
 - Agents now only see AI agents owned by their assigned super agent; a new `useSuperAgentScope` hook drives consistent filtering across dashboards, dropdowns, and cached data.
 - The AI Agents list and helpers surface localized messaging when an agent has no supervising cluster, preventing stale cross-team data from leaking through local storage.
+
 ### Database Access Control
+
 - Tightened the `ai_profiles` RLS guard so master agents retain full visibility, super agents stay scoped to their own records, and agents inherit their supervising super agent’s access.
 
 # [0.1.2] FE WEB CEKAT 2025-11-26
+
 ### Platform Form Enhancements for Super Agents
+
 - **Super Agent Field Auto-Prefill**: All platform creation forms (Telegram, WhatsApp, Web) now automatically prefill the super agent field when the current user is a super agent
   - Super agent field is automatically populated with the current user's super agent username/ID when form opens
   - Field becomes readonly (visual indication with reduced opacity) when user is a super agent
@@ -783,6 +1051,7 @@
   - Consistent behavior across Telegram, WhatsApp, and Web platform forms
 
 ### Technical Improvements
+
 - **Component Updates**: Enhanced platform form components with role-based logic
   - Added `useEffect` hooks to prefill super agent field on form open
   - Integrated `useRBAC` context for role checking
@@ -790,27 +1059,39 @@
   - Improved form state management to preserve super agent selection for super agent users
 
 # [0.1.1] FE WEB CEKAT 2025-11-27
+
 ### Permissions Console
+
 - **Regression Fix**: Reintroduced missing permission search and filter state in `PermissionsPage`; restores the role configuration screen and avoids the `permissionSearch is not defined` runtime error.
 - **Master Agent Safety Rail**: Hard-blocked deletion of the Master Agent from both UI and API helpers; delete buttons are disabled with guidance and back-end guards stop any direct calls.
+
 ### UI Localization
+
 - **Master Agent Deletion Message**: Updated the modal tooltip and toast that appear when attempting to delete a master agent; the copy now follows the latest localization requirements.
 
 # [0.1.0] FE WEB CEKAT 2025-11-27
+
 ### FINALIZED FOR PRODUCTION
+
 ### Agent Creation UX
+
 - **Modal-Friendly Errors**: Duplicate-email validation now surfaces purely as a toast; the “Create Agent” dialog stays open and no longer renders the full-page error banner, making it easy to adjust the address and resubmit.
 
 # [0.0.49] FE WEB CEKAT 2025-11-27
+
 ### Human Agents Roster
+
 - **Duplicate Entry Cleanup**: Adjusted role grouping logic so master agents no longer appear in both the master and agent sections of the Human Agents table; prevents a single email from showing twice and keeps assignment status accurate.
 
 ### Login & Session Guardrails
+
 - **Refresh Spinner Fix**: Added watchdog timers around Supabase session/bootstrap calls so a stalled `auth.getSession()` or 2FA profile check can’t trap users behind the infinite “Loading…” screen; stale sessions now fall back to the login view within a few seconds.
 - **Account Status Timeouts**: Soft-capped the account status RPC to keep token refreshes responsive even if the database briefly stops responding.
 
 # [0.0.48] FE WEB CEKAT 2025-11-26
+
 ### RBAC & Permissions System Enhancements
+
 - **Master Agent Root Role Treatment**: Master Agent is now treated as root role with full system privileges
   - Master Agent role is designated as root role with unrestricted access across the system
   - Permission matrix editing is disabled for Master Agent to prevent accidental permission removal
@@ -826,6 +1107,7 @@
   - Early return guards prevent any permission toggle operations when Master Agent is selected
 
 ### Technical Improvements
+
 - **PermissionsPage Component**: Enhanced role configuration logic
   - Added `isRootSelected` state check based on role name comparison
   - Conditional rendering of root role information card
@@ -836,43 +1118,55 @@
   - Automatically selects the relevant contact thread when available
 
 # [0.0.47] FE WEB CEKAT 2025-11-25
+
 ### Supabase Baseline Refresh
+
 - **Single Source Migration**: Replaced the entire migrations stack with `20251124230847_baseline.sql`, capturing today’s production schema so every environment can rebuild from a single, clean baseline.
 - **Vector Extension Guardrails**: Ensured the baseline creates the `vector` extension in the `public` schema and updates every dependent function/column to reference the schema-qualified type.
 - **Config Hardening**: Explicitly pins Supabase Storage to `v1.31.1` in `supabase/config.toml`, preventing CLI diffs from failing on missing storage migrations.
 
 ### Branch & Data Maintenance
+
 - **Development Branch Reset**: Repaired Supabase migration history, reapplied the new baseline, and reset the `development` branch so it replays the trimmed migration set without legacy drift.
 - **Main ↔ Dev Data Parity**: Dumped production `public` + `auth` data and restored it into the development branch, then pruned historic test accounts to keep both environments aligned.
 - **Backup Hygiene**: Ran the same user cleanup on the backup project (`igtizjvhxgajijjjxnzi`) to ensure the automated sync worker starts from a consistent dataset.
 
 # [0.0.46] FE WEB CEKAT 2025-11-24
+
 ### Database Migration Hardening
+
 - **Legacy Platform Support**: Updated the `20250828000000_merge_platforms_into_channels.sql` migration to add any missing `platforms` columns (`display_name`, `website_url`, `status`, `secret_token`, `profile_photo_url`, `ai_profile_id`) on the fly so historical environments can replay migrations without schema drift.
 - **Main Branch Hotfix Migration**: Applied Supabase migration `20250827950000_fix_platforms_schema` on production to backfill those columns immediately, unblocking rebase operations across environments.
 - **Rebase Reliability**: Re-ran the Supabase rebase workflow to verify the new safeguards; future branch syncs no longer fail on missing column errors when promoting channels data.
 
 # [0.0.45] FE WEB CEKAT 2025-11-23
+
 ### QA Testing Guide Expansion
+
 - **End-to-End Flow Coverage**: Expanded `DOCUMENTATION.md` with exhaustive step-by-step flows covering login, OTP, password reset, human/AI agent lifecycle, contacts, permissions, admin utilities, analytics, and audit logs so QA can validate every button and path without code access.
 - **Button & Validation Matrix**: Documented the enabled/disabled states, confirmation dialogs, toasts, and edge-case behaviour for all primary actions (create, save, delete, export, toggle) across the application.
 - **Role-Based Walkthroughs**: Added guidance on testing from master, super, and agent perspectives, including navigation expectations and restricted-card behaviour on the dashboard.
 
 ### Documentation Quality Improvements
+
 - **Live Chat & Admin Deep Dives**: Added detailed instructions for conversation tools (notes, tags, canned responses, SLAs), AI pause/resume workflow, circuit breaker monitoring, and platform onboarding (WhatsApp, Telegram, Web).
 - **Human Agent Lifecycle**: Documented invite, resend, cancellation, token limit management, usage analytics, and removal to ensure QA covers onboarding and offboarding scenarios end-to-end.
 - **Changelog & Profile Flows**: Captured interactive changelog behaviour, search/filter expectations, and full profile/session management (2FA toggle, password change, device sign-out).
 
 ### Super Agent Clustering
+
 - **AI Agent Ownership**: Introduced `super_agent_id` on `ai_profiles`, enforced via migrations and new RLS policies. Super agents only see/manage their own AI agents; master agents can reassign via settings.
 - **Auto-Inherited Platform Ownership**: Platform creation/editing now derives `channels.super_agent_id` from the selected AI agent, eliminating manual super agent selection while keeping human-agent assignment intact.
 - **Scoped Listings**: AI agent lists, stats, and platform forms filter to the current super agent automatically; agents without clusters are prevented from being used until assigned.
 
 ### Platform Assignment Guard
+
 - **Scoped Agent Dropdowns**: When creating WhatsApp, Telegram, or Web platforms as a master agent, the human-agent selector now lists only agents assigned to the chosen super agent—preventing unassigned agents from appearing in the multi-select.
 
 # [0.0.44] FE WEB CEKAT 2025-11-19
+
 ### Changelog Experience Revamp
+
 - **Interactive Release Browser**: Introduced a dynamic changelog page with searchable release list, color-coded highlights, and accordion sections for each area of work.
 - **Dual View Modes**: Added interactive and classic tabs so readers can switch between the immersive UI and the original Markdown in one place.
 - **Automatic Highlight Extraction**: Generate summary badges from markdown bullet points to surface the most important updates per release.
@@ -880,7 +1174,9 @@
 - **Comprehensive Documentation**: Added `DOCUMENTATION.md` detailing auth flows, feature modules, Supabase schema, and operational processes.
 
 # [0.0.43] FE WEB CEKAT 2025-11-18
+
 ### AI Pause Notification System
+
 - **New AI Paused Modal Component**: Created dedicated modal for org-wide AI pause notifications
   - Modal displays when AI responses are paused across all channels
   - Shows who paused AI and when (for master agents)
@@ -896,6 +1192,7 @@
   - Session-based acknowledgment prevents modal spam
 
 ### Conversation Page UI Improvements
+
 - **Fixed Tab Color Styling**: Resolved issue where selected tab colors were not displaying
   - Restructured Tooltip/TabsTrigger relationship (Tooltip now inside TabsTrigger)
   - Assigned tab: Blue background and text when active
@@ -920,12 +1217,15 @@
   - Fixed sorting logic to use only available timestamp fields
 
 ### Code Quality Improvements
+
 - **Conversation Hooks Cleanup**: Minor refactoring in `useConversations` hook
   - Code cleanup and optimization
   - Improved type safety
 
 # [0.0.42] FE WEB CEKAT 2025-11-03
+
 ### Admin Panel & Centralized Management
+
 - **New Admin Panel Component**: Created centralized admin control center for master agents
   - New dedicated Admin Panel page accessible via navigation (master agents only)
   - Moved data retention and GDPR controls from Analytics to Admin Panel for better organization
@@ -938,6 +1238,7 @@
   - All admin features consolidated in single, role-gated interface
 
 ### Webhook Infrastructure Refactoring
+
 - **Centralized Webhook Client**: Created new `webhookClient.ts` for unified webhook handling
   - Automatic authentication for proxy endpoints using Supabase session tokens
   - Support for both legacy and proxy-based endpoints
@@ -955,6 +1256,7 @@
   - Live Chat component updated to use new webhook client
 
 ### AI Agent Enhancements
+
 - **AI Model Selection System**: Comprehensive model management in AI Agent creation and settings
   - Model selection dropdown in AI Agent creation dialog with pricing and provider information
   - Fallback model selection for automatic failover when primary model unavailable
@@ -983,6 +1285,7 @@
   - Improved dialog with cancel button and loading states
 
 ### Analytics Component Cleanup
+
 - **Removed Admin Controls**: Moved data retention and GDPR controls to Admin Panel
   - Removed data retention policy card from Analytics Conversation tab
   - Removed GDPR deletion card from Analytics
@@ -991,12 +1294,14 @@
   - Better separation of concerns between analytics and administration
 
 ### Database & Permissions
+
 - **New Migration**: Added `users_profile.create` permission
   - Created migration `20251103_add_users_profile_create_permission.sql`
   - Grants `users_profile.create` permission to `master_agent` and `super_agent` roles
   - Enables proper RBAC for user profile creation operations
 
 ### Enhanced Caching & Performance
+
 - **Query Signature-Based Caching**: Improved cache key generation in `supabaseProtected.ts`
   - Added query signature serialization for more accurate cache keys
   - Cache keys now include query method signatures and arguments
@@ -1010,6 +1315,7 @@
   - Pattern-based cache invalidation using `defaultFallbackHandler.invalidatePattern()`
 
 ### Conversation & Contact Management
+
 - **Enhanced Conversation Hooks**: Improved conversation management
   - Added `deleteThread()` function to `useConversations` hook
   - Provider-aware message sending using `resolveSendMessageEndpoint()`
@@ -1022,6 +1328,7 @@
   - Improved cache management for contact queries
 
 ### Platform Integration Updates
+
 - **WhatsApp Platform**: Updated to use new webhook client
   - Session creation, login QR, logout, disconnect, and delete operations use `callWebhook()`
   - Consistent error handling across all WhatsApp operations
@@ -1036,6 +1343,7 @@
   - Consistent authentication across all platform operations
 
 ### Navigation & Routing
+
 - **New Admin Panel Route**: Added admin panel to navigation
   - New "Admin Panel" navigation item (master agents only)
   - Requires `access_rules.configure` permission
@@ -1043,6 +1351,7 @@
   - Default navigation fallback improved to handle permission-based routing
 
 ### UI/UX Improvements
+
 - **Human Agents**: Enhanced creation dialog
   - Better validation and error messages
   - Cancel button in creation dialog
@@ -1055,6 +1364,7 @@
   - Improved accessibility with proper input types
 
 ### Technical Improvements
+
 - **Code Organization**: Better separation of concerns
   - Admin functionality centralized in Admin Panel component
   - Webhook logic centralized in webhook client
@@ -1071,7 +1381,9 @@
   - Improved user feedback with toast notifications
 
 # [0.0.41] FE WEB CEKAT 2025-11-01
+
 ### Data Retention & GDPR Compliance
+
 - **Data Retention Policy System**: Implemented configurable data retention with automatic cleanup
   - Added 90-day default retention policy (adjustable from 1-365 days) stored in `org_settings` table
   - Created `cleanup_old_chat_data()` PostgreSQL function for automatic deletion of old chat data
@@ -1105,6 +1417,7 @@
   - Ensured `is_current_user_active()` dependency function exists for RLS checks
 
 ### Contact Management Enhancements
+
 - **Contact UUID Detail Modal**: Added master agent-only contact UUID display
   - New UUID section in contact details modal visible only to master agents
   - Displays contact UUID with copy-to-clipboard functionality
@@ -1114,6 +1427,7 @@
   - Badge indicator showing "Master Agent Only" restriction
 
 ### Technical Improvements
+
 - **Supabase Integration**: Full integration with Supabase database functions
   - `fetchRetentionSettings()` reads from `org_settings` table via protected Supabase client
   - `saveRetentionDays()` updates retention period using upsert operation
@@ -1128,6 +1442,7 @@
   - Secure access control using `useRBAC` context hooks
 
 ### UI/UX Enhancements
+
 - **Data Retention UI**: Comprehensive admin interface for retention management
   - Edit modal for configuring retention period (1-365 days range)
   - Visual display of current retention period with clear descriptions
@@ -1141,6 +1456,7 @@
   - Destructive button styling to indicate permanent action
 
 ### Security & Compliance
+
 - **Data Protection**: Enhanced data protection mechanisms
   - Row Level Security (RLS) policies enforce master/super agent access only
   - Automatic cleanup respects retention periods to prevent accidental data loss
@@ -1148,7 +1464,9 @@
   - All database operations use security definer functions with proper permissions
 
 # [0.0.40] FE WEB CEKAT 2025-11-01
+
 ### Adaptive Rate Limiter Integration & DDoS Protection
+
 - **Adaptive Rate Limiter Full Integration**: Integrated adaptive rate limiter into Supabase protection system
   - Enhanced AdaptiveRateLimiter class with getConfig() and updateConfig() methods for runtime configuration
   - Added localStorage persistence for adaptive rate limiter configuration and multipliers
@@ -1203,6 +1521,7 @@
   - All documentation now uses dynamic values from current configuration (real-time)
 
 ### Technical Improvements
+
 - **Type System Enhancements**: Improved TypeScript type exports
   - Re-exported OperationType from adaptiveRateLimiter for better type consistency
   - Fixed import issues in CircuitBreakerStatus component
@@ -1215,6 +1534,7 @@
   - Backward compatible with existing localStorage data
 
 ### UI/UX Enhancements
+
 - **Configuration Visualization**: Better display of adaptive limits
   - Show both base limit and effective limit side-by-side
   - Multiplier percentage displayed with color coding (green for healthy)
@@ -1229,6 +1549,7 @@
   - Warning boxes for critical information
 
 ### Performance & Security
+
 - **DDoS Protection**: Multi-layered defense system
   - Adaptive rate limiter as first line of defense (reduces limits automatically)
   - Request timeout as second layer (cancels slow requests)
@@ -1242,7 +1563,9 @@
   - Automatic return to normal limits when system recovers
 
 # [0.0.39] FE WEB CEKAT 2025-11-01
+
 ### Circuit Breaker Enhancements & Documentation
+
 - **Circuit Breaker Configuration Management**: Added comprehensive limit configuration interface for admins
   - Created "Limit Configuration" section displaying all circuit breaker thresholds (disabled by default)
   - Added "Edit" button to open configuration modal for modifying limits
@@ -1282,6 +1605,7 @@
   - Maintains backward compatibility with existing circuit breaker state
 
 ### AI Agent Settings Cleanup
+
 - **Removed Timezone Field**: Cleaned up unused timezone configuration
   - Removed timezone field from AI Agent Settings UI component
   - Dropped timezone column from ai_profiles table via database migration
@@ -1290,6 +1614,7 @@
   - Note: timezone field in users_profile table remains unchanged (separate feature)
 
 ### Technical Improvements
+
 - **Code Organization**: Better separation of concerns in Circuit Breaker Status component
   - Split admin controls into logical sections (Documentation, Limit Configuration, Danger Zone)
   - Improved component structure for better maintainability
@@ -1297,6 +1622,7 @@
   - Better error handling and user feedback
 
 ### UI/UX Enhancements
+
 - **Documentation Integration**: Added comprehensive help system
   - Documentation card with prominent call-to-action button
   - Modal-based documentation with scrollable content
@@ -1310,9 +1636,10 @@
   - Tooltips on danger zone buttons with detailed warnings
   - All tooltips in Indonesian language for consistency
 
-
 # [0.0.38] FE WEB CEKAT 2025-10-30
+
 ### Refactor Authentication & RBAC
+
 - Removed unnecessary debug logging from authentication and RBAC components.
 - Enhanced role checks within navigation for more secure access control.
 - Improved account status handling to better manage user states.
@@ -1320,7 +1647,9 @@
 - Updated related components for improved clarity and performance.
 
 # [0.0.37] FE WEB CEKAT 2025-10-30
+
 ### Circuit Breaker & Database Protection System
+
 - **Comprehensive Circuit Breaker Implementation**: Implemented full-featured circuit breaker system for database protection
   - Created core CircuitBreaker class with state machine (CLOSED, OPEN, HALF_OPEN) and configurable thresholds
   - Added state persistence using localStorage for client-side recovery across page refreshes
@@ -1364,6 +1693,7 @@
   - Added success/error feedback modals with proper error handling
 
 ### Technical Improvements
+
 - **Performance Optimizations**: Resolved application freezing and lag issues
   - Fixed infinite loop in background cache refresh mechanism
   - Optimized metrics collection with batching and throttling (50 batch size, 30s interval)
@@ -1378,6 +1708,7 @@
   - Added database analytics functions for comprehensive performance monitoring
 
 ### UI/UX Enhancements
+
 - **Modal System**: Replaced browser dialogs with custom modal components
   - Created consistent modal design matching application theme
   - Added proper dark mode support and responsive design
@@ -1390,9 +1721,10 @@
   - Created comprehensive Indonesian descriptions for all circuit breaker features
   - Added contextual help for admin controls and safety warnings
 
-
 # [0.0.36] FE WEB CEKAT 2025-10-25
+
 ### Security & Authentication
+
 - **Account Deactivation System**: Implemented comprehensive account deactivation blocking system
   - Added database-level RLS policies to prevent deactivated users from accessing system resources
   - Created dedicated `/account-deactivated` warning page with Indonesian content
@@ -1401,6 +1733,7 @@
   - Enhanced security with "fail closed" approach - blocks access if account status cannot be verified
 
 ### User Experience Improvements
+
 - **Enhanced Navigation**: Fixed navigation issues and improved user flow
   - Replaced modal-based account deactivation with dedicated warning page
   - Added "Kembali ke Halaman Login" button with complete cleanup functionality
@@ -1409,6 +1742,7 @@
   - Added loading states and prevented multiple button clicks during navigation
 
 ### Technical Improvements
+
 - **Component Architecture**: Streamlined authentication flow components
   - Removed deprecated `AccountDeactivatedModal` component
   - Created dedicated `AccountDeactivated` page component with proper routing
@@ -1417,6 +1751,7 @@
   - Added comprehensive debugging and logging for authentication flow
 
 ### Database & Security
+
 - **Row Level Security (RLS)**: Enhanced database security policies
   - Updated RLS policies to include active user checks for all major tables
   - Created `is_current_user_active()` helper function for consistent security checks
@@ -1424,6 +1759,7 @@
   - Implemented strict access control preventing deactivated users from reading sensitive data
 
 ### Bug Fixes
+
 - **Authentication Flow**: Resolved multiple authentication-related issues
   - Fixed flicker when logging in with deactivated accounts
   - Resolved race conditions in account status checking
@@ -1432,6 +1768,7 @@
   - Fixed CORS errors with edge function approach by implementing direct database validation
 
 ### UI/UX Enhancements
+
 - **Account Deactivation Warning Page**: Created comprehensive user feedback system
   - Added clear Indonesian messaging explaining account deactivation
   - Implemented contact instructions for Master Agent reactivation
@@ -1439,7 +1776,9 @@
   - Created responsive design with proper loading states and button interactions
 
 # [0.0.35] FE WEB CEKAT 2025-16-09
+
 ### Updates
+
 - Added HCaptcha site key to .env for CAPTCHA validation.
 - Enhanced Login component to include CAPTCHA verification.
 - Improved ConversationPage to display channel logos.
@@ -1448,25 +1787,33 @@
 - Implemented strict checks for super agent assignments in usePlatforms hook.
 
 # [0.0.34] FE WEB CEKAT 2025-11-09
+
 ### Updates
+
 ### AIAgentSettings
-* Added new state variables:
-  * `historyLimit`
-  * `readFileLimit`
-  * `contextLimit`
-  * `responseTemperature`
-  * `messageAwait`
-  * `messageLimit`
-  * `timezone`
-* Improved overall usage tracking and configurability.
+
+- Added new state variables:
+  - `historyLimit`
+  - `readFileLimit`
+  - `contextLimit`
+  - `responseTemperature`
+  - `messageAwait`
+  - `messageLimit`
+  - `timezone`
+
+- Improved overall usage tracking and configurability.
 
 ### HumanAgent
-* Introduced **usage range option** for better monitoring.
-* Refactored **agent visibility logic** for clearer access control.
-* Enhanced handling of **agent roles and statuses** for more robust management.
+
+- Introduced **usage range option** for better monitoring.
+
+- Refactored **agent visibility logic** for clearer access control.
+- Enhanced handling of **agent roles and statuses** for more robust management.
 
 # [0.0.33] FE WEB CEKAT 2025-10-09
+
 ### Updates
+
 - Update project branding, enhance chat functionality, and improve permissions management
 - Added aria-labels for accessibility in chat components
 - Refined URL state synchronization in ConversationPage
@@ -1475,7 +1822,9 @@
 - Updated navigation permissions for better clarity
 
 # [0.0.32] FE WEB CEKAT 2025-10-04
+
 ### Updates
+
 - Fixed Live chat error and detail chat
 - Update project branding to **Synka AI**
 - Enhance **chat functionality**
@@ -1489,20 +1838,28 @@
 Updating permission checks
 
 Refining UI elements for better user experience
+
 # [0.0.31] FE WEB CEKAT 2025-10-04
+
 ### Updates
+
 - Introduced a new endpoint `CHAT_TEST` for testing AI agent chat settings.
 - Updated `AIAgentSettings` component to include profile handling and improved UI with collapsible sections for behavior, welcome message, and transfer conditions.
 - Enhanced `ChatPreview` to support profile ID and adjusted styling for better user experience.
 - Refactored platform forms to remove profile photo upload functionality.
 
 # [0.0.30] FE WEB CEKAT 2025-10-04
+
 ### Updates
+
 - Fix invite
 
 # [0.0.29] FE WEB CEKAT 2025-10-04
+
 Commit: Invite flow fixes, required field validation, form improvements
+
 ### Updates
+
 - Invite Flow Fixes
   - Fixed invite flow to redirect users directly to password creation page instead of 2FA page
   - Added invite flow detection to skip 2FA requirements for invited users
@@ -1527,8 +1884,11 @@ Commit: Invite flow fixes, required field validation, form improvements
   - Enhanced error handling for missing required fields
 
 # [0.0.28] FE WEB CEKAT 2025-10-04
+
 Commit: Auto-resolve functionality, thread timestamp fixes, audio notifications, UI improvements
+
 ### Updates
+
 - Auto-Resolve System
   - Fixed auto-resolve functionality to work correctly with AI agents
   - Database triggers now properly set `auto_resolve_at` timestamp when AI responds
@@ -1562,11 +1922,15 @@ Commit: Auto-resolve functionality, thread timestamp fixes, audio notifications,
   - Corrected thread timestamp display in conversation list
 
 # [0.0.27] FE WEB CEKAT 2025-10-03
-- Enabling AI Profiles fetch instead of using cache 
+
+- Enabling AI Profiles fetch instead of using cache
 
 # [0.0.26] FE WEB CEKAT 2025-10-03
+
 Commit: Live Chat realtime + anon policies, auto-resolve with enable flag, reopen on user reply, UI polish
+
 ### Updates
+
 - Live Chat (Embed)
   - Messages now stream from Supabase realtime (`public.messages`); webhook response is ignored for content.
   - Sends `channel_id`, `session_id`, and a persistent friendly `username` (stored per host in localStorage). Removed `platform_id` from payload.
@@ -1590,8 +1954,11 @@ Commit: Live Chat realtime + anon policies, auto-resolve with enable flag, reope
   - “Unreplied” badge restyled (soft red background, darker red text) to match “Assigned” styling.
 
 # [0.0.25] FE WEB CEKAT 2025-10-02
+
 Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Platforms loop fix, UI polish
+
 ### Updates
+
 - Analytics (Human Agent)
   - Handover rate redefined as Human/(Human+AI) across all conversations (not only resolved).
   - Added breakdowns: by Super Agent and by Agent, with Super Agent filter.
@@ -1610,12 +1977,16 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
   - Source from root `CHANGELOG.md` only; removed `public/CHANGELOG.md`; scripts updated to skip copy.
 
 # [0.0.24] FE WEB CEKAT 2025-09-30
+
 ### Updates
+
 - Enhance message handling in ConversationPage and useConversations hooks.
 - Optimistic UI updates for message status
 
 # [0.0.23] FE WEB CEKAT 2025-10-02
+
 ### Updates
+
 - Live Chat
   - New embedded-only chat page at `/livechat/:platform_id` with blue-white palette, gradient background, glassy card, and clearer borders.
   - Sound notifications: low note on send, high note on AI reply; ringtone-style sequences; support external audio and synthesized chimes.
@@ -1650,20 +2021,26 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
   - Ensured agent removal updates `channel_agents` and access.
 
 # [0.0.22] FE WEB CEKAT 2025-09-30
+
 ### Updates
+
 - Fix platform creating for telegram
 - Add saving functionality for selected AI agent in ConnectedPlatforms and prevent duplicate Telegram bot tokens in TelegramPlatform Form
 - Enhance AI Agent Settings: Implement file upload functionality with Supabase integration, including upload progress tracking and error handling. Update UI to reflect file statuses and permissions. Add new knowledgebase endpoints for file management.
 - Enhance file upload process in AIAgentSettings: pre-compute content hash for stable key, include additional metadata (storageName, storageSize, storageUpdatedAt) in upload response, and improve file validation checks.
 
 # [0.0.21] FE WEB CEKAT 2025-09-30
+
 ### Updates
-- Update CHANGELOG and enhance Analytics and HumanAgents components. 
-- Added token usage tracking in Analytics with visualizations for daily usage and top models. 
+
+- Update CHANGELOG and enhance Analytics and HumanAgents components.
+- Added token usage tracking in Analytics with visualizations for daily usage and top models.
 - Improved token aggregation logic in HumanAgents to account for super-agent clusters.
 
 # [0.0.20] FE WEB CEKAT 2025-09-30
+
 ### Updates
+
 - Platform agent assignment
   - Persist selected agents on create to `channel_agents`; updates replace assignments.
   - Agents now only see platforms they’re assigned to; master/super see all.
@@ -1692,17 +2069,23 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
   - Resolved Telegram JSON parse errors and `42703 users_profile.email` error.
 
 # [0.0.19] FE WEB CEKAT 2025-09-23
+
 ### Updates
+
 - Automatically switch to the Resolved tab when only closed conversations are present
 - Updated Resolved tab UI to display the count of closed conversations.
 
 # [0.0.18] FE WEB CEKAT 2025-09-20
+
 ### Updates
+
 - Added provider tabs (WhatsApp, Telegram, Live Chat) to filter the list; auto-select first item in active tab
 - Replaced black status dot with green (active) / gray (inactive) indicator
 
 # [0.0.17] FE WEB CEKAT 2025-09-20
+
 ### Updates
+
 - Scope data fetching and realtime to visible pages and active routes (Conversations, Human Agents, Platforms, Contacts, AI Agents, RBAC, Analytics)
 - Add tab-visibility guards to avoid background fetch on tab-restore; hydrate from cache first where applicable
 - Standardize React Query defaults (staleTime=60s, gc=5m, disable refetch on focus/reconnect)
@@ -1715,11 +2098,15 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
 - Utilities: add `isDocumentHidden` and `onDocumentVisible` helpers
 
 # [0.0.16] FE WEB CEKAT 2025-09-19
+
 ### Updates
+
 - Enhance real-time synchronization for conversations and messages; always fetch fresh data on mount
 
 # [0.0.15] FE WEB CEKAT 2025-09-19
+
 ### Updates
+
 - Auth/OTP: eliminate redirect flicker by gating on `otpEvaluated`; `ProtectedRoute` and `Otp` now wait for evaluation; `ResetPassword` handles magic-link `?code=` with `exchangeCodeForSession`.
 - Changelog page: render Markdown (react-markdown + GFM), Tailwind Typography, compact heading sizes; added Netlify `public/_redirects`; added `prebuild`/`predev` to copy root `CHANGELOG.md` to `public/`.
 - Build: remove top-level await in `main.tsx` (wrap in async IIFE).
@@ -1735,18 +2122,24 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
 - UI theming: replaced remaining dark/black buttons with blue/green/red where appropriate.
 
 # [0.0.14] FE WEB CEKAT 2025-09-19
+
 ### Updates
+
 - Fix changelog is not accessible in staging
 
 # [0.0.13] FE WEB CEKAT 2025-09-19
+
 ### Updates
-- Implement OTP flow for login and enhance ProtectedRoute for OTP verification. 
+
+- Implement OTP flow for login and enhance ProtectedRoute for OTP verification.
 - Added new Otp and Logout pages
-- Updated AuthContext to manage OTP state 
+- Updated AuthContext to manage OTP state
 - Modified Login component to handle OTP requirements.
 
 # [0.0.12] FE WEB CEKAT 2025-09-18
+
 ### Updates
+
 - Enhance authentication flow with local storage caching and session restoration
 - Implemented local storage caching for AI agents and conversations to improve performance and reduce flicker on refresh.
 - Added session restoration from local storage to ensure user authentication state is maintained across page reloads.
@@ -1754,7 +2147,9 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
 - Introduced a loading state management to handle UI updates more smoothly during data fetching.
 
 # [0.0.11] FE WEB CEKAT 2025-09-17
+
 ### Updates
+
 - Audit Logs self-read policy for non-master users.
 - Added `get_audit_logs` RPC with server-side filters, paging, and master-only org-wide access.
 - Analytics foundations: date-range controls and labeled charts; wired to secure RPCs.
@@ -1776,30 +2171,40 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
 - enhance ProtectedRoute for OTP verification
 
 # [0.0.10] FE WEB CEKAT 2025-09-16
+
 ### Updates
+
 - fix: remove duplicate import of useRBAC in ConversationPage component
 
 # [0.0.9] FE WEB CEKAT 2025-09-16
+
 ### Updates
+
 - Created loggings for every users, and only admin can access.
 - Made Role Management for admins to setting the role.
 
 # [0.0.8] FE WEB CEKAT 2025-09-14
+
 ### Updates
+
 - Replaced thread participants with collaborators in the database schema.
 - Implemented checks for user collaboration status on conversations.
 - Enhanced thread assignment logic to ensure proper user assignment and audit fields.
 - Updated UI elements for chat takeover functionality to reflect new collaborator roles.
 
 # [0.0.7] FE WEB CEKAT 2025-09-13
+
 ### Updates
+
 - Removed static permission constants in favor of direct string references for better alignment with database values.
 - Updated components to utilize new permission string format, enhancing consistency across the application.
 - Improved navigation logic to enforce permission checks when syncing active tabs, ensuring users only access permitted items.
 - Streamlined permission-related code in various components, enhancing maintainability and readability.
 
 # [0.0.6] FE WEB CEKAT 2025-09-03
+
 ### Updates
+
 - Implement OpenAI usage tracking and enhance analytics component
 - Added OpenAI API key configuration to .env for usage tracking.
 - Refactored vite.config.ts to include a usage proxy plugin for fetching OpenAI usage data.
@@ -1808,15 +2213,18 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
 - Implemented error handling and loading states for better user experience during data fetching.
 
 # [0.0.5] FE WEB CEKAT 2025-09-03
+
 ### Updates
+
 - Updated PermissionNavItem and NavigationItem interfaces to use string arrays for permissions instead of PermissionName type for better flexibility.
 - Modified NAVIGATION_CONFIG to replace permission constants with string representations for improved readability and consistency.
 - Enhanced RBACProvider's hasPermission function to support various permission formats, including direct matches and synonyms for better user experience.
 - Integrated a new PermissionsPage component into the main Index page, ensuring proper permission checks with PermissionGate.
 
-
 # [0.0.4] FE WEB CEKAT 2025-09-03
+
 ### Updates
+
 - Integrate RBAC and enhance agent management features
 - Added RBACProvider to App component for role-based access control.
 - Updated HumanAgents component to utilize PermissionGate for role management and agent creation.
@@ -1825,19 +2233,25 @@ Commit: Human vs AI handover analytics, WAHA sessions fetch, realtime chats, Pla
 - Improved useHumanAgents hook to fetch agents from the new v_users view, streamlining data retrieval and role assignment.
 
 # [0.0.3] FE WEB CEKAT 2025-09-03
+
 ### Updates
+
 - Implement WhatsApp session polling and enhance deletion handling
 - Added polling mechanism to check WhatsApp session status while the QR modal is open, improving user feedback on connection status.
 - Introduced loading state management for channel deletion actions to prevent multiple submissions and enhance user experience.
 - Removed phone number input from WhatsAppPlatformForm as per updated requirements, streamlining the form submission process.
 
 # [0.0.2] FE WEB CEKAT 2025-09-01
+
 ### Updates
+
 - Deleted AUTHENTICATION_SETUP.md, CHAT_SETUP.md, HUMAN_AGENTS_SETUP.md, sample_data.sql, and simple_sample_data.sql as they are no longer relevant to the current project structure.
 - Updated package.json version to 0.0.1 and removed unnecessary dev dependencies from package-lock.json.
 - Enhanced Login component to display the current version of the application.
 - Enhanced Whatsapp channel connecting flow and validation
 
 # [0.0.1] FE WEB CEKAT 2025-09-01
+
 ### Updates
+
 - Enhance ClientEditProfileForm: Make company industry selection read-only for non-admin users

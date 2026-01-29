@@ -34,7 +34,7 @@ interface AIAgent {
   creator: string;
   description?: string;
   created_at: string;
-  modelId?: string | null;
+  model?: string | null;
   modelName?: string | null;
   provider?: string | null;
   superAgentId?: string | null;
@@ -190,14 +190,14 @@ const buildAgent = (
   creator: "Admin",
   description: profile.description || undefined,
   created_at: profile.created_at,
-  modelId: profile.model_id,
+  model: (profile as any)?.model_id ?? null,
   modelName: modelInfo?.display_name ?? modelInfo?.model_name ?? null,
   provider: modelInfo?.provider ?? null,
   superAgentId: (profile as any)?.super_agent_id ?? null,
   superAgentName: superAgentName ?? null,
 });
 
-const fetchStats = useCallback(async () => {
+const fetchStats = useCallback(async () =>  {
   if (scopeLoading) return;
 
   if (scopeMode === 'none') {
@@ -207,7 +207,7 @@ const fetchStats = useCallback(async () => {
   }
 
   try {
-    let statsQuery = supabase
+    let statsQuery: any = supabase
       .from('ai_profiles')
       .select('id', { count: 'exact', head: true })
       .eq('org_id', DEFAULT_ORG_ID);
@@ -224,7 +224,7 @@ const fetchStats = useCallback(async () => {
     const { count } = await statsQuery;
     setTotalAgents(count || 0);
     if ((count || 0) > 0) {
-      let latestQuery = supabase
+      let latestQuery: any = supabase
         .from('ai_profiles')
         .select('created_at')
         .order('created_at', { ascending: false })
@@ -269,7 +269,7 @@ const fetchAgents = useCallback(async () => {
       return;
     }
 
-    let query = supabase
+    let query: any = supabase
       .from('ai_profiles')
       .select('*, ai_models:ai_models!ai_profiles_model_id_fkey(id, display_name, model_name, provider)', { count: 'exact' })
       .eq('org_id', DEFAULT_ORG_ID);
@@ -293,12 +293,12 @@ const fetchAgents = useCallback(async () => {
     }
 
     if (modelFilter !== "all") {
-      query = query.eq('model_id', modelFilter);
+      query = query.eq('model', modelFilter);
     }
 
     if (providerFilter !== "all") {
       if (providerFilter === "unknown") {
-        query = query.or('model_id.is.null,ai_models.provider.is.null');
+        query = query.or('model.is.null,ai_models.provider.is.null');
       } else {
         query = query.eq('ai_models.provider', providerFilter);
       }
@@ -336,12 +336,15 @@ const fetchAgents = useCallback(async () => {
     }
 
     setFilteredCount(count || 0);
-    const mapped = (data as (AIProfile & { ai_models?: { display_name: string | null; model_name: string; provider: string | null | undefined } | null })[] || []).map(
+    const mapped = (data as (AIProfile & { 
+      ai_models?: { display_name: string | null; model_name: string; provider: string | null | undefined } | null;
+      super_agent_id?: string | null;
+    })[] || []).map(
       (profile) =>
         buildAgent(
           profile,
-          profile.ai_models || (profile.model_id ? modelMap.get(profile.model_id) : undefined),
-          superAgentNameMap.get((profile as any)?.super_agent_id ?? '') ?? null
+          profile.ai_models || (profile.model ? modelMap.get(profile.model) : undefined),
+          superAgentNameMap.get(profile.super_agent_id ?? '') ?? null
         )
     );
     setAgents(mapped);
@@ -477,18 +480,20 @@ const confirmDeleteAgent = async () => {
 
       if (error) throw error;
 
+      if (!data) throw new Error('No data returned from insert');
+
       const createdId = (data as any)?.id as string;
 
       const newAgent: AIAgent = {
         id: createdId,
-        name: data?.name || newAgentName.trim(),
-        initials: (data?.name || newAgentName.trim()).split(' ').map(w => w.charAt(0)).join('').toUpperCase().slice(0, 2),
+        name: (data as any).name || newAgentName.trim(),
+        initials: ((data as any)?.name || newAgentName.trim()).split(' ').map(w => w.charAt(0)).join('').toUpperCase().slice(0, 2),
         creator: "Admin",
-        created_at: data?.created_at || new Date().toISOString(),
-        modelId: data?.model_id || selectedModelId,
-        modelName: aiModels.find((m) => m.id === (data?.model_id || selectedModelId))?.display_name || undefined,
-        provider: aiModels.find((m) => m.id === (data?.model_id || selectedModelId))?.provider || null,
-        superAgentId: data?.super_agent_id || selectedCreateSuperId,
+        created_at: (data as any)?.created_at || new Date().toISOString(),
+        model: (data as any)?.model_id || selectedModelId,
+        modelName: aiModels.find((m) => m.id === ((data as any)?.model_id || selectedModelId))?.display_name || undefined,
+        provider: aiModels.find((m) => m.id === ((data as any)?.model_id || selectedModelId))?.provider || null,
+        superAgentId: (data as any)?.super_agent_id || selectedCreateSuperId,
         superAgentName: undefined,
       };
 
@@ -522,7 +527,7 @@ const confirmDeleteAgent = async () => {
 
       if (error) throw error;
 
-      const allModels = (data || []) as Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean }>;
+      const allModels = (data || []) as any[];
       const regular = allModels.filter(m => (m.display_name || '').toLowerCase() !== 'fallback');
       const fallback = allModels.filter(m => (m.display_name || '').toLowerCase() === 'fallback');
 
@@ -566,7 +571,7 @@ const confirmDeleteAgent = async () => {
           fetchStats();
         }}
         profileId={selectedAgent.id === 'new' ? undefined : selectedAgent.id}
-        initialModelId={selectedAgent.modelId || undefined}
+        initialModelId={selectedAgent.model || undefined}
       />
     );
   }

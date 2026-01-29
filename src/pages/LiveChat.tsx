@@ -48,7 +48,7 @@ export default function LiveChat() {
     const existingAnon = storage.getItem(channelKey);
     if (existingAnon) return existingAnon;
     const generated = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `anon_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    try { storage.setItem(channelKey, generated); } catch {}
+    try { storage.setItem(channelKey, generated); } catch { }
     return generated;
   });
   const [sessionId, setSessionId] = useState(() => {
@@ -231,7 +231,7 @@ export default function LiveChat() {
           scheduleTone(ctx, start, step, dur, volume, 'triangle');
         }
       });
-    } catch {}
+    } catch { }
   };
 
   const playAudio = async (which: 'low' | 'high') => {
@@ -239,7 +239,7 @@ export default function LiveChat() {
       const customUrl = which === 'low' ? window.chatConfig?.sendToneUrl : window.chatConfig?.replyToneUrl;
       const url = customUrl || (which === 'low' ? LOW_TONE_URL : HIGH_TONE_URL);
       const el = which === 'low' ? (audioLowRef.current ?? (audioLowRef.current = new Audio(url)))
-                                  : (audioHighRef.current ?? (audioHighRef.current = new Audio(url)));
+        : (audioHighRef.current ?? (audioHighRef.current = new Audio(url)));
       if (el.src !== url) el.src = url;
       el.currentTime = 0;
       el.volume = which === 'low' ? 0.35 : 0.45;
@@ -262,59 +262,59 @@ export default function LiveChat() {
     if (!ok) playSequence([1046.5, 1318.5, 1568.0, [1046.5, 1318.5, 1568.0, 2093.0]], 120, 0.06);
   };
 
-const notifySystemMessage = (message: { id?: string; body?: string }) => {
-  if (!message?.id) return;
-  if (systemNotificationIdsRef.current.has(message.id)) return;
-  systemNotificationIdsRef.current.add(message.id);
-  if (!notificationsReadyRef.current) return;
-  const content = String(message.body || '').trim();
-  if (!content) return;
-  import('@/components/ui/sonner')
-    .then(({ toast }) => {
-      toast.info(content, { duration: 3500 });
-    })
-    .catch(() => {});
-};
+  const notifySystemMessage = (message: { id?: string; body?: string }) => {
+    if (!message?.id) return;
+    if (systemNotificationIdsRef.current.has(message.id)) return;
+    systemNotificationIdsRef.current.add(message.id);
+    if (!notificationsReadyRef.current) return;
+    const content = String(message.body || '').trim();
+    if (!content) return;
+    import('@/components/ui/sonner')
+      .then(({ toast }) => {
+        toast.info(content, { duration: 3500 });
+      })
+      .catch(() => { });
+  };
 
-const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
+  const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
 
-const clearCatchUpTimers = () => {
-  if (catchUpTimersRef.current.length > 0) {
-    catchUpTimersRef.current.forEach((id) => {
-      try { clearTimeout(id); } catch {}
-    });
-    catchUpTimersRef.current = [];
-  }
-};
+  const clearCatchUpTimers = () => {
+    if (catchUpTimersRef.current.length > 0) {
+      catchUpTimersRef.current.forEach((id) => {
+        try { clearTimeout(id); } catch { }
+      });
+      catchUpTimersRef.current = [];
+    }
+  };
 
-const requestCatchUpFetch = async (threadId: string | null, hydrate: (rows: any[]) => void) => {
-  if (!threadId) return;
-  const { data } = await supabase
-    .from('messages')
-    .select('id, role, body, created_at')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true });
-  if (Array.isArray(data)) {
-    hydrate(data);
-  }
-};
+  const requestCatchUpFetch = async (threadId: string | null, hydrate: (rows: any[]) => void) => {
+    if (!threadId) return;
+    const { data } = await supabase
+      .from('messages')
+      .select('id, role, body, created_at')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true });
+    if (Array.isArray(data)) {
+      hydrate(data);
+    }
+  };
 
-const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => void, delays: number[]) => {
-  clearCatchUpTimers();
-  if (!threadId) {
-    pendingCatchUpRef.current = true;
-    return;
-  }
-  catchUpTimersRef.current = delays.map((delay) =>
-    window.setTimeout(async () => {
-      try {
-        await requestCatchUpFetch(threadId, hydrate);
-      } catch (err) {
-        console.error('[LiveChat] catch-up failed', err);
-      }
-    }, delay)
-  );
-};
+  const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => void, delays: number[]) => {
+    clearCatchUpTimers();
+    if (!threadId) {
+      pendingCatchUpRef.current = true;
+      return;
+    }
+    catchUpTimersRef.current = delays.map((delay) =>
+      window.setTimeout(async () => {
+        try {
+          await requestCatchUpFetch(threadId, hydrate);
+        } catch (err) {
+          console.error('[LiveChat] catch-up failed', err);
+        }
+      }, delay)
+    );
+  };
 
 
   // Ensure we have a friendly username; bind to account_id when available (one name per account)
@@ -329,7 +329,7 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
         ? `livechat_username_${pid}_acct_${accountId}`
         : `livechat_username_${pid}_${sessionId}`;
       let value = '';
-      try { value = storage.getItem(key) || ''; } catch {}
+      try { value = storage.getItem(key) || ''; } catch { }
       if (!value) {
         const adjectives = ['Happy', 'Bright', 'Calm', 'Brave', 'Kind', 'Sunny', 'Lucky', 'Cheerful', 'Swift', 'Clever'];
         const nouns = ['User', 'Visitor', 'Friend', 'Guest', 'Buddy', 'Pal', 'Explorer', 'Champion', 'Star', 'Hero'];
@@ -337,10 +337,10 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
         const noun = nouns[Math.floor(Math.random() * nouns.length)];
         const num = Math.floor(100 + Math.random() * 900);
         value = `${adj} ${noun} ${num}`;
-        try { storage.setItem(key, value); } catch {}
+        try { storage.setItem(key, value); } catch { }
       }
       setUsername(value);
-    } catch {}
+    } catch { }
   }, [pid, sessionId, accountId]);
 
   useEffect(() => {
@@ -350,12 +350,12 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
   useEffect(() => {
     threadIdRef.current = threadId;
     if (!threadId) {
-    clearCatchUpTimers();
+      clearCatchUpTimers();
     }
-  if (threadId && pendingCatchUpRef.current) {
-    pendingCatchUpRef.current = false;
-    scheduleCatchUps(threadId, upsertFromRows, [0]);
-  }
+    if (threadId && pendingCatchUpRef.current) {
+      pendingCatchUpRef.current = false;
+      scheduleCatchUps(threadId, upsertFromRows, [0]);
+    }
   }, [threadId]);
 
   useEffect(() => {
@@ -409,138 +409,138 @@ const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => voi
     }
   }, [pid]);
 
-const upsertFromRows = useCallback((rows: any[]) => {
-  if (!rows || rows.length === 0) return;
-  setMessages((prev) => {
-    const map = new Map<string, ChatMessage>();
-    prev.forEach((m) => map.set(m.id, m));
-    let changed = false;
+  const upsertFromRows = useCallback((rows: any[]) => {
+    if (!rows || rows.length === 0) return;
+    setMessages((prev) => {
+      const map = new Map<string, ChatMessage>();
+      prev.forEach((m) => map.set(m.id, m));
+      let changed = false;
 
-    for (const r of rows) {
-      if (!r?.id) continue;
-      if (r.role === 'system') {
-        notifySystemMessage(r);
-        continue;
-      }
-      const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
-      let inheritedOrder: number | null = null;
+      for (const r of rows) {
+        if (!r?.id) continue;
+        if (r.role === 'system') {
+          notifySystemMessage(r);
+          continue;
+        }
+        const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+        let inheritedOrder: number | null = null;
 
-      if (role === 'assistant' && streamingDraftIdRef.current) {
-        for (const [key, value] of map.entries()) {
-          if (value.id === streamingDraftIdRef.current) {
-            inheritedOrder = value.order;
-            map.delete(key);
-            streamingDraftIdRef.current = null;
+        if (role === 'assistant' && streamingDraftIdRef.current) {
+          for (const [key, value] of map.entries()) {
+            if (value.id === streamingDraftIdRef.current) {
+              inheritedOrder = value.order;
+              map.delete(key);
+              streamingDraftIdRef.current = null;
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        if (role === 'user') {
+          // Match real user row to any pending optimistic temp message with the same body,
+          // even if the backend response arrives much later (e.g., after AI finishes).
+          const incomingAt = new Date(r.created_at || Date.now()).getTime();
+          let bestKey: string | null = null;
+          let bestOrder: number | null = null;
+          let bestDiff = Number.POSITIVE_INFINITY;
+          for (const [key, value] of map.entries()) {
+            if (!key.startsWith('temp-')) continue;
+            if (value.role !== 'user') continue;
+            if ((value.body || '').trim() !== (r.body || '').trim()) continue;
+            const tempAt = new Date(value.at).getTime();
+            const diff = Number.isFinite(tempAt) ? Math.abs(incomingAt - tempAt) : 0;
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              bestKey = key;
+              bestOrder = value.order ?? null;
+            }
+          }
+          if (bestKey) {
+            inheritedOrder = bestOrder;
+            map.delete(bestKey);
+            lastOptimisticIdRef.current = null;
             changed = true;
+          }
+        }
+
+        const existing = map.get(r.id);
+        const createdAt = r.created_at || new Date().toISOString();
+        const body = r.body || '';
+
+        if (existing) {
+          if (existing.body !== body) {
+            existing.body = body;
+            changed = true;
+          }
+          if (existing.at !== createdAt) {
+            existing.at = createdAt;
+            changed = true;
+          }
+          if (role === 'assistant' && existing.streaming) {
+            existing.streaming = false;
+            changed = true;
+          }
+        } else {
+          const item: ChatMessage = {
+            id: r.id,
+            role,
+            body,
+            at: createdAt,
+            order: inheritedOrder ?? nextOrder(),
+          };
+          map.set(item.id, item);
+          changed = true;
+        }
+      }
+
+      const arr = Array.from(map.values());
+      arr.sort((a, b) => a.order - b.order);
+
+      // Guard against duplicate rows emitted by the backend (same content/timestamp but new ids)
+      const deduped: ChatMessage[] = [];
+      const dedupeWindowMs = 2000;
+      const seen = new Map<string, number>();
+      for (const item of arr) {
+        const key = `${item.role}:${item.body?.trim().toLowerCase() ?? ''}`;
+        const at = new Date(item.at).getTime();
+        const lastSeen = seen.get(key);
+        if (Number.isFinite(at) && lastSeen !== undefined) {
+          if (Math.abs(at - lastSeen) < dedupeWindowMs) {
+            continue;
+          }
+        }
+        if (Number.isFinite(at)) {
+          seen.set(key, at);
+        }
+        deduped.push(item);
+      }
+
+      if (!changed && deduped.length === prev.length) {
+        let identical = true;
+        for (let i = 0; i < deduped.length; i += 1) {
+          const a = deduped[i];
+          const b = prev[i];
+          if (a !== b) {
+            identical = false;
             break;
           }
         }
-      }
-
-      if (role === 'user') {
-        // Match real user row to any pending optimistic temp message with the same body,
-        // even if the backend response arrives much later (e.g., after AI finishes).
-        const incomingAt = new Date(r.created_at || Date.now()).getTime();
-        let bestKey: string | null = null;
-        let bestOrder: number | null = null;
-        let bestDiff = Number.POSITIVE_INFINITY;
-        for (const [key, value] of map.entries()) {
-          if (!key.startsWith('temp-')) continue;
-          if (value.role !== 'user') continue;
-          if ((value.body || '').trim() !== (r.body || '').trim()) continue;
-          const tempAt = new Date(value.at).getTime();
-          const diff = Number.isFinite(tempAt) ? Math.abs(incomingAt - tempAt) : 0;
-          if (diff < bestDiff) {
-            bestDiff = diff;
-            bestKey = key;
-            bestOrder = value.order ?? null;
-          }
-        }
-        if (bestKey) {
-          inheritedOrder = bestOrder;
-          map.delete(bestKey);
-          lastOptimisticIdRef.current = null;
-          changed = true;
+        if (identical) {
+          return prev;
         }
       }
 
-      const existing = map.get(r.id);
-      const createdAt = r.created_at || new Date().toISOString();
-      const body = r.body || '';
-
-      if (existing) {
-        if (existing.body !== body) {
-          existing.body = body;
-          changed = true;
-        }
-        if (existing.at !== createdAt) {
-          existing.at = createdAt;
-          changed = true;
-        }
-        if (role === 'assistant' && existing.streaming) {
-          existing.streaming = false;
-          changed = true;
-        }
-      } else {
-        const item: ChatMessage = {
-          id: r.id,
-          role,
-          body,
-          at: createdAt,
-          order: inheritedOrder ?? nextOrder(),
-        };
-        map.set(item.id, item);
-        changed = true;
-      }
-    }
-
-    const arr = Array.from(map.values());
-    arr.sort((a, b) => a.order - b.order);
-
-    // Guard against duplicate rows emitted by the backend (same content/timestamp but new ids)
-    const deduped: ChatMessage[] = [];
-    const dedupeWindowMs = 2000;
-    const seen = new Map<string, number>();
-    for (const item of arr) {
-      const key = `${item.role}:${item.body?.trim().toLowerCase() ?? ''}`;
-      const at = new Date(item.at).getTime();
-      const lastSeen = seen.get(key);
-      if (Number.isFinite(at) && lastSeen !== undefined) {
-        if (Math.abs(at - lastSeen) < dedupeWindowMs) {
-          continue;
-        }
-      }
-      if (Number.isFinite(at)) {
-        seen.set(key, at);
-      }
-      deduped.push(item);
-    }
-
-    if (!changed && deduped.length === prev.length) {
-      let identical = true;
-      for (let i = 0; i < deduped.length; i += 1) {
-        const a = deduped[i];
-        const b = prev[i];
-        if (a !== b) {
-          identical = false;
-          break;
-        }
-      }
-      if (identical) {
-        return prev;
-      }
-    }
-
-    return deduped;
-  });
-}, []);
+      return deduped;
+    });
+  }, []);
 
   const clearThreadAttachTimers = useCallback(() => {
     if (threadAttachTimersRef.current.length === 0) return;
     threadAttachTimersRef.current.forEach((id) => {
       try {
         clearTimeout(id);
-      } catch {}
+      } catch { }
     });
     threadAttachTimersRef.current = [];
   }, []);
@@ -650,7 +650,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
       if (sub) {
         try {
           supabase.removeChannel(sub);
-        } catch {}
+        } catch { }
         sub = null;
       }
       setThreadId((current) => (current === tid ? current : tid));
@@ -695,7 +695,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
                 if (sub) {
                   try {
                     supabase.removeChannel(sub);
-                  } catch {}
+                  } catch { }
                 }
                 sub = subscribeToThread(thread);
               }
@@ -757,8 +757,8 @@ const upsertFromRows = useCallback((rows: any[]) => {
       .subscribe(() => setBooting(false));
 
     return () => {
-      try { if (sub) supabase.removeChannel(sub); } catch {}
-      try { if (threadsSub) supabase.removeChannel(threadsSub); } catch {}
+      try { if (sub) supabase.removeChannel(sub); } catch { }
+      try { if (threadsSub) supabase.removeChannel(threadsSub); } catch { }
       attachToThreadRef.current = null;
     };
   }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession, reopenThreadIfResolved, accountId]);
@@ -796,11 +796,11 @@ const upsertFromRows = useCallback((rows: any[]) => {
       try {
         const { checkAIMessageLimit, autoAssignToSuperAgent } = await import('@/lib/aiMessageLimit');
         const limitInfo = await checkAIMessageLimit(supabase, threadId);
-        
+
         if (limitInfo.isExceeded && limitInfo.superAgentId) {
           // Auto-assign to super agent
           const assignResult = await autoAssignToSuperAgent(supabase, threadId, limitInfo.superAgentId);
-          
+
           if (assignResult.success) {
             // Show notification that thread was assigned to super agent
             const { toast } = await import('@/components/ui/sonner');
@@ -841,7 +841,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
         if (tempIdx >= 0) {
           // Keep the temp message as is - don't change the ID
           // The realtime subscription will handle replacement when the real message arrives
-          
+
           return prev; // No change needed, message is already visible
         }
         return prev;
@@ -915,30 +915,30 @@ const upsertFromRows = useCallback((rows: any[]) => {
       } catch (attachErr) {
         console.warn('[LiveChat] failed to attach thread after send', attachErr);
       }
-      
+
       // Immediately fetch latest state after backend processes the message
       const targetThreadId = attachedThreadId ?? threadIdRef.current;
       scheduleCatchUps(targetThreadId, upsertFromRows, [0, 600, 1800, 4000, 9000, 15000]);
-      
+
       // Handle streaming response
       if (resp.body) {
-        
+
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() || ''; // Keep incomplete line in buffer
-            
+
             for (const line of lines) {
               if (line.trim() === '') continue;
-              
+
               try {
                 // Handle different streaming formats
                 if (line.startsWith('data: ')) {
@@ -947,9 +947,9 @@ const upsertFromRows = useCallback((rows: any[]) => {
                     finalizeAssistantMessage(streamingId);
                     break;
                   }
-                  
+
                   const parsed = JSON.parse(data);
-                  
+
                   if (parsed.content || parsed.delta) {
                     appendAssistantChunk(streamingId, parsed.content || parsed.delta);
                   }
@@ -971,12 +971,12 @@ const upsertFromRows = useCallback((rows: any[]) => {
         }
       } else {
         // Fallback to non-streaming response
-        
+
         try {
           const data = await resp.json();
-          
+
           const responseText = data.output || data.content || data.message || "Sorry, I couldn't process your message.";
-          
+
           finalizeAssistantMessage(streamingId, responseText);
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
@@ -984,9 +984,9 @@ const upsertFromRows = useCallback((rows: any[]) => {
           finalizeAssistantMessage(streamingId, "I'm processing your message, please wait...");
         }
       }
-      
+
       playHigh();
-      
+
       // Trigger immediate refresh to catch any realtime messages (AGENT ONLY)
       setTimeout(() => {
         if (threadId) {
@@ -1000,7 +1000,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
                 setMessages((prev) => {
                   const map = new Map<string, ChatMessage>();
                   prev.forEach((m) => map.set(m.id, m));
-                  
+
                   // Only process agent/assistant messages from immediate refresh
                   for (const r of data) {
                     if (!r?.id) continue;
@@ -1010,13 +1010,13 @@ const upsertFromRows = useCallback((rows: any[]) => {
                     }
                     const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
                     let inheritedOrder: number | null = null;
-                    
+
                     // SKIP user messages from immediate refresh
                     if (role === 'user') {
-                      
+
                       continue;
                     }
-                    
+
                     const existing = map.get(r.id);
                     const item: ChatMessage = existing ?? {
                       id: r.id,
@@ -1045,16 +1045,16 @@ const upsertFromRows = useCallback((rows: any[]) => {
                     }
                     map.set(item.id, item);
                   }
-                  
+
                   const arr = Array.from(map.values());
-                  arr.sort((a,b)=> a.order - b.order);
+                  arr.sort((a, b) => a.order - b.order);
                   return arr;
                 });
               }
             });
         }
       }, 1000); // Refresh after 1 second
-      
+
     } catch (e) {
       console.error('Streaming error:', e);
       // Replace streaming message with error
@@ -1102,16 +1102,15 @@ const upsertFromRows = useCallback((rows: any[]) => {
                   if (!m.body || (m.streaming && m.body.trim() === '')) {
                     return null;
                   }
-                  
+
                   return (
                     <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div className="max-w-[80%] space-y-1">
                         <div
-                          className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${
-                            m.role === "user"
+                          className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${m.role === "user"
                               ? "bg-blue-600 text-white rounded-br-md"
                               : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
-                          }`}
+                            }`}
                         >
                           <span className="whitespace-pre-wrap">{m.body}</span>
                         </div>
@@ -1139,7 +1138,7 @@ const upsertFromRows = useCallback((rows: any[]) => {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyPress={onKeyPress}
-                  className="rounded-full h-10 px-4 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400"
+                  className="rounded-full h-10 px-4 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900"
                 />
                 <Button
                   onClick={handleSend}
