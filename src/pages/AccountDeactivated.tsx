@@ -12,16 +12,16 @@ export default function AccountDeactivated() {
 
   const handleBackToLogin = async () => {
     if (isNavigating) { return; }
-    
+
     setIsNavigating(true);
-    
+
     try {
       // Clear localStorage first
       localStorage.clear();
-      
+
       // Try to sign out, but don't wait for it
-      signOut().catch(() => {});
-      
+      signOut().catch(() => { });
+
       // Force navigation immediately
       navigate('/', { replace: true });
     } catch (error) {
@@ -34,7 +34,7 @@ export default function AccountDeactivated() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-950 dark:to-slate-900 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
@@ -45,11 +45,11 @@ export default function AccountDeactivated() {
               Akun Dinonaktifkan
             </CardTitle>
           </div>
-          <CardDescription className="text-gray-600 text-base">
+          <CardDescription className="text-muted-foreground text-base">
             Akun Anda telah dinonaktifkan dan tidak dapat mengakses sistem.
           </CardDescription>
         </CardHeader>
-        
+
         <CardContent className="space-y-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -59,22 +59,22 @@ export default function AccountDeactivated() {
                   Hubungi Master Agent
                 </h4>
                 <p className="text-sm text-red-700">
-                  Untuk mengaktifkan kembali akun Anda, silakan hubungi Master Agent 
+                  Untuk mengaktifkan kembali akun Anda, silakan hubungi Master Agent
                   di organisasi Anda. Mereka dapat mengaktifkan akun Anda kembali.
                 </p>
               </div>
             </div>
           </div>
-          
-          <div className="text-sm text-gray-600">
+
+          <div className="text-sm text-muted-foreground">
             <p>
-              Jika Anda yakin ini adalah kesalahan, silakan hubungi administrator 
+              Jika Anda yakin ini adalah kesalahan, silakan hubungi administrator
               sistem untuk bantuan lebih lanjut.
             </p>
           </div>
 
           <div className="flex flex-col gap-3">
-            <Button 
+            <Button
               onClick={handleBackToLogin}
               variant="outline"
               className="w-full"

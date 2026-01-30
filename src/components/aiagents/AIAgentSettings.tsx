@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+import { Checkbox } from "@/components/ui/checkbox";
+
 import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus } from "lucide-react";
 import useAIProfiles, { AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
@@ -18,6 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTemperatureValue } from '@/lib/temperatureUtils';
+import { SUPABASE_URL } from '@/config/supabase';
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -35,16 +39,16 @@ interface ChatMessage {
 
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
-const ChatPreview = ({ 
-  welcomeMessage, 
-  systemPrompt, 
+const ChatPreview = ({
+  welcomeMessage,
+  systemPrompt,
   modelDisplay,
   profile,
   profileId,
   modelName,
   temperature: legacyTemperature,
   transfer_conditions
-}: { 
+}: {
   welcomeMessage: string;
   systemPrompt: string;
   modelDisplay: string;
@@ -57,7 +61,7 @@ const ChatPreview = ({
   // Get the actual temperature value from response_temperature preset
   // Use the mapped value from response_temperature if available, otherwise fallback to legacy temperature
   const responseTemperature = (profile as any)?.response_temperature;
-  const actualTemperature = responseTemperature 
+  const actualTemperature = responseTemperature
     ? getTemperatureValue(responseTemperature, legacyTemperature || 0.5)
     : (legacyTemperature || 0.5);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -67,7 +71,7 @@ const ChatPreview = ({
     setMessages([
       {
         id: '1',
-        content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
+        content: welcomeMessage || profile?.welcome_message || "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?",
         sender: 'ai',
         timestamp: new Date()
       }
@@ -91,7 +95,7 @@ const ChatPreview = ({
       setSessionId(sessionId);
       console.log('Generated session ID:', sessionId);
     };
-    
+
     generateSessionId();
   }, []);
 
@@ -146,7 +150,7 @@ const ChatPreview = ({
 
       const data = await response.json();
       console.log('API Response:', data);
-      
+
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         content: data.output || "Sorry, I couldn't process your message.",
@@ -161,7 +165,7 @@ const ChatPreview = ({
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
       setIsConnected(false);
-      
+
       // Add error message to chat
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -186,7 +190,7 @@ const ChatPreview = ({
     setMessages([
       {
         id: '1',
-        content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
+        content: welcomeMessage || profile?.welcome_message || "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?",
         sender: 'ai',
         timestamp: new Date()
       }
@@ -199,17 +203,17 @@ const ChatPreview = ({
     const random = Math.random().toString(36).substring(2, 15);
     const newSessionId = `session_${timestamp}_${random}`;
     setSessionId(newSessionId);
-    
+
     // Clear chat and reset to welcome message
     setMessages([
       {
         id: '1',
-        content: welcomeMessage || "Halo! 👋 Selamat datang di Okbang Top Up Center~",
+        content: welcomeMessage || profile?.welcome_message || "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?",
         sender: 'ai',
         timestamp: new Date()
       }
     ]);
-    
+
     toast.success('Session refreshed! New session ID: ' + newSessionId);
     console.log('New session ID:', newSessionId);
   };
@@ -268,7 +272,7 @@ const ChatPreview = ({
           </Tooltip>
         </div>
       </div>
-      
+
       <div ref={scrollContainerRef} className="flex-1 p-4 space-y-4 overflow-auto max-h-[400px]">
         {messages.map((message) => (
           <div
@@ -276,11 +280,10 @@ const ChatPreview = ({
             className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[80%] p-3 rounded-lg ${
-                message.sender === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
-              }`}
+              className={`max-w-[80%] p-3 rounded-lg ${message.sender === 'user'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted'
+                }`}
             >
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               <p className="text-xs opacity-70 mt-1">
@@ -301,7 +304,7 @@ const ChatPreview = ({
         )}
         <div ref={messagesEndRef} />
       </div>
-      
+
       <div className="p-4 border-t bg-muted/30">
         <div className="flex gap-2">
           <textarea
@@ -316,8 +319,8 @@ const ChatPreview = ({
           />
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 onClick={sendMessage}
                 disabled={!inputMessage.trim() || isLoading}
                 className="px-4"
@@ -354,14 +357,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     welcome: true,
     transfer: false
   });
-  
+
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
   };
-  
+
   const isNewAgent = !profileId;
   const { hasPermission, hasRole } = useRBAC();
   const { user } = useAuth();
@@ -372,19 +375,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     hasPermission('ai_agent_files.create') ||
     Boolean(isMasterAgent) ||
     Boolean(isSuperAgent);
-  
+
   const clampNumber = (value: number, minVal: number, maxVal: number) => {
     if (Number.isNaN(value)) return minVal;
     return Math.min(maxVal, Math.max(minVal, value));
   };
 
-  const HISTORY_PRACTICAL_MAX = 24000;
-  const HISTORY_HARD_MAX = 200000;
+  const HISTORY_PRACTICAL_MAX = 50;
+  const HISTORY_HARD_MAX = 100;
   const CONTEXT_PRACTICAL_MAX = 40;
   const MESSAGE_PRACTICAL_MAX = 1000;
   const READ_FILE_HARD_MAX = 25;
   const AUTO_RESOLVE_MAX_MINUTES = 24 * 60; // 24 hours
-  
+
   // Use the custom hook for AI profile management
   const { profile, loading, saving, error, saveProfile } = useAIProfiles(profileId);
   const [superAgentId, setSuperAgentId] = useState<string | null>(profile?.super_agent_id ?? null);
@@ -411,7 +414,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           setSuperAgentId(fromCreate);
           localStorage.removeItem('ai.new.super_agent_id');
         }
-      } catch {}
+      } catch { }
     }
   }, [isNewAgent, superAgentId]);
 
@@ -422,7 +425,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         setLoadingSuperAgents(true);
         setSuperAgentsError(null);
         const { data, error } = await supabase
-          .from('v_human_agents')
+          .from('v_human_agents' as any)
           .select('user_id, agent_name, email, role_name')
           .eq('org_id', profile?.org_id ?? DEFAULT_ORG_ID)
           .ilike('role_name', '%super%');
@@ -458,21 +461,21 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       isCancelled = true;
     };
   }, [profile?.org_id, profile?.super_agent_id, isSuperAgent, isMasterAgent, user?.id]);
-  
+
   // Form state - initialize with helpful placeholders for new agents or profile data
   const [systemPrompt, setSystemPrompt] = useState(
-    isNewAgent 
-      ? "You are a helpful AI assistant for customer service. Be friendly, professional, and helpful. Always respond in Indonesian unless the customer speaks in another language." 
+    isNewAgent
+      ? "You are a helpful AI assistant for customer service. Be friendly, professional, and helpful. Always respond in Indonesian unless the customer speaks in another language."
       : profile?.system_prompt || ""
   );
   const [welcomeMessage, setWelcomeMessage] = useState(
-    isNewAgent 
-      ? "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?" 
+    isNewAgent
+      ? "Halo! 👋 Selamat datang! Ada yang bisa saya bantu hari ini?"
       : profile?.welcome_message || ""
   );
   const [transferConditions, setTransferConditions] = useState(
-    isNewAgent 
-      ? "Transfer to human agent when:\n- Customer requests to speak with a human\n- Complex technical issues arise\n- Customer is dissatisfied or angry\n- Payment or billing issues\n- Escalation is needed" 
+    isNewAgent
+      ? "Transfer to human agent when:\n- Customer requests to speak with a human\n- Complex technical issues arise\n- Customer is dissatisfied or angry\n- Payment or billing issues\n- Escalation is needed"
       : profile?.transfer_conditions || ""
   );
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
@@ -506,6 +509,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
   const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
   const [messageLimitInput, setMessageLimitInput] = useState<string>("");
+  const [guideContent, setGuideContent] = useState<string>(
+    isNewAgent
+      ? ""
+      : (profile as any)?.guide_content || ""
+  );
 
   const sanitizeNumericInput = (value: string) => value.replace(/[^0-9]/g, "");
   const parseNumericInput = (value: string) => {
@@ -525,14 +533,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           .order('display_name', { ascending: true });
         if (error) throw error;
         const allModels = (data || []) as any[];
-        
+
         // Separate regular models from fallback models
         const regular = allModels.filter((m: any) => (m.display_name || '').toLowerCase() !== 'fallback');
         const fallback = allModels.filter((m: any) => (m.display_name || '').toLowerCase() === 'fallback');
-        
+
         setAvailableModels(regular);
         setFallbackModels(fallback);
-        
+
         // Initialize model IDs if not already set; prefer profile.model_id or initialModelId
         const preferredPrimary = (profile as any)?.model_id || initialModelId || '';
         if (!modelId) {
@@ -557,7 +565,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     if (!modelId && (profile as any)?.model_id && availableModels.some(m => m.id === (profile as any).model_id)) {
       setModelId((profile as any).model_id);
     }
-  }, [availableModels, profile?.model_id]);
+  }, [availableModels]);
 
   useEffect(() => {
     if (!profile) return;
@@ -625,7 +633,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   // Knowledge: Files
   type KnowledgeFileStatus = 'uploading' | 'ready' | 'processing' | 'failed';
   interface KnowledgeFile {
-    id: number;
+
+    id: number | string;
+    isEnabled?: boolean;
     name: string;
     size: number; // bytes
     uploadedAt: string; // ISO
@@ -636,7 +646,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
-  
+
   // Resolve org and profile IDs for storage pathing
   const getUploadContext = async (): Promise<{ orgId: string; profileId: string }> => {
     // Require an existing profile to ensure profile-scoped path
@@ -666,9 +676,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
     return { orgId: resolvedOrgId, profileId: resolvedProfileId };
   };
-  
+
   // Upload PDF to Supabase Storage after webhook processes/returns fileHash
-  const uploadFileToSupabase = async (file: File, fileId: number): Promise<{ url: string; filePath: string; documentId?: string }> => {
+  const uploadFileToSupabase = async (file: File, fileId: number): Promise<{ url: string; filePath: string; documentId?: string; fileId?: string }> => {
     try {
       if (!canUploadAgentFiles) {
         throw new Error('You do not have permission to upload agent files.');
@@ -683,10 +693,29 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
 
       // Pre-compute content hash on the client to generate stable key and share with webhook
-      const buffer = await file.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const contentHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+      let contentHash = '';
+      try {
+        if (typeof crypto !== 'undefined' && crypto.subtle) {
+          const buffer = await file.arrayBuffer();
+          const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          contentHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        } else {
+          // Fallback for environments where crypto.subtle is not available (e.g. non-secure contexts)
+          console.warn('crypto.subtle not available, using fallback hash');
+          const pseudoKey = `${file.name}-${file.size}-${file.lastModified}-${Date.now()}`;
+          // Simple DJB2-like hash for fallback uniqueness
+          let hash = 5381;
+          for (let i = 0; i < pseudoKey.length; i++) {
+            hash = ((hash << 5) + hash) + pseudoKey.charCodeAt(i);
+          }
+          // Make it look somewhat like a hex hash using the number
+          contentHash = (Math.abs(hash) + Date.now()).toString(16).padStart(64, '0');
+        }
+      } catch (err) {
+        console.warn('Error computing hash, using standard fallback:', err);
+        contentHash = `fallback-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+      }
 
       // Build storage key using content hash and original base name
       const originalSafe = (file?.name || 'file.pdf').replace(/[^a-zA-Z0-9_.-]/g, '');
@@ -694,21 +723,49 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       const generatedName = `${contentHash}_${baseNoExt}.pdf`;
       const fileKey = `org_${orgId}/profile_${resolvedProfileId}/${generatedName}`;
 
+      const fileUrl = `${SUPABASE_URL}/storage/v1/object/ai-agent-files/${fileKey}`;
+
+      // 0) Generate ID and insert into public.files to establish entity
+      const fileIdUUID = crypto.randomUUID();
+      const { error: dbErr } = await supabase.from('files').insert({
+        id: fileIdUUID,
+        org_id: orgId,
+        ai_profile_id: resolvedProfileId,
+        bucket: 'ai-agent-files',
+        path: fileKey,
+        filename: file.name,
+        mime_type: file.type || 'application/pdf',
+        byte_size: file.size,
+        checksum: contentHash,
+      });
+
+      if (dbErr) {
+        console.error('Error inserting into public.files:', dbErr);
+        throw new Error('Failed to record file metadata');
+      }
+
       // 1) Send to webhook for hashing, extraction, and knowledgebase indexing (include hash)
+      // Moving metadata to Headers for higher reliability in n8n parsing
       const form = new FormData();
       form.append('file', file);
-      form.append('file_name', file.name || 'file.pdf');
-      form.append('org_id', orgId);
-      form.append('profile_id', resolvedProfileId);
-      form.append('hashFile', contentHash);
 
-      const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD, {
+      const headers: Record<string, string> = {
+        'x-file-name': file.name || 'file.pdf',
+        'x-file-url': fileUrl,
+        'x-org-id': orgId,
+        'x-profile-id': resolvedProfileId,
+        'x-file-hash': contentHash,
+        'x-file-id': fileIdUUID
+      };
+
+      const resp = await fetch(WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_UPLOAD), {
         method: 'POST',
+        headers: headers,
         body: form,
       });
       if (!resp.ok) {
         let message = `Upload failed (${resp.status})`;
-        try { const j = await resp.json(); message = j?.message || message; } catch {}
+        try { const j = await resp.json(); message = j?.message || message; } catch { }
         throw new Error(message);
       }
       const data = await resp.json().catch(() => ({} as any));
@@ -752,75 +809,78 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         uploadedUrl = signedData.signedUrl;
       }
 
-      return { url: uploadedUrl || '', filePath: fileKey, documentId };
+      return { url: uploadedUrl || '', filePath: fileKey, documentId, fileId: fileIdUUID };
     } catch (error: any) {
       console.error('Error uploading file to Supabase:', error);
       throw new Error(`Failed to upload ${file.name}: ${error?.message || 'Unknown error'}`);
     }
   };
 
-  // Load existing files from storage for this agent
+  // Load existing files from DB for this agent (formerly storage)
   const loadExistingKnowledgeFiles = async () => {
     try {
       setLoadingFiles(true);
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
-      const primaryPrefix = `org_${orgId}/profile_${resolvedProfileId}`;
-      const fallbackPrefix = `profile_${resolvedProfileId}`; // legacy path fallback
 
-      const listPrefix = async (prefix: string) => {
-        const { data, error } = await supabase.storage
-          .from('ai-agent-files')
-          .list(prefix, { limit: 100 });
-        if (error) return [] as any[];
-        return (data || []).map((f: any) => ({ ...f, __prefix: prefix }));
-      };
+      // Fetch from publicly tracking 'files' table which includes 'is_enabled' status
+      const { data, error } = await supabase
+        .from('files')
+        .select('*')
+        .eq('ai_profile_id', resolvedProfileId)
+        .order('created_at', { ascending: false });
 
-      const [primary, fallback] = await Promise.all([
-        listPrefix(primaryPrefix),
-        listPrefix(fallbackPrefix),
-      ]);
+      if (error) throw error;
 
-      const objects = [...primary, ...fallback];
-      if (objects.length === 0) {
-        setKnowledgeFiles([]);
-        return;
-      }
+      const items: KnowledgeFile[] = (data || []).map((f: any) => ({
+        id: f.id,
+        name: f.filename,
+        size: f.byte_size || 0,
+        uploadedAt: f.created_at,
+        status: 'ready',
+        url: '', // Signed URLs can be generated on demand or pre-fetched if needed for download
+        filePath: f.path,
+        isEnabled: f.is_enabled ?? true,
+      }));
 
-      const items: KnowledgeFile[] = [];
-      for (const obj of objects) {
-        // Skip invalid entries, folder placeholders, and storage placeholders
-        if (!obj || !obj.name) continue;
-        const nameStr = String(obj.name);
-        if (nameStr.endsWith('/')) continue;
-        if (nameStr === '.emptyFolderPlaceholder' || nameStr === '.emptyfolderplaceholder') continue;
-        const fileKey = `${obj.__prefix}/${obj.name}`;
-        const sizeVal = (obj.metadata && (typeof obj.metadata.size !== 'undefined')) ? obj.metadata.size : 0;
-        const sizeBytes = typeof sizeVal === 'number' ? sizeVal : Number(sizeVal || 0);
-        let signedUrl = '';
-        const { data: signedData } = await supabase.storage
-          .from('ai-agent-files')
-          .createSignedUrl(fileKey, 60 * 60 * 24 * 7);
-        signedUrl = signedData?.signedUrl || '';
+      // Generate signed URLs for them (optional, but good for 'Download' button)
+      // We can do this in batch or just leave empty and let a download handler fetch it?
+      // For now, let's keep it simple. If we need download, we need signed URL.
+      // We can iterate and sign them.
+      await Promise.all(items.map(async (item) => {
+        if (item.filePath) {
+          const { data: signedData } = await supabase.storage
+            .from('ai-agent-files')
+            .createSignedUrl(item.filePath, 60 * 60 * 24 * 7);
+          if (signedData?.signedUrl) item.url = signedData.signedUrl;
+        }
+      }));
 
-        items.push({
-          id: Date.now() + Math.random(),
-          name: obj.name,
-          size: sizeBytes,
-          uploadedAt: (obj.updated_at || obj.created_at || new Date().toISOString()),
-          status: 'ready',
-          url: signedUrl,
-          filePath: fileKey,
-        });
-      }
-
-      // Sort latest first
-      items.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
       setKnowledgeFiles(items);
     } catch (e: any) {
       console.error('Failed to load knowledge files:', e);
-      // Do not toast here to avoid noise on tab switch without access
     } finally {
       setLoadingFiles(false);
+    }
+  };
+
+  const handleToggleFile = async (fileId: number | string, currentStatus: boolean) => {
+    // Optimistic update
+    setKnowledgeFiles(prev => prev.map(f => f.id === fileId ? { ...f, isEnabled: !currentStatus } : f));
+
+    // Only update DB if it's a real persistent ID (UUID string)
+    if (typeof fileId === 'string') {
+      try {
+        const { error } = await supabase
+          .from('files')
+          .update({ is_enabled: !currentStatus } as any)
+          .eq('id', fileId);
+
+        if (error) throw error;
+      } catch (err: any) {
+        toast.error('Failed to update status');
+        // Revert
+        setKnowledgeFiles(prev => prev.map(f => f.id === fileId ? { ...f, isEnabled: currentStatus } : f));
+      }
     }
   };
 
@@ -833,9 +893,25 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   }, [knowledgeTab, profile?.id, profileId]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-    
+    const allFiles = Array.from(e.target.files || []);
+    if (allFiles.length === 0) return;
+    if (allFiles.length > 1) {
+      toast.error('Please upload one file at a time.');
+      return;
+    }
+
+    // Filter for PDF only
+    const files = allFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+
+    if (files.length < allFiles.length) {
+      toast.error('Only PDF files are supported. Some files were skipped.');
+    }
+
+    if (files.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     // Ensure IDs are available for pathing
     try {
       await getUploadContext();
@@ -844,9 +920,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    
+
     const now = new Date().toISOString();
-    
+
     // Add files with uploading status first
     const newItems: KnowledgeFile[] = files.map((f) => ({
       id: Date.now() + Math.random(),
@@ -855,21 +931,21 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       uploadedAt: now,
       status: 'uploading' as KnowledgeFileStatus,
     }));
-    
+
     setKnowledgeFiles((prev) => [...newItems, ...prev]);
-    
+
     // Upload each file
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const fileItem = newItems[i];
-      
-      try {
-        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
 
-        // Update file status to ready with URL
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
-            ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath }
+      try {
+        const { url, filePath, fileId: newDbId } = await uploadFileToSupabase(file, fileItem.id as any);
+
+        // Update file status to ready with URL, swap to real DB ID, set enabled
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
+            ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath, id: newDbId || f.id, isEnabled: true }
             : f
         ));
 
@@ -877,26 +953,26 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       } catch (error: any) {
         // Special-case duplicate: mark as ready and refresh listing without creating new object
         if (String(error?.message || '').toLowerCase().includes('duplicate') || error?.code === 'DUPLICATE_CONTENT') {
-          setKnowledgeFiles((prev) => prev.map((f) => 
-            f.id === fileItem.id 
+          setKnowledgeFiles((prev) => prev.map((f) =>
+            f.id === fileItem.id
               ? { ...f, status: 'ready' as KnowledgeFileStatus }
               : f
           ));
-          setTimeout(() => { (loadExistingKnowledgeFiles() as any)?.catch?.(() => {}); }, 0);
+          setTimeout(() => { (loadExistingKnowledgeFiles() as any)?.catch?.(() => { }); }, 0);
           toast.info(`${file.name} already exists. Skipped re-upload.`);
           continue;
         }
         // Update file status to failed
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
             ? { ...f, status: 'failed' as KnowledgeFileStatus }
             : f
         ));
-        
+
         toast.error(error.message || `Failed to upload ${file.name}`);
       }
     }
-    
+
     // reset input so same files can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -904,7 +980,20 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     e.preventDefault();
     const dtFiles = Array.from(e.dataTransfer.files || []);
     if (dtFiles.length === 0) return;
-    
+    if (dtFiles.length > 1) {
+      toast.error('Please upload one file at a time.');
+      return;
+    }
+
+    // Filter for PDF only
+    const validFiles = dtFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+
+    if (validFiles.length < dtFiles.length) {
+      toast.error('Only PDF files are supported. Some files were skipped.');
+    }
+
+    if (validFiles.length === 0) return;
+
     // Ensure IDs are available for pathing
     try {
       await getUploadContext();
@@ -912,44 +1001,44 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       toast.error(err?.message || 'Unable to upload at this time');
       return;
     }
-    
+
     const now = new Date().toISOString();
-    
+
     // Add files with uploading status first
-    const newItems: KnowledgeFile[] = dtFiles.map((f) => ({
+    const newItems: KnowledgeFile[] = validFiles.map((f) => ({
       id: Date.now() + Math.random(),
       name: f.name,
       size: f.size,
       uploadedAt: now,
       status: 'uploading' as KnowledgeFileStatus,
     }));
-    
+
     setKnowledgeFiles((prev) => [...newItems, ...prev]);
-    
+
     // Upload each file
-    for (let i = 0; i < dtFiles.length; i++) {
-      const file = dtFiles[i];
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
       const fileItem = newItems[i];
-      
+
       try {
-        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id);
-        
+        const { url, filePath } = await uploadFileToSupabase(file, fileItem.id as any);
+
         // Update file status to ready with URL
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
             ? { ...f, status: 'ready' as KnowledgeFileStatus, url, filePath }
             : f
         ));
-        
+
         toast.success(`${file.name} uploaded successfully!`);
       } catch (error: any) {
         // Update file status to failed
-        setKnowledgeFiles((prev) => prev.map((f) => 
-          f.id === fileItem.id 
+        setKnowledgeFiles((prev) => prev.map((f) =>
+          f.id === fileItem.id
             ? { ...f, status: 'failed' as KnowledgeFileStatus }
             : f
         ));
-        
+
         toast.error(error.message || `Failed to upload ${file.name}`);
       }
     }
@@ -957,29 +1046,32 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   };
-  const removeKnowledgeFile = async (id: number) => {
+  const removeKnowledgeFile = async (id: number | string) => {
     const file = knowledgeFiles.find(f => f.id === id);
     try {
       const { orgId, profileId: resolvedProfileId } = await getUploadContext();
-      // Call delete webhook if we have a filePath (storage key)
-      if (file?.filePath) {
-        const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: file.filePath, document_id: (file as any)?.documentId || undefined }),
-        });
-        if (!resp.ok) {
-          let message = `Delete failed (${resp.status})`;
-          try { const j = await resp.json(); message = j?.message || message; } catch {}
-          throw new Error(message);
-        }
-        // Require explicit confirmation from webhook
-        let payload: any = {};
-        try { payload = await resp.json(); } catch {}
-        const st = String(payload?.status || '').toLowerCase();
-        if (st !== 'deleted') {
-          throw new Error(payload?.message || 'Delete not confirmed by webhook');
-        }
+      const params = new URLSearchParams({
+        org_id: orgId,
+        profile_id: resolvedProfileId,
+        file_key: file?.filePath || '',
+        file_id: String(file?.id || ''),
+      });
+
+      const resp = await fetch(`${WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE)}?${params.toString()}`, {
+        method: 'POST'
+      });
+
+      if (!resp.ok) {
+        let message = `Delete failed (${resp.status})`;
+        try { const j = await resp.json(); message = j?.message || message; } catch { }
+        throw new Error(message);
+      }
+      // Require explicit confirmation from webhook
+      let payload: any = {};
+      try { payload = await resp.json(); } catch { }
+      const st = String(payload?.status || '').toLowerCase();
+      if (st !== 'deleted') {
+        throw new Error(payload?.message || 'Delete not confirmed by webhook');
       }
       setKnowledgeFiles((prev) => prev.filter((f) => f.id !== id));
       toast.info(`${file?.name || 'File'} removed`);
@@ -1025,19 +1117,26 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         const { orgId, profileId: resolvedProfileId } = await getUploadContext();
         await Promise.all(files.map(async (f) => {
           try {
-            const resp = await callWebhook(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ org_id: orgId, profile_id: resolvedProfileId, file_key: f.filePath, document_id: (f as any)?.documentId || undefined })
+            const params = new URLSearchParams({
+              org_id: orgId,
+              profile_id: resolvedProfileId,
+              file_key: f.filePath || '',
+              file_id: String(f.id || ''),
+              document_id: (f as any)?.documentId || ''
             });
+
+            const resp = await fetch(`${WEBHOOK_CONFIG.buildUrl(WEBHOOK_CONFIG.ENDPOINTS.KNOWLEDGE.FILE_DELETE)}?${params.toString()}`, {
+              method: 'POST'
+            });
+
             if (!resp.ok) {
               let message = `Delete failed (${resp.status})`;
-              try { const j = await resp.json(); message = j?.message || message; } catch {}
+              try { const j = await resp.json(); message = j?.message || message; } catch { }
               console.warn('Delete webhook failed for', f.filePath, message);
             } else {
               // Confirm webhook success status
               let payload: any = {};
-              try { payload = await resp.json(); } catch {}
+              try { payload = await resp.json(); } catch { }
               const st = String(payload?.status || '').toLowerCase();
               if (st !== 'deleted') {
                 console.warn('Delete webhook did not confirm deletion for', f.filePath, st);
@@ -1086,7 +1185,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     }
     return q !== (base.question || '').trim() || a !== (base.answer || '').trim();
   };
-  
+
   // Followups state
   const [followups, setFollowups] = useState([
     { id: 1, prompt: "Hai! Ada yang bisa saya bantu lagi?", delay: 60, expanded: false },
@@ -1109,13 +1208,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   };
 
   const updateFollowup = (id: number, field: string, value: any) => {
-    setFollowups(followups.map(f => 
+    setFollowups(followups.map(f =>
       f.id === id ? { ...f, [field]: value } : f
     ));
   };
 
   const toggleOptions = (id: number) => {
-    setFollowups(followups.map(f => 
+    setFollowups(followups.map(f =>
       f.id === id ? { ...f, expanded: !f.expanded } : f
     ));
   };
@@ -1137,12 +1236,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
       setMessageAwait((profile as any)?.message_await ?? 3);
       setMessageLimitInput(String(clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX)));
-      const qna = (profile as any)?.qna as ( { q: string; a: string } | { question: string; answer: string } )[] | null | undefined;
+      const qna = (profile as any)?.qna as ({ q: string; a: string } | { question: string; answer: string })[] | null | undefined;
       if (qna && Array.isArray(qna)) {
         const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
         setQaPairs(pairs);
         setInitialQaPairs(JSON.parse(JSON.stringify(pairs)));
       }
+      setGuideContent((profile as any)?.guide_content || "");
     }
   }, [profile, isNewAgent]);
 
@@ -1164,7 +1264,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     const autoResolveMinutes = clampNumber(parseNumericInput(autoResolveMinutesInput), 0, AUTO_RESOLVE_MAX_MINUTES);
     const historyLimit = clampNumber(parseNumericInput(historyLimitInput), 0, historyLimitMax);
     const messageLimit = clampNumber(parseNumericInput(messageLimitInput), 0, MESSAGE_PRACTICAL_MAX);
-    
+
     // Context window is no longer user-configurable in the UI.
     // Persist an existing value (or a sensible default) clamped to the selected model capability.
     const derivedContextLimitMaxK = (() => {
@@ -1199,6 +1299,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       qna: qaPairs
         .filter((p) => (p.question?.trim() || p.answer?.trim()))
         .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
+      guide_content: guideContent,
     };
 
     try {
@@ -1498,7 +1599,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
               {/* AI Agent Behavior */}
               <Card className="p-4">
-                <div 
+                <div
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => toggleSection('behavior')}
                 >
@@ -1520,19 +1621,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   </div>
                   <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.behavior ? 'rotate-180' : ''}`} />
                 </div>
-                
+
                 {expandedSections.behavior && (
                   <div className="mt-4 space-y-4">
-                    <Textarea 
-                      className="min-h-[120px]" 
+                    <Textarea
+                      className="min-h-[120px]"
                       value={systemPrompt}
                       onChange={(e) => setSystemPrompt(e.target.value)}
-                      placeholder={isNewAgent ? 
-                        "Define your AI's personality, behavior, and capabilities here..." : 
+                      placeholder={isNewAgent ?
+                        "Define your AI's personality, behavior, and capabilities here..." :
                         "Enter system prompt..."
                       }
                     />
-                    
+
                     <div className="text-right text-xs text-muted-foreground">
                       {systemPrompt.length}/15000
                     </div>
@@ -1542,7 +1643,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
               {/* Welcome Message */}
               <Card className="p-4">
-                <div 
+                <div
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => toggleSection('welcome')}
                 >
@@ -1564,19 +1665,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   </div>
                   <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.welcome ? 'rotate-180' : ''}`} />
                 </div>
-                
+
                 {expandedSections.welcome && (
                   <div className="mt-4 space-y-4">
-                    <Textarea 
-                      className="min-h-[80px]" 
+                    <Textarea
+                      className="min-h-[80px]"
                       value={welcomeMessage}
                       onChange={(e) => setWelcomeMessage(e.target.value)}
-                      placeholder={isNewAgent ? 
-                        "This is the first message your AI will send to customers..." : 
+                      placeholder={isNewAgent ?
+                        "This is the first message your AI will send to customers..." :
                         "Enter welcome message..."
                       }
                     />
-                    
+
                     <div className="text-right text-xs text-muted-foreground">
                       {welcomeMessage.length}/5000
                     </div>
@@ -1586,7 +1687,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
               {/* Agent Transfer Conditions */}
               <Card className="p-4">
-                <div 
+                <div
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => toggleSection('transfer')}
                 >
@@ -1608,15 +1709,15 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   </div>
                   <ChevronDown className={`w-5 h-5 transition-transform ${expandedSections.transfer ? 'rotate-180' : ''}`} />
                 </div>
-                
+
                 {expandedSections.transfer && (
                   <div className="mt-4 space-y-4">
-                    <Textarea 
-                      className="min-h-[80px]" 
+                    <Textarea
+                      className="min-h-[80px]"
                       value={transferConditions}
                       onChange={(e) => setTransferConditions(e.target.value)}
-                      placeholder={isNewAgent ? 
-                        "Define when your AI should transfer the conversation to a human agent..." : 
+                      placeholder={isNewAgent ?
+                        "Define when your AI should transfer the conversation to a human agent..." :
                         "Enter transfer conditions..."
                       }
                     />
@@ -1670,75 +1771,75 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <ChevronDown className="w-5 h-5 transition-transform" />
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-4 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Enable auto-resolve</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mengaktifkan resolusi otomatis percakapan setelah waktu tertentu tanpa respons pelanggan</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <div className="mt-2">
-                      <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Auto-resolve timeout (minutes)</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Waktu dalam menit sebelum percakapan secara otomatis diselesaikan (0 = nonaktif)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="e.g. 30"
-                      value={autoResolveMinutesInput}
-                      onChange={(e) => handleAutoResolveChange(e.target.value)}
-                      disabled={!enableResolve}
-                      className={`mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}
-                    </p>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Conversation History (tokens)</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Batas maksimal riwayat percakapan yang dapat diingat AI (dalam token)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder={`Max ${historyLimitMax.toLocaleString()}`}
-                      value={historyLimitInput}
-                      onChange={(e) => handleHistoryLimitChange(e.target.value)}
-                      className="mt-1"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {selectedModel?.display_name ? `${selectedModel.display_name} supports up to ${historyLimitMax.toLocaleString()} tokens.` : `Supports up to ${historyLimitMax.toLocaleString()} tokens.`}
-                    </p>
-                  </div>
-                  {/* <div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Enable auto-resolve</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Mengaktifkan resolusi otomatis percakapan setelah waktu tertentu tanpa respons pelanggan</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <div className="mt-2">
+                          <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
+                        </div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Auto-resolve timeout (minutes)</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Waktu dalam menit sebelum percakapan secara otomatis diselesaikan (0 = nonaktif)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="e.g. 30"
+                          value={autoResolveMinutesInput}
+                          onChange={(e) => handleAutoResolveChange(e.target.value)}
+                          disabled={!enableResolve}
+                          className={`mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Conversation History (messages)</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Batas maksimal jumlah pesan riwayat percakapan yang dapat diingat AI</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder={`Max ${historyLimitMax}`}
+                          value={historyLimitInput}
+                          onChange={(e) => handleHistoryLimitChange(e.target.value)}
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {`Supports up to ${historyLimitMax} messages.`}
+                        </p>
+                      </div>
+                      {/* <div>
                     <div className="flex items-center gap-2">
                       <label className="text-sm font-medium">AI Read File Limit</label>
                       <Tooltip>
@@ -1752,51 +1853,51 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     </div>
                     <Input type="number" min={0} value={readFileLimit} onChange={(e)=>setReadFileLimit(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div> */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">Creativity Preset</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Preset kreativitas AI: Conservative (akurat), Balanced (seimbang), Creative (kreatif)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <select value={responseTemperature} onChange={(e)=>setResponseTemperature(e.target.value)} className="w-full p-2 border rounded-lg mt-1">
-                      <option value="Conservative">Conservative</option>
-                      <option value="Balanced">Balanced</option>
-                      <option value="Creative">Creative</option>
-                    </select>
-                  </div>
-                  {/* <div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">Creativity Preset</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Preset kreativitas AI: Conservative (akurat), Balanced (seimbang), Creative (kreatif)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <select value={responseTemperature} onChange={(e) => setResponseTemperature(e.target.value)} className="w-full p-2 border rounded-lg mt-1">
+                          <option value="Conservative">Conservative</option>
+                          <option value="Balanced">Balanced</option>
+                          <option value="Creative">Creative</option>
+                        </select>
+                      </div>
+                      {/* <div>
                     <label className="text-sm font-medium">Message Await (seconds)</label>
                     <Input type="number" min={0} value={messageAwait} onChange={(e)=>setMessageAwait(parseInt(e.target.value||'0')||0)} className="mt-1" />
                   </div> */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">AI Message Cap</label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Batas maksimal jumlah pesan yang dapat dikirim AI dalam satu percakapan</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium">AI Message Cap</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Batas maksimal jumlah pesan yang dapat dikirim AI dalam satu percakapan</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          placeholder="e.g. 1000"
+                          value={messageLimitInput}
+                          onChange={(e) => handleMessageLimitChange(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
                     </div>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="e.g. 1000"
-                      value={messageLimitInput}
-                      onChange={(e) => handleMessageLimitChange(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
                   </CollapsibleContent>
                 </Collapsible>
               </Card>
@@ -1804,8 +1905,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               {/* Save Button */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    className="w-full" 
+                  <Button
+                    className="w-full"
                     onClick={handleSave}
                     disabled={saving}
                   >
@@ -1830,13 +1931,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
             {/* Chat Preview */}
             <div className="xl:col-span-2">
-              <ChatPreview 
-                welcomeMessage={welcomeMessage} 
-                systemPrompt={systemPrompt} 
+              <ChatPreview
+                welcomeMessage={welcomeMessage}
+                systemPrompt={systemPrompt}
                 modelDisplay={selectedModel?.display_name || selectedModel?.model_name || 'Not selected'}
                 profile={profile}
-                profileId={profileId} 
-                modelName={selectedModel?.model_name || ''} 
+                profileId={profileId}
+                modelName={selectedModel?.model_name || ''}
                 temperature={getTemperatureValue(responseTemperature)} // Use mapped value from response_temperature
                 transfer_conditions={transferConditions}
               />
@@ -1850,7 +1951,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
             <Tabs value={knowledgeTab} onValueChange={setKnowledgeTab} className="w-full">
               <TabsList className="grid w-full grid-cols-3 mb-6">
                 <TabsTrigger value="text" className="gap-2">
-                      <FileText className="w-4 h-4" />
+                  <FileText className="w-4 h-4" />
                   Text
                 </TabsTrigger>
                 {/* <TabsTrigger value="website" className="gap-2">
@@ -1862,7 +1963,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                   File
                 </TabsTrigger>
                 <TabsTrigger value="qa" className="gap-2">
-                      <HelpCircle className="w-4 h-4" />
+                  <HelpCircle className="w-4 h-4" />
                   Q&A
                 </TabsTrigger>
                 {/* <TabsTrigger value="product" className="gap-2">
@@ -1872,196 +1973,25 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               </TabsList>
 
               <TabsContent value="text" className="space-y-4">
-                {/* Add Button and Default Button */}
-                <div className="flex gap-2 items-center">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button size="sm" className="gap-2">
-                        <Edit3 className="w-4 h-4" />
-                        Add
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Tambah item pengetahuan baru</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        Default
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Gunakan item pengetahuan default</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {/* Text Formatting Toolbar */}
-                <div className="flex items-center gap-1 p-2 border rounded-md bg-muted/30">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Undo className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Batal</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Redo className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Ulang</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="w-px h-6 bg-border mx-1" />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Bold className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Tebal</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Italic className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Miring</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="w-px h-6 bg-border mx-1" />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignLeft className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Kiri</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignCenter className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Tengah</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignRight className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Kanan</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <AlignJustify className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Rata Kiri-Kanan</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {/* Content Areas */}
+                {/* Knowledge Text Content */}
                 <div className="space-y-4">
-                  {/* Panduan Umum Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">📖</span>
-                      </div>
-                      <span>Panduan Umum: Deposit, Withdraw & Tambah Rekening</span>
-                    </div>
-                    <div className="pl-6 space-y-2 text-sm">
-                      <div className="flex items-start gap-2">
-                        <span className="text-orange-500">⚠️</span>
-                        <div>
-                          <p className="font-medium">Cara Isi Saldo / Deposit</p>
-                          <p className="text-muted-foreground">Lakukan transfer ke rekening tujuan yang tertera di menu DEPOSIT &gt; REKENING TUJUAN.</p>
-                          <p className="text-muted-foreground">Gunakan metode ATM atau M-Banking (tidak tersedia autodebet).</p>
-                          <p className="text-muted-foreground">Setelah transfer, wajib upload bukti transfer agar diproses lebih cepat.</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Khusus Bank BCA Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">🏦</span>
-                      </div>
-                      <span>Khusus Bank BCA</span>
-                    </div>
-                    <div className="pl-6 text-sm text-muted-foreground">
-                      <p>Wajib menggunakan rekening BCA atas nama yang terdaftar di website.</p>
-                      <p>Tidak bisa menggunakan rekening BCA milik orang lain.</p>
-                    </div>
-                  </div>
-
-                  {/* Tambah Rekening Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">💳</span>
-                      </div>
-                      <span>Tambah Rekening / E-Wallet</span>
-                    </div>
-                    <div className="pl-6 text-sm text-muted-foreground">
-                      <p>Bisa menambahkan rekening atau e-wallet selama nama pemiliknya sama dengan yang sudah terdaftar.</p>
-                      <p>Akses dari halaman utama &gt; klik menu REKENING &gt; TAMBAH REKENING.</p>
-                    </div>
-                  </div>
-
-                  {/* Additional Info */}
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <p>Minimal deposit Via Bank BCA, MANDIRI, BRI, BNI, CIMB, OCBC, BANK JAGO, & Dan Semua Jenis E-wallet adalah 5.000</p>
-                    <p>Minimal deposit QRIS = 10.000</p>
-                    <p>Minimal withdraw Bank & E-wallet = 50.000</p>
-                    <p>Jika menggunakan pulsa, akan dikenakan potongan 20%</p>
-                  </div>
-
-                  {/* Lupa User ID Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">🔐</span>
-                      </div>
-                      <span>Lupa User ID atau Password?</span>
-                    </div>
-                    <div className="pl-6 text-sm text-muted-foreground">
-                      <p>Format reset:</p>
-                      <p>Nama Rekening :</p>
-                      <p>Nomor Rekening :</p>
-                      <p>Bank / E-wallet :</p>
-                    </div>
+                  <div>
+                    <label className="text-sm font-medium">Knowledge Text Content</label>
+                    <p className="text-xs text-muted-foreground mt-1 mb-2">
+                      Add custom knowledge text that your AI agent can reference when responding to customers.
+                    </p>
+                    <Textarea
+                      className="min-h-[300px] font-mono text-sm"
+                      value={guideContent}
+                      onChange={(e) => setGuideContent(e.target.value)}
+                      placeholder="Enter your knowledge content here..."
+                    />
                   </div>
                 </div>
 
                 {/* Character Count */}
                 <div className="text-right text-xs text-muted-foreground">
-                  10931 Characters
+                  {guideContent.length} Characters
                 </div>
               </TabsContent>
 
@@ -2089,10 +2019,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                 {/* Web Link Collector Section */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold">Web Link Collector</h3>
-                  
+
                   <div className="flex gap-2">
-                    <Input 
-                      placeholder="Link URL" 
+                    <Input
+                      placeholder="Link URL"
                       className="flex-1"
                     />
                     <Button className="bg-blue-600 hover:bg-blue-700">
@@ -2114,7 +2044,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                 {/* Trained Link Section */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold">Trained Link</h3>
-                  
+
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                       <input type="checkbox" id="select-all" className="rounded" />
@@ -2122,8 +2052,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                         Select
                       </label>
                     </div>
-                    <Input 
-                      placeholder="Search Links" 
+                    <Input
+                      placeholder="Search Links"
                       className="flex-1"
                     />
                   </div>
@@ -2131,16 +2061,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               </TabsContent>
 
               <TabsContent value="file" className="space-y-6">
+
+
+
                 <div
                   onDrop={canUploadAgentFiles ? handleDrop : undefined}
                   onDragOver={canUploadAgentFiles ? handleDragOver : undefined}
                   className={`border border-dashed rounded-lg p-6 text-center ${canUploadAgentFiles ? 'bg-muted/30' : 'bg-muted/50 opacity-70'}`}
                 >
-                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} disabled={!canUploadAgentFiles} />
+                  <input ref={fileInputRef} type="file" hidden onChange={handleFileSelect} disabled={!canUploadAgentFiles} />
                   <FileIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
                   {canUploadAgentFiles ? (
                     <>
-                      <p className="text-sm text-muted-foreground mb-3">Drag & drop documents here, or</p>
+                      <p className="text-sm text-muted-foreground mb-3">Drag & drop a document here, or</p>
                       <Button size="sm" onClick={() => fileInputRef.current?.click()}>Browse Files</Button>
                       <p className="text-xs text-muted-foreground mt-2">Supported: PDF</p>
                     </>
@@ -2169,19 +2102,22 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       {knowledgeFiles.map((f) => (
                         <div key={f.id} className="flex items-center justify-between p-3">
                           <div className="flex items-center gap-3 min-w-0">
+                            <Checkbox
+                              checked={f.isEnabled ?? true}
+                              onCheckedChange={() => handleToggleFile(f.id, f.isEnabled ?? true)}
+                            />
                             <div className="w-8 h-8 rounded bg-muted flex items-center justify-center"><FileIcon className="w-4 h-4" /></div>
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium">{f.name}</div>
-                              <div className="text-xs text-muted-foreground">{(f.size/1024).toFixed(1)} KB • {new Date(f.uploadedAt).toLocaleString()}</div>
+                              <div className="text-xs text-muted-foreground">{(f.size / 1024).toFixed(1)} KB • {new Date(f.uploadedAt).toLocaleString()}</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              f.status==='ready'?'bg-green-100 text-green-700':
-                              f.status==='uploading'?'bg-blue-100 text-blue-700':
-                              f.status==='processing'?'bg-amber-100 text-amber-700':
-                              'bg-red-100 text-red-700'
-                            }`}>
+                            <span className={`text-xs px-2 py-0.5 rounded ${f.status === 'ready' ? 'bg-green-100 text-green-700' :
+                              f.status === 'uploading' ? 'bg-blue-100 text-blue-700' :
+                                f.status === 'processing' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-red-100 text-red-700'
+                              }`}>
                               {f.status === 'uploading' ? (
                                 <div className="flex items-center gap-1">
                                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -2189,20 +2125,20 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                 </div>
                               ) : f.status}
                             </span>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => downloadKnowledgeFile(f)}
-                              disabled={f.status==='uploading'}
+                              disabled={f.status === 'uploading'}
                             >
                               Download
                             </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-red-600 hover:text-red-700" 
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-600 hover:text-red-700"
                               onClick={() => removeKnowledgeFile(f.id)}
-                              disabled={f.status==='uploading'}
+                              disabled={f.status === 'uploading'}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -2220,7 +2156,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <h3 className="text-lg font-semibold">Q&A Knowledge</h3>
                     <p className="text-sm text-muted-foreground">Add question–answer pairs the AI can reference.</p>
                   </div>
-                  <Button size="sm" onClick={()=>{ setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
+                  <Button size="sm" onClick={() => { setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
                 </div>
 
                 {qaPairs.length === 0 ? (
@@ -2234,13 +2170,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                             <Input
                               placeholder="Question"
                               value={pair.question}
-                              onChange={(e)=>updateQaPair(pair.id,'question', e.target.value)}
+                              onChange={(e) => updateQaPair(pair.id, 'question', e.target.value)}
                             />
                             <Textarea
                               placeholder="Answer"
                               className="min-h-[80px]"
                               value={pair.answer}
-                              onChange={(e)=>updateQaPair(pair.id,'answer', e.target.value)}
+                              onChange={(e) => updateQaPair(pair.id, 'answer', e.target.value)}
                             />
                           </div>
                           <div className="flex flex-col gap-2">
@@ -2248,13 +2184,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={async (e)=>{
+                                onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
                                   // Ensure we stay on the QA tab after saving
                                   setKnowledgeTab('qa');
                                   try {
                                     await saveProfile({
+                                      name: agentName,
                                       qna: qaPairs
                                         .filter((p) => (p.question?.trim() || p.answer?.trim()))
                                         .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
@@ -2262,7 +2199,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                     // Sync baseline to latest saved values
                                     setInitialQaPairs(JSON.parse(JSON.stringify(qaPairs)));
                                     toast.success('Q&A saved');
-                                  } catch (e:any) {
+                                  } catch (e: any) {
                                     toast.error(e?.message || 'Failed to save Q&A');
                                   }
                                 }}
@@ -2270,7 +2207,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                 Save
                               </Button>
                             )}
-                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={()=>removeQaPair(pair.id)}>
+                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => removeQaPair(pair.id)}>
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
@@ -2400,7 +2337,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           </Card>
         </TabsContent>
       </Tabs>
-      </div>
+    </div>
   );
 };
 

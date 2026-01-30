@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserRound, LogOut, User, ChevronDown, HelpCircle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { protectedSupabase, supabase } from "@/lib/supabase";
 import AiPausedModal from "@/components/AiPausedModal";
 import ConversationPage from "@/components/chat/ConversationPage";
@@ -231,7 +232,7 @@ const Index = () => {
   const acknowledgeAiPaused = () => {
     try {
       localStorage.setItem(AI_ACK_KEY, Date.now().toString());
-    } catch {}
+    } catch { }
     setShowAiPausedModal(false);
   };
 
@@ -260,10 +261,9 @@ const Index = () => {
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen">
         {/* Sidebar */}
-        <aside 
-          className={`shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out ${
-            sidebarExpanded ? 'w-64' : 'w-[4.7rem]'
-          } md:flex md:flex-col p-4 sticky top-0 h-screen overflow-y-auto`}
+        <aside
+          className={`shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out ${sidebarExpanded ? 'w-64' : 'w-[4.7rem]'
+            } md:flex md:flex-col p-4 sticky top-0 h-screen overflow-y-auto`}
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
@@ -274,9 +274,9 @@ const Index = () => {
               <img src="/synka_logo.png" alt="Synka Logo" className="h-10 w-auto object-contain transition-all duration-300 scale-110" />
             )}
           </div>
-          
-          <Separator className="mb-4 mt-1"/>
-          
+
+          <Separator className="mb-4 mt-1" />
+
           <nav className="flex flex-col gap-1 flex-1">
             {getAccessibleNavItems().map((navKey) => {
               const navItem = getNavItem(navKey);
@@ -300,7 +300,7 @@ const Index = () => {
               );
             })}
           </nav>
-          
+
           {/* Footer Navigation - Always Visible */}
           <div className="mt-auto flex flex-col gap-1 pt-6">
             <Separator className="mb-3" />
@@ -345,6 +345,7 @@ const Index = () => {
                     <p>Status pengguna saat ini: Online</p>
                   </TooltipContent>
                 </Tooltip>
+                <ThemeToggle />
                 <div className="text-right hidden sm:block min-w-0">
                   <Tooltip>
                     <TooltipTrigger asChild>

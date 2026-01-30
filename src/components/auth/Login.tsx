@@ -33,7 +33,7 @@ export default function Login({ onBack }: LoginProps) {
   const CAPTCHA_ENABLED = !!HCAPTCHA_SITEKEY;
   // Expose a reset helper from the HCaptcha widget
   const resetCaptcha = () => {
-    try { (window as any)?.hcaptcha?.reset?.(); } catch {}
+    try { (window as any)?.hcaptcha?.reset?.(); } catch { }
   };
 
   // Form states
@@ -144,7 +144,7 @@ export default function Login({ onBack }: LoginProps) {
 
   //     setSuccess("Account created successfully! Please check your email to verify your account.");
   //     toast.success("Account created! Check your email to verify.");
-      
+
   //     // Clear form
   //     setEmail("");
   //     setPassword("");
@@ -188,7 +188,7 @@ export default function Login({ onBack }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-950 dark:to-slate-900 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           {onBack && (
@@ -261,20 +261,20 @@ export default function Login({ onBack }: LoginProps) {
                   <Label htmlFor="login-password">Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                     <Input
-                       id="login-password"
-                       type={showPassword ? "text" : "password"}
-                       placeholder="Enter your password"
-                       value={password}
+                    <Input
+                      id="login-password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={password}
                       onChange={(e) => setPassword(stripSpaces(e.target.value))}
                       onKeyDown={(e) => {
                         if (e.key === " ") {
                           e.preventDefault();
                         }
                       }}
-                       className="pl-10 pr-10"
-                       required
-                     />
+                      className="pl-10 pr-10"
+                      required
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -295,8 +295,8 @@ export default function Login({ onBack }: LoginProps) {
                   <div className="flex flex-col items-center gap-2">
                     <HCaptcha
                       sitekey={HCAPTCHA_SITEKEY}
-                      onVerify={(t:string)=>setCaptchaToken(t)}
-                      onExpire={()=>{ setCaptchaToken(null); }}
+                      onVerify={(t: string) => setCaptchaToken(t)}
+                      onExpire={() => { setCaptchaToken(null); }}
                     />
                     {captchaError && (<p className="text-xs text-red-600 mt-1">{captchaError}</p>)}
                   </div>

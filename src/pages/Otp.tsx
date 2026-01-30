@@ -41,7 +41,7 @@ export default function Otp() {
       if (until && until > Date.now()) {
         setCooldownUntil(until);
       }
-    } catch {}
+    } catch { }
   }, [user, otpRequired, navigate]);
 
   // Drive countdown off a single interval using the target timestamp
@@ -55,7 +55,7 @@ export default function Otp() {
       if (remaining <= 0) {
         setCooldown(0);
         setCooldownUntil(0);
-        try { localStorage.removeItem('otpCooldownUntil'); } catch {}
+        try { localStorage.removeItem('otpCooldownUntil'); } catch { }
       } else {
         setCooldown(remaining);
       }
@@ -82,7 +82,7 @@ export default function Otp() {
       try {
         localStorage.setItem('otpVerified', 'true');
         localStorage.removeItem('auth.intent');
-      } catch {}
+      } catch { }
       toast.success("Verification successful");
       // If we came from a password recovery flow, go to reset password
       const intent = location?.state?.intent || null;
@@ -110,7 +110,7 @@ export default function Otp() {
       toast.success("A new code was sent");
       const until = Date.now() + 30_000;
       setCooldownUntil(until);
-      try { localStorage.setItem('otpCooldownUntil', String(until)); } catch {}
+      try { localStorage.setItem('otpCooldownUntil', String(until)); } catch { }
     } catch (err) {
       toast.error("Could not resend code");
     } finally {
@@ -121,18 +121,18 @@ export default function Otp() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-    } catch {}
+    } catch { }
     try {
       localStorage.removeItem('otpVerified');
       localStorage.removeItem('otpRequired');
       localStorage.removeItem('auth.intent');
       localStorage.removeItem('otpCooldownUntil');
-    } catch {}
+    } catch { }
     navigate("/", { replace: true });
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-950 dark:to-slate-900 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <CardTitle className="text-2xl font-bold">Enter verification code</CardTitle>

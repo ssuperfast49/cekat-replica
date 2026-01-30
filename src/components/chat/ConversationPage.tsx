@@ -215,10 +215,10 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
 
         <div
           className={`rounded-lg px-3 py-2 text-sm shadow-sm ${isAiAgent
-              ? "bg-blue-600 text-white"
-              : isHumanAgent
-                ? "bg-blue-100 text-blue-900"
-                : "bg-muted text-foreground"
+            ? "bg-blue-600 text-white"
+            : isHumanAgent
+              ? "bg-blue-100 text-blue-900"
+              : "bg-muted text-foreground"
             } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
         >
           <p className="whitespace-pre-wrap">
@@ -306,12 +306,12 @@ export default function ConversationPage() {
   const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'}`, [user?.id]);
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
-  
+
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
-  
+
   // Options for the "Handled By" selector: only Super Agents
   const superAgentOptions = useMemo(
     () =>
@@ -529,9 +529,9 @@ export default function ConversationPage() {
     const dateRange =
       fromMs || toMs
         ? {
-            from: fromMs ? new Date(fromMs) : undefined,
-            to: toMs ? new Date(toMs) : undefined,
-          }
+          from: fromMs ? new Date(fromMs) : undefined,
+          to: toMs ? new Date(toMs) : undefined,
+        }
         : undefined;
 
     const inbox = normalizeFilterString(params.get('f_inbox'));
@@ -573,12 +573,12 @@ export default function ConversationPage() {
         ...nextFilters,
         dateRange: nextFilters.dateRange
           ? {
-              from: nextFilters.dateRange.from ? nextFilters.dateRange.from.getTime() : undefined,
-              to: nextFilters.dateRange.to ? nextFilters.dateRange.to.getTime() : undefined,
-            }
+            from: nextFilters.dateRange.from ? nextFilters.dateRange.from.getTime() : undefined,
+            to: nextFilters.dateRange.to ? nextFilters.dateRange.to.getTime() : undefined,
+          }
           : undefined,
       }));
-    } catch {}
+    } catch { }
 
     const next = new URLSearchParams(window.location.search);
     writeFiltersToSearchParams(next, nextFilters);
@@ -685,9 +685,9 @@ export default function ConversationPage() {
               ...parsed,
               dateRange: parsed?.dateRange
                 ? {
-                    from: parsed.dateRange.from ? new Date(Number(parsed.dateRange.from)) : undefined,
-                    to: parsed.dateRange.to ? new Date(Number(parsed.dateRange.to)) : undefined,
-                  }
+                  from: parsed.dateRange.from ? new Date(Number(parsed.dateRange.from)) : undefined,
+                  to: parsed.dateRange.to ? new Date(Number(parsed.dateRange.to)) : undefined,
+                }
                 : undefined,
             };
             setActiveFilters(revived);
@@ -999,7 +999,7 @@ export default function ConversationPage() {
     if (!viewport) return;
     try {
       viewport.scrollTop = viewport.scrollHeight;
-    } catch {}
+    } catch { }
   }, [messages, selectedThreadId]);
 
   // Handle conversation selection
@@ -1302,9 +1302,9 @@ export default function ConversationPage() {
           const unassignedList = filteredConversations.filter(conv => isFlowUnassigned(conv));
           const doneList = filteredConversations.filter(conv => isFlowDone(conv));
           const tabs: Array<{ key: FlowTab; label: string; count: number; className: string; tooltip: string }> = [
-            { key: 'assigned', label: 'Assigned', count: assignedList.length, className: 'bg-blue-50 text-blue-600 border-blue-500', tooltip: 'Lihat percakapan yang ditugaskan ke agen' },
-            { key: 'unassigned', label: 'Unassigned', count: unassignedList.length, className: 'bg-red-50 text-red-600 border-red-500', tooltip: 'Lihat percakapan yang menunggu penugasan' },
-            { key: 'done', label: 'Done', count: doneList.length, className: 'bg-green-50 text-green-600 border-green-500', tooltip: 'Lihat percakapan yang selesai' },
+            { key: 'assigned', label: 'Assigned', count: assignedList.length, className: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border-blue-500', tooltip: 'Lihat percakapan yang ditugaskan ke agen' },
+            { key: 'unassigned', label: 'Unassigned', count: unassignedList.length, className: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 border-red-500', tooltip: 'Lihat percakapan yang menunggu penugasan' },
+            { key: 'done', label: 'Done', count: doneList.length, className: 'bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400 border-green-500', tooltip: 'Lihat percakapan yang selesai' },
           ];
           const renderEmpty = (label: string) => (
             <div className="h-[calc(100vh-280px)] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground bg-muted/40">
@@ -1318,7 +1318,7 @@ export default function ConversationPage() {
                   <button
                     type="button"
                     onClick={() => handleConversationSelect(conv.id)}
-                    className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}
+                    className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800' : 'hover:bg-muted'}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -1328,10 +1328,10 @@ export default function ConversationPage() {
                         </Avatar>
                         <div className="min-w-0 flex-1">
                           <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <p className="text-xs text-gray-600 truncate mt-1">{conv.last_message_preview || '—'}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-1">{conv.last_message_preview || '—'}</p>
                           <div className="mt-1 flex items-center gap-1.5 min-w-0">
                             <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span className="text-xs text-gray-600 truncate">
+                            <span className="text-xs text-muted-foreground truncate">
                               {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
                             </span>
                           </div>
@@ -1339,7 +1339,7 @@ export default function ConversationPage() {
                       </div>
                       <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
                         <div className="flex flex-col items-end">
-                          <span className="text-xs text-gray-500 whitespace-nowrap">{getListTimestamp(conv)}</span>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">{getListTimestamp(conv)}</span>
                           <div className="mt-1">{renderStatus(conv)}</div>
                         </div>
                         {(conv.channel_provider || conv.channel?.provider) ? (
@@ -1356,7 +1356,7 @@ export default function ConversationPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
                           onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1383,18 +1383,17 @@ export default function ConversationPage() {
 
           return (
             <>
-              <div className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-white">
+              <div className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-card">
                 {tabs.map((tab) => (
                   <Tooltip key={tab.key}>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
                         onClick={() => { setTabLocked(true); setActiveTab(tab.key); }}
-                        className={`text-xs h-8 rounded-md border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${
-                          activeTab === tab.key
+                        className={`text-xs h-8 rounded-md border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${activeTab === tab.key
                             ? `${tab.className}`
                             : 'text-muted-foreground border-transparent hover:bg-muted'
-                        }`}
+                          }`}
                         aria-pressed={activeTab === tab.key}
                       >
                         {tab.key === 'done' ? <CheckCircle className="h-4 w-4" /> : null}
