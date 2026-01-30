@@ -61,7 +61,7 @@ export const WEBHOOK_CONFIG = {
       DELETE_WEBHOOK: `${ROUTE_PREFIX}telegram.delete_webhook`,
       VERIFY_TOKEN: `${SUPABASE_URL}/functions/v1/telegram-verify-token`,
     },
-    
+
     // AI Agent endpoints
     AI_AGENT: {
       CHAT_SETTINGS: `${ROUTE_PREFIX}chat.settings`,
@@ -69,10 +69,10 @@ export const WEBHOOK_CONFIG = {
     },
     // Knowledgebase endpoints
     KNOWLEDGE: {
-      FILE_UPLOAD: "/knowledge/file-upload-dev",
+      FILE_UPLOAD: "/knowledge/file-upload",
       FILE_DELETE: `${ROUTE_PREFIX}knowledge.file_delete`,
     },
-    
+
     // Message endpoints
     MESSAGE: {
       // Default generic send endpoint
@@ -84,7 +84,7 @@ export const WEBHOOK_CONFIG = {
       WEB_SEND_MESSAGE: `${ROUTE_PREFIX}web.send_message`,
     },
   },
-  
+
   // Helper function to build full URLs based on endpoint type
   buildUrl: (endpoint: string, opts: { forceLegacy?: boolean } = {}): string => {
     if (!endpoint) throw new Error("Endpoint must be provided");
@@ -101,7 +101,7 @@ export const WEBHOOK_CONFIG = {
 
     return `${LEGACY_BASE_URL}${ensureLeadingSlash(endpoint)}`;
   },
-  
+
   // Helper function to build test URLs (legacy only)
   buildTestUrl: (endpoint: string): string => {
     if (isProxyEndpoint(endpoint)) {
