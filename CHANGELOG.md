@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.67] FE WEB CEKAT 2026-01-30
+
+### WhatsApp (WAHA) Integration
+
+- **API Authentication Header**: Added `x-api-key` header to all WAHA API requests for authentication.
+  - All fetch calls to `WAHA_BASE_URL` now include `x-api-key: "asd"` in request headers.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx` (3 locations: session list, session details, QR polling)
+  - Updated: `src/components/platforms/WhatsAppPlatformForm.tsx` (1 location: session status check)
+
 # [0.1.66] FE WEB CEKAT 2026-01-28
 
 ### AI Agent Knowledge Sources
