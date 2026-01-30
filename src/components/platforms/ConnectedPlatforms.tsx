@@ -1376,7 +1376,21 @@ const ConnectedPlatforms = () => {
                           const normalized = (selectedPlatformData?.display_name || '').toLowerCase().replace(/\s/g, '');
                           const filtered = sessions.filter(ss => ((ss?.name || '').toLowerCase().replace(/\s/g, '')) === normalized);
                           if (filtered.length === 0) {
-                            return <div className="text-sm text-muted-foreground">No session found for this channel.</div>;
+                            const sessionName = (selectedPlatformData?.display_name || '').replace(/\s/g, '');
+                            return (
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-muted-foreground">No session found for this channel.</div>
+                                <Button
+                                  variant="outline"
+                                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                  size="sm"
+                                  disabled={Boolean(connectingSession)}
+                                  onClick={() => openConnectDialog(sessionName)}
+                                >
+                                  {connectingSession === sessionName ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
+                                </Button>
+                              </div>
+                            );
                           }
                           return filtered.map((s, idx) => {
                             const rawId = s?.me?.id || "";
