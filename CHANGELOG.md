@@ -1,5 +1,22 @@
 # Change Log
 
+# [0.1.69] FE WEB CEKAT 2026-02-02
+
+### Chat UI Improvements
+
+- **Markdown & Multi-line Support**:
+  - Full markdown support using `ReactMarkdown` with `remark-gfm`.
+  - Added `remark-breaks` to ensure single newlines (Shift+Enter) are preserved in chat bubbles.
+  - Upgraded chat inputs to multi-line `Textarea` with `Shift+Enter` for new lines and `Enter` to send.
+- **Rich Media & Link Previews**:
+  - **Auto-Image Detection**: Links to images (.jpg, .png, etc.) now render directly in the chat.
+  - **Rich Previews**: Website links now display a rich preview card with title, description, and site image (WhatsApp-style).
+- **Layout & Style Refinement**:
+  - **Smart Wrapping**: Prevents overflow by breaking long strings (like base64) while keeping natural words together.
+  - **Aesthetics**: Restored premium `rounded-2xl` bubbles and `px-4 py-2` padding.
+  - **Bug Fixes**: Restored sidebar tab layouts, fixed corrupted Tailwind classes, and improved system message centering.
+  - Updated: `src/pages/LiveChat.tsx`, `src/components/chat/ConversationPage.tsx`, `src/components/chat/LinkPreview.tsx`, `src/components/chat/ContactThreadPickerDialog.tsx`, `src/lib/utils.ts`
+
 # [0.1.68] FE WEB CEKAT 2026-01-30
 
 ### WhatsApp (WAHA) Integration

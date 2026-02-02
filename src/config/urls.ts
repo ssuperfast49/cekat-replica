@@ -16,13 +16,13 @@ const trimTrailingSlash = (value: string) => value.replace(/\/$/, "");
  * Public app origin used for deep links / embeds.
  *
  * Production default is the new Netlify site:
- * `https://cssuper.com`
+ * `synkaai.netlify.app`
  */
 export const APP_ORIGIN: string = (() => {
   const override = env?.VITE_APP_ORIGIN as string | undefined;
   if (override) return trimTrailingSlash(override);
 
-  return "https://cssuper.com";
+  return "https://synkaai.netlify.app";
 })();
 
 /**

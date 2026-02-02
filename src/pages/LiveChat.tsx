@@ -4,6 +4,7 @@ const sendMessageMaxAttempts = 3;
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +14,10 @@ import { callWebhook } from "@/lib/webhookClient";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/config/supabase";
 import type { Database } from "@/integrations/supabase/types";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+import { LinkPreview } from "@/components/chat/LinkPreview";
 
 declare global {
   interface Window {
@@ -1103,16 +1108,65 @@ export default function LiveChat() {
                     return null;
                   }
 
+                  const isImageLink = (url: string) => {
+                    return /\.(jpg|jpeg|png|webp|avif|gif|svg)$/i.test(url.split('?')[0]);
+                  };
+
+                  const MarkdownComponents = {
+                    a: ({ href, children }: any) => {
+                      const url = href || "";
+                      if (isImageLink(url)) {
+                        return (
+                          <img
+                            src={url}
+                            alt="User uploaded content"
+                            className="rounded-lg max-w-full h-auto my-2 border border-black/10 shadow-sm"
+                            loading="lazy"
+                          />
+                        );
+                      }
+                      return (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={m.role === "user" ? "text-blue-300 font-medium underline hover:text-white" : "text-blue-600 font-medium underline hover:text-blue-800"}
+                        >
+                          {children}
+                        </a>
+                      );
+                    },
+                    img: ({ src, alt }: any) => (
+                      <img
+                        src={src}
+                        alt={alt}
+                        className="rounded-lg max-w-full h-auto my-2 border border-black/10 shadow-sm overflow-hidden"
+                        loading="lazy"
+                      />
+                    )
+                  };
+
                   return (
                     <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div className="max-w-[80%] space-y-1">
                         <div
                           className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${m.role === "user"
-                              ? "bg-blue-600 text-white rounded-br-md"
-                              : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
+                            ? "bg-blue-600 text-white rounded-br-md"
+                            : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
                             }`}
                         >
-                          <span className="whitespace-pre-wrap">{m.body}</span>
+                          <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${m.role === "user" ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""}`}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
+                              {m.body}
+                            </ReactMarkdown>
+                          </div>
+                          {(() => {
+                            const firstUrl = m.body?.match(/https?:\/\/[^\s]+/)?.[0];
+                            if (firstUrl && !isImageLink(firstUrl)) {
+                              return <LinkPreview url={firstUrl} isDark={m.role === "user"} />;
+                            }
+                            return null;
+                          })()}
                         </div>
                         <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
                           {fmt(m.at)}
@@ -1133,12 +1187,12 @@ export default function LiveChat() {
 
             <div className="p-3 border-t border-blue-100 rounded-b-2xl bg-blue-50/40">
               <div className="flex items-center gap-2">
-                <Input
+                <Textarea
                   placeholder="Type a message"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  onKeyPress={onKeyPress}
-                  className="rounded-full h-10 px-4 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900"
+                  onKeyDown={onKeyPress}
+                  className="rounded-xl min-h-[40px] max-h-[120px] resize-none px-4 py-2 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900"
                 />
                 <Button
                   onClick={handleSend}

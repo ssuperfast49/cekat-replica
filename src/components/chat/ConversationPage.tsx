@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -40,7 +41,7 @@ import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLES } from "@/types/rbac";
 import { setSendMessageProvider } from "@/config/webhook";
-import { isDocumentHidden, onDocumentVisible } from "@/lib/utils";
+import { isDocumentHidden, onDocumentVisible, stripMarkdown } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +53,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+import { LinkPreview } from "@/components/chat/LinkPreview";
 
 interface MatchPosition {
   start: number;
@@ -111,7 +116,7 @@ const getLocalDateKey = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return `${year} -${month} -${day} `;
 };
 
 const formatMessageDateLabel = (date: Date) => {
@@ -144,6 +149,44 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
   const isHumanAgent = message.role === 'assistant';
   const isAiAgent = message.role === 'agent';
 
+  const isImageLink = (url: string) => {
+    return /\.(jpg|jpeg|png|webp|avif|gif|svg)$/i.test(url.split('?')[0]);
+  };
+
+  const MarkdownComponents = {
+    a: ({ href, children }: any) => {
+      const url = href || "";
+      if (isImageLink(url)) {
+        return (
+          <img
+            src={url}
+            alt="User uploaded content"
+            className="rounded-lg max-w-full h-auto my-2 border border-black/10 shadow-sm"
+            loading="lazy"
+          />
+        );
+      }
+      return (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={isAiAgent ? "text-blue-300 font-medium underline hover:text-white" : "text-blue-600 font-medium underline hover:text-blue-800"}
+        >
+          {children}
+        </a>
+      );
+    },
+    img: ({ src, alt }: any) => (
+      <img
+        src={src}
+        alt={alt}
+        className="rounded-lg max-w-full h-auto my-2 border border-black/10 shadow-sm overflow-hidden"
+        loading="lazy"
+      />
+    )
+  };
+
   const renderBodyWithHighlights = () => {
     const body = message.body || '';
     if (!body || matches.length === 0) {
@@ -169,13 +212,13 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
 
     return segments.map((segment, idx) => {
       if (typeof segment === 'string') {
-        return <span key={`seg-${idx}`}>{segment}</span>;
+        return <span key={`seg - ${idx} `}>{segment}</span>;
       }
       const isActive = segment.index === activeMatchOrder;
       return (
         <mark
-          key={`highlight-${segment.index}`}
-          className={`rounded-sm px-0.5 text-current text-black ${isActive ? 'bg-orange-300' : 'bg-yellow-200'}`}
+          key={`highlight - ${segment.index} `}
+          className={`rounded - sm px - 0.5 text - current text - black ${isActive ? 'bg-orange-300' : 'bg-yellow-200'} `}
         >
           {segment.content}
         </mark>
@@ -205,7 +248,7 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
 
   return (
     <div className={`flex ${isAgent ? "justify-end" : "justify-start"} mb-3`}>
-      <div className={`flex ${isAgent ? "flex-row-reverse" : "flex-row"} items-end gap-2 max-w-[75%]`}>
+      <div className={`flex ${isAgent ? "flex-row-reverse" : "flex-row"} items-end gap-2 max-w-[85%]`}>
         <Avatar className="h-8 w-8">
           <AvatarImage src="" />
           <AvatarFallback className="text-xs">
@@ -214,16 +257,31 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
         </Avatar>
 
         <div
-          className={`rounded-lg px-3 py-2 text-sm shadow-sm ${isAiAgent
+          className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${isAiAgent
             ? "bg-blue-600 text-white"
             : isHumanAgent
               ? "bg-blue-100 text-blue-900"
               : "bg-muted text-foreground"
             } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
         >
-          <p className="whitespace-pre-wrap">
-            {renderBodyWithHighlights()}
-          </p>
+          {matches.length > 0 ? (
+            <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {renderBodyWithHighlights()}
+            </p>
+          ) : (
+            <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""} `}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
+                {message.body || ''}
+              </ReactMarkdown>
+            </div>
+          )}
+          {(() => {
+            const firstUrl = message.body?.match(/https?:\/\/[^\s]+/)?.[0];
+            if (firstUrl && !isImageLink(firstUrl)) {
+              return <LinkPreview url={firstUrl} isDark={isAiAgent} />;
+            }
+            return null;
+          })()}
           <div className={`mt-1 flex items-center gap-1 text-[10px] ${isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
             }`}>
             <span>{new Date(message.created_at).toLocaleTimeString([], {
@@ -303,7 +361,7 @@ export default function ConversationPage() {
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const isPushingFiltersRef = useRef(false);
   const filtersInitRef = useRef(false);
-  const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'}`, [user?.id]);
+  const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'} `, [user?.id]);
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
 
@@ -469,7 +527,7 @@ export default function ConversationPage() {
             if (label) {
               items.push({
                 type: "date",
-                key: `date-${dateKey}`,
+                key: `date - ${dateKey} `,
                 label,
               });
             }
@@ -714,7 +772,7 @@ export default function ConversationPage() {
 
   const filteredConversations = useMemo(() => {
     const list = conversations.filter((conv) =>
-      `${conv.contact_name} ${conv.last_message_preview}`.toLowerCase().includes(query.toLowerCase())
+      `${conv.contact_name} ${conv.last_message_preview} `.toLowerCase().includes(query.toLowerCase())
     );
     return [...list].sort((a, b) => {
       const aTs = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
@@ -1071,7 +1129,7 @@ export default function ConversationPage() {
 
         if (assignResult.success) {
           toast.error(
-            `Batas pesan AI telah tercapai (${limitInfo.currentCount}/${limitInfo.limit}). ` +
+            `Batas pesan AI telah tercapai(${limitInfo.currentCount} / ${limitInfo.limit}). ` +
             `Percakapan telah dialihkan ke super agent dan AI access dinonaktifkan.`
           );
           // Refresh conversations to show updated assignment
@@ -1081,7 +1139,7 @@ export default function ConversationPage() {
         }
       } else if (limitInfo.isExceeded && !limitInfo.superAgentId) {
         toast.error(
-          `Batas pesan AI telah tercapai (${limitInfo.currentCount}/${limitInfo.limit}). ` +
+          `Batas pesan AI telah tercapai(${limitInfo.currentCount} / ${limitInfo.limit}). ` +
           `Tidak ada super agent yang tersedia untuk penanganan.`
         );
         return;
@@ -1135,7 +1193,7 @@ export default function ConversationPage() {
   };
 
   // Handle key press in message input
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const onKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -1328,7 +1386,7 @@ export default function ConversationPage() {
                         </Avatar>
                         <div className="min-w-0 flex-1">
                           <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <p className="text-xs text-muted-foreground truncate mt-1">{conv.last_message_preview || '—'}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-1">{stripMarkdown(conv.last_message_preview) || '—'}</p>
                           <div className="mt-1 flex items-center gap-1.5 min-w-0">
                             <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                             <span className="text-xs text-muted-foreground truncate">
@@ -1383,16 +1441,16 @@ export default function ConversationPage() {
 
           return (
             <>
-              <div className="grid w-full grid-cols-[1fr_1fr_auto] mb-3 bg-card">
+              <div className="grid w-full grid-cols-3 mb-3 bg-card">
                 {tabs.map((tab) => (
                   <Tooltip key={tab.key}>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
                         onClick={() => { setTabLocked(true); setActiveTab(tab.key); }}
-                        className={`text-xs h-8 rounded-md border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${activeTab === tab.key
-                            ? `${tab.className}`
-                            : 'text-muted-foreground border-transparent hover:bg-muted'
+                        className={`text-xs h-8 border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${activeTab === tab.key
+                          ? `${tab.className}`
+                          : 'text-muted-foreground border-transparent hover:bg-muted'
                           }`}
                         aria-pressed={activeTab === tab.key}
                       >
@@ -1475,8 +1533,8 @@ export default function ConversationPage() {
                   {trimmedSearch && (
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <span className="text-xs font-medium min-w-[48px] text-right">
-                        {matchCount > 0 ? `${currentMatchIndex + 1}/${matchCount}` : "0/0"}
-                      </span>
+                        {matchCount > 0 ? `${currentMatchIndex + 1} /${matchCount}` : "0/0"}
+                      </span >
                       <Button
                         type="button"
                         variant="ghost"
@@ -1499,9 +1557,9 @@ export default function ConversationPage() {
                       >
                         <ChevronDown className="h-4 w-4" />
                       </Button>
-                    </div>
+                    </div >
                   )}
-                </div>
+                </div >
                 <div className="flex items-center gap-2">
                   {selectedConversationFlow === 'assigned' && canMoveToUnassigned && (
                     <Button
@@ -1539,11 +1597,11 @@ export default function ConversationPage() {
                       ? 'Assigned'
                       : 'Unassigned'}
                 </Badge>
-              </div>
-            </div>
+              </div >
+            </div >
 
             {/* Chat Messages */}
-            <ScrollArea viewportRef={messagesViewportRef as any} className="flex-1 p-4">
+            < ScrollArea viewportRef={messagesViewportRef as any} className="flex-1 p-4" >
               <div className="space-y-2">
                 {messages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-8">
@@ -1576,18 +1634,18 @@ export default function ConversationPage() {
                   })
                 )}
               </div>
-            </ScrollArea>
+            </ScrollArea >
 
             {/* Message Input or Takeover / Join */}
-            <div className="border-t p-3 space-y-2">
+            < div className="border-t p-3 space-y-2" >
               {!isSelectedConversationDone && collaboratorId === user?.id && (
                 <div className="flex items-center gap-2">
-                  <Input
+                  <Textarea
                     placeholder={`Message ${selectedConversation.contact_name}...`}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    className="flex-1"
+                    onKeyDown={onKeyPress}
+                    className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2.5"
                     disabled={!canCurrentUserSend}
                     title={sendDisabledReason}
                   />
@@ -1596,24 +1654,25 @@ export default function ConversationPage() {
                     onClick={handleSendMessage}
                     disabled={!draft.trim() || !canCurrentUserSend}
                     title={sendDisabledReason || 'Send message'}
-                    aria-label="Send message"
                   >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
               )}
-              {(!isSelectedConversationDone && collaboratorId !== user?.id) && (
-                <Button
-                  type="button"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={handleTakeoverChat}
-                  disabled={!user?.id}
-                  title={user?.id ? undefined : 'You must be signed in'}
-                >
-                  Takeover Chat
-                </Button>
-              )}
-            </div>
+              {
+                (!isSelectedConversationDone && collaboratorId !== user?.id) && (
+                  <Button
+                    type="button"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleTakeoverChat}
+                    disabled={!user?.id}
+                    title={user?.id ? undefined : 'You must be signed in'}
+                  >
+                    Takeover Chat
+                  </Button>
+                )
+              }
+            </div >
           </>
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -1624,32 +1683,33 @@ export default function ConversationPage() {
             </div>
           </div>
         )}
-      </article>
+      </article >
 
       {/* Right sidebar - Conversation info */}
-      <aside className="rounded-lg border bg-card p-4">
-        {selectedConversation ? (
-          <div className="space-y-6">
-            {/* Header */}
-            <div>
-              <h2 className="text-lg font-semibold">{selectedConversation.contact_name || 'Unknown Contact'}</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <MessageSquare className="h-4 w-4 text-blue-500" />
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    {selectedConversation.channel?.display_name || selectedConversation.channel?.provider || 'Unknown'}
-                  </Badge>
-                  {selectedConversation.channel?.type && (
-                    <Badge variant="secondary" className="text-xs">
-                      {selectedConversation.channel.type}
+      < aside className="rounded-lg border bg-card p-4" >
+        {
+          selectedConversation ? (
+            <div className="space-y-6" >
+              {/* Header */}
+              < div >
+                <h2 className="text-lg font-semibold">{selectedConversation.contact_name || 'Unknown Contact'}</h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <MessageSquare className="h-4 w-4 text-blue-500" />
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {selectedConversation.channel?.display_name || selectedConversation.channel?.provider || 'Unknown'}
                     </Badge>
-                  )}
+                    {selectedConversation.channel?.type && (
+                      <Badge variant="secondary" className="text-xs">
+                        {selectedConversation.channel.type}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Labels */}
-            {/* <div className="flex items-center justify-between">
+              {/* Labels */}
+              {/* <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">Labels</h3>
               <Button variant="outline" size="sm" className="h-8">
                 <Tag className="h-4 w-4 mr-2" /> Add Label
@@ -1657,61 +1717,61 @@ export default function ConversationPage() {
             </div>
             <div className="text-sm text-muted-foreground">No labels yet</div> */}
 
-            {/* Handled By */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Handled By</h3>
-              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                {handledById ? (labelForUserId(handledById) || '—') : '—'}
-              </div>
-            </div>
-
-            {/* Collaborators */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Collaborator</h3>
-              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                {selectedCollaboratorId ? (labelForUserId(selectedCollaboratorId) || '—') : '—'}
+              {/* Handled By */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Handled By</h3>
+                <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  {handledById ? (labelForUserId(handledById) || '—') : '—'}
+                </div>
               </div>
 
-            </div>
+              {/* Collaborators */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Collaborator</h3>
+                <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  {selectedCollaboratorId ? (labelForUserId(selectedCollaboratorId) || '—') : '—'}
+                </div>
 
-            {/* Notes */}
-            {/* <div>
+              </div>
+
+              {/* Notes */}
+              {/* <div>
               <h3 className="text-sm font-medium mb-2">Notes</h3>
               <div className="flex items-center gap-2">
                 <Input placeholder="Add a note..." />
               </div>
             </div> */}
 
-            {/* AI Summary */}
-            {/* <div>
+              {/* AI Summary */}
+              {/* <div>
               <h3 className="text-sm font-medium mb-2">AI Summary</h3>
               <Button variant="outline" className="w-full h-10" onClick={()=>toast.message('AI summary generation coming soon')}>Generate AI Summary</Button>
             </div> */}
 
-            {/* Additional Data */}
-            {/* <div>
+              {/* Additional Data */}
+              {/* <div>
               <h3 className="text-sm font-medium mb-2">Additional Data</h3>
               <Button variant="outline" className="w-full h-10">Add New Additional Info</Button>
             </div> */}
 
-            {/* Conversation Details */}
-            <div>
-              <h3 className="text-sm font-medium mb-3">Conversation Details</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned By</span><span>{(selectedConversation as any).assigned_by_name || '—'}</span></div>
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Handled By</span><span>{handledById ? (labelForUserId(handledById) || '—') : '—'}</span></div>
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved By</span><span>{(selectedConversation as any).resolved_by_name || '—'}</span></div>
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">AI Handoff At</span><span>{(selectedConversation as any).ai_handoff_at ? new Date((selectedConversation as any).ai_handoff_at).toLocaleString() : '—'}</span></div>
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned At</span><span>{(selectedConversation as any).assigned_at ? new Date((selectedConversation as any).assigned_at).toLocaleString() : '—'}</span></div>
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Created At</span><span>{selectedConversation.created_at ? new Date(selectedConversation.created_at).toLocaleString() : '—'}</span></div>
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved At</span><span>{(selectedConversation as any).resolved_at ? new Date((selectedConversation as any).resolved_at).toLocaleString() : '—'}</span></div>
+              {/* Conversation Details */}
+              <div>
+                <h3 className="text-sm font-medium mb-3">Conversation Details</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned By</span><span>{(selectedConversation as any).assigned_by_name || '—'}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Handled By</span><span>{handledById ? (labelForUserId(handledById) || '—') : '—'}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved By</span><span>{(selectedConversation as any).resolved_by_name || '—'}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">AI Handoff At</span><span>{(selectedConversation as any).ai_handoff_at ? new Date((selectedConversation as any).ai_handoff_at).toLocaleString() : '—'}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned At</span><span>{(selectedConversation as any).assigned_at ? new Date((selectedConversation as any).assigned_at).toLocaleString() : '—'}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Created At</span><span>{selectedConversation.created_at ? new Date(selectedConversation.created_at).toLocaleString() : '—'}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved At</span><span>{(selectedConversation as any).resolved_at ? new Date((selectedConversation as any).resolved_at).toLocaleString() : '—'}</span></div>
+                </div>
               </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-sm text-muted-foreground">No conversation selected</div>
-        )}
-      </aside>
-    </div>
+            </div >
+          ) : (
+            <div className="text-sm text-muted-foreground">No conversation selected</div>
+          )}
+      </aside >
+    </div >
   );
 }

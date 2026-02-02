@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, Search, MessageSquare, ChevronRight } from "lucide-react";
 import { protectedSupabase } from "@/lib/supabase";
 import { waitForAuthReady } from "@/lib/authReady";
+import { stripMarkdown } from "@/lib/utils";
 
 type ChannelRow = {
   id: string;
@@ -43,10 +44,12 @@ interface ContactThreadPickerDialogProps {
 }
 
 const getPreview = (value: unknown) =>
-  String(value ?? "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 200) || "—";
+  stripMarkdown(
+    String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200)
+  ) || "—";
 
 const formatTs = (iso: string) => {
   const d = new Date(iso);
@@ -125,14 +128,14 @@ export default function ContactThreadPickerDialog({
             created_at: String(row.created_at),
             channel: row.channels
               ? {
-                  id: String(row.channels.id),
-                  display_name: row.channels.display_name ?? null,
-                  provider: row.channels.provider ?? null,
-                  type: row.channels.type ?? null,
-                  logo_url: row.channels.logo_url ?? null,
-                  profile_photo_url: row.channels.profile_photo_url ?? null,
-                  external_id: row.channels.external_id ?? null,
-                }
+                id: String(row.channels.id),
+                display_name: row.channels.display_name ?? null,
+                provider: row.channels.provider ?? null,
+                type: row.channels.type ?? null,
+                logo_url: row.channels.logo_url ?? null,
+                profile_photo_url: row.channels.profile_photo_url ?? null,
+                external_id: row.channels.external_id ?? null,
+              }
               : null,
             last_message_preview: lastPreview,
           };
