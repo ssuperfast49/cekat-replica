@@ -89,13 +89,13 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   const getUserOrgId = async () => {
     if (!user) return null;
-    
+
     const { data: userOrgMember } = await supabase
       .from('org_members')
       .select('org_id')
       .eq('user_id', user.id)
       .single();
-    
+
     return userOrgMember?.org_id || null;
   };
 
@@ -104,7 +104,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       setIsFetchingQR(true);
       setQrError(null);
       setQrImageUrl(null);
-      
+
       // 1) Create a WAHA session first to ensure an empty session exists
       const createSessionEndpoint = WEBHOOK_CONFIG.ENDPOINTS.WHATSAPP.CREATE_SESSION;
       const webhookUrlForWaha = `${WEBHOOK_CONFIG.BASE_URL}/2f6f9767-c3cb-4af3-b749-a496eefc2b74/waha`;
@@ -183,11 +183,11 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         },
         body: JSON.stringify({ session_name: sName }),
       });
-      
+
       if (!response.ok) {
         throw new Error(`Request failed with status ${response.status}`);
       }
-      
+
       // Check if response is an image
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('image/')) {
@@ -203,11 +203,11 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         try {
           const json = await response.json();
           const payload = Array.isArray(json) ? json[0] : json;
-          
+
           if (!payload || !payload.data || !payload.mimetype) {
             throw new Error("Invalid QR response shape");
           }
-          
+
           const dataUrl = `data:${payload.mimetype};base64,${payload.data}`;
           setQrImageUrl(dataUrl);
           setSessionName(sName);
@@ -228,7 +228,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
           }
         }
       }
-      
+
       setIsFetchingQR(false);
       return null;
     } catch (error: any) {
@@ -268,12 +268,13 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'x-api-key': 'asd',
         },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
-        
+
         // Check if session is connected and working
         if (data && data.status === 'WORKING' && data.me && data.me.id) {
           setIsWhatsAppConnected(true);
@@ -298,14 +299,14 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
   // Poll session status every 5 seconds when QR is shown
   useEffect(() => {
     if (!qrImageUrl || isWhatsAppConnected) return;
-    
+
     const pollInterval = setInterval(async () => {
       const isConnected = await checkSessionStatus();
       if (isConnected) {
         clearInterval(pollInterval);
       }
     }, 5000); // Poll every 5 seconds
-    
+
     return () => clearInterval(pollInterval);
   }, [qrImageUrl, isWhatsAppConnected]);
 
@@ -365,17 +366,17 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       };
 
       await onSubmit(submitData);
-      
+
       toast({ title: "Success", description: "Channel successfully created." });
       // Close form popup and show QR dialog in parent with latest QR data
       if (qrResult) {
         try {
           window.dispatchEvent(new CustomEvent('open-wa-qr', { detail: { sessionName: qrResult.sessionName, qr: qrResult.qr } }));
-        } catch {}
+        } catch { }
       }
       try {
         window.dispatchEvent(new CustomEvent('refresh-platforms'));
-      } catch {}
+      } catch { }
       onClose();
       // Reset after submit
       setFormData({
@@ -409,262 +410,262 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               Configure your new WhatsApp platform with all the necessary information.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="mt-6 space-y-6">
-          {/* Platform Name */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="platformName">Platform Name *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Nama platform atau merek yang akan ditampilkan kepada pelanggan</p>
-                </TooltipContent>
-              </Tooltip>
+            {/* Platform Name */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="platformName">Platform Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Nama platform atau merek yang akan ditampilkan kepada pelanggan</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="platformName"
+                placeholder="Enter your platform or brand name"
+                value={formData.platformName}
+                onChange={(e) => setFormData(prev => ({ ...prev, platformName: e.target.value }))}
+              />
             </div>
-            <Input
-              id="platformName"
-              placeholder="Enter your platform or brand name"
-              value={formData.platformName}
-              onChange={(e) => setFormData(prev => ({ ...prev, platformName: e.target.value }))}
-            />
-          </div>
 
-          {/* Profile Photo / Logo */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Foto profil atau logo yang akan ditampilkan di WhatsApp Business</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
-                {formData.profilePhoto ? (
-                  <img
-                    src={URL.createObjectURL(formData.profilePhoto)}
-                    alt="Profile"
-                    className="h-16 w-16 rounded-full object-cover"
+            {/* Profile Photo / Logo */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Foto profil atau logo yang akan ditampilkan di WhatsApp Business</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                  {formData.profilePhoto ? (
+                    <img
+                      src={URL.createObjectURL(formData.profilePhoto)}
+                      alt="Profile"
+                      className="h-16 w-16 rounded-full object-cover"
+                    />
+                  ) : (
+                    <Upload className="h-6 w-6 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <Input
+                    id="profilePhoto"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => { const f = e.target.files?.[0] || null; setFormData(prev => ({ ...prev, profilePhoto: f })); }}
+                    className="hidden"
                   />
-                ) : (
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                )}
-              </div>
-              <div className="flex-1">
-                <Input
-                  id="profilePhoto"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e)=>{ const f = e.target.files?.[0] || null; setFormData(prev=>({ ...prev, profilePhoto: f })); }}
-                  className="hidden"
-                />
-                <Button
-                  variant="outline"
-                  onClick={()=>document.getElementById('profilePhoto')?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" /> Upload Photo
-                </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => document.getElementById('profilePhoto')?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" /> Upload Photo
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Description */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
-                </TooltipContent>
-              </Tooltip>
+            {/* Description */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Textarea
+                id="description"
+                placeholder="Describe your business and what you offer"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
             </div>
-            <Textarea
-              id="description"
-              placeholder="Describe your business and what you offer"
-              value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              rows={3}
-            />
-          </div>
 
-          {/* WhatsApp Number removed per requirements */}
+            {/* WhatsApp Number removed per requirements */}
 
 
-          {/* Super Agent (read-only display derived from AI agent) */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
+            {/* Super Agent (read-only display derived from AI agent) */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-emerald-700">Super Agent (1 max)</div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Super Agent yang akan mengawasi dan mengelola platform WhatsApp ini</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {humanAgentsLoading ? (
+                <div className="rounded-md border bg-muted px-3 py-2 text-sm">Loading super agents...</div>
+              ) : (
+                <Select
+                  value={selectedSuperAgentId || ''}
+                  onValueChange={(value) => {
+                    setSelectedSuperAgentId(value);
+                    // Reset AI/human agent selections to respect new super agent scope
+                    setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
+                  }}
+                  disabled={isSuperAgentUser}
                 >
-                  <p>Super Agent yang akan mengawasi dan mengelola platform WhatsApp ini</p>
-                </TooltipContent>
-              </Tooltip>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a Super Agent" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border z-50">
+                    {humanAgents
+                      .filter((a) => a.primaryRole === 'super_agent')
+                      .map((sa) => (
+                        <SelectItem key={sa.user_id} value={sa.user_id}>
+                          {sa.display_name || sa.email || sa.user_id.slice(0, 8)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {'Default mengikuti super agent pada AI agent terpilih. Anda bisa mengubahnya di sini.'}
+              </p>
             </div>
-            {humanAgentsLoading ? (
-              <div className="rounded-md border bg-muted px-3 py-2 text-sm">Loading super agents...</div>
-            ) : (
-              <Select
-                value={selectedSuperAgentId || ''}
-                onValueChange={(value) => {
-                  setSelectedSuperAgentId(value);
-                  // Reset AI/human agent selections to respect new super agent scope
-                  setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
-                }}
-                disabled={isSuperAgentUser}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a Super Agent" />
-                </SelectTrigger>
-                <SelectContent className="bg-background border z-50">
-                  {humanAgents
-                    .filter((a) => a.primaryRole === 'super_agent')
-                    .map((sa) => (
-                      <SelectItem key={sa.user_id} value={sa.user_id}>
-                        {sa.display_name || sa.email || sa.user_id.slice(0, 8)}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+
+            {/* Select AI Agent (filtered by selected Super Agent) */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="aiAgent">Select AI Agent *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Agen AI yang akan menangani percakapan otomatis di platform WhatsApp ini</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {aiAgentsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+              ) : (
+                <Select
+                  value={formData.selectedAIAgent}
+                  onValueChange={(value) => {
+                    const agent = aiAgents.find(a => a.id === value);
+                    if (!selectedSuperAgentId) {
+                      toast({ title: "Select a Super Agent first", description: "Pilih super agent terlebih dahulu, lalu pilih AI agent.", variant: "destructive" });
+                      return;
+                    }
+                    if (!agent || agent.super_agent_id !== selectedSuperAgentId) {
+                      toast({ title: "AI agent tidak sesuai", description: "AI agent yang dipilih tidak berada di bawah super agent terpilih.", variant: "destructive" });
+                      return;
+                    }
+                    setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border z-50">
+                    {aiAgents
+                      .filter(agent => selectedSuperAgentId ? agent.super_agent_id === selectedSuperAgentId : false)
+                      .map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {formData.selectedAIAgent && !selectedSuperAgentId && (
+              <p className="text-xs text-amber-600">
+                AI agent terpilih belum memiliki super agent. Tetapkan super agent di halaman AI Agents terlebih dahulu.
+              </p>
             )}
-            <p className="text-xs text-muted-foreground">
-              {'Default mengikuti super agent pada AI agent terpilih. Anda bisa mengubahnya di sini.'}
-            </p>
-          </div>
 
-          {/* Select AI Agent (filtered by selected Super Agent) */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="aiAgent">Select AI Agent *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Agen AI yang akan menangani percakapan otomatis di platform WhatsApp ini</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            {aiAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading AI agents...</div>
-            ) : (
-              <Select 
-                value={formData.selectedAIAgent} 
-                onValueChange={(value) => {
-                  const agent = aiAgents.find(a => a.id === value);
-                  if (!selectedSuperAgentId) {
-                    toast({ title: "Select a Super Agent first", description: "Pilih super agent terlebih dahulu, lalu pilih AI agent.", variant: "destructive" });
-                    return;
-                  }
-                  if (!agent || agent.super_agent_id !== selectedSuperAgentId) {
-                    toast({ title: "AI agent tidak sesuai", description: "AI agent yang dipilih tidak berada di bawah super agent terpilih.", variant: "destructive" });
-                    return;
-                  }
-                  setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
-                </SelectTrigger>
-                <SelectContent className="bg-background border z-50">
-                  {aiAgents
-                    .filter(agent => selectedSuperAgentId ? agent.super_agent_id === selectedSuperAgentId : false)
-                    .map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+            {/* Select Human Agents */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Label>Assign Agents</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {humanAgentsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading human agents...</div>
+              ) : (
+                <>
 
-          {formData.selectedAIAgent && !selectedSuperAgentId && (
-            <p className="text-xs text-amber-600">
-              AI agent terpilih belum memiliki super agent. Tetapkan super agent di halaman AI Agents terlebih dahulu.
-            </p>
-          )}
-
-          {/* Select Human Agents */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Label>Assign Agents</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            {humanAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading human agents...</div>
-            ) : (
-              <>
-
-                {/* Master Agents (display only for awareness) */}
-                {/* <div className="space-y-1">
+                  {/* Master Agents (display only for awareness) */}
+                  {/* <div className="space-y-1">
                   <div className="text-xs font-medium text-blue-700">Master Agents</div>
                   <div className="grid grid-cols-2 gap-2">
                     {humanAgents.filter(a => a.primaryRole === 'master_agent').map(ma => (
@@ -675,60 +676,60 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                   </div>
                 </div> */}
 
-                {/* Regular Agents under selected super agent (MultiSelect + Select All) */}
-                <div className="space-y-2">
-                  <div className="text-xs font-medium">Agents {selectedSuperAgentId ? '' : '(select an AI agent first)'}</div>
-                  {(() => {
-                    const available = humanAgents
-                      .filter(a => a.primaryRole === 'agent')
-                      .filter(a => !!selectedSuperAgentId && a.super_agent_id === selectedSuperAgentId);
-                    const options = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0,8)}` }));
-                    return (
-                      <div className="flex items-center gap-2">
-                        <MultiSelect
-                          options={options as any}
-                          value={formData.selectedHumanAgents}
-                          onValueChange={(vals)=>setFormData(prev=>({ ...prev, selectedHumanAgents: vals }))}
-                          disabled={!selectedSuperAgentId}
-                          placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select an AI agent first'}
-                        />
-                        <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: options.map((o:any)=>o.value) }))}>Select All</Button>
-                        <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </>
-            )}
+                  {/* Regular Agents under selected super agent (MultiSelect + Select All) */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium">Agents {selectedSuperAgentId ? '' : '(select an AI agent first)'}</div>
+                    {(() => {
+                      const available = humanAgents
+                        .filter(a => a.primaryRole === 'agent')
+                        .filter(a => !!selectedSuperAgentId && a.super_agent_id === selectedSuperAgentId);
+                      const options = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0, 8)}` }));
+                      return (
+                        <div className="flex items-center gap-2">
+                          <MultiSelect
+                            options={options as any}
+                            value={formData.selectedHumanAgents}
+                            onValueChange={(vals) => setFormData(prev => ({ ...prev, selectedHumanAgents: vals }))}
+                            disabled={!selectedSuperAgentId}
+                            placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select an AI agent first'}
+                          />
+                          <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length === 0} onClick={() => setFormData(prev => ({ ...prev, selectedHumanAgents: options.map((o: any) => o.value) }))}>Select All</Button>
+                          <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length === 0} onClick={() => setFormData(prev => ({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={handleCancel} disabled={isSubmitting || isCancelling} className="text-blue-700 border-blue-200 hover:bg-blue-50">
-            {isCancelling ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Cancelling...
-              </>
-            ) : (
-              "Cancel"
-            )}
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={isSubmitting || isCreating || !hasRequiredFields}
-            className="bg-blue-100 hover:bg-blue-200 text-blue-700 transition-all duration-200 hover:shadow-md active:scale-[.98]"
-            aria-busy={isSubmitting || isCreating}
-          >
-            {isSubmitting || isCreating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              "Create WhatsApp Platform"
-            )}
-          </Button>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={handleCancel} disabled={isSubmitting || isCancelling} className="text-blue-700 border-blue-200 hover:bg-blue-50">
+              {isCancelling ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                "Cancel"
+              )}
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || isCreating || !hasRequiredFields}
+              className="bg-blue-100 hover:bg-blue-200 text-blue-700 transition-all duration-200 hover:shadow-md active:scale-[.98]"
+              aria-busy={isSubmitting || isCreating}
+            >
+              {isSubmitting || isCreating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create WhatsApp Platform"
+              )}
+            </Button>
           </div>
         </div>
       </DialogContent>
