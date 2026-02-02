@@ -41,7 +41,7 @@ import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLES } from "@/types/rbac";
 import { setSendMessageProvider } from "@/config/webhook";
-import { isDocumentHidden, onDocumentVisible, stripMarkdown } from "@/lib/utils";
+import { isDocumentHidden, onDocumentVisible, stripMarkdown, isImageLink, extractUrls } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -149,9 +149,6 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
   const isHumanAgent = message.role === 'assistant';
   const isAiAgent = message.role === 'agent';
 
-  const isImageLink = (url: string) => {
-    return /\.(jpg|jpeg|png|webp|avif|gif|svg)$/i.test(url.split('?')[0]);
-  };
 
   const MarkdownComponents = {
     a: ({ href, children }: any) => {
@@ -276,11 +273,16 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
             </div>
           )}
           {(() => {
-            const firstUrl = message.body?.match(/https?:\/\/[^\s]+/)?.[0];
-            if (firstUrl && !isImageLink(firstUrl)) {
-              return <LinkPreview url={firstUrl} isDark={isAiAgent} />;
-            }
-            return null;
+            const urls = extractUrls(message.body);
+            if (urls.length === 0) return null;
+
+            return (
+              <div className="space-y-2 mt-2">
+                {urls.map((u) => !isImageLink(u) && (
+                  <LinkPreview key={u} url={u} isDark={isAiAgent} />
+                ))}
+              </div>
+            );
           })()}
           <div className={`mt-1 flex items-center gap-1 text-[10px] ${isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
             }`}>

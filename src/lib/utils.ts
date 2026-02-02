@@ -132,6 +132,43 @@ export function stripMarkdown(text: string | null | undefined): string {
     // Remove headers
     .replace(/^#{1,6}\s+/gm, '')
     // Clean up extra whitespace
-    .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Detects if a URL is likely an image.
+ * Matches common extensions and known image placeholder patterns.
+ */
+export function isImageLink(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const cleanUrl = url.split('?')[0].split('#')[0];
+
+  // Standard extensions
+  if (/\.(jpg|jpeg|png|webp|avif|gif|svg)$/i.test(cleanUrl)) {
+    return true;
+  }
+
+  // Common placeholder patterns
+  const patterns = [
+    /https?:\/\/picsum\.photos\//,
+    /https?:\/\/placehold\.co\//,
+    /https?:\/\/via\.placeholder\.com\//,
+  ];
+
+  return patterns.some(p => p.test(url));
+}
+
+/**
+ * Extracts unique URLs from a string.
+ */
+export function extractUrls(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const urlRegex = /https?:\/\/[^\s]+/g;
+  const matches = text.match(urlRegex);
+  if (!matches) return [];
+
+  // Remove trailing punctuation like . , ) ] }
+  const cleanMatches = matches.map(url => url.replace(/[.,)\]}]+$/, ''));
+
+  return Array.from(new Set(cleanMatches));
 }

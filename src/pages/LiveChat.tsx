@@ -18,6 +18,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { LinkPreview } from "@/components/chat/LinkPreview";
+import { isImageLink, extractUrls } from "@/lib/utils";
 
 declare global {
   interface Window {
@@ -1089,9 +1090,6 @@ export default function LiveChat() {
                     return null;
                   }
 
-                  const isImageLink = (url: string) => {
-                    return /\.(jpg|jpeg|png|webp|avif|gif|svg)$/i.test(url.split('?')[0]);
-                  };
 
                   const MarkdownComponents = {
                     a: ({ href, children }: any) => {
@@ -1142,11 +1140,16 @@ export default function LiveChat() {
                             </ReactMarkdown>
                           </div>
                           {(() => {
-                            const firstUrl = m.body?.match(/https?:\/\/[^\s]+/)?.[0];
-                            if (firstUrl && !isImageLink(firstUrl)) {
-                              return <LinkPreview url={firstUrl} isDark={m.role === "user"} />;
-                            }
-                            return null;
+                            const urls = extractUrls(m.body);
+                            if (urls.length === 0) return null;
+
+                            return (
+                              <div className="space-y-2 mt-2">
+                                {urls.map((u) => !isImageLink(u) && (
+                                  <LinkPreview key={u} url={u} isDark={m.role === "user"} />
+                                ))}
+                              </div>
+                            );
                           })()}
                         </div>
                         <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
