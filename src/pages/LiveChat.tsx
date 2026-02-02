@@ -502,29 +502,10 @@ export default function LiveChat() {
       const arr = Array.from(map.values());
       arr.sort((a, b) => a.order - b.order);
 
-      // Guard against duplicate rows emitted by the backend (same content/timestamp but new ids)
-      const deduped: ChatMessage[] = [];
-      const dedupeWindowMs = 2000;
-      const seen = new Map<string, number>();
-      for (const item of arr) {
-        const key = `${item.role}:${item.body?.trim().toLowerCase() ?? ''}`;
-        const at = new Date(item.at).getTime();
-        const lastSeen = seen.get(key);
-        if (Number.isFinite(at) && lastSeen !== undefined) {
-          if (Math.abs(at - lastSeen) < dedupeWindowMs) {
-            continue;
-          }
-        }
-        if (Number.isFinite(at)) {
-          seen.set(key, at);
-        }
-        deduped.push(item);
-      }
-
-      if (!changed && deduped.length === prev.length) {
+      if (!changed && arr.length === prev.length) {
         let identical = true;
-        for (let i = 0; i < deduped.length; i += 1) {
-          const a = deduped[i];
+        for (let i = 0; i < arr.length; i += 1) {
+          const a = arr[i];
           const b = prev[i];
           if (a !== b) {
             identical = false;
@@ -536,7 +517,7 @@ export default function LiveChat() {
         }
       }
 
-      return deduped;
+      return arr;
     });
   }, []);
 

@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.1.70] FE WEB CEKAT 2026-02-02
+
+### Live Chat Improvements
+
+- **Message Deduplication Removed**: Intentionally removed the 2000ms window deduplication guard in the LiveChat widget to allow identical messages (same content and timestamp) to be visible in the UI.
+  - Updated: `src/pages/LiveChat.tsx`
+
 # [0.1.69] FE WEB CEKAT 2026-02-02
 
 ### Chat UI Improvements
