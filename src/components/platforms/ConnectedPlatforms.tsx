@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Plus, HelpCircle,  X, Upload, Trash2, MessageCircle, Globe, Send, Loader2, Copy } from "lucide-react";
+import { Plus, HelpCircle, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2, Copy } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,7 +34,7 @@ const ConnectedPlatforms = () => {
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
   const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
   const { hasRole } = useRBAC();
-  
+
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [providerTab, setProviderTab] = useState<'whatsapp' | 'telegram' | 'web'>('whatsapp');
   const [selectedAgent, setSelectedAgent] = useState<string>("");
@@ -104,7 +104,7 @@ const ConnectedPlatforms = () => {
   // Auto-select first platform within current tab
   useEffect(() => {
     const firstInTab = platforms.find(p => getPlatformType(p) === providerTab);
-    if (!selectedPlatform || (selectedPlatform && platforms.find(p=>p.id===selectedPlatform && getPlatformType(p)!==providerTab))) {
+    if (!selectedPlatform || (selectedPlatform && platforms.find(p => p.id === selectedPlatform && getPlatformType(p) !== providerTab))) {
       setSelectedPlatform(firstInTab?.id || null);
     }
   }, [platforms, providerTab]);
@@ -147,7 +147,7 @@ const ConnectedPlatforms = () => {
       !assignedHumanAgents.some(x => x.user_id === a.user_id)
     );
   });
-  const multiSelectOptions: MultiSelectOption[] = availableAgentsToAdd.map(a => ({ value: a.user_id, label: a.display_name || a.email || a.user_id.slice(0,8) }));
+  const multiSelectOptions: MultiSelectOption[] = availableAgentsToAdd.map(a => ({ value: a.user_id, label: a.display_name || a.email || a.user_id.slice(0, 8) }));
   const aiAgentsForChannel = channelSuperAgentId
     ? aiAgents.filter(agent => agent.super_agent_id === channelSuperAgentId || agent.id === selectedPlatformData?.ai_profile_id)
     : aiAgents;
@@ -177,7 +177,7 @@ const ConnectedPlatforms = () => {
 
   const renderPlatformDetails = (includeWebExtras: boolean) => (
     <>
-     
+
 
       {/* Super Agent */}
       <Card>
@@ -216,8 +216,8 @@ const ConnectedPlatforms = () => {
           })()}
         </CardContent>
       </Card>
-       {/* AI Agent */}
-       <Card>
+      {/* AI Agent */}
+      <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             AI Agent
@@ -235,8 +235,8 @@ const ConnectedPlatforms = () => {
           {aiAgentsLoading ? (
             <div className="text-sm text-muted-foreground">Loading AI agents...</div>
           ) : (
-            <Select 
-              value={selectedAgent || ""} 
+            <Select
+              value={selectedAgent || ""}
               onValueChange={async (value) => {
                 if (!selectedPlatformData) return;
                 await updatePlatform(selectedPlatformData.id, { ai_profile_id: value || undefined });
@@ -248,10 +248,10 @@ const ConnectedPlatforms = () => {
               </SelectTrigger>
               <SelectContent>
                 {aiAgentsForChannel.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      🤖 {agent.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem key={agent.id} value={agent.id}>
+                    🤖 {agent.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           )}
@@ -347,7 +347,7 @@ const ConnectedPlatforms = () => {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                Link LiveChat 
+                Link LiveChat
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -405,7 +405,7 @@ const ConnectedPlatforms = () => {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                Embed Code 
+                Embed Code
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -520,7 +520,7 @@ const ConnectedPlatforms = () => {
   const handlePlatformSetup = async (formData: any) => {
     try {
       setIsSubmitting(true);
-      
+
       const platformData: CreatePlatformData = {
         display_name: formData.displayName || formData.platformName || formData.brandName,
         website_url: formData.websiteUrl || undefined,
@@ -539,12 +539,12 @@ const ConnectedPlatforms = () => {
           toast({ title: 'Avatar upload failed', description: e?.message || 'Could not upload avatar', variant: 'destructive' });
         }
       }
-      
+
       toast({
         title: "Success",
         description: "Platform created successfully!",
       });
-      
+
       setSelectedPlatformType(null);
     } catch (error: any) {
       toast({
@@ -570,7 +570,7 @@ const ConnectedPlatforms = () => {
     setSessionsError(null);
     try {
       const url = `${WAHA_BASE_URL}/api/sessions`;
-      const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+      const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'x-api-key': 'asd' } });
       if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
       const json = await response.json();
       const list: WahaSession[] = Array.isArray(json) ? json : [json];
@@ -618,7 +618,7 @@ const ConnectedPlatforms = () => {
         if (!meId && status === 'WORKING') {
           try {
             const detailUrl = `${WAHA_BASE_URL}/api/sessions/${encodeURIComponent(sessionName)}`;
-            const detailRes = await fetch(detailUrl, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+            const detailRes = await fetch(detailUrl, { method: 'GET', headers: { 'Content-Type': 'application/json', 'x-api-key': 'asd' } });
             if (detailRes.ok) {
               const detailJson = await detailRes.json();
               const detail = Array.isArray(detailJson) ? detailJson[0] : detailJson;
@@ -693,7 +693,7 @@ const ConnectedPlatforms = () => {
         try {
           if (!lastConnectSessionName) return;
           const url = `${WAHA_BASE_URL}/api/sessions/${encodeURIComponent(lastConnectSessionName)}`;
-          const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+          const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'x-api-key': 'asd' } });
           if (!response.ok) return;
           const s = await response.json();
           const status = String(s?.status || '').toUpperCase();
@@ -702,10 +702,10 @@ const ConnectedPlatforms = () => {
             setIsConnectDialogOpen(false);
             setConnectQR(null);
             await fetchWhatsAppSessions();
-            try { window.dispatchEvent(new CustomEvent('refresh-platforms')); } catch {}
+            try { window.dispatchEvent(new CustomEvent('refresh-platforms')); } catch { }
             toast({ title: 'Connected', description: 'WhatsApp connected successfully.' });
           }
-        } catch {}
+        } catch { }
       };
       // kick immediately then poll every 3s
       check();
@@ -894,10 +894,10 @@ const ConnectedPlatforms = () => {
           <p className="text-sm text-muted-foreground mb-6">
             This is where you can connect all your platforms
           </p>
-          <Tabs value={providerTab} onValueChange={(v)=>setProviderTab(v as any)} className="mb-3">
+          <Tabs value={providerTab} onValueChange={(v) => setProviderTab(v as any)} className="mb-3">
             <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1">
-              <TabsTrigger 
-                value="whatsapp" 
+              <TabsTrigger
+                value="whatsapp"
                 className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
               >
                 <Tooltip>
@@ -909,7 +909,7 @@ const ConnectedPlatforms = () => {
                   </TooltipContent>
                 </Tooltip>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="telegram"
                 className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
               >
@@ -922,7 +922,7 @@ const ConnectedPlatforms = () => {
                   </TooltipContent>
                 </Tooltip>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="web"
                 className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
               >
@@ -937,7 +937,7 @@ const ConnectedPlatforms = () => {
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          
+
           {platformsLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
@@ -958,17 +958,16 @@ const ConnectedPlatforms = () => {
             <div className="text-sm text-red-600 p-4">{platformsError}</div>
           ) : (
             <div className="space-y-2">
-              {platforms.filter(p=>getPlatformType(p)===providerTab).length === 0 ? (
+              {platforms.filter(p => getPlatformType(p) === providerTab).length === 0 ? (
                 <div className="text-sm text-muted-foreground p-4 text-center">
                   No platforms found. Create your first platform to get started.
                 </div>
               ) : (
-                platforms.filter(p=>getPlatformType(p)===providerTab).map((platform) => (
-                  <Card 
+                platforms.filter(p => getPlatformType(p) === providerTab).map((platform) => (
+                  <Card
                     key={platform.id}
-                    className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-                      selectedPlatform === platform.id ? 'border-primary shadow-sm' : ''
-                    }`}
+                    className={`cursor-pointer transition-colors hover:bg-muted/50 ${selectedPlatform === platform.id ? 'border-primary shadow-sm' : ''
+                      }`}
                     onClick={() => setSelectedPlatform(platform.id)}
                   >
                     <CardContent className="p-4">
@@ -1028,45 +1027,45 @@ const ConnectedPlatforms = () => {
                 </p>
               </DialogHeader>
 
-                             <div className="px-6 pb-6">
-                 <div className="grid grid-cols-3 gap-3 mb-4">
-                   <button
-                     onClick={() => handlePlatformSelect('whatsapp')}
-                     className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
-                   >
-                     <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-                       <MessageCircle className="h-6 w-6 text-white" />
-                     </div>
-                     <span className="text-sm font-medium text-center">WhatsApp</span>
-                     <span className="text-xs text-muted-foreground text-center mt-1">
-                       Connect your WhatsApp Business account
-                     </span>
-                   </button>
-                   <button
-                     onClick={() => handlePlatformSelect('web')}
-                     className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
-                   >
-                     <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-                       <Globe className="h-6 w-6 text-white" />
-                     </div>
-                     <span className="text-sm font-medium text-center">Web Live Chat</span>
-                     <span className="text-xs text-muted-foreground text-center mt-1">
-                       Add live chat to your website
-                     </span>
-                   </button>
-                   <button
-                     onClick={() => handlePlatformSelect('telegram')}
-                     className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
-                   >
-                     <div className="w-12 h-12 rounded-full bg-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-                       <Send className="h-6 w-6 text-white" />
-                     </div>
-                     <span className="text-sm font-medium text-center">Telegram Bot</span>
-                     <span className="text-xs text-muted-foreground text-center mt-1">
-                       Connect your Telegram bot via BotFather
-                     </span>
-                   </button>
-                 </div>
+              <div className="px-6 pb-6">
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <button
+                    onClick={() => handlePlatformSelect('whatsapp')}
+                    className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
+                      <MessageCircle className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium text-center">WhatsApp</span>
+                    <span className="text-xs text-muted-foreground text-center mt-1">
+                      Connect your WhatsApp Business account
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handlePlatformSelect('web')}
+                    className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
+                      <Globe className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium text-center">Web Live Chat</span>
+                    <span className="text-xs text-muted-foreground text-center mt-1">
+                      Add live chat to your website
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handlePlatformSelect('telegram')}
+                    className="flex flex-col items-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-accent/50 transition-all duration-200 group"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
+                      <Send className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium text-center">Telegram Bot</span>
+                    <span className="text-xs text-muted-foreground text-center mt-1">
+                      Connect your Telegram bot via BotFather
+                    </span>
+                  </button>
+                </div>
 
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">
@@ -1077,21 +1076,21 @@ const ConnectedPlatforms = () => {
             </DialogContent>
           </Dialog>
 
-                               {/* Platform Forms */}
+          {/* Platform Forms */}
           <WhatsAppPlatformForm
             isOpen={selectedPlatformType === 'whatsapp'}
             onClose={() => setSelectedPlatformType(null)}
             onSubmit={handlePlatformSetup}
             isSubmitting={isSubmitting}
           />
-          
+
           <TelegramPlatformForm
             isOpen={selectedPlatformType === 'telegram'}
             onClose={() => setSelectedPlatformType(null)}
             onSubmit={handlePlatformSetup}
             isSubmitting={isSubmitting}
           />
-          
+
           <WebPlatformForm
             isOpen={selectedPlatformType === 'web'}
             onClose={() => setSelectedPlatformType(null)}
@@ -1245,7 +1244,7 @@ const ConnectedPlatforms = () => {
                           </TooltipContent>
                         </Tooltip>
                       </div>
-                      <div>{(() => { const t = (selectedPlatformData as any)?.secret_token as string | undefined; if (!t) return '—'; return t.length > 8 ? `${t.slice(0,4)}••••${t.slice(-2)}` : '••••'; })()}</div>
+                      <div>{(() => { const t = (selectedPlatformData as any)?.secret_token as string | undefined; if (!t) return '—'; return t.length > 8 ? `${t.slice(0, 4)}••••${t.slice(-2)}` : '••••'; })()}</div>
                     </div>
                   </div>
                   {/* Channel Profile block inside details with border */}
@@ -1303,7 +1302,7 @@ const ConnectedPlatforms = () => {
                             } finally {
                               setUploadingAvatar(false);
                               // reset input so the same file can be selected again if needed
-                              try { (e.currentTarget as HTMLInputElement).value = ''; } catch {}
+                              try { (e.currentTarget as HTMLInputElement).value = ''; } catch { }
                             }
                           }}
                         />
@@ -1313,14 +1312,14 @@ const ConnectedPlatforms = () => {
                             size="sm"
                             className="text-red-600 hover:text-red-700"
                             disabled={!selectedPlatformData || uploadingAvatar || removingAvatar}
-                            onClick={async()=>{
+                            onClick={async () => {
                               if (!selectedPlatformData) return;
                               try {
                                 setRemovingAvatar(true);
                                 await deleteChannelAvatar(selectedPlatformData.id, selectedPlatformData.org_id);
                                 await fetchPlatforms();
                                 toast({ title: 'Avatar removed' });
-                              } catch (e:any) {
+                              } catch (e: any) {
                                 toast({ title: 'Failed to remove avatar', description: e?.message || 'Please try again', variant: 'destructive' });
                               } finally {
                                 setRemovingAvatar(false);
@@ -1377,51 +1376,65 @@ const ConnectedPlatforms = () => {
                           const normalized = (selectedPlatformData?.display_name || '').toLowerCase().replace(/\s/g, '');
                           const filtered = sessions.filter(ss => ((ss?.name || '').toLowerCase().replace(/\s/g, '')) === normalized);
                           if (filtered.length === 0) {
-                            return <div className="text-sm text-muted-foreground">No session found for this channel.</div>;
+                            const sessionName = (selectedPlatformData?.display_name || '').replace(/\s/g, '');
+                            return (
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-muted-foreground">No session found for this channel.</div>
+                                <Button
+                                  variant="outline"
+                                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                  size="sm"
+                                  disabled={Boolean(connectingSession)}
+                                  onClick={() => openConnectDialog(sessionName)}
+                                >
+                                  {connectingSession === sessionName ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
+                                </Button>
+                              </div>
+                            );
                           }
                           return filtered.map((s, idx) => {
-                          const rawId = s?.me?.id || "";
-                          const phone = rawId ? rawId.replace(/@c\.us$/, "") : "";
-                          const name = s?.me?.pushName || "-";
-                          const status: string = String(s?.status || "UNKNOWN").toUpperCase();
-                          const sessionName = s?.name || "";
-                          const isBusy = loggingOutSessions.has(sessionName) || deletingSessions.has(sessionName) || connectingSession === sessionName;
-                          const hasNumber = Boolean(phone);
-                          const isScanQr = status === "SCAN_QR_CODE";
-                          const isLoggedIn = status === "WORKING" && hasNumber;
-                          return (
-                            <div key={idx} className="flex items-center justify-between rounded-md border p-3">
-                              <div>
-                                <div className="text-sm font-medium">{name}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {isScanQr || !hasNumber ? "Not connected" : phone}
+                            const rawId = s?.me?.id || "";
+                            const phone = rawId ? rawId.replace(/@c\.us$/, "") : "";
+                            const name = s?.me?.pushName || "-";
+                            const status: string = String(s?.status || "UNKNOWN").toUpperCase();
+                            const sessionName = s?.name || "";
+                            const isBusy = loggingOutSessions.has(sessionName) || deletingSessions.has(sessionName) || connectingSession === sessionName;
+                            const hasNumber = Boolean(phone);
+                            const isScanQr = status === "SCAN_QR_CODE";
+                            const isLoggedIn = status === "WORKING" && hasNumber;
+                            return (
+                              <div key={idx} className="flex items-center justify-between rounded-md border p-3">
+                                <div>
+                                  <div className="text-sm font-medium">{name}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {isScanQr || !hasNumber ? "Not connected" : phone}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {!isLoggedIn ? (
+                                    <Button
+                                      variant="outline"
+                                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                      size="sm"
+                                      disabled={isBusy}
+                                      onClick={() => openConnectDialog(sessionName)}
+                                    >
+                                      {connectingSession === sessionName ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                                      disabled={isBusy}
+                                      onClick={() => disconnectWhatsAppSession(sessionName)}
+                                    >
+                                      {loggingOutSessions.has(sessionName) ? <Loader2 className="h-3 w-3 animate-spin" /> : "Disconnect"}
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {!isLoggedIn ? (
-                                  <Button
-                                    variant="outline"
-                                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                                    size="sm"
-                                    disabled={isBusy}
-                                    onClick={() => openConnectDialog(sessionName)}
-                                  >
-                                    {connectingSession === sessionName ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-amber-700 border-amber-200 hover:bg-amber-50"
-                                    disabled={isBusy}
-                                    onClick={() => disconnectWhatsAppSession(sessionName)}
-                                  >
-                                    {loggingOutSessions.has(sessionName) ? <Loader2 className="h-3 w-3 animate-spin" /> : "Disconnect"}
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          );
+                            );
                           });
                         })()}
                       </div>

@@ -40,10 +40,10 @@ const HumanAgents = () => {
   const [usageBySuper, setUsageBySuper] = useState<Record<string, number>>({});
   const [loadingSuperUsage, setLoadingSuperUsage] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent"; phone?: string }>({ 
-    name: "", 
-    email: "", 
-    role: "agent" 
+  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent"; phone?: string }>({
+    name: "",
+    email: "",
+    role: "agent"
   });
   const [enable2FA, setEnable2FA] = useState(false);
   // const [newTeam, setNewTeam] = useState<{ name: string; description: string }>({ 
@@ -103,8 +103,8 @@ const HumanAgents = () => {
   const escapeIlike = (value: string) => value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
 
   // Form validation
-  const isFormValid = newAgent.name.trim() && 
-    newAgent.email.trim() && 
+  const isFormValid = newAgent.name.trim() &&
+    newAgent.email.trim() &&
     (newAgent.role !== 'agent' || selectedSuperForNewAgent);
   // Clustering section removed
 
@@ -173,9 +173,9 @@ const HumanAgents = () => {
       let query = supabase
         .from('v_human_agents')
         .select('*', { count: 'exact' });
-        // if (currentOrgId) {
-        //   query = query.eq('org_id', currentOrgId);
-        // }
+      // if (currentOrgId) {
+      //   query = query.eq('org_id', currentOrgId);
+      // }
 
       const sanitizedSearch = search ? escapeIlike(search) : "";
       if (sanitizedSearch) {
@@ -187,7 +187,7 @@ const HumanAgents = () => {
           role === "master_agent" ? "%master%" : role === "super_agent" ? "%super%" : "%agent%";
         query = query.ilike('role_name', rolePattern);
       }
-      
+
       // Restrict visibility based on viewer's role
       const isMaster = hasRole(ROLES.MASTER_AGENT);
       const isSuper = hasRole(ROLES.SUPER_AGENT);
@@ -229,7 +229,7 @@ const HumanAgents = () => {
         }
         return;
       }
-      
+
       if (invited) {
         if (pendingStatus === "expired") {
           query = query.eq('confirmation_status', 'expired');
@@ -374,59 +374,118 @@ const HumanAgents = () => {
             ) : (
               (!isPending && activeMap
                 ? (() => {
-                    // Group for Active tab
-                    const toLower = (v: any) => String(v || '').toLowerCase();
-                    const isMaster = (r: any) => toLower(r.role_name).includes('master');
-                    const isSuper = (r: any) => toLower(r.role_name).includes('super');
-                    const isAgentOnly = (r: any) => {
-                      const role = toLower(r.role_name);
-                      return role === 'agent' || role === 'agent_only';
-                    };
+                  // Group for Active tab
+                  const toLower = (v: any) => String(v || '').toLowerCase();
+                  const isMaster = (r: any) => toLower(r.role_name).includes('master');
+                  const isSuper = (r: any) => toLower(r.role_name).includes('super');
+                  const isAgentOnly = (r: any) => {
+                    const role = toLower(r.role_name);
+                    return role === 'agent' || role === 'agent_only';
+                  };
 
-                    const masters = rows.filter(isMaster);
-                    const supers = rows.filter(isSuper);
-                    const agentsOnly = rows.filter(isAgentOnly);
-                    const superById: Record<string, any> = Object.fromEntries(supers.map((s: any) => [String(s.user_id), s]));
-                    const assigned: Record<string, any[]> = {};
-                    const unassigned: any[] = [];
-                    for (const a of agentsOnly) {
-                      const sid = activeMap[String(a.user_id)];
-                      if (sid && superById[sid]) {
-                        (assigned[sid] = assigned[sid] || []).push(a);
-                      } else {
-                        unassigned.push(a);
-                      }
+                  const masters = rows.filter(isMaster);
+                  const supers = rows.filter(isSuper);
+                  const agentsOnly = rows.filter(isAgentOnly);
+                  const superById: Record<string, any> = Object.fromEntries(supers.map((s: any) => [String(s.user_id), s]));
+                  const assigned: Record<string, any[]> = {};
+                  const unassigned: any[] = [];
+                  for (const a of agentsOnly) {
+                    const sid = activeMap[String(a.user_id)];
+                    if (sid && superById[sid]) {
+                      (assigned[sid] = assigned[sid] || []).push(a);
+                    } else {
+                      unassigned.push(a);
                     }
+                  }
 
-                    return (
-                      <>
-                        {masters.map((row: any) => {
-                          const primaryRole = 'master_agent' as const;
-                          const stub: AgentWithDetails = {
-                            user_id: String(row.user_id),
-                            email: row.email || '',
-                            display_name: row.agent_name || row.email || 'Unknown',
-                            avatar_url: row.avatar_url || null,
-                            timezone: null as any,
-                            created_at: '',
-                            roles: [primaryRole],
-                            primaryRole: primaryRole,
-                            status: row.is_active ? 'Active' : 'Inactive',
-                            super_agent_id: null
-                          };
-                          return (
-                            <div key={`master-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-blue-50/30">
+                  return (
+                    <>
+                      {masters.map((row: any) => {
+                        const primaryRole = 'master_agent' as const;
+                        const stub: AgentWithDetails = {
+                          user_id: String(row.user_id),
+                          email: row.email || '',
+                          display_name: row.agent_name || row.email || 'Unknown',
+                          avatar_url: row.avatar_url || null,
+                          timezone: null as any,
+                          created_at: '',
+                          roles: [primaryRole],
+                          primaryRole: primaryRole,
+                          status: row.is_active ? 'Active' : 'Inactive',
+                          super_agent_id: null
+                        };
+                        return (
+                          <div key={`master-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-blue-50/30 dark:bg-transparent">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="text-xs bg-blue-100 text-blue-700">{getInitials(stub.display_name || 'U')}</AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium text-blue-600 dark:text-blue-400">{stub.display_name}</span>
+                            </div>
+                            <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                            <div className="flex items-center h-8">
+                              <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Master Agent</Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">—</div>
+                            <div className="flex items-center gap-2">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
+                                    <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
+                                    <span className="text-xs">{stub.status}</span>
+                                    {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-background border z-50">
+                                  <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
+                                <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                              </PermissionGate>
+                              {hasRole(ROLES.MASTER_AGENT) && (
+                                <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                              )}
+                              {canDeleteAgent(stub) && (
+                                <PermissionGate permission={'super_agents.delete'}>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                </PermissionGate>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {supers.map((row: any) => {
+                        const primaryRole = 'super_agent' as const;
+                        const stub: AgentWithDetails = {
+                          user_id: String(row.user_id),
+                          email: row.email || '',
+                          display_name: row.agent_name || row.email || 'Unknown',
+                          avatar_url: row.avatar_url || null,
+                          timezone: null as any,
+                          created_at: '',
+                          roles: [primaryRole],
+                          primaryRole: primaryRole,
+                          status: row.is_active ? 'Active' : 'Inactive',
+                          super_agent_id: null
+                        };
+                        const children = assigned[String(row.user_id)] || [];
+                        return (
+                          <div key={`super-${row.user_id}`} className="">
+                            <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-green-50/30 dark:bg-transparent">
                               <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8">
-                                  <AvatarFallback className="text-xs bg-blue-100 text-blue-700">{getInitials(stub.display_name || 'U')}</AvatarFallback>
-                                </Avatar>
-                                <span className="font-medium text-blue-600">{stub.display_name}</span>
+                                <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-green-100 text-green-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
+                                <span className="font-medium text-green-600 dark:text-green-400">{stub.display_name}</span>
                               </div>
                               <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
                               <div className="flex items-center h-8">
-                                <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Master Agent</Badge>
+                                <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
                               </div>
-                              <div className="text-sm text-muted-foreground">—</div>
+                              <div className="text-sm font-medium">{loadingSuperUsage ? '…' : ((usageBySuper[stub.user_id] ?? 0).toLocaleString())}</div>
                               <div className="flex items-center gap-2">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
@@ -456,325 +515,266 @@ const HumanAgents = () => {
                                 )}
                               </div>
                             </div>
-                          );
-                        })}
 
-                        {supers.map((row: any) => {
-                          const primaryRole = 'super_agent' as const;
-                          const stub: AgentWithDetails = {
-                            user_id: String(row.user_id),
-                            email: row.email || '',
-                            display_name: row.agent_name || row.email || 'Unknown',
-                            avatar_url: row.avatar_url || null,
-                            timezone: null as any,
-                            created_at: '',
-                            roles: [primaryRole],
-                            primaryRole: primaryRole,
-                            status: row.is_active ? 'Active' : 'Inactive',
-                            super_agent_id: null
-                          };
-                          const children = assigned[String(row.user_id)] || [];
-                          return (
-                            <div key={`super-${row.user_id}`} className="">
-                              <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-green-50/30">
-                                <div className="flex items-center gap-3">
-                                  <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-green-100 text-green-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
-                                  <span className="font-medium text-green-600">{stub.display_name}</span>
-                                </div>
-                                <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
-                                <div className="flex items-center h-8">
-                                  <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Super Agent</Badge>
-                                </div>
-                                <div className="text-sm font-medium">{loadingSuperUsage ? '…' : ((usageBySuper[stub.user_id] ?? 0).toLocaleString())}</div>
-                                <div className="flex items-center gap-2">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                        <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
-                                        <span className="text-xs">{stub.status}</span>
-                                        {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent className="bg-background border z-50">
-                                      <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
-                                    <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
-                                  </PermissionGate>
-                                  {hasRole(ROLES.MASTER_AGENT) && (
-                                    <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
-                                  )}
-                                  {canDeleteAgent(stub) && (
-                                    <PermissionGate permission={'super_agents.delete'}>
-                                      <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                    </PermissionGate>
-                                  )}
-                                </div>
-                              </div>
-
-                              {children.map((row: any) => {
-                                const primaryRole = 'agent' as const;
-                                const child: AgentWithDetails = {
-                                  user_id: String(row.user_id),
-                                  email: row.email || '',
-                                  display_name: row.agent_name || row.email || 'Unknown',
-                                  avatar_url: row.avatar_url || null,
-                                  timezone: null as any,
-                                  created_at: '',
-                                  roles: [primaryRole],
-                                  primaryRole: primaryRole,
-                                  status: row.is_active ? 'Active' : 'Inactive',
-                                  super_agent_id: stub.user_id
-                                };
-                                return (
-                                  <div key={`agent-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-gray-50/30 pl-12">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-6 h-6 flex items-center justify-center"><div className="w-4 h-4 border-l-2 border-b-2 border-gray-300 rounded-bl"></div></div>
-                                      <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-gray-100 text-gray-700">{getInitials(child.display_name || 'U')}</AvatarFallback></Avatar>
-                                      <span className="font-medium text-gray-600">{child.display_name}</span>
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">{child.email || '—'}</div>
-                                    <div className="flex items-center h-8">
-                                      <Badge className={`text-xs ${roleBadgeClass(child.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">—</div>
-                                    <div className="flex items-center gap-2">
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={child.primaryRole === 'master_agent'}>
-                                            <div className={`h-2 w-2 rounded-full ${getStatusColor(child.status)}`} />
-                                            <span className="text-xs">{child.status}</span>
-                                            {child.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="bg-background border z-50">
-                                          <DropdownMenuItem onClick={() => handleStatusChange(child.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleStatusChange(child.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
-                                        <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(child)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
-                                      </PermissionGate>
-                                      {hasRole(ROLES.MASTER_AGENT) && (
-                                        <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(child)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
-                                      )}
-                                      {canDeleteAgent(child) && (
-                                        <PermissionGate permission={'super_agents.delete'}>
-                                          <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                        </PermissionGate>
-                                      )}
-                                    </div>
+                            {children.map((row: any) => {
+                              const primaryRole = 'agent' as const;
+                              const child: AgentWithDetails = {
+                                user_id: String(row.user_id),
+                                email: row.email || '',
+                                display_name: row.agent_name || row.email || 'Unknown',
+                                avatar_url: row.avatar_url || null,
+                                timezone: null as any,
+                                created_at: '',
+                                roles: [primaryRole],
+                                primaryRole: primaryRole,
+                                status: row.is_active ? 'Active' : 'Inactive',
+                                super_agent_id: stub.user_id
+                              };
+                              return (
+                                <div key={`agent-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-gray-50/30 dark:bg-transparent pl-12">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-6 h-6 flex items-center justify-center"><div className="w-4 h-4 border-l-2 border-b-2 border-gray-300 rounded-bl"></div></div>
+                                    <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-gray-100 text-gray-700">{getInitials(child.display_name || 'U')}</AvatarFallback></Avatar>
+                                    <span className="font-medium text-gray-600 dark:text-gray-300">{child.display_name}</span>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          );
-                        })}
+                                  <div className="text-sm text-muted-foreground">{child.email || '—'}</div>
+                                  <div className="flex items-center h-8">
+                                    <Badge className={`text-xs ${roleBadgeClass(child.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent</Badge>
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">—</div>
+                                  <div className="flex items-center gap-2">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={child.primaryRole === 'master_agent'}>
+                                          <div className={`h-2 w-2 rounded-full ${getStatusColor(child.status)}`} />
+                                          <span className="text-xs">{child.status}</span>
+                                          {child.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent className="bg-background border z-50">
+                                        <DropdownMenuItem onClick={() => handleStatusChange(child.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleStatusChange(child.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
+                                      <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(child)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                                    </PermissionGate>
+                                    {hasRole(ROLES.MASTER_AGENT) && (
+                                      <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(child)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                                    )}
+                                    {canDeleteAgent(child) && (
+                                      <PermissionGate permission={'super_agents.delete'}>
+                                        <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                      </PermissionGate>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
 
-                        {unassigned.map((row: any) => {
-                          const primaryRole = 'agent' as const;
-                          const stub: AgentWithDetails = {
-                            user_id: String(row.user_id),
-                            email: row.email || '',
-                            display_name: row.agent_name || row.email || 'Unknown',
-                            avatar_url: row.avatar_url || null,
-                            timezone: null as any,
-                            created_at: '',
-                            roles: [primaryRole],
-                            primaryRole: primaryRole,
-                            status: row.is_active ? 'Active' : 'Inactive',
-                            super_agent_id: null
-                          };
-                          return (
-                            <div key={`unassigned-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-orange-50/30">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-orange-100 text-orange-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
-                                <span className="font-medium text-orange-600">{stub.display_name}</span>
-                              </div>
-                              <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
-                              <div className="flex items-center h-8">
-                                <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent (Unassigned)</Badge>
-                              </div>
-                              <div className="text-sm text-muted-foreground">—</div>
-                              <div className="flex items-center gap-2">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                      <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
-                                      <span className="text-xs">{stub.status}</span>
-                                      {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent className="bg-background border z-50">
-                                    <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
-                                </PermissionGate>
-                                {hasRole(ROLES.MASTER_AGENT) && (
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
-                                )}
-                                {canDeleteAgent(stub) && (
-                                  <PermissionGate permission={'super_agents.delete'}>
-                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                                  </PermissionGate>
-                                )}
-                              </div>
+                      {unassigned.map((row: any) => {
+                        const primaryRole = 'agent' as const;
+                        const stub: AgentWithDetails = {
+                          user_id: String(row.user_id),
+                          email: row.email || '',
+                          display_name: row.agent_name || row.email || 'Unknown',
+                          avatar_url: row.avatar_url || null,
+                          timezone: null as any,
+                          created_at: '',
+                          roles: [primaryRole],
+                          primaryRole: primaryRole,
+                          status: row.is_active ? 'Active' : 'Inactive',
+                          super_agent_id: null
+                        };
+                        return (
+                          <div key={`unassigned-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-orange-50/30 dark:bg-transparent">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-orange-100 text-orange-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
+                              <span className="font-medium text-orange-600 dark:text-orange-400">{stub.display_name}</span>
                             </div>
-                          );
-                        })}
-                      </>
-                    );
-                  })()
+                            <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                            <div className="flex items-center h-8">
+                              <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Agent (Unassigned)</Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">—</div>
+                            <div className="flex items-center gap-2">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
+                                    <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
+                                    <span className="text-xs">{stub.status}</span>
+                                    {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-background border z-50">
+                                  <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
+                                <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                              </PermissionGate>
+                              {hasRole(ROLES.MASTER_AGENT) && (
+                                <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                              )}
+                              {canDeleteAgent(stub) && (
+                                <PermissionGate permission={'super_agents.delete'}>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                </PermissionGate>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()
                 : rows.map((row: any) => {
-                const primaryRole = normalizeRoleName(row.role_name);
-                const stub: AgentWithDetails = {
-                  user_id: String(row.user_id),
-                  email: row.email || '',
-                  display_name: row.agent_name || row.email || 'Unknown',
-                  avatar_url: row.avatar_url || null,
-                  timezone: null as any,
-                  created_at: '',
-                  roles: primaryRole ? [primaryRole] : [],
-                  primaryRole: primaryRole,
-                  status: row.is_active ? 'Active' : 'Inactive',
-                  super_agent_id: null
-                };
-                const isExpired = String(row.confirmation_status || '').toLowerCase() === 'expired';
-                return (
-                  <div key={row.user_id} className={`grid gap-4 p-4 items-center hover:bg-muted/30 transition-colors ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,220px,160px,120px,120px]'}`}>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-xs">
-                          {getInitials(stub.display_name || 'U')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{stub.display_name}</span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
-                    <div className="flex items-center h-8">
-                      <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>
-                        {stub.primaryRole === 'master_agent' ? 'Master Agent' : stub.primaryRole === 'super_agent' ? 'Super Agent' : 'Agent'}
-                      </Badge>
-                    </div>
-                    {!isPending && (
-                      <div className="text-sm text-muted-foreground">—</div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      {isPending ? (
-                        <Badge className={`text-xs leading-none h-6 px-2 inline-flex items-center ${isExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{isExpired ? 'Expired' : 'Invited'}</Badge>
-                      ) : (
-                                  <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                              <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
-                              <span className="text-xs">{stub.status}</span>
-                              {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent className="bg-background border z-50">
-                            <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}>
-                              <div className="flex items-center gap-2">
-                                <div className="h-2 w-2 rounded-full bg-green-500" />
-                                Active
-                              </div>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}>
-                              <div className="flex items-center gap-2">
-                                <div className="h-2 w-2 rounded-full bg-gray-400" />
-                                Inactive
-                              </div>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
+                  const primaryRole = normalizeRoleName(row.role_name);
+                  const stub: AgentWithDetails = {
+                    user_id: String(row.user_id),
+                    email: row.email || '',
+                    display_name: row.agent_name || row.email || 'Unknown',
+                    avatar_url: row.avatar_url || null,
+                    timezone: null as any,
+                    created_at: '',
+                    roles: primaryRole ? [primaryRole] : [],
+                    primaryRole: primaryRole,
+                    status: row.is_active ? 'Active' : 'Inactive',
+                    super_agent_id: null
+                  };
+                  const isExpired = String(row.confirmation_status || '').toLowerCase() === 'expired';
+                  return (
+                    <div key={row.user_id} className={`grid gap-4 p-4 items-center hover:bg-muted/30 transition-colors ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,220px,160px,120px,120px]'}`}>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs">
+                            {getInitials(stub.display_name || 'U')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{stub.display_name}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                      <div className="flex items-center h-8">
+                        <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>
+                          {stub.primaryRole === 'master_agent' ? 'Master Agent' : stub.primaryRole === 'super_agent' ? 'Super Agent' : 'Agent'}
+                        </Badge>
+                      </div>
                       {!isPending && (
-                        <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
+                        <div className="text-sm text-muted-foreground">—</div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        {isPending ? (
+                          <Badge className={`text-xs leading-none h-6 px-2 inline-flex items-center ${isExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{isExpired ? 'Expired' : 'Invited'}</Badge>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
+                                <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
+                                <span className="text-xs">{stub.status}</span>
+                                {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-background border z-50">
+                              <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}>
+                                <div className="flex items-center gap-2">
+                                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                                  Active
+                                </div>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}>
+                                <div className="flex items-center gap-2">
+                                  <div className="h-2 w-2 rounded-full bg-gray-400" />
+                                  Inactive
+                                </div>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!isPending && (
+                          <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
+                            <Button
+                              size="sm"
+                              className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
+                              onClick={() => openEditLimits(stub)}
+                              title="Edit limits"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </PermissionGate>
+                        )}
+                        {hasRole(ROLES.MASTER_AGENT) && !isPending && (
                           <Button
                             size="sm"
-                            className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white"
-                            onClick={() => openEditLimits(stub)}
-                            title="Edit limits"
+                            className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => openUsageDetails(stub)}
+                            title="View token usage"
                           >
-                            <Edit className="h-4 w-4" />
+                            <BarChart3 className="h-4 w-4" />
                           </Button>
-                        </PermissionGate>
-                      )}
-                      {hasRole(ROLES.MASTER_AGENT) && !isPending && (
-                        <Button
-                          size="sm"
-                          className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white"
-                          onClick={() => openUsageDetails(stub)}
-                          title="View token usage"
-                        >
-                          <BarChart3 className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {isPending ? (
-                        <>
-                          {isExpired && (
-                            <PermissionGate permission={'super_agents.create'}>
+                        )}
+                        {isPending ? (
+                          <>
+                            {isExpired && (
+                              <PermissionGate permission={'super_agents.create'}>
+                                <Button
+                                  size="sm"
+                                  className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 text-white"
+                                  onClick={async () => {
+                                    try {
+                                      await supabase.functions.invoke('admin-create-user', {
+                                        body: { email: stub.email, full_name: stub.display_name, role: stub.primaryRole || 'agent', reinvite: true },
+                                      });
+                                      toast({ title: 'Reinvite sent', description: `${stub.email}` });
+                                      fetchHumanAgentsPage({ invited: true, page, pageSize });
+                                    } catch (e: any) {
+                                      toast({ title: 'Error', description: e?.message || 'Failed to reinvite', variant: 'destructive' });
+                                    }
+                                  }}
+                                  title="Reinvite user"
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              </PermissionGate>
+                            )}
+                            {canDeleteAgent(stub) && (
+                              <PermissionGate permission={'super_agents.delete'}>
+                                <Button
+                                  size="sm"
+                                  className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
+                                  onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </PermissionGate>
+                            )}
+                          </>
+                        ) : (
+                          canDeleteAgent(stub) && (
+                            <PermissionGate permission={'super_agents.delete'}>
                               <Button
                                 size="sm"
-                                className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 text-white"
-                                onClick={async () => {
-                                  try {
-                                    await supabase.functions.invoke('admin-create-user', {
-                                      body: { email: stub.email, full_name: stub.display_name, role: stub.primaryRole || 'agent', reinvite: true },
-                                    });
-                                    toast({ title: 'Reinvite sent', description: `${stub.email}` });
-                                    fetchHumanAgentsPage({ invited: true, page, pageSize });
-                                  } catch (e: any) {
-                                    toast({ title: 'Error', description: e?.message || 'Failed to reinvite', variant: 'destructive' });
-                                  }
-                                }}
-                                title="Reinvite user"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </Button>
-                            </PermissionGate>
-                          )}
-                          {canDeleteAgent(stub) && (
-                            <PermissionGate permission={'super_agents.delete'}>
-                              <Button 
-                                size="sm" 
                                 className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
                                 onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </PermissionGate>
-                          )}
-                        </>
-                      ) : (
-                        canDeleteAgent(stub) && (
-                          <PermissionGate permission={'super_agents.delete'}>
-                            <Button 
-                              size="sm" 
-                              className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                              onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </PermissionGate>
-                        )
-                      )}
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              }))
+                  );
+                }))
             )}
           </div>
         </div>
@@ -856,7 +856,7 @@ const HumanAgents = () => {
             .eq('user_id', me?.user?.id || '')
             .limit(1);
           orgIdForCreate = (mem as any[])?.[0]?.org_id || null;
-        } catch {}
+        } catch { }
       }
 
       const res = await createAgent({
@@ -874,7 +874,7 @@ const HumanAgents = () => {
       setSelectedSuperForNewAgent(null);
       setEnable2FA(false);
       setIsCreateDialogOpen(false);
-      
+
       toast({
         title: "Success",
         description: "Agent created successfully",
@@ -1039,7 +1039,7 @@ const HumanAgents = () => {
             if (!sid) continue;
             usageMap[sid] = Number((row as any).total_tokens || 0);
           }
-        } catch {}
+        } catch { }
       } else {
         const { start, end } = computeRange(range);
         // Fallback: aggregate by channel.super_agent_id within range
@@ -1100,8 +1100,8 @@ const HumanAgents = () => {
             .limit(1)
             .maybeSingle();
           setCurrentOrgId(mem?.org_id || null);
-        } catch {}
-      } catch {}
+        } catch { }
+      } catch { }
     })();
   }, []);
 
@@ -1161,11 +1161,11 @@ const HumanAgents = () => {
       const [byThread, byUser] = await Promise.all([
         threadIds.length > 0
           ? supabase
-              .from('token_usage_logs')
-              .select('id,total_tokens')
-              .in('thread_id', threadIds)
-              .gte('made_at', start)
-              .lt('made_at', end)
+            .from('token_usage_logs')
+            .select('id,total_tokens')
+            .in('thread_id', threadIds)
+            .gte('made_at', start)
+            .lt('made_at', end)
           : Promise.resolve({ data: [] as any[] } as any),
         supabase
           .from('token_usage_logs')
@@ -1268,7 +1268,7 @@ const HumanAgents = () => {
         <div className="flex items-center gap-2">
           <div className="hidden md:flex items-center gap-2">
             <Label className="text-sm text-muted-foreground">Usage</Label>
-            <Select value={usageRange} onValueChange={async (v)=>{ const r = v as any; setUsageRange(r); try { await fetchSuperUsage(r); } catch {} }}>
+            <Select value={usageRange} onValueChange={async (v) => { const r = v as any; setUsageRange(r); try { await fetchSuperUsage(r); } catch { } }}>
               <SelectTrigger className="h-8 w-[160px] bg-background border">
                 <SelectValue placeholder="Range" />
               </SelectTrigger>
@@ -1311,94 +1311,94 @@ const HumanAgents = () => {
                     <DialogTitle>Create New Agent</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="agent-name">Agent Name <span className="text-red-500">*</span></Label>
-                <Input
-                  id="agent-name"
-                  value={newAgent.name}
-                  onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
-                  placeholder="Enter agent name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agent-email">Email <span className="text-red-500">*</span></Label>
-                <Input
-                  id="agent-email"
-                  type="email"
-                  value={newAgent.email}
-                  onChange={(e) => setNewAgent({ ...newAgent, email: sanitizeEmailInput(e.target.value) })}
-                  onKeyDown={(e) => {
-                    if (e.key === " ") {
-                      e.preventDefault();
-                    }
-                  }}
-                  placeholder="Enter email address"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agent-phone">Phone (Optional)</Label>
-                <Input
-                  id="agent-phone"
-                  type="tel"
-                  value={newAgent.phone || ""}
-                  onChange={(e) => setNewAgent({ ...newAgent, phone: e.target.value })}
-                  placeholder="Enter phone number"
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Checkbox id="agent-2fa" checked={enable2FA} onCheckedChange={(v)=>setEnable2FA(!!v)} />
-                <Label htmlFor="agent-2fa" className="text-sm">Enable email 2FA for this agent</Label>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="agent-role">Role</Label>
-                  {!hasRole(ROLES.MASTER_AGENT) && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Hanya Master Agent yang dapat membuat Super Agent</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-                <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" })}>
-                  <SelectTrigger className="bg-background border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background border z-50">
-                    <SelectItem value="agent">Agent</SelectItem>
-                    {hasRole(ROLES.MASTER_AGENT) && (
-                      <SelectItem value="super_agent">Super Agent</SelectItem>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent-name">Agent Name <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="agent-name"
+                        value={newAgent.name}
+                        onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
+                        placeholder="Enter agent name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent-email">Email <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="agent-email"
+                        type="email"
+                        value={newAgent.email}
+                        onChange={(e) => setNewAgent({ ...newAgent, email: sanitizeEmailInput(e.target.value) })}
+                        onKeyDown={(e) => {
+                          if (e.key === " ") {
+                            e.preventDefault();
+                          }
+                        }}
+                        placeholder="Enter email address"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent-phone">Phone (Optional)</Label>
+                      <Input
+                        id="agent-phone"
+                        type="tel"
+                        value={newAgent.phone || ""}
+                        onChange={(e) => setNewAgent({ ...newAgent, phone: e.target.value })}
+                        placeholder="Enter phone number"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Checkbox id="agent-2fa" checked={enable2FA} onCheckedChange={(v) => setEnable2FA(!!v)} />
+                      <Label htmlFor="agent-2fa" className="text-sm">Enable email 2FA for this agent</Label>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="agent-role">Role</Label>
+                        {!hasRole(ROLES.MASTER_AGENT) && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Hanya Master Agent yang dapat membuat Super Agent</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" })}>
+                        <SelectTrigger className="bg-background border">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background border z-50">
+                          <SelectItem value="agent">Agent</SelectItem>
+                          {hasRole(ROLES.MASTER_AGENT) && (
+                            <SelectItem value="super_agent">Super Agent</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {newAgent.role === 'agent' && (
+                      <div className="space-y-2">
+                        <Label>Attach to Super Agent <span className="text-red-500">*</span></Label>
+                        <Select value={selectedSuperForNewAgent || ''} onValueChange={(v) => setSelectedSuperForNewAgent(v)}>
+                          <SelectTrigger className="bg-background border">
+                            <SelectValue placeholder="Select Super Agent" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-background border z-50">
+                            {agents.filter(a => a.primaryRole === 'super_agent').map(sa => (
+                              <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     )}
-                  </SelectContent>
-                </Select>
-              </div>
-              {newAgent.role === 'agent' && (
-                <div className="space-y-2">
-                  <Label>Attach to Super Agent <span className="text-red-500">*</span></Label>
-                  <Select value={selectedSuperForNewAgent || ''} onValueChange={(v)=>setSelectedSuperForNewAgent(v)}>
-                    <SelectTrigger className="bg-background border">
-                      <SelectValue placeholder="Select Super Agent" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background border z-50">
-                      {agents.filter(a=>a.primaryRole==='super_agent').map(sa=> (
-                        <SelectItem key={sa.user_id} value={sa.user_id}>{sa.display_name || sa.email}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              
-              {/* Help text for required fields */}
-              <div className="text-sm text-muted-foreground">
-                <p>Fields marked with <span className="text-red-500">*</span> are required.</p>
-                {newAgent.role === 'agent' && (
-                  <p className="mt-1">Agents must be attached to a Super Agent.</p>
-                )}
-              </div>
-              
+
+                    {/* Help text for required fields */}
+                    <div className="text-sm text-muted-foreground">
+                      <p>Fields marked with <span className="text-red-500">*</span> are required.</p>
+                      {newAgent.role === 'agent' && (
+                        <p className="mt-1">Agents must be attached to a Super Agent.</p>
+                      )}
+                    </div>
+
                     <div className="flex gap-2 pt-4">
                       <Button
                         onClick={handleCreateAgent}
@@ -1477,7 +1477,7 @@ const HumanAgents = () => {
         )}
       </div>
 
-      <Tabs value={tabValue} onValueChange={(v)=>setTabValue(v as any)} className="space-y-6">
+      <Tabs value={tabValue} onValueChange={(v) => setTabValue(v as any)} className="space-y-6">
         <TabsList className={`grid w-full max-w-md ${isSuperAgent ? 'grid-cols-1' : 'grid-cols-2'}`}>
           <TabsTrigger value="active" className="gap-2">
             <UserCheck className="h-4 w-4" />
@@ -1504,7 +1504,7 @@ const HumanAgents = () => {
       {/* Clustering UI removed per design simplification; nested table above is sufficient */}
 
       {/* Confirm Delete Dialog */}
-      <Dialog open={confirmDeleteOpen} onOpenChange={(v)=>{ if (!deletingAgent) setConfirmDeleteOpen(v); }}>
+      <Dialog open={confirmDeleteOpen} onOpenChange={(v) => { if (!deletingAgent) setConfirmDeleteOpen(v); }}>
         <DialogContent className="sm:max-w-md bg-background border">
           <DialogHeader>
             <DialogTitle>Delete Agent</DialogTitle>
@@ -1605,7 +1605,7 @@ const HumanAgents = () => {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Timeframe</Label>
-              <Select value={dialogRange} onValueChange={async (v) => { const r = v as any as ("7d"|"30d"|"this_month"); setDialogRange(r); if (selectedAgent) await fetchUsage(selectedAgent.user_id, r); }}>
+              <Select value={dialogRange} onValueChange={async (v) => { const r = v as any as ("7d" | "30d" | "this_month"); setDialogRange(r); if (selectedAgent) await fetchUsage(selectedAgent.user_id, r); }}>
                 <SelectTrigger className="bg-background border">
                   <SelectValue />
                 </SelectTrigger>
@@ -1620,24 +1620,24 @@ const HumanAgents = () => {
               <div className="text-sm text-muted-foreground">Total Tokens</div>
               <div className="text-2xl font-bold">{loadingUsage ? '…' : (usageTotal?.toLocaleString() ?? 0)}</div>
             </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-md border p-3">
-              <div className="text-sm text-muted-foreground">Assigned To Agent</div>
-              <div className="text-xl font-semibold">{agentStats?.assignedTo ?? 0}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-md border p-3">
+                <div className="text-sm text-muted-foreground">Assigned To Agent</div>
+                <div className="text-xl font-semibold">{agentStats?.assignedTo ?? 0}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-sm text-muted-foreground">Takeovers Initiated</div>
+                <div className="text-xl font-semibold">{agentStats?.assignedBy ?? 0}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-sm text-muted-foreground">Resolved by Agent</div>
+                <div className="text-xl font-semibold">{agentStats?.resolvedBy ?? 0}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-sm text-muted-foreground">AI→Agent Handovers</div>
+                <div className="text-xl font-semibold">{agentStats?.handoverFromAI ?? 0}</div>
+              </div>
             </div>
-            <div className="rounded-md border p-3">
-              <div className="text-sm text-muted-foreground">Takeovers Initiated</div>
-              <div className="text-xl font-semibold">{agentStats?.assignedBy ?? 0}</div>
-            </div>
-            <div className="rounded-md border p-3">
-              <div className="text-sm text-muted-foreground">Resolved by Agent</div>
-              <div className="text-xl font-semibold">{agentStats?.resolvedBy ?? 0}</div>
-            </div>
-            <div className="rounded-md border p-3">
-              <div className="text-sm text-muted-foreground">AI→Agent Handovers</div>
-              <div className="text-xl font-semibold">{agentStats?.handoverFromAI ?? 0}</div>
-            </div>
-          </div>
             <div className="flex justify-end">
               <Tooltip>
                 <TooltipTrigger asChild>

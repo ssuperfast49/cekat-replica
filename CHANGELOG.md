@@ -1,5 +1,82 @@
 # Change Log
 
+# [0.1.73] FE WEB CEKAT 2026-02-03
+
+### Chat UI Improvements
+
+- **Dark Mode Visibility**: Fixed an issue where user messages appeared with black text on dark backgrounds by adding `dark:prose-invert` for proper contrast inversion.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Human Agent Settings
+
+- **Dark Mode Table Styling**: Removed incorrect white backgrounds from nested agent rows (super agents, unassigned agents) in dark mode and improved text contrast for better readability.
+  - Updated: `src/components/humanagents/HumanAgents.tsx`
+
+# [0.1.72] FE WEB CEKAT 2026-02-02
+
+### AI Agent Settings
+
+- **Granular Save Controls**: Added separate Save buttons for Knowledge Text and Q&A sections, improving the workflow for managing knowledge sources.
+  - Added "Save Text" button to the Text tab.
+  - Added "Save Q&A" button to the Q&A tab.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+
+### Configuration
+
+- **App Origin Update**: Updated the default production `APP_ORIGIN` to `synkaai.netlify.app` for accurate deep linking and embeds.
+  - Updated: `src/config/urls.ts`
+
+# [0.1.71] FE WEB CEKAT 2026-02-02
+
+### Chat UI Improvements
+
+- **Multi-Link Previews**: Messages containing multiple URLs now render individual preview cards for each unique link.
+- **Improved Image Detection**: Image URLs without standard extensions (like `picsum.photos`) are now correctly identified and rendered as images directly.
+- **Centralized Link Logic**: Moved link detection and URL extraction to shared utilities in `src/lib/utils.ts` for consistency.
+  - Updated: `src/pages/LiveChat.tsx`, `src/components/chat/ConversationPage.tsx`, `src/lib/utils.ts`
+
+# [0.1.70] FE WEB CEKAT 2026-02-02
+
+### Live Chat Improvements
+
+- **Message Deduplication Removed**: Intentionally removed the 2000ms window deduplication guard in the LiveChat widget to allow identical messages to be visible in the UI.
+  - Updated: `src/pages/LiveChat.tsx`
+
+# [0.1.69] FE WEB CEKAT 2026-02-02
+
+### Chat UI Improvements
+
+- **Markdown & Multi-line Support**:
+  - Full markdown support using `ReactMarkdown` with `remark-gfm`.
+  - Added `remark-breaks` to ensure single newlines (Shift+Enter) are preserved in chat bubbles.
+  - Upgraded chat inputs to multi-line `Textarea` with `Shift+Enter` for new lines and `Enter` to send.
+- **Rich Media & Link Previews**:
+  - **Auto-Image Detection**: Links to images (.jpg, .png, etc.) now render directly in the chat.
+  - **Rich Previews**: Website links now display a rich preview card with title, description, and site image (WhatsApp-style).
+- **Layout & Style Refinement**:
+  - **Smart Wrapping**: Prevents overflow by breaking long strings (like base64) while keeping natural words together.
+  - **Aesthetics**: Restored premium `rounded-2xl` bubbles and `px-4 py-2` padding.
+  - **Bug Fixes**: Restored sidebar tab layouts, fixed corrupted Tailwind classes, and improved system message centering.
+  - Updated: `src/pages/LiveChat.tsx`, `src/components/chat/ConversationPage.tsx`, `src/components/chat/LinkPreview.tsx`, `src/components/chat/ContactThreadPickerDialog.tsx`, `src/lib/utils.ts`
+
+# [0.1.68] FE WEB CEKAT 2026-01-30
+
+### WhatsApp (WAHA) Integration
+
+- **Connect Button for Empty Sessions**: Added a Connect button when no WhatsApp session is found for a channel.
+  - Previously only showed "No session found for this channel." text without any action button.
+  - Users can now initiate WhatsApp connection directly from the empty state.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
+# [0.1.67] FE WEB CEKAT 2026-01-30
+
+### WhatsApp (WAHA) Integration
+
+- **API Authentication Header**: Added `x-api-key` header to all WAHA API requests for authentication.
+  - All fetch calls to `WAHA_BASE_URL` now include `x-api-key: "asd"` in request headers.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx` (3 locations: session list, session details, QR polling)
+  - Updated: `src/components/platforms/WhatsAppPlatformForm.tsx` (1 location: session status check)
+
 # [0.1.66] FE WEB CEKAT 2026-01-28
 
 ### AI Agent Knowledge Sources
@@ -122,7 +199,7 @@
 - **Removed redundant inbox filter**: Filter modal drops the inbox selector since channel type already scopes conversations, keeping the dialog lean.
   - Updated: `src/components/chat/ChatFilter.tsx`
 
-# [0.1.59] Supabase Reopen Collaborator Reset 2026-01-15
+# [0.1.59] FE WEB CEKAT 2026-01-15
 
 ### Supabase
 
@@ -137,27 +214,27 @@
 - **Handled-by filter cleanup**: Filter uses a truthy check instead of comparing to an empty string, keeping TS types aligned while filtering assigned vs unassigned contacts.
   - Updated: `src/components/contacts/Contacts.tsx`
 
-# [0.1.57] Supabase Policy Cleanup 2026-01-15
+# [0.1.57]  FE WEB CEKAT 2026-01-15
 
 ### Supabase
 
 - Removed main-only public/anon policies on `job`, `job_run_details`, and `storage.objects` to match development. Migration: `20260115123000_remove_extra_public_policies.sql`.
 
-# [0.1.56] Supabase Function Alignment 2026-01-15
+# [0.1.56] FE WEB CEKAT 2026-01-15
 
 ### Supabase
 
 - **takeover_thread matches dev**: returns the updated thread, sets `collaborator_user_id`, `status='pending'`, keeps `assigned_at` if present. Migration: `20260115120000_align_functions.sql`.
 - **reopen_thread_on_user_message matches dev**: reopens closed threads without clearing handled-by fields. Migration: `20260115120000_align_functions.sql`.
 
-# [0.1.55] Supabase Trigger/Function Parity 2026-01-15
+# [0.1.55] FE WEB CEKAT 2026-01-15
 
 ### Supabase (main aligned to development)
 
 - **Trigger parity**: Removed main-only thread triggers and added the channel super-agent sync trigger (`tr_update_contacts_threads_on_channel_super_agent_change`) to mirror development. New migration: `20260115113000_align_triggers.sql`.
 - **Function parity**: Added missing `unassign_thread` SECURITY DEFINER function to main. New migration: `20260115114000_add_unassign_thread.sql`.
 
-# [0.1.54] Supabase Schema 2026-01-15
+# [0.1.54] FE WEB CEKAT 2026-01-15
 
 ### Supabase (schema & RLS alignment)
 
@@ -291,7 +368,7 @@
 
 # [0.1.41] FE WEB CEKAT 2026-01-12
 
-- **Thread controls respect roles & stay real-time**: “Move to Unassigned” now only renders and functions for master/super agents (regular agents get a toast if they try), and the focused conversation keeps subscribing to its thread plus calling `fetchMessages` in a stable hook so status changes surface instantly.
+- **Thread controls respect roles & stay real-time**: “Move to Unassigned” now only renders and functions for master/super agents (regular agents get  toast if they try), and the focused conversation keeps subscribing to its thread plus calling `fetchMessages` in a stable hook so status changes surface instantly.
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
 - **Super agents can edit platform human agents**: The human-agent multi-select inside platform details now bypasses the `channel_agents.update` gate for `super_agent` roles so they can add/remove collaborators without an extra permission.
   - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
@@ -448,7 +525,7 @@
 
 # [0.1.31] FE WEB CEKAT 2026-01-08
 
-- **Live Chat Realtime-Only Sync**: Removed the 2-second polling loop from the live chat widget so updates rely solely on Supabase realtime subscriptions, cutting unnecessary network and memory usage.
+- **Live Chat Realtime-Only Sync**: Removed the 2-second polling loop from the live chat widget so updates rely solely on Supabase realtime subsciptions, cutting unnecessary network and memory usage.
   - Updated: `src/pages/LiveChat.tsx`
 
 # [0.1.30] FE WEB CEKAT 2026-01-07
