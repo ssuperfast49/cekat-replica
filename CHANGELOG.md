@@ -1,5 +1,17 @@
 # Change Log
 
+# [0.1.73] FE WEB CEKAT 2026-02-03
+
+### Chat UI Improvements
+
+- **Dark Mode Visibility**: Fixed an issue where user messages appeared with black text on dark backgrounds by adding `dark:prose-invert` for proper contrast inversion.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Human Agent Settings
+
+- **Dark Mode Table Styling**: Removed incorrect white backgrounds from nested agent rows (super agents, unassigned agents) in dark mode and improved text contrast for better readability.
+  - Updated: `src/components/humanagents/HumanAgents.tsx`
+
 # [0.1.72] FE WEB CEKAT 2026-02-02
 
 ### AI Agent Settings

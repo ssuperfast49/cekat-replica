@@ -266,7 +266,7 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
               {renderBodyWithHighlights()}
             </p>
           ) : (
-            <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""} `}>
+            <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : "dark:prose-invert"} `}>
               <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
                 {message.body || ''}
               </ReactMarkdown>
