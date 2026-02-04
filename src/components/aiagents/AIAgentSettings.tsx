@@ -2330,31 +2330,27 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <h3 className="text-lg font-semibold">Q&A Knowledge</h3>
                     <p className="text-sm text-muted-foreground">Add question–answer pairs the AI can reference.</p>
                   </div>
-<<<<<<< HEAD
-                  <Button
-                    size="sm"
-                    onClick={() => { setKnowledgeTab('qa'); addQaPair(); }}
-                    className="gap-2"
-                    disabled={!isEditing}
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Pair
-                  </Button>
-=======
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={handleSaveQA}
-                      disabled={saving}
+                      disabled={saving || !isEditing}
                       className="gap-2"
                     >
                       <Save className="w-4 h-4" />
                       Save Q&A
                     </Button>
-                    <Button size="sm" onClick={() => { setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
+                    <Button
+                      size="sm"
+                      onClick={() => { setKnowledgeTab('qa'); addQaPair(); }}
+                      className="gap-2"
+                      disabled={!isEditing}
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Pair
+                    </Button>
                   </div>
->>>>>>> 4d9653487f4b6ebe72a39e285cd276c0716a4883
                 </div>
 
                 {qaPairs.length === 0 ? (
