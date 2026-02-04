@@ -1,4 +1,8 @@
 # Change Log
+# [0.1.75] BE/DB CEKAT 2026-02-04
+### Follow-up Message Automation
+- **Fix Conflict Error**: Fixed conflict error in AI Agent Settings.
+
 # [0.1.74] BE/DB CEKAT 2026-02-04
 ### Follow-up Message Automation
 - **Backend Implementation**: Added automated follow-up message system that sends a configured message to users who haven't replied after a set delay.
