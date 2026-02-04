@@ -4,7 +4,7 @@ select cron.schedule(
   '* * * * *',
   $$
   select net.http_post(
-      url:='https://bkynymyhbfrhvwxqqttk.supabase.co/functions/v1/process-followups',
+      url:='https://tgrmxlbnutxpewfmofdx.supabase.co/functions/v1/process-followups',
       headers:='{"Content-Type": "application/json"}'::jsonb,
       body:='{}'::jsonb
   ) as request_id;
