@@ -1,4 +1,15 @@
 # Change Log
+# [0.1.72] BE/DB CEKAT 2026-02-04
+### Follow-up Message Automation
+- **Backend Implementation**: Added automated follow-up message system that sends a configured message to users who haven't replied after a set delay.
+  - New `followup_at` and `is_followup_sent` columns on `threads` table.
+  - Database trigger (`handle_followup_scheduling`) automatically schedules/cancels follow-ups based on message activity.
+  - Edge Function (`process-followups`) runs every minute via `pg_cron` to send due messages.
+- **Safeguards**:
+  - Follow-ups only trigger after confirmed user engagement (ignores empty/Welcome-only threads).
+  - Ignores "test" messages to prevent false positives during development.
+  - Updates: `supabase/migrations/20260202200000_add_followup_scheduling_logic.sql`, `supabase/migrations/20260203160000_refine_followup_trigger.sql`, `supabase/functions/process-followups/index.ts`
+
 # [0.1.71] FE WEB CEKAT 2026-02-02
 ### Chat UI Improvements
 - **Multi-Link Previews**: Messages containing multiple URLs now render individual preview cards for each unique link.

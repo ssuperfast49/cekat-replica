@@ -357,6 +357,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     welcome: true,
     transfer: false
   });
+  const [isEditing, setIsEditing] = useState(profileId ? false : true);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -509,6 +510,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
   const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
   const [messageLimitInput, setMessageLimitInput] = useState<string>("");
+  const [enableFollowupMessage, setEnableFollowupMessage] = useState<boolean>(Boolean((profile as any)?.enable_followup_message ?? false));
+  const [followupMessageDelayInput, setFollowupMessageDelayInput] = useState<string>("");
+  const [followupMessage, setFollowupMessage] = useState<string>(
+    isNewAgent ? "" : (profile as any)?.followup_message || ""
+  );
   const [guideContent, setGuideContent] = useState<string>(
     isNewAgent
       ? ""
@@ -579,6 +585,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     setHistoryLimitInput(history.toString());
     const message = clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX);
     setMessageLimitInput(message.toString());
+
+    const meetupDelay = (profile as any)?.followup_message_delay ?? 60;
+    setFollowupMessageDelayInput(meetupDelay.toString());
   }, [profile?.id]);
 
   const selectedModel = availableModels.find(m => m.id === modelId) || null;
@@ -1219,23 +1228,23 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     ));
   };
 
-  // Update form state when profile data loads (only for existing agents)
-  useEffect(() => {
+  const resetForm = () => {
     if (profile && !isNewAgent) {
       setSystemPrompt(profile.system_prompt || "");
       setWelcomeMessage(profile.welcome_message || "");
       setTransferConditions(profile.transfer_conditions || "");
       setStopAfterHandoff(profile.stop_ai_after_handoff);
-      // model is no longer stored on ai_profiles
-      setAutoResolveMinutesInput(
-        String((profile as any)?.auto_resolve_after_minutes ?? 0)
-      );
+      setAutoResolveMinutesInput(String((profile as any)?.auto_resolve_after_minutes ?? 0));
       setEnableResolve(Boolean((profile as any)?.enable_resolve ?? false));
       setHistoryLimitInput(String(clampNumber((profile as any)?.history_limit ?? HISTORY_PRACTICAL_MAX, 0, HISTORY_HARD_MAX)));
       setReadFileLimit(clampNumber((profile as any)?.read_file_limit ?? 3, 0, READ_FILE_HARD_MAX));
       setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
       setMessageAwait((profile as any)?.message_await ?? 3);
       setMessageLimitInput(String(clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX)));
+      setEnableFollowupMessage(Boolean((profile as any)?.enable_followup_message ?? false));
+      setFollowupMessageDelayInput(String((profile as any)?.followup_message_delay ?? 60));
+      setFollowupMessage(profile.followup_message || "");
+
       const qna = (profile as any)?.qna as ({ q: string; a: string } | { question: string; answer: string })[] | null | undefined;
       if (qna && Array.isArray(qna)) {
         const pairs = qna.map((item, idx) => ({ id: Date.now() + idx, question: (item as any).q ?? (item as any).question ?? '', answer: (item as any).a ?? (item as any).answer ?? '' }));
@@ -1244,6 +1253,11 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       }
       setGuideContent((profile as any)?.guide_content || "");
     }
+  };
+
+  // Update form state when profile data loads (only for existing agents)
+  useEffect(() => {
+    resetForm();
   }, [profile, isNewAgent]);
 
   // For new agents, set initial baseline equal to the starter pair once at mount
@@ -1264,6 +1278,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     const autoResolveMinutes = clampNumber(parseNumericInput(autoResolveMinutesInput), 0, AUTO_RESOLVE_MAX_MINUTES);
     const historyLimit = clampNumber(parseNumericInput(historyLimitInput), 0, historyLimitMax);
     const messageLimit = clampNumber(parseNumericInput(messageLimitInput), 0, MESSAGE_PRACTICAL_MAX);
+    const followupDelay = parseNumericInput(followupMessageDelayInput);
 
     // Context window is no longer user-configurable in the UI.
     // Persist an existing value (or a sensible default) clamped to the selected model capability.
@@ -1294,6 +1309,9 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       message_await: messageAwait,
       message_limit: messageLimit,
       super_agent_id: superAgentId,
+      enable_followup_message: enableFollowupMessage,
+      followup_message_delay: followupDelay,
+      followup_message: followupMessage,
       // Persist Q&A pairs into ai_profiles.qna JSONB
       // Store compact q/a pairs for space efficiency
       qna: qaPairs
@@ -1304,6 +1322,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
     try {
       await saveProfile(updateData);
+      setIsEditing(false);
       toast.success(isNewAgent ? 'AI agent created successfully!' : 'AI agent settings saved successfully!');
     } catch (error) {
       toast.error(isNewAgent ? 'Failed to create AI agent' : 'Failed to save AI agent settings');
@@ -1343,6 +1362,39 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           <Badge variant="secondary">
             Last Updated: {new Date(profile.created_at).toLocaleDateString()}
           </Badge>
+        )}
+
+        {!loading && (
+          <div className="ml-auto flex items-center gap-2">
+            {!isEditing ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+                className="gap-2"
+              >
+                <Edit3 className="w-4 h-4" />
+                Edit Settings
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (isNewAgent) {
+                    onBack();
+                  } else {
+                    setIsEditing(false);
+                    resetForm();
+                  }
+                }}
+                className="gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Cancel
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1441,7 +1493,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <Select
                       value={superAgentId || ''}
                       onValueChange={(value) => setSuperAgentId(value)}
-                      disabled={!isMasterAgent}
+                      disabled={!isMasterAgent || !isEditing}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Choose a super agent" />
@@ -1493,7 +1545,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <Select
                       value={modelId}
                       onValueChange={setModelId}
-                      disabled={availableModels.length === 0}
+                      disabled={availableModels.length === 0 || !isEditing}
                     >
                       <SelectTrigger className="w-full py-3">
                         {selectedModel ? (
@@ -1561,7 +1613,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       <Select
                         value={fallbackModelId}
                         onValueChange={setFallbackModelId}
-                        disabled={fallbackModels.length === 0}
+                        disabled={fallbackModels.length === 0 || !isEditing}
                       >
                         <SelectTrigger className="w-full py-3">
                           {fallbackModels.find(m => m.id === fallbackModelId) ? (
@@ -1628,6 +1680,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       className="min-h-[120px]"
                       value={systemPrompt}
                       onChange={(e) => setSystemPrompt(e.target.value)}
+                      disabled={!isEditing}
                       placeholder={isNewAgent ?
                         "Define your AI's personality, behavior, and capabilities here..." :
                         "Enter system prompt..."
@@ -1672,6 +1725,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       className="min-h-[80px]"
                       value={welcomeMessage}
                       onChange={(e) => setWelcomeMessage(e.target.value)}
+                      disabled={!isEditing}
                       placeholder={isNewAgent ?
                         "This is the first message your AI will send to customers..." :
                         "Enter welcome message..."
@@ -1680,6 +1734,82 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
                     <div className="text-right text-xs text-muted-foreground">
                       {welcomeMessage.length}/5000
+                    </div>
+
+                    <div className="pt-4 border-t space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm font-medium">Auto Follow-up Message</label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Kirim pesan otomatis kedua jika tidak ada aktivitas lebih lanjut dari kedua pihak setelah waktu tertentu.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          <p className="text-xs text-muted-foreground">Automatically nudge users after inactivity</p>
+                        </div>
+                        <Switch
+                          checked={enableFollowupMessage}
+                          onCheckedChange={setEnableFollowupMessage}
+                          disabled={!isEditing}
+                        />
+                      </div>
+
+                      {enableFollowupMessage && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm font-medium text-primary">Inactivity Timeout (seconds)</label>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Waktu dalam detik sebelum pesan tindak lanjut dikirim.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              placeholder="e.g. 120"
+                              value={followupMessageDelayInput}
+                              onChange={(e) => setFollowupMessageDelayInput(sanitizeNumericInput(e.target.value))}
+                              disabled={!isEditing}
+                              className="max-w-[200px]"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm font-medium text-primary">Follow-up Template</label>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Contoh: "Halo, apakah ada yang bisa saya bantu lagi? Jika tidak ada, tiket ini akan saya tutup."</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                            <Textarea
+                              className="min-h-[80px]"
+                              value={followupMessage}
+                              onChange={(e) => setFollowupMessage(e.target.value)}
+                              placeholder="Enter follow-up message..."
+                              disabled={!isEditing}
+                            />
+                            <div className="text-right text-xs text-muted-foreground">
+                              {followupMessage.length}/5000
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1716,6 +1846,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       className="min-h-[80px]"
                       value={transferConditions}
                       onChange={(e) => setTransferConditions(e.target.value)}
+                      disabled={!isEditing}
                       placeholder={isNewAgent ?
                         "Define when your AI should transfer the conversation to a human agent..." :
                         "Enter transfer conditions..."
@@ -1747,7 +1878,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       Stop AI from sending messages after handoff
                     </p>
                   </div>
-                  <Switch checked={stopAfterHandoff} onCheckedChange={setStopAfterHandoff} />
+                  <Switch checked={stopAfterHandoff} onCheckedChange={setStopAfterHandoff} disabled={!isEditing} />
                 </div>
               </Card>
 
@@ -1785,7 +1916,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           </Tooltip>
                         </div>
                         <div className="mt-2">
-                          <Switch checked={enableResolve} onCheckedChange={setEnableResolve} />
+                          <Switch checked={enableResolve} onCheckedChange={setEnableResolve} disabled={!isEditing} />
                         </div>
                       </div>
                       <div className="md:col-span-2">
@@ -1807,8 +1938,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           placeholder="e.g. 30"
                           value={autoResolveMinutesInput}
                           onChange={(e) => handleAutoResolveChange(e.target.value)}
-                          disabled={!enableResolve}
-                          className={`mt-1 ${!enableResolve ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
+                          disabled={!enableResolve || !isEditing}
+                          className={`mt-1 ${(!enableResolve || !isEditing) ? 'opacity-60 cursor-not-allowed bg-muted/50' : ''}`}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
                           {enableResolve ? 'Set 0 to disable auto-resolve.' : 'Enable Auto-resolve to edit this value.'}
@@ -1833,6 +1964,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           placeholder={`Max ${historyLimitMax}`}
                           value={historyLimitInput}
                           onChange={(e) => handleHistoryLimitChange(e.target.value)}
+                          disabled={!isEditing}
                           className="mt-1"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
@@ -1865,7 +1997,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                             </TooltipContent>
                           </Tooltip>
                         </div>
-                        <select value={responseTemperature} onChange={(e) => setResponseTemperature(e.target.value)} className="w-full p-2 border rounded-lg mt-1">
+                        <select value={responseTemperature} onChange={(e) => setResponseTemperature(e.target.value)} disabled={!isEditing} className="w-full p-2 border rounded-lg mt-1">
                           <option value="Conservative">Conservative</option>
                           <option value="Balanced">Balanced</option>
                           <option value="Creative">Creative</option>
@@ -1894,6 +2026,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           placeholder="e.g. 1000"
                           value={messageLimitInput}
                           onChange={(e) => handleMessageLimitChange(e.target.value)}
+                          disabled={!isEditing}
                           className="mt-1"
                         />
                       </div>
@@ -1903,30 +2036,32 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               </Card>
 
               {/* Save Button */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    className="w-full"
-                    onClick={handleSave}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        {isNewAgent ? 'Creating...' : 'Saving...'}
-                      </>
-                    ) : (
-                      <>
-                        <Settings className="w-4 h-4 mr-2" />
-                        {isNewAgent ? 'Create AI Agent' : 'Save AI Settings'}
-                      </>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{isNewAgent ? 'Buat agen AI baru dengan pengaturan ini' : 'Simpan semua pengaturan saat ini'}</p>
-                </TooltipContent>
-              </Tooltip>
+              {isEditing && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      className="w-full"
+                      onClick={handleSave}
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          {isNewAgent ? 'Creating...' : 'Saving...'}
+                        </>
+                      ) : (
+                        <>
+                          <Settings className="w-4 h-4 mr-2" />
+                          {isNewAgent ? 'Create AI Agent' : 'Save AI Settings'}
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{isNewAgent ? 'Buat agen AI baru dengan pengaturan ini' : 'Simpan semua pengaturan saat ini'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
             {/* Chat Preview */}
@@ -1985,6 +2120,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       value={guideContent}
                       onChange={(e) => setGuideContent(e.target.value)}
                       placeholder="Enter your knowledge content here..."
+                      disabled={!isEditing}
                     />
                   </div>
                 </div>
@@ -2065,22 +2201,26 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
 
                 <div
-                  onDrop={canUploadAgentFiles ? handleDrop : undefined}
-                  onDragOver={canUploadAgentFiles ? handleDragOver : undefined}
-                  className={`border border-dashed rounded-lg p-6 text-center ${canUploadAgentFiles ? 'bg-muted/30' : 'bg-muted/50 opacity-70'}`}
+                  onDrop={(canUploadAgentFiles && isEditing) ? handleDrop : undefined}
+                  onDragOver={(canUploadAgentFiles && isEditing) ? handleDragOver : undefined}
+                  className={`border border-dashed rounded-lg p-6 text-center ${(canUploadAgentFiles && isEditing) ? 'bg-muted/30' : 'bg-muted/50 opacity-70 cursor-not-allowed'}`}
                 >
-                  <input ref={fileInputRef} type="file" hidden onChange={handleFileSelect} disabled={!canUploadAgentFiles} />
+                  <input ref={fileInputRef} type="file" hidden onChange={handleFileSelect} disabled={!canUploadAgentFiles || !isEditing} />
                   <FileIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-                  {canUploadAgentFiles ? (
+                  {(canUploadAgentFiles && isEditing) ? (
                     <>
                       <p className="text-sm text-muted-foreground mb-3">Drag & drop a document here, or</p>
-                      <Button size="sm" onClick={() => fileInputRef.current?.click()}>Browse Files</Button>
+                      <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={!isEditing}>Browse Files</Button>
                       <p className="text-xs text-muted-foreground mt-2">Supported: PDF</p>
                     </>
                   ) : (
                     <>
-                      <p className="text-sm text-muted-foreground">You don't have permission to upload files.</p>
-                      <p className="text-xs text-muted-foreground mt-1">Requires permission: ai_agent_files.create</p>
+                      <p className="text-sm text-muted-foreground">
+                        {!isEditing ? 'Enter edit mode to manage files.' : 'You don\'t have permission to upload files.'}
+                      </p>
+                      {isEditing && !canUploadAgentFiles && (
+                        <p className="text-xs text-muted-foreground mt-1">Requires permission: ai_agent_files.create</p>
+                      )}
                     </>
                   )}
                 </div>
@@ -2088,8 +2228,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium">Uploaded Files ({knowledgeFiles.length})</h3>
-                    {knowledgeFiles.length > 0 && (
-                      <Button variant="ghost" size="sm" onClick={clearKnowledgeFiles} className="text-red-600 hover:text-red-700">Clear All</Button>
+                    {knowledgeFiles.length > 0 && isEditing && (
+                      <Button variant="ghost" size="sm" onClick={clearKnowledgeFiles} className="text-red-600 hover:text-red-700" disabled={!isEditing}>Clear All</Button>
                     )}
                   </div>
 
@@ -2105,6 +2245,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                             <Checkbox
                               checked={f.isEnabled ?? true}
                               onCheckedChange={() => handleToggleFile(f.id, f.isEnabled ?? true)}
+                              disabled={!isEditing}
                             />
                             <div className="w-8 h-8 rounded bg-muted flex items-center justify-center"><FileIcon className="w-4 h-4" /></div>
                             <div className="min-w-0">
@@ -2138,7 +2279,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                               variant="ghost"
                               className="text-red-600 hover:text-red-700"
                               onClick={() => removeKnowledgeFile(f.id)}
-                              disabled={f.status === 'uploading'}
+                              disabled={f.status === 'uploading' || !isEditing}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -2156,7 +2297,15 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <h3 className="text-lg font-semibold">Q&A Knowledge</h3>
                     <p className="text-sm text-muted-foreground">Add question–answer pairs the AI can reference.</p>
                   </div>
-                  <Button size="sm" onClick={() => { setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
+                  <Button
+                    size="sm"
+                    onClick={() => { setKnowledgeTab('qa'); addQaPair(); }}
+                    className="gap-2"
+                    disabled={!isEditing}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Pair
+                  </Button>
                 </div>
 
                 {qaPairs.length === 0 ? (
@@ -2171,12 +2320,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                               placeholder="Question"
                               value={pair.question}
                               onChange={(e) => updateQaPair(pair.id, 'question', e.target.value)}
+                              disabled={!isEditing}
                             />
                             <Textarea
                               placeholder="Answer"
                               className="min-h-[80px]"
                               value={pair.answer}
                               onChange={(e) => updateQaPair(pair.id, 'answer', e.target.value)}
+                              disabled={!isEditing}
                             />
                           </div>
                           <div className="flex flex-col gap-2">
@@ -2207,7 +2358,13 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                 Save
                               </Button>
                             )}
-                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => removeQaPair(pair.id)}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => removeQaPair(pair.id)}
+                              disabled={!isEditing}
+                            >
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
@@ -2259,6 +2416,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                         size="sm"
                         onClick={() => deleteFollowup(followup.id)}
                         className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        disabled={!isEditing}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -2269,6 +2427,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       onChange={(e) => updateFollowup(followup.id, 'prompt', e.target.value)}
                       className="min-h-[80px]"
                       placeholder="Enter followup message..."
+                      disabled={!isEditing}
                     />
 
                     <div className="flex items-center gap-4">
@@ -2280,6 +2439,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           onChange={(e) => updateFollowup(followup.id, 'delay', parseInt(e.target.value) || 1)}
                           className="w-20"
                           min="1"
+                          disabled={!isEditing}
                         />
                       </div>
                     </div>
@@ -2307,7 +2467,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
             <div className="flex justify-between">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button onClick={addFollowup} className="gap-2">
+                  <Button onClick={addFollowup} className="gap-2" disabled={!isEditing}>
                     <Plus className="w-4 h-4" />
                     Add Followup
                   </Button>
@@ -2318,7 +2478,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button className="bg-green-600 hover:bg-green-700">
+                  <Button className="bg-green-600 hover:bg-green-700" disabled={!isEditing}>
                     Save Followups
                   </Button>
                 </TooltipTrigger>
