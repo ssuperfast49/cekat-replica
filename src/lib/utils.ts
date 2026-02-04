@@ -34,7 +34,7 @@ export function exportToCsv(filename: string, rows: any[]) {
 export function sanitizeForExport(value: any): any {
   if (typeof value === 'string') {
     let s = value.replace(/([A-Z0-9._%+-]+)@([A-Z0-9.-]+)\.[A-Z]{2,}/gi, '***@***');
-    s = s.replace(/\b\+?\d[\d\s-]{6,}\b/g, m => m.slice(0, Math.max(0, m.length-4)).replace(/\d/g,'*') + m.slice(-4));
+    s = s.replace(/\b\+?\d[\d\s-]{6,}\b/g, m => m.slice(0, Math.max(0, m.length - 4)).replace(/\d/g, '*') + m.slice(-4));
     s = s.replace(/(\d+\.\d+\.\d+)\.\d+/g, '$1.*');
     return s;
   }
@@ -70,7 +70,7 @@ export function generateUuid(): string {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
     }
-  } catch {}
+  } catch { }
   const tpl = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
   return tpl.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -100,13 +100,75 @@ export function onDocumentVisible(callback: () => void) {
     }
     const handler = () => {
       if (document.visibilityState !== 'hidden') {
-        try { document.removeEventListener('visibilitychange', handler); } catch {}
+        try { document.removeEventListener('visibilitychange', handler); } catch { }
         callback();
       }
     };
     document.addEventListener('visibilitychange', handler, { once: true } as any);
   } catch {
     // Fallback to immediate call on any unexpected error
-    try { callback(); } catch {}
+    try { callback(); } catch { }
   }
+}
+
+/**
+ * Strip markdown syntax from text for clean display in previews.
+ * Removes **bold**, *italic*, __underline__, ~~strikethrough~~, `code`, links, etc.
+ */
+export function stripMarkdown(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    // Remove bold/italic markers
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    // Remove strikethrough
+    .replace(/~~(.+?)~~/g, '$1')
+    // Remove inline code
+    .replace(/`(.+?)`/g, '$1')
+    // Remove links [text](url) -> text
+    .replace(/\[(.+?)\]\([^)]+\)/g, '$1')
+    // Remove headers
+    .replace(/^#{1,6}\s+/gm, '')
+    // Clean up extra whitespace
+    .trim();
+}
+
+/**
+ * Detects if a URL is likely an image.
+ * Matches common extensions and known image placeholder patterns.
+ */
+export function isImageLink(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const cleanUrl = url.split('?')[0].split('#')[0];
+
+  // Standard extensions
+  if (/\.(jpg|jpeg|png|webp|avif|gif|svg)$/i.test(cleanUrl)) {
+    return true;
+  }
+
+  // Common placeholder patterns
+  const patterns = [
+    /https?:\/\/picsum\.photos\//,
+    /https?:\/\/placehold\.co\//,
+    /https?:\/\/via\.placeholder\.com\//,
+  ];
+
+  return patterns.some(p => p.test(url));
+}
+
+/**
+ * Extracts unique URLs from a string.
+ */
+export function extractUrls(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const urlRegex = /https?:\/\/[^\s]+/g;
+  const matches = text.match(urlRegex);
+  if (!matches) return [];
+
+  // Remove trailing punctuation like . , ) ] }
+  const cleanMatches = matches.map(url => url.replace(/[.,)\]}]+$/, ''));
+
+  return Array.from(new Set(cleanMatches));
 }
