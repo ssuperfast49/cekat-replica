@@ -20,6 +20,9 @@ export interface AIProfile {
   enable_resolve?: boolean | null;
   guide_content?: string | null;
   history_limit?: number | null;
+  followup_message?: string | null;
+  enable_followup_message?: boolean | null;
+  followup_message_delay?: number | null;
 }
 
 export const useAIProfiles = (profileId?: string) => {
