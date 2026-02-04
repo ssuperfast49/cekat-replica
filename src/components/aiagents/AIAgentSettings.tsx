@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 import { Checkbox } from "@/components/ui/checkbox";
 
-import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus } from "lucide-react";
+import { ArrowLeft, Settings, BookOpen, Zap, Users, BarChart3, Bot, Send, Loader2, RotateCcw, RefreshCw, FileText, Globe, File as FileIcon, HelpCircle, Package, Edit3, Undo, Redo, Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, Trash2, ChevronDown, Plus, Save } from "lucide-react";
 import useAIProfiles, { AIProfile } from "@/hooks/useAIProfiles";
 import { toast } from "@/components/ui/sonner";
 import WEBHOOK_CONFIG from "@/config/webhook";
@@ -1329,6 +1329,33 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     }
   };
 
+  const handleSaveText = async () => {
+    try {
+      await saveProfile({
+        name: agentName,
+        guide_content: guideContent,
+      });
+      toast.success('Knowledge text saved');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save knowledge text');
+    }
+  };
+
+  const handleSaveQA = async () => {
+    try {
+      await saveProfile({
+        name: agentName,
+        qna: qaPairs
+          .filter((p) => (p.question?.trim() || p.answer?.trim()))
+          .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
+      });
+      setInitialQaPairs(JSON.parse(JSON.stringify(qaPairs)));
+      toast.success('Q&A saved');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save Q&A');
+    }
+  };
+
   if (loading && !isNewAgent) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -2126,8 +2153,14 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                 </div>
 
                 {/* Character Count */}
-                <div className="text-right text-xs text-muted-foreground">
-                  {guideContent.length} Characters
+                <div className="flex items-center justify-between mt-2">
+                  <Button onClick={handleSaveText} disabled={saving} size="sm" className="gap-2">
+                    <Save className="w-4 h-4" />
+                    Save Text
+                  </Button>
+                  <div className="text-xs text-muted-foreground">
+                    {guideContent.length} Characters
+                  </div>
                 </div>
               </TabsContent>
 
@@ -2297,6 +2330,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <h3 className="text-lg font-semibold">Q&A Knowledge</h3>
                     <p className="text-sm text-muted-foreground">Add question–answer pairs the AI can reference.</p>
                   </div>
+<<<<<<< HEAD
                   <Button
                     size="sm"
                     onClick={() => { setKnowledgeTab('qa'); addQaPair(); }}
@@ -2306,6 +2340,21 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                     <Plus className="w-4 h-4" />
                     Add Pair
                   </Button>
+=======
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSaveQA}
+                      disabled={saving}
+                      className="gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      Save Q&A
+                    </Button>
+                    <Button size="sm" onClick={() => { setKnowledgeTab('qa'); addQaPair(); }} className="gap-2"><Plus className="w-4 h-4" />Add Pair</Button>
+                  </div>
+>>>>>>> 4d9653487f4b6ebe72a39e285cd276c0716a4883
                 </div>
 
                 {qaPairs.length === 0 ? (
