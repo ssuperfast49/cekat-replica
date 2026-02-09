@@ -71,6 +71,7 @@ export interface Thread {
   additional_data?: any;
   last_msg_at: string;
   created_at: string;
+  handover_reason?: string | null;
 }
 
 export interface Message {
@@ -166,29 +167,29 @@ export const useConversations = () => {
     }, delayMs) as unknown as number;
   };
 
-const computeAssignmentState = (source: {
-  ai_access_enabled?: boolean | null;
-  assigned_at?: string | null;
-  status?: string | null;
-  ai_handoff_at?: string | null;
-  assignee_user_id?: string | null;
-  channel_super_agent_id?: string | null;
-}) => {
+  const computeAssignmentState = (source: {
+    ai_access_enabled?: boolean | null;
+    assigned_at?: string | null;
+    status?: string | null;
+    ai_handoff_at?: string | null;
+    assignee_user_id?: string | null;
+    channel_super_agent_id?: string | null;
+  }) => {
     const status = (source?.status || '').toLowerCase();
     const isClosed = status === 'closed';
 
-  // IMPORTANT: Trust DB status. We do NOT infer "assigned" from ai_handoff_at/ai_access_enabled/etc.
-  // This avoids front-end "status correction" overriding the RPC result (e.g. unassign -> open).
-  const assignedFromSignals = status === 'pending' || status === 'assigned';
+    // IMPORTANT: Trust DB status. We do NOT infer "assigned" from ai_handoff_at/ai_access_enabled/etc.
+    // This avoids front-end "status correction" overriding the RPC result (e.g. unassign -> open).
+    const assignedFromSignals = status === 'pending' || status === 'assigned';
 
     const assigned = !isClosed && assignedFromSignals;
 
-  return {
-    assigned,
-    // Always surface the stored assignee for display (even if the thread is closed or considered unassigned)
-    assignee_user_id: source?.assignee_user_id ?? null,
-    handled_by_super_agent: false,
-  };
+    return {
+      assigned,
+      // Always surface the stored assignee for display (even if the thread is closed or considered unassigned)
+      assignee_user_id: source?.assignee_user_id ?? null,
+      handled_by_super_agent: false,
+    };
   };
 
   // More targeted refresh for specific thread updates
@@ -462,7 +463,7 @@ const computeAssignmentState = (source: {
         ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
         last_msg_at: row.last_msg_at ?? current.last_msg_at,
         assigned: assignment.assigned,
-          account_id: row.account_id ?? current.account_id ?? null,
+        account_id: row.account_id ?? current.account_id ?? null,
       };
       const next = [...prev];
       next[idx] = patched;
@@ -1152,17 +1153,17 @@ const computeAssignmentState = (source: {
         setMessages([]);
         setSelectedThreadId(null);
         setError(null);
-      } catch {}
+      } catch { }
       try {
         // Force a refresh using the currently active filters
         scheduleConversationsRefresh(50);
-      } catch {}
+      } catch { }
     };
     try {
       window.addEventListener(AUTHZ_CHANGED_EVENT as any, handler as any);
-    } catch {}
+    } catch { }
     return () => {
-      try { window.removeEventListener(AUTHZ_CHANGED_EVENT as any, handler as any); } catch {}
+      try { window.removeEventListener(AUTHZ_CHANGED_EVENT as any, handler as any); } catch { }
     };
   }, []);
 
@@ -1392,7 +1393,7 @@ const computeAssignmentState = (source: {
       .subscribe();
 
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try { supabase.removeChannel(channel); } catch { }
     };
   }, [selectedThreadId, fetchMessages]);
 
