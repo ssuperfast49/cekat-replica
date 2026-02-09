@@ -1,4 +1,9 @@
--- Refine handle_followup_scheduling to ignore 'test' messages
+-- Migration: Fix follow-up to only trigger for OPEN (Unassigned) threads
+-- Follow-ups should NOT trigger when:
+-- - status = 'pending' (Assigned tab)
+-- - status = 'closed' (Done tab)
+
+-- Update the trigger function to check thread status
 CREATE OR REPLACE FUNCTION "public"."handle_followup_scheduling"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -8,6 +13,7 @@ DECLARE
   v_enable_followup boolean;
   v_delay int;
   v_user_msg_count int;
+  v_thread_status text;
 BEGIN
     -- Only proceed if thread_id exists
     IF NEW.thread_id IS NULL THEN
@@ -15,7 +21,6 @@ BEGIN
     END IF;
 
     -- LOGIC 1: IF Incoming Message (User) -> Cancel Follow-up
-    -- We check direction='in' OR role='user' OR actor_kind='customer'
     IF (NEW.direction = 'in') OR (NEW.role = 'user') OR (NEW.actor_kind = 'customer') THEN
         UPDATE public.threads
         SET followup_at = NULL,
@@ -28,11 +33,24 @@ BEGIN
     -- LOGIC 2: IF Outgoing Message (Agent/AI) -> Schedule Follow-up (Maybe)
     IF (NEW.direction = 'out') OR (NEW.role IN ('assistant', 'agent')) OR (NEW.actor_kind IN ('agent', 'ai')) THEN
         
+        -- Get thread status first - only schedule for OPEN (Unassigned) threads
+        SELECT status::text INTO v_thread_status FROM public.threads WHERE id = NEW.thread_id;
+        
+        -- Only proceed if thread is OPEN (Unassigned tab)
+        -- Do NOT schedule follow-ups for:
+        --   - 'pending' (Assigned tab) - human agent is handling
+        --   - 'closed' (Done tab) - conversation is resolved
+        IF v_thread_status != 'open' THEN
+            -- Clear any pending follow-up since thread is no longer unassigned
+            UPDATE public.threads
+            SET followup_at = NULL
+            WHERE id = NEW.thread_id;
+            RETURN NEW;
+        END IF;
+        
         -- Get AI profile settings
-        SELECT 
-            c.ai_profile_id 
-        INTO 
-            v_ai_profile_id
+        SELECT c.ai_profile_id 
+        INTO v_ai_profile_id
         FROM public.threads t
         JOIN public.channels c ON c.id = t.channel_id
         WHERE t.id = NEW.thread_id;
@@ -55,10 +73,7 @@ BEGIN
         -- Check if follow-up is enabled
         IF v_enable_followup = true AND v_delay > 0 THEN
              
-             -- CRITICAL CHECK: "Make sure not to add the followup message when theres no message sent yet"
-             -- We count messages that are NOT this new message.
-             -- Refinement: Ignore messages with body 'test' (often used in testing) to prevent false positives.
-             
+             -- Count user messages (ignore 'test' messages)
              SELECT count(*)
              INTO v_user_msg_count
              FROM public.messages
@@ -66,14 +81,14 @@ BEGIN
                AND (direction = 'in' OR role = 'user' OR actor_kind = 'customer')
                AND LOWER(TRIM(body)) != 'test';
              
-             -- If the user has sent at least one valid message (not 'test'), we can schedule the follow-up.
+             -- If user has sent at least one valid message, schedule follow-up
              IF v_user_msg_count > 0 THEN
                  UPDATE public.threads
                  SET followup_at = now() + (v_delay || ' seconds')::interval,
                      is_followup_sent = FALSE
                  WHERE id = NEW.thread_id;
              ELSE
-                 -- User hasn't spoken yet (or only said 'test'). Do NOT schedule follow-up.
+                 -- User hasn't spoken yet. Do NOT schedule follow-up.
                  UPDATE public.threads
                  SET followup_at = NULL
                  WHERE id = NEW.thread_id;

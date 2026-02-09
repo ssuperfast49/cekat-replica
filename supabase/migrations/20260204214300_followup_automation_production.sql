@@ -1,4 +1,26 @@
--- Refine handle_followup_scheduling to ignore 'test' messages
+-- Migration: Follow-up Message Automation for Production
+-- This migration sets up the complete follow-up message automation system.
+-- Apply this to bring PROD to parity with DEV.
+
+-- 1. Add columns to threads table (if not exists)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'threads' AND column_name = 'followup_at'
+    ) THEN
+        ALTER TABLE public.threads ADD COLUMN followup_at TIMESTAMPTZ DEFAULT NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'threads' AND column_name = 'is_followup_sent'
+    ) THEN
+        ALTER TABLE public.threads ADD COLUMN is_followup_sent BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$;
+
+-- 2. Create or replace the trigger function
 CREATE OR REPLACE FUNCTION "public"."handle_followup_scheduling"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -15,7 +37,6 @@ BEGIN
     END IF;
 
     -- LOGIC 1: IF Incoming Message (User) -> Cancel Follow-up
-    -- We check direction='in' OR role='user' OR actor_kind='customer'
     IF (NEW.direction = 'in') OR (NEW.role = 'user') OR (NEW.actor_kind = 'customer') THEN
         UPDATE public.threads
         SET followup_at = NULL,
@@ -29,10 +50,8 @@ BEGIN
     IF (NEW.direction = 'out') OR (NEW.role IN ('assistant', 'agent')) OR (NEW.actor_kind IN ('agent', 'ai')) THEN
         
         -- Get AI profile settings
-        SELECT 
-            c.ai_profile_id 
-        INTO 
-            v_ai_profile_id
+        SELECT c.ai_profile_id 
+        INTO v_ai_profile_id
         FROM public.threads t
         JOIN public.channels c ON c.id = t.channel_id
         WHERE t.id = NEW.thread_id;
@@ -55,10 +74,7 @@ BEGIN
         -- Check if follow-up is enabled
         IF v_enable_followup = true AND v_delay > 0 THEN
              
-             -- CRITICAL CHECK: "Make sure not to add the followup message when theres no message sent yet"
-             -- We count messages that are NOT this new message.
-             -- Refinement: Ignore messages with body 'test' (often used in testing) to prevent false positives.
-             
+             -- Count user messages (ignore 'test' messages)
              SELECT count(*)
              INTO v_user_msg_count
              FROM public.messages
@@ -66,14 +82,14 @@ BEGIN
                AND (direction = 'in' OR role = 'user' OR actor_kind = 'customer')
                AND LOWER(TRIM(body)) != 'test';
              
-             -- If the user has sent at least one valid message (not 'test'), we can schedule the follow-up.
+             -- If user has sent at least one valid message, schedule follow-up
              IF v_user_msg_count > 0 THEN
                  UPDATE public.threads
                  SET followup_at = now() + (v_delay || ' seconds')::interval,
                      is_followup_sent = FALSE
                  WHERE id = NEW.thread_id;
              ELSE
-                 -- User hasn't spoken yet (or only said 'test'). Do NOT schedule follow-up.
+                 -- User hasn't spoken yet. Do NOT schedule follow-up.
                  UPDATE public.threads
                  SET followup_at = NULL
                  WHERE id = NEW.thread_id;
@@ -90,6 +106,35 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
+-- 3. Create the trigger (drop first if exists to ensure clean state)
+DROP TRIGGER IF EXISTS tr_handle_followup_scheduling ON public.messages;
+CREATE TRIGGER tr_handle_followup_scheduling
+    AFTER INSERT ON public.messages
+    FOR EACH ROW
+    EXECUTE FUNCTION handle_followup_scheduling();
+
+-- 4. Enable required extensions (idempotent)
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+
+-- 5. Schedule the cron job (PROD URL)
+-- First unschedule if exists
+SELECT cron.unschedule('invoke-process-followups') 
+WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'invoke-process-followups');
+
+-- Schedule to run every minute
+SELECT cron.schedule(
+  'invoke-process-followups',
+  '* * * * *',
+  $$
+  select net.http_post(
+      url:='https://tgrmxlbnutxpewfmofdx.supabase.co/functions/v1/process-followups',
+      headers:='{"Content-Type": "application/json"}'::jsonb,
+      body:='{}'::jsonb
+  ) as request_id;
+  $$
+);
 
 -- Reload schema cache
 NOTIFY pgrst, 'reload schema';

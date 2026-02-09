@@ -510,8 +510,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [responseTemperature, setResponseTemperature] = useState<string>((profile as any)?.response_temperature ?? 'Balanced');
   const [messageAwait, setMessageAwait] = useState<number>((profile as any)?.message_await ?? 3);
   const [messageLimitInput, setMessageLimitInput] = useState<string>("");
-  const [enableFollowupMessage, setEnableFollowupMessage] = useState<boolean>(Boolean((profile as any)?.enable_followup_message ?? false));
-  const [followupMessageDelayInput, setFollowupMessageDelayInput] = useState<string>("");
+  // Unassigned (open) follow-up settings
+  const [enableFollowupUnassigned, setEnableFollowupUnassigned] = useState<boolean>(Boolean((profile as any)?.enable_followup_message ?? false));
+  const [followupDelayUnassignedInput, setFollowupDelayUnassignedInput] = useState<string>("");
+  // Assigned (pending) follow-up settings
+  const [enableFollowupAssigned, setEnableFollowupAssigned] = useState<boolean>(Boolean((profile as any)?.enable_followup_assigned ?? false));
+  const [followupDelayAssignedInput, setFollowupDelayAssignedInput] = useState<string>("");
   const [followupMessage, setFollowupMessage] = useState<string>(
     isNewAgent ? "" : (profile as any)?.followup_message || ""
   );
@@ -586,8 +590,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     const message = clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX);
     setMessageLimitInput(message.toString());
 
-    const meetupDelay = (profile as any)?.followup_message_delay ?? 60;
-    setFollowupMessageDelayInput(meetupDelay.toString());
+    const delayUnassigned = (profile as any)?.followup_message_delay ?? 60;
+    setFollowupDelayUnassignedInput(delayUnassigned.toString());
+    const delayAssigned = (profile as any)?.followup_delay_assigned ?? 60;
+    setFollowupDelayAssignedInput(delayAssigned.toString());
   }, [profile?.id]);
 
   const selectedModel = availableModels.find(m => m.id === modelId) || null;
@@ -1241,8 +1247,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       setResponseTemperature((profile as any)?.response_temperature ?? 'Balanced');
       setMessageAwait((profile as any)?.message_await ?? 3);
       setMessageLimitInput(String(clampNumber((profile as any)?.message_limit ?? MESSAGE_PRACTICAL_MAX, 0, MESSAGE_PRACTICAL_MAX)));
-      setEnableFollowupMessage(Boolean((profile as any)?.enable_followup_message ?? false));
-      setFollowupMessageDelayInput(String((profile as any)?.followup_message_delay ?? 60));
+      setEnableFollowupUnassigned(Boolean((profile as any)?.enable_followup_message ?? false));
+      setFollowupDelayUnassignedInput(String((profile as any)?.followup_message_delay ?? 60));
+      setEnableFollowupAssigned(Boolean((profile as any)?.enable_followup_assigned ?? false));
+      setFollowupDelayAssignedInput(String((profile as any)?.followup_delay_assigned ?? 60));
       setFollowupMessage(profile.followup_message || "");
 
       const qna = (profile as any)?.qna as ({ q: string; a: string } | { question: string; answer: string })[] | null | undefined;
@@ -1278,7 +1286,8 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     const autoResolveMinutes = clampNumber(parseNumericInput(autoResolveMinutesInput), 0, AUTO_RESOLVE_MAX_MINUTES);
     const historyLimit = clampNumber(parseNumericInput(historyLimitInput), 0, historyLimitMax);
     const messageLimit = clampNumber(parseNumericInput(messageLimitInput), 0, MESSAGE_PRACTICAL_MAX);
-    const followupDelay = parseNumericInput(followupMessageDelayInput);
+    const followupDelayUnassigned = parseNumericInput(followupDelayUnassignedInput);
+    const followupDelayAssigned = parseNumericInput(followupDelayAssignedInput);
 
     // Context window is no longer user-configurable in the UI.
     // Persist an existing value (or a sensible default) clamped to the selected model capability.
@@ -1309,8 +1318,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       message_await: messageAwait,
       message_limit: messageLimit,
       super_agent_id: superAgentId,
-      enable_followup_message: enableFollowupMessage,
-      followup_message_delay: followupDelay,
+      enable_followup_message: enableFollowupUnassigned,
+      followup_message_delay: followupDelayUnassigned,
+      enable_followup_assigned: enableFollowupAssigned,
+      followup_delay_assigned: followupDelayAssigned,
       followup_message: followupMessage,
       // Persist Q&A pairs into ai_profiles.qna JSONB
       // Store compact q/a pairs for space efficiency
@@ -1777,18 +1788,53 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                               </TooltipContent>
                             </Tooltip>
                           </div>
-                          <p className="text-xs text-muted-foreground">Automatically nudge users after inactivity</p>
+                          <p className="text-xs text-muted-foreground">Automatically nudge users after inactivity (configure separately for Unassigned and Assigned threads)</p>
                         </div>
-                        <Switch
-                          checked={enableFollowupMessage}
-                          onCheckedChange={setEnableFollowupMessage}
-                          disabled={!isEditing}
-                        />
                       </div>
 
-                      {enableFollowupMessage && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                          <div className="space-y-2">
+                      {/* Shared Follow-up Message Template */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-medium text-primary">Follow-up Template</label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Contoh: "Halo, apakah ada yang bisa saya bantu lagi? Jika tidak ada, tiket ini akan saya tutup."</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Textarea
+                          className="min-h-[80px]"
+                          value={followupMessage}
+                          onChange={(e) => setFollowupMessage(e.target.value)}
+                          placeholder="Enter follow-up message (shared for both Unassigned and Assigned)..."
+                          disabled={!isEditing}
+                        />
+                        <div className="text-right text-xs text-muted-foreground">
+                          {followupMessage.length}/5000
+                        </div>
+                      </div>
+
+                      {/* Unassigned Follow-up Settings */}
+                      <div className="border rounded-lg p-4 space-y-4 bg-orange-50/30 dark:bg-orange-950/10">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm font-medium">Unassigned Threads</label>
+                              <span className="text-xs px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300">AI Handling</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Trigger follow-up when AI is handling the conversation</p>
+                          </div>
+                          <Switch
+                            checked={enableFollowupUnassigned}
+                            onCheckedChange={setEnableFollowupUnassigned}
+                            disabled={!isEditing}
+                          />
+                        </div>
+                        {enableFollowupUnassigned && (
+                          <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
                             <div className="flex items-center gap-2">
                               <label className="text-sm font-medium text-primary">Inactivity Timeout (seconds)</label>
                               <Tooltip>
@@ -1796,7 +1842,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                                   <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>Waktu dalam detik sebelum pesan tindak lanjut dikirim.</p>
+                                  <p>Waktu dalam detik sebelum pesan tindak lanjut dikirim untuk percakapan Unassigned.</p>
                                 </TooltipContent>
                               </Tooltip>
                             </div>
@@ -1805,38 +1851,57 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                               inputMode="numeric"
                               pattern="[0-9]*"
                               placeholder="e.g. 120"
-                              value={followupMessageDelayInput}
-                              onChange={(e) => setFollowupMessageDelayInput(sanitizeNumericInput(e.target.value))}
+                              value={followupDelayUnassignedInput}
+                              onChange={(e) => setFollowupDelayUnassignedInput(sanitizeNumericInput(e.target.value))}
                               disabled={!isEditing}
                               className="max-w-[200px]"
                             />
                           </div>
+                        )}
+                      </div>
 
-                          <div className="space-y-2">
+                      {/* Assigned Follow-up Settings */}
+                      <div className="border rounded-lg p-4 space-y-4 bg-blue-50/30 dark:bg-blue-950/10">
+                        <div className="flex items-center justify-between">
+                          <div>
                             <div className="flex items-center gap-2">
-                              <label className="text-sm font-medium text-primary">Follow-up Template</label>
+                              <label className="text-sm font-medium">Assigned Threads</label>
+                              <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">Agent Handling</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Trigger follow-up when a human agent is handling the conversation</p>
+                          </div>
+                          <Switch
+                            checked={enableFollowupAssigned}
+                            onCheckedChange={setEnableFollowupAssigned}
+                            disabled={!isEditing}
+                          />
+                        </div>
+                        {enableFollowupAssigned && (
+                          <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm font-medium text-primary">Inactivity Timeout (seconds)</label>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>Contoh: "Halo, apakah ada yang bisa saya bantu lagi? Jika tidak ada, tiket ini akan saya tutup."</p>
+                                  <p>Waktu dalam detik sebelum pesan tindak lanjut dikirim untuk percakapan Assigned.</p>
                                 </TooltipContent>
                               </Tooltip>
                             </div>
-                            <Textarea
-                              className="min-h-[80px]"
-                              value={followupMessage}
-                              onChange={(e) => setFollowupMessage(e.target.value)}
-                              placeholder="Enter follow-up message..."
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              placeholder="e.g. 300"
+                              value={followupDelayAssignedInput}
+                              onChange={(e) => setFollowupDelayAssignedInput(sanitizeNumericInput(e.target.value))}
                               disabled={!isEditing}
+                              className="max-w-[200px]"
                             />
-                            <div className="text-right text-xs text-muted-foreground">
-                              {followupMessage.length}/5000
-                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2542,7 +2607,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </div >
   );
 };
 

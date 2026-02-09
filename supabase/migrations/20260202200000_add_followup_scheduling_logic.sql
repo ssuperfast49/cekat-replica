@@ -63,7 +63,7 @@ BEGIN
         -- Agent/AI replied, schedule follow-up if enabled
         IF v_enable_followup = true AND v_delay > 0 THEN
              UPDATE public.threads
-             SET followup_at = now() + (v_delay || ' minutes')::interval,
+             SET followup_at = now() + (v_delay || ' seconds')::interval,
                  is_followup_sent = FALSE
              WHERE id = NEW.thread_id;
         ELSE

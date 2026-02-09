@@ -1,10 +1,47 @@
 # Change Log
-# [0.1.75] BE/DB CEKAT 2026-02-04
+
+# [0.1.78] FE/BE/DB CEKAT 2026-02-09
+### Follow-up Message Automation - Separate Settings
+- **Separate Unassigned & Assigned Settings**: Follow-up messages can now be configured independently for:
+  - **Unassigned Threads** (status = `open`) - When AI is handling
+  - **Assigned Threads** (status = `pending`) - When human agent is handling
+- Each has its own enable switch and inactivity timeout (seconds)
+- Shared message template for both
+- **UI**: Updated `src/components/aiagents/AIAgentSettings.tsx` with dual panels (orange for Unassigned, blue for Assigned)
+- **Database**: Added `enable_followup_assigned` and `followup_delay_assigned` columns to `ai_profiles`
+- **Migration**: `supabase/migrations/20260209194800_separate_followup_settings.sql`
+- **Edge Function**: Updated `process-followups` to handle both `open` and `pending` statuses
+
+# [0.1.77] BE/DB CEKAT 2026-02-09
 ### Follow-up Message Automation
+- **Status Filter Fix**: Follow-up messages now only trigger for **Unassigned** (status = `open`) threads.
+  - Follow-ups will NOT be scheduled when a thread is Assigned (`pending`) or Done (`closed`).
+  - Clears any pending follow-up when thread status changes from open.
+  - Migration: `supabase/migrations/20260209192200_followup_only_open_threads.sql`
+  - Updated: `supabase/functions/process-followups/index.ts`
+
+# [0.1.76] FE WEB CEKAT 2026-02-06
+
+### Chat UI Improvements
+
+- **Handover Reason Display**: Added "Handover Reason" field to the Conversation Details panel.
+  - Displays the reason for agent handover (e.g., from AI to human).
+  - Includes text truncation and a tooltip for long reasons to preserve layout.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useConversations.ts`
+- **Move to Unassigned Logic**:
+  - Unassigning a thread now explicitly clears `ai_handoff_at` and `handover_reason` fields to ensure a clean state.
+  - Updated: `supabase/migrations/20260206163000_update_unassign_thread_clear_handover.sql`
+
+# [0.1.75] BE/DB CEKAT 2026-02-04
+
+### Follow-up Message Automation
+
 - **Fix Conflict Error**: Fixed conflict error in AI Agent Settings.
 
 # [0.1.74] BE/DB CEKAT 2026-02-04
+
 ### Follow-up Message Automation
+
 - **Backend Implementation**: Added automated follow-up message system that sends a configured message to users who haven't replied after a set delay.
   - New `followup_at` and `is_followup_sent` columns on `threads` table.
   - Database trigger (`handle_followup_scheduling`) automatically schedules/cancels follow-ups based on message activity.
