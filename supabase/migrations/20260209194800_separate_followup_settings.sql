@@ -8,9 +8,9 @@ ADD COLUMN IF NOT EXISTS followup_delay_assigned INTEGER DEFAULT 0;
 
 -- Add comments for clarity
 COMMENT ON COLUMN public.ai_profiles.enable_followup_message IS 'Enable follow-up for Unassigned (open) threads';
-COMMENT ON COLUMN public.ai_profiles.followup_message_delay IS 'Delay in minutes for Unassigned thread follow-up';
+COMMENT ON COLUMN public.ai_profiles.followup_message_delay IS 'Delay in seconds for Unassigned thread follow-up';
 COMMENT ON COLUMN public.ai_profiles.enable_followup_assigned IS 'Enable follow-up for Assigned (pending) threads';
-COMMENT ON COLUMN public.ai_profiles.followup_delay_assigned IS 'Delay in minutes for Assigned thread follow-up';
+COMMENT ON COLUMN public.ai_profiles.followup_delay_assigned IS 'Delay in seconds for Assigned thread follow-up';
 COMMENT ON COLUMN public.ai_profiles.followup_message IS 'Shared follow-up message text for both Unassigned and Assigned';
 
 -- Update the trigger function to support both statuses
@@ -105,7 +105,7 @@ BEGIN
              -- If user has sent at least one valid message, schedule follow-up
              IF v_user_msg_count > 0 THEN
                  UPDATE public.threads
-                 SET followup_at = now() + (v_delay || ' minutes')::interval,
+                 SET followup_at = now() + (v_delay || ' seconds')::interval,
                      is_followup_sent = FALSE
                  WHERE id = NEW.thread_id;
              ELSE

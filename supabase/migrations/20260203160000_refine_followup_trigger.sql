@@ -69,7 +69,7 @@ BEGIN
              -- If the user has sent at least one message, we can schedule the follow-up.
              IF v_user_msg_count > 0 THEN
                  UPDATE public.threads
-                 SET followup_at = now() + (v_delay || ' minutes')::interval,
+                 SET followup_at = now() + (v_delay || ' seconds')::interval,
                      is_followup_sent = FALSE
                  WHERE id = NEW.thread_id;
              ELSE
