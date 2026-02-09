@@ -1,5 +1,25 @@
 # Change Log
 
+# [0.1.78] FE/BE/DB CEKAT 2026-02-09
+### Follow-up Message Automation - Separate Settings
+- **Separate Unassigned & Assigned Settings**: Follow-up messages can now be configured independently for:
+  - **Unassigned Threads** (status = `open`) - When AI is handling
+  - **Assigned Threads** (status = `pending`) - When human agent is handling
+- Each has its own enable switch and inactivity timeout (seconds)
+- Shared message template for both
+- **UI**: Updated `src/components/aiagents/AIAgentSettings.tsx` with dual panels (orange for Unassigned, blue for Assigned)
+- **Database**: Added `enable_followup_assigned` and `followup_delay_assigned` columns to `ai_profiles`
+- **Migration**: `supabase/migrations/20260209194800_separate_followup_settings.sql`
+- **Edge Function**: Updated `process-followups` to handle both `open` and `pending` statuses
+
+# [0.1.77] BE/DB CEKAT 2026-02-09
+### Follow-up Message Automation
+- **Status Filter Fix**: Follow-up messages now only trigger for **Unassigned** (status = `open`) threads.
+  - Follow-ups will NOT be scheduled when a thread is Assigned (`pending`) or Done (`closed`).
+  - Clears any pending follow-up when thread status changes from open.
+  - Migration: `supabase/migrations/20260209192200_followup_only_open_threads.sql`
+  - Updated: `supabase/functions/process-followups/index.ts`
+
 # [0.1.76] FE WEB CEKAT 2026-02-06
 
 ### Chat UI Improvements

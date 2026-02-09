@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
       `)
             .lte("followup_at", now)
             .eq("is_followup_sent", false)
+            .in("status", ["open", "pending"])  // Process both Unassigned (open) AND Assigned (pending) threads
             .not("followup_at", "is", null);
 
         if (error) throw error;
