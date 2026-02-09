@@ -1764,6 +1764,23 @@ export default function ConversationPage() {
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Handled By</span><span>{handledById ? (labelForUserId(handledById) || '—') : '—'}</span></div>
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved By</span><span>{(selectedConversation as any).resolved_by_name || '—'}</span></div>
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">AI Handoff At</span><span>{(selectedConversation as any).ai_handoff_at ? new Date((selectedConversation as any).ai_handoff_at).toLocaleString() : '—'}</span></div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground shrink-0">Handover Reason</span>
+                    {selectedConversation.handover_reason ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="truncate max-w-[150px] text-right border-b border-dotted border-muted-foreground/50 cursor-help">
+                            {selectedConversation.handover_reason}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[280px]">
+                          <p className="text-xs">{selectedConversation.handover_reason}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned At</span><span>{(selectedConversation as any).assigned_at ? new Date((selectedConversation as any).assigned_at).toLocaleString() : '—'}</span></div>
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Created At</span><span>{selectedConversation.created_at ? new Date(selectedConversation.created_at).toLocaleString() : '—'}</span></div>
                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Resolved At</span><span>{(selectedConversation as any).resolved_at ? new Date((selectedConversation as any).resolved_at).toLocaleString() : '—'}</span></div>
