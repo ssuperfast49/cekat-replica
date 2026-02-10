@@ -79,7 +79,7 @@ export interface Message {
   thread_id: string;
   direction: 'in' | 'out' | null;
   role: 'user' | 'assistant' | 'agent' | 'system';
-  type: 'text' | 'image' | 'file' | 'voice' | 'event' | 'note';
+  type: 'text' | 'image' | 'video' | 'file' | 'voice' | 'event' | 'note';
   body: string | null;
   payload: any | null;
   actor_kind: 'customer' | 'agent' | 'ai' | 'system' | null;
@@ -89,6 +89,7 @@ export interface Message {
   edited_at: string | null;
   edit_reason: string | null;
   created_at: string;
+  file_link?: string | null;
 }
 
 export interface ConversationWithDetails extends Thread {
@@ -498,7 +499,8 @@ export const useConversations = () => {
           in_reply_to,
           edited_at,
           edit_reason,
-          created_at
+          created_at,
+          file_link
         `)
         .eq('thread_id', threadId)
         .order('seq', { ascending: true });

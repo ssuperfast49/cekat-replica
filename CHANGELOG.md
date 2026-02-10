@@ -1,5 +1,34 @@
 # Change Log
 
+# [0.1.80] FE/DB CEKAT 2026-02-10
+### Chat Attachments Improvements & Fixes
+- **Persistence Fix**: Solved critical issue where file attachments were not persisting. 
+  - Frontend now explicitly updates `file_link` and `type` in `messages` table after webhook creation.
+  - Added retry logic to ensure message exists before update.
+- **Video Support**: Added full support for video attachments.
+  - Database: Added `'video'` to `message_type` enum.
+  - UI: Video player support in chat and agent dashboard.
+- **UI Enhancements**:
+  - **Bubble-free Media**: Images and videos now render as standalone elements outside the chat bubble.
+  - **Image Preview Modal**: Added `MediaViewerModal` for immersive image viewing (pop-up instead of new tab).
+  - **Smart Type Inference**: Auto-detects attachment type from URL extension to fix rendering for legacy/stale messages.
+- **Security (RLS)**: Added RLS policies allowing anon (web widget) and authenticated users to update `file_link` on their own messages.
+- **Files**: `LiveChat.tsx`, `ConversationPage.tsx`, `FileUploadButton.tsx`, `MediaViewerModal.tsx`
+
+# [0.1.79] FE/DB CEKAT 2026-02-10
+### File Attachment Support
+- **File Attachments**: Added WhatsApp-like file attachment support to all chat interfaces:
+  - **LiveChat** - End-user chat widget
+  - **ConversationPage** - Agent inbox message viewing
+  - **ChatPreview** - AI Agent Settings demo chat
+- **New Component**: `FileUploadButton.tsx` with upload progress 
+- **Storage Bucket**: Created `chat-attachments` (10MB limit)
+  - Images: jpeg, png, gif, webp
+  - Documents: PDF
+  - Media: mp4, mp3, ogg
+- **Database**: Added `file_link` column to `messages` table
+- **Migration**: `supabase/migrations/20260210010000_chat_attachments.sql`
+
 # [0.1.78] FE/BE/DB CEKAT 2026-02-09
 ### Follow-up Message Automation - Separate Settings
 - **Separate Unassigned & Assigned Settings**: Follow-up messages can now be configured independently for:

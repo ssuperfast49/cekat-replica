@@ -19,6 +19,7 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { LinkPreview } from "@/components/chat/LinkPreview";
 import { isImageLink, extractUrls } from "@/lib/utils";
+import { FileUploadButton, AttachmentRenderer, StagedFilePreview, uploadFileToStorage, type UploadedFile, type StagedFile } from "@/components/chat/FileUploadButton";
 
 declare global {
   interface Window {
@@ -36,10 +37,12 @@ export default function LiveChat() {
   // Support either :platform_id or :platformId param
   const pid = useMemo(() => platform_id || platformId || "unknown", [platform_id, platformId]);
 
-  type ChatMessage = { id: string; role: "user" | "assistant"; body: string; at: string; order: number; streaming?: boolean };
+  type ChatMessage = { id: string; role: "user" | "assistant"; body: string; at: string; order: number; streaming?: boolean; type?: "text" | "image" | "video" | "file" | "voice"; file_link?: string };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
+  const [stagedFile, setStagedFile] = useState<StagedFile | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [booting, setBooting] = useState(true);
   const [accountId, setAccountId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -297,7 +300,7 @@ export default function LiveChat() {
     if (!threadId) return;
     const { data } = await supabase
       .from('messages')
-      .select('id, role, body, created_at')
+      .select('id, role, body, created_at, file_link, type')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
     if (Array.isArray(data)) {
@@ -444,26 +447,43 @@ export default function LiveChat() {
         }
 
         if (role === 'user') {
-          // Match real user row to any pending optimistic temp message with the same body,
-          // even if the backend response arrives much later (e.g., after AI finishes).
+          // Match real user row to any pending optimistic temp message.
+          // For attachment messages, match by file_link (body may differ between optimistic and DB).
+          // For text-only messages, match by body text.
           const incomingAt = new Date(r.created_at || Date.now()).getTime();
           let bestKey: string | null = null;
           let bestOrder: number | null = null;
           let bestDiff = Number.POSITIVE_INFINITY;
+          let bestTempFileLink: string | undefined = undefined;
+          let bestTempType: string | undefined = undefined;
           for (const [key, value] of map.entries()) {
             if (!key.startsWith('temp-')) continue;
             if (value.role !== 'user') continue;
-            if ((value.body || '').trim() !== (r.body || '').trim()) continue;
+
+            // For attachment messages: match by file_link if both have one
+            const isAttachmentMatch = value.file_link && r.file_link && value.file_link === r.file_link;
+            // For attachment messages where DB body differs: also match if temp has file_link and timestamp is close
+            const isAttachmentTimingMatch = value.file_link && !r.file_link;
+            // For text-only messages: match by body
+            const isBodyMatch = (value.body || '').trim() === (r.body || '').trim();
+
+            if (!isAttachmentMatch && !isBodyMatch) continue;
+
             const tempAt = new Date(value.at).getTime();
             const diff = Number.isFinite(tempAt) ? Math.abs(incomingAt - tempAt) : 0;
             if (diff < bestDiff) {
               bestDiff = diff;
               bestKey = key;
               bestOrder = value.order ?? null;
+              bestTempFileLink = value.file_link;
+              bestTempType = value.type;
             }
           }
           if (bestKey) {
             inheritedOrder = bestOrder;
+            // Preserve file_link and type from the temp message if DB row doesn't have them
+            if (!r.file_link && bestTempFileLink) r.file_link = bestTempFileLink;
+            if (!r.type && bestTempType) r.type = bestTempType;
             map.delete(bestKey);
             lastOptimisticIdRef.current = null;
             changed = true;
@@ -483,6 +503,15 @@ export default function LiveChat() {
             existing.at = createdAt;
             changed = true;
           }
+          // Sync file_link and type from DB if available
+          if (r.file_link && existing.file_link !== r.file_link) {
+            existing.file_link = r.file_link;
+            changed = true;
+          }
+          if (r.type && !existing.type) {
+            existing.type = r.type;
+            changed = true;
+          }
           if (role === 'assistant' && existing.streaming) {
             existing.streaming = false;
             changed = true;
@@ -494,6 +523,8 @@ export default function LiveChat() {
             body,
             at: createdAt,
             order: inheritedOrder ?? nextOrder(),
+            ...(r.file_link ? { file_link: r.file_link } : {}),
+            ...(r.type ? { type: r.type } : {}),
           };
           map.set(item.id, item);
           changed = true;
@@ -651,7 +682,7 @@ export default function LiveChat() {
       try {
         const { data } = await supabase
           .from('messages')
-          .select('id, role, body, created_at')
+          .select('id, role, body, created_at, file_link, type')
           .eq('thread_id', tid)
           .order('created_at', { ascending: true });
         if (Array.isArray(data)) upsertFromRows(data);
@@ -752,7 +783,8 @@ export default function LiveChat() {
 
   const handleSend = async () => {
     const text = draft.trim();
-    if (!text) return;
+    // Allow sending if there's text OR a staged file
+    if (!text && !stagedFile) return;
     const createdAt = new Date().toISOString();
 
     if (!threadIdRef.current) {
@@ -813,10 +845,40 @@ export default function LiveChat() {
       }
     }
 
+    // Upload staged file first if present
+    let uploadedFile: UploadedFile | null = null;
+    if (stagedFile) {
+      setIsUploadingFile(true);
+      try {
+        uploadedFile = await uploadFileToStorage(stagedFile.file);
+      } catch (error: any) {
+        console.error('[LiveChat] file upload error:', error);
+        const { toast } = await import('@/components/ui/sonner');
+        toast.error(`Upload failed: ${error.message}`);
+        setIsUploadingFile(false);
+        return;
+      }
+      setIsUploadingFile(false);
+      setStagedFile(null);
+    }
+
     setDraft("");
     // Optimistic preview while waiting for DB insert (will be replaced by realtime row)
     const tempId = `temp-${Date.now()}`;
-    setMessages((prev) => [...prev, { id: tempId, role: "user", body: text, at: createdAt, order: nextOrder() }]);
+    // For images/videos, don't put filename in body — the attachment renderer handles display
+    const isMediaAttachment = uploadedFile && (uploadedFile.type === 'image' || uploadedFile.type === 'video');
+    const displayBody = uploadedFile
+      ? (text ? text : (isMediaAttachment ? '' : `📎 ${uploadedFile.fileName}`))
+      : text;
+    setMessages((prev) => [...prev, {
+      id: tempId,
+      role: "user",
+      body: displayBody,
+      at: createdAt,
+      order: nextOrder(),
+      type: uploadedFile?.type || "text",
+      file_link: uploadedFile?.url
+    }]);
     lastOptimisticIdRef.current = tempId;
     playLow();
     setLoading(true);
@@ -842,7 +904,7 @@ export default function LiveChat() {
 
     try {
       const body = {
-        message: text,
+        message: text || (uploadedFile ? (isMediaAttachment ? '' : uploadedFile.fileName) : ''),
         session_id: sessionId,
         account_id: accountId || undefined,
         timestamp: createdAt,
@@ -850,6 +912,13 @@ export default function LiveChat() {
         username: username || undefined,
         ai_profile_id: aiProfileId,
         stream: true, // Request streaming response
+        // Attachment fields (optional)
+        ...(uploadedFile && {
+          type: uploadedFile.type,
+          file_link: uploadedFile.url,
+          file_name: uploadedFile.fileName,
+          mime_type: uploadedFile.mimeType,
+        }),
       } as const;
 
       let attempt = 0;
@@ -905,6 +974,68 @@ export default function LiveChat() {
 
       // Immediately fetch latest state after backend processes the message
       const targetThreadId = attachedThreadId ?? threadIdRef.current;
+
+      // Persist file_link and type to DB since the backend webhook doesn't save them
+      if (uploadedFile) {
+        const persistFileLink = async (tid: string) => {
+          // Retry up to 5 times with increasing delays to wait for backend message creation
+          const delays = [200, 600, 1500, 3000, 5000];
+          for (let attempt = 0; attempt < delays.length; attempt++) {
+            await new Promise(r => setTimeout(r, delays[attempt]));
+            try {
+              const { data: recentMsg, error: findErr } = await supabase
+                .from('messages')
+                .select('id')
+                .eq('thread_id', tid)
+                .eq('role', 'user')
+                .is('file_link', null)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+              if (findErr) {
+                console.warn(`[LiveChat] file_link persist attempt ${attempt + 1}: find error`, findErr.message);
+                continue;
+              }
+
+              if (recentMsg?.id) {
+                const { error: updateErr } = await supabase
+                  .from('messages')
+                  .update({ file_link: uploadedFile.url, type: uploadedFile.type })
+                  .eq('id', recentMsg.id);
+
+                if (updateErr) {
+                  console.warn(`[LiveChat] file_link persist attempt ${attempt + 1}: update error`, updateErr.message);
+                  continue;
+                }
+
+                console.log('[LiveChat] file_link persisted to DB:', recentMsg.id);
+                return; // success
+              }
+            } catch (err) {
+              console.warn(`[LiveChat] file_link persist attempt ${attempt + 1} failed`, err);
+            }
+          }
+          console.warn('[LiveChat] failed to persist file_link after all attempts');
+        };
+
+        const tid = targetThreadId;
+        if (tid) {
+          // Fire and forget — don't block the streaming response
+          persistFileLink(tid);
+        } else {
+          // Thread not attached yet, retry after thread attach completes
+          const checkInterval = setInterval(async () => {
+            if (threadIdRef.current) {
+              clearInterval(checkInterval);
+              persistFileLink(threadIdRef.current);
+            }
+          }, 1000);
+          // Stop checking after 15s
+          setTimeout(() => clearInterval(checkInterval), 15000);
+        }
+      }
+
       scheduleCatchUps(targetThreadId, upsertFromRows, [0, 600, 1800, 4000, 9000, 15000]);
 
       // Handle streaming response
@@ -979,7 +1110,7 @@ export default function LiveChat() {
         if (threadId) {
           supabase
             .from('messages')
-            .select('id, role, body, created_at')
+            .select('id, role, body, created_at, file_link, type')
             .eq('thread_id', threadId)
             .order('created_at', { ascending: true })
             .then(({ data }) => {
@@ -1050,6 +1181,148 @@ export default function LiveChat() {
       playHigh();
     } finally {
       clearTimeout(userMessageTimeout);
+      setLoading(false);
+    }
+  };
+
+  // Handle sending an attachment message
+  const handleAttachmentSend = async (uploadedFile: UploadedFile) => {
+    const createdAt = new Date().toISOString();
+
+    // Attach to thread if not already
+    if (!threadIdRef.current) {
+      try {
+        const existingThread = await findThreadForCurrentSession();
+        if (existingThread?.id) {
+          const reopenedId = await reopenThreadIfResolved(existingThread);
+          if (reopenedId) {
+            await attachToThreadRef.current?.(reopenedId);
+          }
+        }
+      } catch (err) {
+        console.warn('[LiveChat] failed to attach existing thread before attachment send', err);
+      }
+    }
+
+    if (!threadIdRef.current) {
+      pendingThreadAttachRef.current = true;
+      pendingThreadInfoRef.current = {
+        alias: username,
+        startedAt: new Date().toISOString(),
+      };
+      scheduleThreadAttachRetries([0, 300, 900, 2000]);
+    }
+
+    // Optimistic preview
+    const tempId = `temp-attachment-${Date.now()}`;
+    const isMedia = uploadedFile.type === 'image' || uploadedFile.type === 'video';
+    const bodyText = isMedia ? '' : `📎 ${uploadedFile.fileName}`;
+
+    setMessages((prev) => [...prev, {
+      id: tempId,
+      role: "user",
+      body: bodyText,
+      at: createdAt,
+      order: nextOrder(),
+      type: uploadedFile.type,
+      file_link: uploadedFile.url
+    }]);
+    playLow();
+    setLoading(true);
+
+    try {
+      const body = {
+        message: isMedia ? '' : uploadedFile.fileName,
+        session_id: sessionId,
+        account_id: accountId || undefined,
+        timestamp: createdAt,
+        channel_id: pid,
+        username: username || undefined,
+        ai_profile_id: aiProfileId,
+        stream: true,
+        // Attachment-specific fields
+        type: uploadedFile.type,
+        file_link: uploadedFile.url,
+        file_name: uploadedFile.fileName,
+        mime_type: uploadedFile.mimeType,
+      } as const;
+
+      const resp = await callWebhook(
+        WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (!resp.ok) {
+        console.warn('[LiveChat] attachment webhook failed', resp.status);
+      }
+
+      // Persist file_link and type to DB since the backend webhook doesn't save them
+      {
+        const persistFileLink = async (tid: string) => {
+          const delays = [200, 600, 1500, 3000, 5000];
+          for (let attempt = 0; attempt < delays.length; attempt++) {
+            await new Promise(r => setTimeout(r, delays[attempt]));
+            try {
+              const { data: recentMsg, error: findErr } = await supabase
+                .from('messages')
+                .select('id')
+                .eq('thread_id', tid)
+                .eq('role', 'user')
+                .is('file_link', null)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+              if (findErr) {
+                console.warn(`[LiveChat] attachment file_link persist attempt ${attempt + 1}: find error`, findErr.message);
+                continue;
+              }
+
+              if (recentMsg?.id) {
+                const { error: updateErr } = await supabase
+                  .from('messages')
+                  .update({ file_link: uploadedFile.url, type: uploadedFile.type })
+                  .eq('id', recentMsg.id);
+
+                if (updateErr) {
+                  console.warn(`[LiveChat] attachment file_link persist attempt ${attempt + 1}: update error`, updateErr.message);
+                  continue;
+                }
+
+                console.log('[LiveChat] attachment file_link persisted to DB:', recentMsg.id);
+                return;
+              }
+            } catch (err) {
+              console.warn(`[LiveChat] attachment file_link persist attempt ${attempt + 1} failed`, err);
+            }
+          }
+          console.warn('[LiveChat] failed to persist attachment file_link after all attempts');
+        };
+
+        const tid = threadIdRef.current;
+        if (tid) {
+          persistFileLink(tid);
+          scheduleCatchUps(tid, upsertFromRows, [0, 600, 1800, 4000, 9000]);
+        } else {
+          const checkInterval = setInterval(async () => {
+            if (threadIdRef.current) {
+              clearInterval(checkInterval);
+              persistFileLink(threadIdRef.current);
+              scheduleCatchUps(threadIdRef.current, upsertFromRows, [0, 600, 1800, 4000, 9000]);
+            }
+          }, 1000);
+          setTimeout(() => clearInterval(checkInterval), 15000);
+        }
+      }
+
+      playHigh();
+    } catch (error) {
+      console.error('[LiveChat] attachment send error:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -1125,39 +1398,66 @@ export default function LiveChat() {
                     )
                   };
 
-                  return (
-                    <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                      <div className="max-w-[80%] space-y-1">
-                        <div
-                          className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${m.role === "user"
-                            ? "bg-blue-600 text-white rounded-br-md"
-                            : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
-                            }`}
-                        >
-                          <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${m.role === "user" ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""}`}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
-                              {m.body}
-                            </ReactMarkdown>
-                          </div>
-                          {(() => {
-                            const urls = extractUrls(m.body);
-                            if (urls.length === 0) return null;
+                  return (() => {
+                    const bodyText = (m.body || '').trim();
+                    const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
+                    const hasRealBody = bodyText && !isFilePlaceholder;
 
-                            return (
-                              <div className="space-y-2 mt-2">
-                                {urls.map((u) => !isImageLink(u) && (
-                                  <LinkPreview key={u} url={u} isDark={m.role === "user"} />
-                                ))}
+                    // Infer attachment type
+                    let attachType: string | null = null;
+                    if (m.file_link) {
+                      attachType = (m.type && m.type !== 'text') ? m.type : null;
+                      if (!attachType) {
+                        const ext = m.file_link.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+                        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
+                        else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
+                        else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
+                        else attachType = 'file';
+                      }
+                    }
+
+                    return (
+                      <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                        <div className="max-w-[80%] space-y-1">
+                          {/* Render attachment OUTSIDE the bubble */}
+                          {m.file_link && attachType && (
+                            <div className={`rounded-2xl overflow-hidden ${m.role === "user" ? "ml-auto" : ""}`}>
+                              <AttachmentRenderer fileLink={m.file_link} type={attachType as any} />
+                            </div>
+                          )}
+                          {/* Only render the text bubble if there's real body text */}
+                          {hasRealBody && (
+                            <div
+                              className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${m.role === "user"
+                                ? "bg-blue-600 text-white rounded-br-md"
+                                : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
+                                }`}
+                            >
+                              <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${m.role === "user" ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""}`}>
+                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
+                                  {m.body}
+                                </ReactMarkdown>
                               </div>
-                            );
-                          })()}
-                        </div>
-                        <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
-                          {fmt(m.at)}
+                              {(() => {
+                                const urls = extractUrls(m.body);
+                                if (urls.length === 0) return null;
+                                return (
+                                  <div className="space-y-2 mt-2">
+                                    {urls.map((u) => !isImageLink(u) && (
+                                      <LinkPreview key={u} url={u} isDark={m.role === "user"} />
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
+                            {fmt(m.at)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
+                    );
+                  })();
                 })}
                 {loading && (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -1170,9 +1470,24 @@ export default function LiveChat() {
             </ScrollArea>
 
             <div className="p-3 border-t border-blue-100 rounded-b-2xl bg-blue-50/40">
+              {/* Staged file preview */}
+              {stagedFile && (
+                <div className="mb-2">
+                  <StagedFilePreview
+                    stagedFile={stagedFile}
+                    onRemove={() => setStagedFile(null)}
+                    isUploading={isUploadingFile}
+                  />
+                </div>
+              )}
               <div className="flex items-center gap-2">
+                <FileUploadButton
+                  onFileStaged={setStagedFile}
+                  disabled={loading || isUploadingFile || !!stagedFile}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                />
                 <Textarea
-                  placeholder="Type a message"
+                  placeholder={stagedFile ? "Add a caption (optional)..." : "Type a message"}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={onKeyPress}
@@ -1180,7 +1495,7 @@ export default function LiveChat() {
                 />
                 <Button
                   onClick={handleSend}
-                  disabled={!draft.trim()}
+                  disabled={(!draft.trim() && !stagedFile) || loading || isUploadingFile}
                   className="rounded-full h-10 w-10 p-0 bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   <Send className="h-4 w-4" />

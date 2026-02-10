@@ -22,6 +22,7 @@ import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTemperatureValue } from '@/lib/temperatureUtils';
 import { SUPABASE_URL } from '@/config/supabase';
+import { FileUploadButton, AttachmentRenderer, StagedFilePreview, uploadFileToStorage, type UploadedFile, type StagedFile } from '@/components/chat/FileUploadButton';
 
 interface AIAgentSettingsProps {
   agentName: string;
@@ -35,6 +36,8 @@ interface ChatMessage {
   content: string;
   sender: 'user' | 'ai';
   timestamp: Date;
+  type?: 'text' | 'image' | 'file' | 'voice';
+  file_link?: string;
 }
 
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -83,6 +86,8 @@ const ChatPreview = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [sessionId, setSessionId] = useState<string>('');
+  const [stagedFile, setStagedFile] = useState<StagedFile | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -111,13 +116,36 @@ const ChatPreview = ({
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+    // Allow sending if there's text OR a staged file
+    if ((!inputMessage.trim() && !stagedFile) || isLoading) return;
+
+    // Upload staged file first if present
+    let uploadedFile: UploadedFile | null = null;
+    if (stagedFile) {
+      setIsUploadingFile(true);
+      try {
+        uploadedFile = await uploadFileToStorage(stagedFile.file);
+      } catch (error: any) {
+        console.error('File upload error:', error);
+        toast.error(`Upload failed: ${error.message}`);
+        setIsUploadingFile(false);
+        return;
+      }
+      setIsUploadingFile(false);
+      setStagedFile(null);
+    }
+
+    const displayContent = uploadedFile
+      ? (inputMessage.trim() ? inputMessage : `📎 ${uploadedFile.fileName}`)
+      : inputMessage;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      content: inputMessage,
+      content: displayContent,
       sender: 'user',
-      timestamp: new Date()
+      timestamp: new Date(),
+      type: uploadedFile?.type || 'text',
+      file_link: uploadedFile?.url
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -126,12 +154,19 @@ const ChatPreview = ({
 
     try {
       const requestBody = {
-        message: inputMessage,
+        message: inputMessage.trim() || (uploadedFile ? `[${uploadedFile.type === 'image' ? 'Image' : 'File'}: ${uploadedFile.fileName}]` : ''),
         model: modelName,
         temperature: actualTemperature, // Use the mapped temperature value from response_temperature preset
         session_id: sessionId,
         timestamp: new Date().toISOString(),
-        ai_profile_id: profile?.id || profileId
+        ai_profile_id: profile?.id || profileId,
+        // Attachment fields (optional)
+        ...(uploadedFile && {
+          type: uploadedFile.type,
+          file_link: uploadedFile.url,
+          file_name: uploadedFile.fileName,
+          mime_type: uploadedFile.mimeType,
+        }),
       };
 
       console.log('Sending request to API:', requestBody);
@@ -195,6 +230,7 @@ const ChatPreview = ({
         timestamp: new Date()
       }
     ]);
+    setStagedFile(null);
     toast.info('Chat history cleared');
   };
 
@@ -285,6 +321,15 @@ const ChatPreview = ({
                 : 'bg-muted'
                 }`}
             >
+              {/* Render attachment if present */}
+              {message.file_link && message.type && message.type !== 'text' && (
+                <div className="mb-2">
+                  <AttachmentRenderer
+                    fileLink={message.file_link}
+                    type={message.type}
+                  />
+                </div>
+              )}
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               <p className="text-xs opacity-70 mt-1">
                 {message.timestamp.toLocaleTimeString()}
@@ -306,15 +351,39 @@ const ChatPreview = ({
       </div>
 
       <div className="p-4 border-t bg-muted/30">
-        <div className="flex gap-2">
+        {/* Staged file preview */}
+        {stagedFile && (
+          <div className="mb-2">
+            <StagedFilePreview
+              stagedFile={stagedFile}
+              onRemove={() => setStagedFile(null)}
+              isUploading={isUploadingFile}
+            />
+          </div>
+        )}
+        <div className="flex gap-2 items-start">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <FileUploadButton
+                  onFileStaged={setStagedFile}
+                  disabled={isLoading || isUploadingFile || !!stagedFile}
+                  className="mt-2"
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Lampirkan file</p>
+            </TooltipContent>
+          </Tooltip>
           <textarea
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Type your message..."
+            placeholder={stagedFile ? "Add a caption (optional)..." : "Type your message..."}
             className="flex-1 p-3 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20"
             rows={2}
-            disabled={isLoading}
+            disabled={isLoading || isUploadingFile}
             title={isLoading ? 'Please wait…' : undefined}
           />
           <Tooltip>
@@ -322,8 +391,8 @@ const ChatPreview = ({
               <Button
                 size="sm"
                 onClick={sendMessage}
-                disabled={!inputMessage.trim() || isLoading}
-                className="px-4"
+                disabled={(!inputMessage.trim() && !stagedFile) || isLoading || isUploadingFile}
+                className="px-4 mt-2"
               >
                 <Send className="w-4 h-4" />
               </Button>

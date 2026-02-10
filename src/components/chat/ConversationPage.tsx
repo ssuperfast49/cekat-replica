@@ -57,6 +57,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { LinkPreview } from "@/components/chat/LinkPreview";
+import { FileUploadButton, AttachmentRenderer, type UploadedFile } from "@/components/chat/FileUploadButton";
 
 interface MatchPosition {
   start: number;
@@ -266,11 +267,44 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
               {renderBodyWithHighlights()}
             </p>
           ) : (
-            <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : "dark:prose-invert"} `}>
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
-                {message.body || ''}
-              </ReactMarkdown>
-            </div>
+            <>
+              {/* Render attachment if present */}
+              {message.file_link && (() => {
+                const fileLink = message.file_link as string;
+                let attachType = (message.type && message.type !== 'text') ? message.type : null;
+                if (!attachType) {
+                  const ext = fileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+                  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
+                  else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
+                  else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
+                  else attachType = 'file';
+                }
+                const bodyText = (message.body || '').trim();
+                const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
+                const hasRealBody = bodyText && !isFilePlaceholder;
+                return (
+                  <div className={hasRealBody ? "mb-2" : ""}>
+                    <AttachmentRenderer
+                      fileLink={fileLink}
+                      type={attachType as 'image' | 'video' | 'file' | 'voice'}
+                    />
+                  </div>
+                );
+              })()}
+              {(() => {
+                const bodyText = (message.body || '').trim();
+                const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
+                const hasRealBody = bodyText && !isFilePlaceholder;
+                if (!hasRealBody) return null;
+                return (
+                  <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : "dark:prose-invert"} `}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
+                      {message.body || ''}
+                    </ReactMarkdown>
+                  </div>
+                );
+              })()}
+            </>
           )}
           {(() => {
             const urls = extractUrls(message.body);
