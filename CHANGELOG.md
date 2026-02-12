@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.81] FE WEB CEKAT 2026-02-13
+### Global Notification Features
+- **Global Audio Listener**: Added a dedicated component `GlobalAudioListener` that plays a notification sound for incoming user messages, ensuring agents never miss a reply even when navigating other pages.
+  - **Smart Routing**: The sound only plays for the specific agent assigned to the thread, or for all **superadmins** (who monitor everything).
+  - **Persistence**: Mounted at the root level (`App.tsx`), so it works globally across the application.
+  - **Sound Source**: Uses the standard system alert sound (`/tones/mixkit-message-pop-alert-2354.mp3`).
+  - **Tech**: Uses a dedicated Supabase Realtime subscription to `messages` (INSERT) that filters for `role=user` to catch customer replies immediately.
+
+
 # [0.1.80] FE/DB CEKAT 2026-02-10
 ### Chat Attachments Improvements & Fixes
 - **Persistence Fix**: Solved critical issue where file attachments were not persisting. 

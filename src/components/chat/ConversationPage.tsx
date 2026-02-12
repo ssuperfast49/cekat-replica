@@ -57,7 +57,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { LinkPreview } from "@/components/chat/LinkPreview";
-import { FileUploadButton, AttachmentRenderer, type UploadedFile } from "@/components/chat/FileUploadButton";
+import { FileUploadButton, StagedFilePreview, uploadFileToStorage, type UploadedFile, type StagedFile, AttachmentRenderer } from "@/components/chat/FileUploadButton";
 
 interface MatchPosition {
   start: number;
@@ -150,6 +150,42 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
   const isHumanAgent = message.role === 'assistant';
   const isAiAgent = message.role === 'agent';
 
+  const fileLink = message.file_link as string;
+  let attachType = (message.type && message.type !== 'text') ? message.type : null;
+  if (fileLink && !attachType) {
+    const ext = fileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
+    else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
+    else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
+    else attachType = 'file';
+  }
+
+  const bodyText = (message.body || '').trim();
+  const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
+  const hasRealBody = bodyText && !isFilePlaceholder;
+  // Always show text bubble if there are search matches OR if there is actual text content.
+  const showTextBubble = hasRealBody || matches.length > 0;
+  const hasAttachment = !!fileLink;
+
+  // Helper to render timestamp/status
+  const renderMetadata = (isInsideBubble: boolean) => (
+    <div className={`mt-1 flex items-center gap-1 text-[10px] ${isInsideBubble
+      ? (isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground")
+      : "text-muted-foreground"
+      } ${!isInsideBubble && isAgent ? "justify-end" : ""}`}>
+      <span>{new Date(message.created_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })}</span>
+      {isAgent && (
+        message._status === 'pending' ? (
+          <Loader2 className="h-3 w-3 animate-spin" aria-label="pending" />
+        ) : isLastMessage ? (
+          <CheckCheck className="h-3 w-3" aria-label="sent" />
+        ) : null
+      )}
+    </div>
+  );
 
   const MarkdownComponents = {
     a: ({ href, children }: any) => {
@@ -254,84 +290,56 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
           </AvatarFallback>
         </Avatar>
 
-        <div
-          className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${isAiAgent
-            ? "bg-blue-600 text-white"
-            : isHumanAgent
-              ? "bg-blue-100 text-blue-900"
-              : "bg-muted text-foreground"
-            } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
-        >
-          {matches.length > 0 ? (
-            <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-              {renderBodyWithHighlights()}
-            </p>
-          ) : (
-            <>
-              {/* Render attachment if present */}
-              {message.file_link && (() => {
-                const fileLink = message.file_link as string;
-                let attachType = (message.type && message.type !== 'text') ? message.type : null;
-                if (!attachType) {
-                  const ext = fileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
-                  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
-                  else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
-                  else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
-                  else attachType = 'file';
-                }
-                const bodyText = (message.body || '').trim();
-                const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
-                const hasRealBody = bodyText && !isFilePlaceholder;
-                return (
-                  <div className={hasRealBody ? "mb-2" : ""}>
-                    <AttachmentRenderer
-                      fileLink={fileLink}
-                      type={attachType as 'image' | 'video' | 'file' | 'voice'}
-                    />
-                  </div>
-                );
-              })()}
-              {(() => {
-                const bodyText = (message.body || '').trim();
-                const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
-                const hasRealBody = bodyText && !isFilePlaceholder;
-                if (!hasRealBody) return null;
-                return (
-                  <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : "dark:prose-invert"} `}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
-                      {message.body || ''}
-                    </ReactMarkdown>
-                  </div>
-                );
-              })()}
-            </>
+        <div className={`flex flex-col ${isAgent ? "items-end" : "items-start"} min-w-0 max-w-full space-y-1`}>
+          {hasAttachment && (
+            <div className="max-w-full">
+              <AttachmentRenderer
+                fileLink={fileLink}
+                type={attachType as 'image' | 'video' | 'file' | 'voice'}
+              />
+            </div>
           )}
-          {(() => {
-            const urls = extractUrls(message.body);
-            if (urls.length === 0) return null;
 
-            return (
-              <div className="space-y-2 mt-2">
-                {urls.map((u) => !isImageLink(u) && (
-                  <LinkPreview key={u} url={u} isDark={isAiAgent} />
-                ))}
-              </div>
-            );
-          })()}
-          <div className={`mt-1 flex items-center gap-1 text-[10px] ${isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
-            }`}>
-            <span>{new Date(message.created_at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit"
-            })}</span>
-            {isAgent && (
-              message._status === 'pending' ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-label="pending" />
-              ) : isLastMessage ? (
-                <CheckCheck className="h-3 w-3" aria-label="sent" />
-              ) : null
-            )}
-          </div>
+          {showTextBubble && (
+            <div
+              className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${isAiAgent
+                ? "bg-blue-600 text-white"
+                : isHumanAgent
+                  ? "bg-blue-100 text-blue-900"
+                  : "bg-muted text-foreground"
+                } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
+            >
+              {matches.length > 0 ? (
+                <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                  {renderBodyWithHighlights()}
+                </p>
+              ) : (
+                <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : "dark:prose-invert"} `}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
+                    {message.body || ''}
+                  </ReactMarkdown>
+                </div>
+              )}
+
+              {(() => {
+                const urls = extractUrls(message.body);
+                if (urls.length === 0) return null;
+
+                return (
+                  <div className="space-y-2 mt-2">
+                    {urls.map((u) => !isImageLink(u) && (
+                      <LinkPreview key={u} url={u} isDark={isAiAgent} />
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {renderMetadata(true)}
+            </div>
+          )}
+
+          {/* If no text bubble, show metadata outside */}
+          {!showTextBubble && renderMetadata(false)}
         </div>
       </div>
     </div>
@@ -352,6 +360,10 @@ export default function ConversationPage() {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // File upload state
+  const [stagedFile, setStagedFile] = useState<StagedFile | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   const trimmedSearch = messageSearch.trim();
 
@@ -404,6 +416,17 @@ export default function ConversationPage() {
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
+
+  const handleFileStaged = (file: StagedFile) => {
+    setStagedFile(file);
+  };
+
+  const handleRemoveFile = () => {
+    setStagedFile(null);
+  };
+
+
+
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
 
   // Options for the "Handled By" selector: only Super Agents
@@ -1148,11 +1171,32 @@ export default function ConversationPage() {
   }, [activeTab, filteredConversations, selectedThreadId, selectedConversation]);
 
   // Send message
+  // Send message
   const handleSendMessage = async () => {
     const text = draft.trim();
-    if (!text || !selectedThreadId) return;
+    if ((!text && !stagedFile) || !selectedThreadId) return;
 
     try {
+      let attachment = undefined;
+
+      // Upload file if present
+      if (stagedFile) {
+        setIsUploadingFile(true);
+        try {
+          const uploaded = await uploadFileToStorage(stagedFile.file);
+          attachment = {
+            url: uploaded.url,
+            type: uploaded.type
+          };
+        } catch (error: any) {
+          console.error("Failed to upload file:", error);
+          toast.error(error.message || "Could not upload file");
+          setIsUploadingFile(false);
+          return;
+        }
+        setIsUploadingFile(false);
+      }
+
       // Check AI message limit before sending (for AI responses)
       const { checkAIMessageLimit, autoAssignToSuperAgent } = await import('@/lib/aiMessageLimit');
       // @ts-ignore - protectedSupabase is compatible with the function signature
@@ -1222,7 +1266,8 @@ export default function ConversationPage() {
 
       // Clear input immediately and fire send without blocking UI
       setDraft("");
-      void sendMessage(selectedThreadId, text, 'assistant');
+      setStagedFile(null);
+      void sendMessage(selectedThreadId, text, 'assistant', attachment);
     } catch (error) {
       toast.error("Failed to send message");
     }
@@ -1673,22 +1718,35 @@ export default function ConversationPage() {
             </ScrollArea >
 
             {/* Message Input or Takeover / Join */}
-            < div className="border-t p-3 space-y-2" >
+            <div className="border-t p-3 space-y-2">
+              {stagedFile && (
+                <div className="px-2">
+                  <StagedFilePreview
+                    stagedFile={stagedFile}
+                    onRemove={handleRemoveFile}
+                    isUploading={isUploadingFile}
+                  />
+                </div>
+              )}
               {!isSelectedConversationDone && collaboratorId === user?.id && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-end gap-2">
+                  <FileUploadButton
+                    onFileStaged={handleFileStaged}
+                    disabled={isUploadingFile || !canCurrentUserSend}
+                  />
                   <Textarea
                     placeholder={`Message ${selectedConversation.contact_name}...`}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={onKeyPress}
                     className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2.5"
-                    disabled={!canCurrentUserSend}
+                    disabled={(!canCurrentUserSend) || isUploadingFile}
                     title={sendDisabledReason}
                   />
                   <Button
                     type="button"
                     onClick={handleSendMessage}
-                    disabled={!draft.trim() || !canCurrentUserSend}
+                    disabled={(!draft.trim() && !stagedFile) || !canCurrentUserSend || isUploadingFile}
                     title={sendDisabledReason || 'Send message'}
                   >
                     <Send className="h-4 w-4" />

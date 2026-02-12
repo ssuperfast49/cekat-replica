@@ -1418,41 +1418,54 @@ export default function LiveChat() {
 
                     return (
                       <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div className="max-w-[80%] space-y-1">
-                          {/* Render attachment OUTSIDE the bubble */}
-                          {m.file_link && attachType && (
-                            <div className={`rounded-2xl overflow-hidden ${m.role === "user" ? "ml-auto" : ""}`}>
-                              <AttachmentRenderer fileLink={m.file_link} type={attachType as any} />
-                            </div>
-                          )}
-                          {/* Only render the text bubble if there's real body text */}
-                          {hasRealBody && (
-                            <div
-                              className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${m.role === "user"
-                                ? "bg-blue-600 text-white rounded-br-md"
-                                : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
-                                }`}
-                            >
-                              <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${m.role === "user" ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""}`}>
-                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
-                                  {m.body}
-                                </ReactMarkdown>
+                        <div className={`flex ${m.role === "user" ? "flex-row-reverse" : "flex-row"} items-end gap-2 max-w-[85%]`}>
+                          <div className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"} min-w-0 max-w-full space-y-1`}>
+                            {/* Render attachment OUTSIDE the bubble */}
+                            {m.file_link && attachType && (
+                              <div className="max-w-full">
+                                <AttachmentRenderer
+                                  fileLink={m.file_link}
+                                  type={attachType as any}
+                                />
                               </div>
-                              {(() => {
-                                const urls = extractUrls(m.body);
-                                if (urls.length === 0) return null;
-                                return (
-                                  <div className="space-y-2 mt-2">
-                                    {urls.map((u) => !isImageLink(u) && (
-                                      <LinkPreview key={u} url={u} isDark={m.role === "user"} />
-                                    ))}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          )}
-                          <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
-                            {fmt(m.at)}
+                            )}
+
+                            {/* Only render the text bubble if there's real body text */}
+                            {hasRealBody && (
+                              <div
+                                className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${m.role === "user"
+                                  ? "bg-blue-600 text-white rounded-br-md"
+                                  : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
+                                  }`}
+                              >
+                                <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${m.role === "user" ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""}`}>
+                                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
+                                    {m.body}
+                                  </ReactMarkdown>
+                                </div>
+                                {(() => {
+                                  const urls = extractUrls(m.body);
+                                  if (urls.length === 0) return null;
+                                  return (
+                                    <div className="space-y-2 mt-2">
+                                      {urls.map((u) => !isImageLink(u) && (
+                                        <LinkPreview key={u} url={u} isDark={m.role === "user"} />
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                                <div className={`mt-1 text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
+                                  {fmt(m.at)}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* If no text bubble, show metadata outside */}
+                            {!hasRealBody && (
+                              <div className={`text-[10px] ${m.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
+                                {fmt(m.at)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

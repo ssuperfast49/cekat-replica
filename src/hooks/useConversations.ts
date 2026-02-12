@@ -536,10 +536,12 @@ export const useConversations = () => {
   }, []);
 
   // Send a new message
+  // Send a new message
   const sendMessage = async (
     threadId: string,
     messageText: string,
-    role: 'agent' | 'assistant' = 'assistant'
+    role: 'agent' | 'assistant' = 'assistant',
+    attachment?: { url: string; type: 'image' | 'video' | 'file' | 'voice' }
   ) => {
     try {
       setError(null);
@@ -557,11 +559,12 @@ export const useConversations = () => {
         thread_id: threadId,
         direction: 'out' as const,
         role: role,
-        type: 'text' as const,
+        type: attachment ? attachment.type : 'text' as const,
         body: messageText,
         payload: {},
         actor_kind: 'agent' as const,
-        actor_id: null
+        actor_id: null,
+        file_link: attachment?.url || null
       };
 
       // Optimistically push a pending message to UI
@@ -571,7 +574,7 @@ export const useConversations = () => {
         thread_id: threadId,
         direction: 'out',
         role,
-        type: 'text',
+        type: attachment ? attachment.type : 'text',
         body: messageText,
         payload: {},
         actor_kind: 'agent',
@@ -583,7 +586,8 @@ export const useConversations = () => {
         created_at: new Date().toISOString(),
         contact_name: '',
         contact_avatar: 'A',
-        _status: 'pending'
+        _status: 'pending',
+        file_link: attachment?.url || null
       };
       setMessages(prev => [...prev, optimistic]);
 
