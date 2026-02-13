@@ -20,6 +20,9 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/lib/supabase";
 import { Checkbox } from "@/components/ui/checkbox";
+import { usePresence } from "@/contexts/PresenceContext";
+import { formatDistanceToNow } from "date-fns";
+import { id } from "date-fns/locale";
 
 const sanitizeEmailInput = (value: string) => value.replace(/\s/g, "").toLowerCase();
 
@@ -101,6 +104,21 @@ const HumanAgents = () => {
   }, [hasRole, newAgent.role]);
 
   const escapeIlike = (value: string) => value.replace(/[%_\\]/g, (match) => `\\${match}`).replace(/'/g, "''");
+
+  const { onlineUsers } = usePresence();
+
+  const getAgentPresence = (agentId: string, lastSeenAt?: string | null) => {
+    const online = onlineUsers[agentId];
+    if (online) {
+      if (online.status === 'idle') return { color: 'bg-orange-500', label: 'Idle' };
+      return { color: 'bg-green-500', label: 'Online' };
+    }
+    // Fallback to last seen
+    if (lastSeenAt) {
+      return { color: 'bg-gray-400', label: `Seen ${formatDistanceToNow(new Date(lastSeenAt), { addSuffix: true, locale: id })}` };
+    }
+    return { color: 'bg-gray-300', label: 'Offline' };
+  };
 
   // Form validation
   const isFormValid = newAgent.name.trim() &&
@@ -431,8 +449,8 @@ const HumanAgents = () => {
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                    <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
-                                    <span className="text-xs">{stub.status}</span>
+                                    <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                                    <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
                                     {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -490,8 +508,8 @@ const HumanAgents = () => {
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                      <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
-                                      <span className="text-xs">{stub.status}</span>
+                                      <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                                      <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
                                       {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                     </Button>
                                   </DropdownMenuTrigger>
@@ -546,8 +564,8 @@ const HumanAgents = () => {
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={child.primaryRole === 'master_agent'}>
-                                          <div className={`h-2 w-2 rounded-full ${getStatusColor(child.status)}`} />
-                                          <span className="text-xs">{child.status}</span>
+                                          <div className={`h-2 w-2 rounded-full ${getAgentPresence(child.user_id, child.last_seen_at).color}`} />
+                                          <span className="text-xs">{getAgentPresence(child.user_id, child.last_seen_at).label}</span>
                                           {child.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                         </Button>
                                       </DropdownMenuTrigger>
@@ -606,8 +624,8 @@ const HumanAgents = () => {
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                    <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
-                                    <span className="text-xs">{stub.status}</span>
+                                    <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                                    <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
                                     {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -677,8 +695,8 @@ const HumanAgents = () => {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                <div className={`h-2 w-2 rounded-full ${getStatusColor(stub.status)}`} />
-                                <span className="text-xs">{stub.status}</span>
+                                <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                                <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
                                 {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                               </Button>
                             </DropdownMenuTrigger>

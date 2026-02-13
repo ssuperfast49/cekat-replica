@@ -1353,6 +1353,7 @@ export type Database = {
           display_name: string | null
           is_2fa_email_enabled: boolean | null
           is_active: boolean
+          last_seen_at: string | null
           max_tokens_per_day: number
           max_tokens_per_month: number
           timezone: string | null
@@ -1366,6 +1367,7 @@ export type Database = {
           display_name?: string | null
           is_2fa_email_enabled?: boolean | null
           is_active?: boolean
+          last_seen_at?: string | null
           max_tokens_per_day?: number
           max_tokens_per_month?: number
           timezone?: string | null
@@ -1379,6 +1381,7 @@ export type Database = {
           display_name?: string | null
           is_2fa_email_enabled?: boolean | null
           is_active?: boolean
+          last_seen_at?: string | null
           max_tokens_per_day?: number
           max_tokens_per_month?: number
           timezone?: string | null

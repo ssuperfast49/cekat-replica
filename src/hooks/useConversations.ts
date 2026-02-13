@@ -121,6 +121,8 @@ export interface ConversationWithDetails extends Thread {
   unreplied?: boolean;
   super_agent_id?: string | null;
   super_agent_name?: string | null;
+  assignee_last_seen_at?: string | null;
+  super_agent_last_seen_at?: string | null;
 }
 
 export interface MessageWithDetails extends Message {
@@ -324,13 +326,15 @@ export const useConversations = () => {
       ));
 
       let userIdToName: Record<string, string> = {};
+      let userIdToLastSeen: Record<string, string | null> = {};
       if (userIds.length > 0) {
         const { data: profiles, error: profileErr } = await protectedSupabase
           .from('users_profile')
-          .select('user_id, display_name')
+          .select('user_id, display_name, last_seen_at')
           .in('user_id', userIds);
         if (profileErr) throw profileErr;
         userIdToName = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.display_name || '—']));
+        userIdToLastSeen = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.last_seen_at || null]));
       }
 
       // Transform data to match the expected format
@@ -393,6 +397,8 @@ export const useConversations = () => {
           ai_access_enabled: thread.ai_access_enabled ?? false,
           super_agent_id: channelSuperAgentId,
           super_agent_name: channelSuperAgentName,
+          assignee_last_seen_at: assignment.assignee_user_id ? (userIdToLastSeen[assignment.assignee_user_id] || null) : null,
+          super_agent_last_seen_at: channelSuperAgentId ? (userIdToLastSeen[channelSuperAgentId] || null) : null,
           status: currentStatus,
           unreplied,
         } as ConversationWithDetails;

@@ -1,5 +1,17 @@
 # Change Log
 
+# [0.1.82] FE WEB CEKAT 2026-02-14
+### Presence System & User Status
+- **Presence System**: Implemented real-time user presence tracking (Online, Idle, Offline).
+  - Added `PresenceContext` to manage status broadcasting and idle detection (5-minute timeout).
+  - **Offline Persistence**: Added `last_seen_at` to `users_profile` to show "Seen X ago" for offline users.
+  - Updated `App.tsx` to wrap application with `PresenceProvider`.
+- **UI Indicators**:
+  - **Human Agents**: Updated agent list to show live status dots (Green=Online, Orange=Idle, Gray=Offline/Last Seen).
+  - **Chat Header**: Added "Handled by" section in conversation view with real-time agent status.
+- **Database**: Added `last_seen_at` column to `users_profile` table.
+- **Migration**: `supabase/migrations/20260214000000_add_last_seen_at.sql`
+
 # [0.1.81] FE WEB CEKAT 2026-02-13
 ### Global Notification Features
 - **Global Audio Listener**: Added a dedicated component `GlobalAudioListener` that plays a notification sound for incoming user messages, ensuring agents never miss a reply even when navigating other pages.

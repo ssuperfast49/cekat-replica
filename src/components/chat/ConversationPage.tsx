@@ -58,6 +58,9 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { LinkPreview } from "@/components/chat/LinkPreview";
 import { FileUploadButton, StagedFilePreview, uploadFileToStorage, type UploadedFile, type StagedFile, AttachmentRenderer } from "@/components/chat/FileUploadButton";
+import { usePresence } from "@/contexts/PresenceContext";
+import { formatDistanceToNow } from "date-fns";
+import { id } from "date-fns/locale";
 
 interface MatchPosition {
   start: number;
@@ -459,6 +462,21 @@ export default function ConversationPage() {
 
   // Derive current handled-by (assignee) without referencing selectedConversation (avoid TDZ)
   const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
+
+  const { onlineUsers } = usePresence();
+
+  const getAgentPresence = (userId: string | null | undefined, lastSeenAt: string | null | undefined) => {
+    if (!userId) return null;
+    const online = onlineUsers[userId];
+    if (online) {
+      if (online.status === 'idle') return { color: 'bg-orange-500', label: 'Idle' };
+      return { color: 'bg-green-500', label: 'Online' };
+    }
+    if (lastSeenAt) {
+      return { color: 'bg-gray-400', label: `Seen ${formatDistanceToNow(new Date(lastSeenAt), { addSuffix: true, locale: id })}` };
+    }
+    return { color: 'bg-gray-300', label: 'Offline' };
+  };
 
   const derivedHandledById = useMemo(() => {
     if (!selectedThreadId) return null;
@@ -1388,7 +1406,7 @@ export default function ConversationPage() {
             <ChatFilter
               value={{
                 dateRange: activeFilters.dateRange || {},
-                inbox: (activeFilters.inbox as any) || '',
+                channelType: (activeFilters.channelType as any) || 'all',
                 label: [],
                 agent: (activeFilters.agent as any) || '',
                 status: (activeFilters.status as any) || '',
@@ -1601,6 +1619,33 @@ export default function ConversationPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selectedConversation.assigned && selectedConversation.assignee_name && (
+                  <div className="hidden md:flex items-center gap-2 mr-2 border-r pr-3 h-8">
+                    <span className="text-xs text-muted-foreground">Handled by</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium">{selectedConversation.assignee_name}</span>
+                      {(() => {
+                        const presence = getAgentPresence(
+                          selectedConversation.assignee_user_id || selectedConversation.super_agent_id,
+                          selectedConversation.assignee_last_seen_at || selectedConversation.super_agent_last_seen_at
+                        );
+                        if (presence) {
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className={`h-2.5 w-2.5 rounded-full ${presence.color} ring-1 ring-background cursor-help`} />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{presence.label}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
