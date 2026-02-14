@@ -365,11 +365,12 @@ const HumanAgents = () => {
     return (
       <div className="space-y-4">
         <div className="rounded-lg border bg-card">
-          <div className={`grid gap-4 p-4 border-b bg-muted/50 font-medium text-sm ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,220px,160px,120px,120px]'}`}>
+          <div className={`grid gap-4 p-4 border-b bg-muted/50 font-medium text-sm ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,180px,120px,120px,120px,120px]'}`}>
             <div>Agent Name</div>
             <div>Email</div>
             <div>Role</div>
             {!isPending && <div>Token Usage</div>}
+            {!isPending && <div>Presence</div>}
             <div>Status</div>
             <div>Action</div>
           </div>
@@ -433,7 +434,7 @@ const HumanAgents = () => {
                           super_agent_id: null
                         };
                         return (
-                          <div key={`master-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-blue-50/30 dark:bg-transparent">
+                          <div key={`master-${row.user_id}`} className="grid grid-cols-[240px,1fr,180px,120px,120px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-blue-50/30 dark:bg-transparent">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-8 w-8">
                                 <AvatarFallback className="text-xs bg-blue-100 text-blue-700">{getInitials(stub.display_name || 'U')}</AvatarFallback>
@@ -446,11 +447,15 @@ const HumanAgents = () => {
                             </div>
                             <div className="text-sm text-muted-foreground">—</div>
                             <div className="flex items-center gap-2">
+                              <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                              <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                    <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
-                                    <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                                    <div className={`h-2 w-2 rounded-full ${stub.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                    <span className="text-xs">{stub.status}</span>
                                     {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -494,7 +499,7 @@ const HumanAgents = () => {
                         const children = assigned[String(row.user_id)] || [];
                         return (
                           <div key={`super-${row.user_id}`} className="">
-                            <div className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-green-50/30 dark:bg-transparent">
+                            <div className="grid grid-cols-[240px,1fr,180px,120px,120px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-green-50/30 dark:bg-transparent">
                               <div className="flex items-center gap-3">
                                 <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-green-100 text-green-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
                                 <span className="font-medium text-green-600 dark:text-green-400">{stub.display_name}</span>
@@ -505,11 +510,15 @@ const HumanAgents = () => {
                               </div>
                               <div className="text-sm font-medium">{loadingSuperUsage ? '…' : ((usageBySuper[stub.user_id] ?? 0).toLocaleString())}</div>
                               <div className="flex items-center gap-2">
+                                <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                                <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                      <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
-                                      <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                                      <div className={`h-2 w-2 rounded-full ${stub.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                      <span className="text-xs">{stub.status}</span>
                                       {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                     </Button>
                                   </DropdownMenuTrigger>
@@ -549,7 +558,7 @@ const HumanAgents = () => {
                                 super_agent_id: stub.user_id
                               };
                               return (
-                                <div key={`agent-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-gray-50/30 dark:bg-transparent pl-12">
+                                <div key={`agent-${row.user_id}`} className="grid grid-cols-[240px,1fr,180px,120px,120px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-gray-50/30 dark:bg-transparent pl-12">
                                   <div className="flex items-center gap-3">
                                     <div className="w-6 h-6 flex items-center justify-center"><div className="w-4 h-4 border-l-2 border-b-2 border-gray-300 rounded-bl"></div></div>
                                     <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-gray-100 text-gray-700">{getInitials(child.display_name || 'U')}</AvatarFallback></Avatar>
@@ -561,11 +570,15 @@ const HumanAgents = () => {
                                   </div>
                                   <div className="text-sm text-muted-foreground">—</div>
                                   <div className="flex items-center gap-2">
+                                    <div className={`h-2 w-2 rounded-full ${getAgentPresence(child.user_id, child.last_seen_at).color}`} />
+                                    <span className="text-xs">{getAgentPresence(child.user_id, child.last_seen_at).label}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={child.primaryRole === 'master_agent'}>
-                                          <div className={`h-2 w-2 rounded-full ${getAgentPresence(child.user_id, child.last_seen_at).color}`} />
-                                          <span className="text-xs">{getAgentPresence(child.user_id, child.last_seen_at).label}</span>
+                                          <div className={`h-2 w-2 rounded-full ${child.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                          <span className="text-xs">{child.status}</span>
                                           {child.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                         </Button>
                                       </DropdownMenuTrigger>
@@ -610,7 +623,7 @@ const HumanAgents = () => {
                           super_agent_id: null
                         };
                         return (
-                          <div key={`unassigned-${row.user_id}`} className="grid grid-cols-[240px,1fr,220px,160px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-orange-50/30 dark:bg-transparent">
+                          <div key={`unassigned-${row.user_id}`} className="grid grid-cols-[240px,1fr,180px,120px,120px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-orange-50/30 dark:bg-transparent">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-orange-100 text-orange-700">{getInitials(stub.display_name || 'U')}</AvatarFallback></Avatar>
                               <span className="font-medium text-orange-600 dark:text-orange-400">{stub.display_name}</span>
@@ -621,11 +634,15 @@ const HumanAgents = () => {
                             </div>
                             <div className="text-sm text-muted-foreground">—</div>
                             <div className="flex items-center gap-2">
+                              <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                              <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                    <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
-                                    <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                                    <div className={`h-2 w-2 rounded-full ${stub.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                    <span className="text-xs">{stub.status}</span>
                                     {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -670,7 +687,7 @@ const HumanAgents = () => {
                   };
                   const isExpired = String(row.confirmation_status || '').toLowerCase() === 'expired';
                   return (
-                    <div key={row.user_id} className={`grid gap-4 p-4 items-center hover:bg-muted/30 transition-colors ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,220px,160px,120px,120px]'}`}>
+                    <div key={row.user_id} className={`grid gap-4 p-4 items-center hover:bg-muted/30 transition-colors ${isPending ? 'grid-cols-[240px,1fr,220px,120px,160px]' : 'grid-cols-[240px,1fr,180px,120px,120px,120px,120px]'}`}>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
                           <AvatarFallback className="text-xs">
@@ -688,6 +705,12 @@ const HumanAgents = () => {
                       {!isPending && (
                         <div className="text-sm text-muted-foreground">—</div>
                       )}
+                      {!isPending && (
+                        <div className="flex items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                          <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         {isPending ? (
                           <Badge className={`text-xs leading-none h-6 px-2 inline-flex items-center ${isExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{isExpired ? 'Expired' : 'Invited'}</Badge>
@@ -695,8 +718,8 @@ const HumanAgents = () => {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
-                                <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
-                                <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                                <div className={`h-2 w-2 rounded-full ${stub.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                <span className="text-xs">{stub.status}</span>
                                 {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
                               </Button>
                             </DropdownMenuTrigger>

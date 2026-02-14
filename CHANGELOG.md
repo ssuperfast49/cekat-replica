@@ -1,5 +1,13 @@
 # Change Log
 
+# [0.1.83] FE WEB CEKAT 2026-02-14
+### Human Agents UI
+- **Status Column Split**: Separated "Presence" and "Account Status" into distinct columns in the Human Agents table.
+  - **Presence**: Displays real-time status (Online/Idle/Offline) with visual indicators. Read-only.
+  - **Status**: Displays account status (Active/Inactive) with a dropdown for toggling activation.
+  - Updated grid layout to accommodate the new column structure for both Active and Pending views.
+  - Updated: `src/components/humanagents/HumanAgents.tsx`
+
 # [0.1.82] FE WEB CEKAT 2026-02-14
 ### Presence System & User Status
 - **Presence System**: Implemented real-time user presence tracking (Online, Idle, Offline).
