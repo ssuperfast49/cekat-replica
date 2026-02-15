@@ -140,7 +140,30 @@ export const useHumanAgents = () => {
 
   const getAgentsCachedOrLoad = async (): Promise<AgentWithDetails[]> => {
     const fresh = shared.data && (Date.now() - shared.ts) < AGENTS_CACHE_TTL_MS;
-    if (fresh) return shared.data as AgentWithDetails[];
+
+    // Even if cache is fresh, ALWAYS update presence (last_seen_at)
+    if (fresh && shared.data) {
+      try {
+        const { data: profiles } = await supabase
+          .from('users_profile')
+          .select('user_id, last_seen_at');
+
+        if (profiles) {
+          const lastSeenMap: Record<string, string | null> = {};
+          profiles.forEach((p: any) => { lastSeenMap[p.user_id] = p.last_seen_at; });
+
+          // Update the shared cache in place with fresh presence
+          shared.data = shared.data.map(a => ({
+            ...a,
+            last_seen_at: lastSeenMap[a.user_id] || null
+          }));
+        }
+      } catch (err) {
+        console.warn('Background presence refresh failed', err);
+      }
+      return shared.data;
+    }
+
     return await fetchAgentsOnce();
   };
 

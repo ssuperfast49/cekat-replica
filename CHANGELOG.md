@@ -1,5 +1,19 @@
 # Change Log
 
+# [0.1.84] FE WEB CEKAT 2026-02-16
+### Conversation UI Improvements
+- **Collaborator Highlight**: Conversations where the current user is a collaborator are now highlighted in yellow and sorted to the top of the list for immediate visibility.
+- **Header Cleanup**: Removed the redundant "Handled by" section from the conversation header since this info is already visible in the sidebar.
+
+### Presence System Fixes
+- **Immediate Offline Status**: Fixed logout flow to immediately set `last_seen_at` to `NULL` via a secure RPC (`go_offline`), ensuring users appear offline instantly.
+  - Mitigated race conditions where client-side heartbeats could overwrite the offline status.
+- **Stale Data Fix**: Updated `useHumanAgents` hook to always fetch fresh presence data, preventing "Seen X ago" statuses from persisting incorrectly due to caching.
+
+### Database & Diagnostics
+- **Debug Logging**: Added `debug_events` table and triggers to log `last_seen_at` changes for precise debugging of presence issues.
+- **Migration**: Consolidated debug logic and offline RPC into `supabase/migrations/20260216_go_offline_rpc.sql`.
+
 # [0.1.83] FE WEB CEKAT 2026-02-14
 ### Human Agents UI
 - **Status Column Split**: Separated "Presence" and "Account Status" into distinct columns in the Human Agents table.

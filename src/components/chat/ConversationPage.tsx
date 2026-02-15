@@ -852,11 +852,16 @@ export default function ConversationPage() {
       `${conv.contact_name} ${conv.last_message_preview} `.toLowerCase().includes(query.toLowerCase())
     );
     return [...list].sort((a, b) => {
+      // Sort by "Assigned to Me" first
+      const aIsMe = (a.assignee_user_id === currentUserId || a.collaborator_user_id === currentUserId) ? 1 : 0;
+      const bIsMe = (b.assignee_user_id === currentUserId || b.collaborator_user_id === currentUserId) ? 1 : 0;
+      if (aIsMe !== bIsMe) return bIsMe - aIsMe;
+
       const aTs = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
       const bTs = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
       return bTs - aTs;
     });
-  }, [conversations, query]);
+  }, [conversations, query, currentUserId]);
 
   // Smart Tab Switching: If the current tab is empty but another tab has data (based on RLS results), switch to it.
   useEffect(() => {
@@ -1412,7 +1417,6 @@ export default function ConversationPage() {
                 status: (activeFilters.status as any) || '',
                 resolvedBy: (activeFilters.resolvedBy as any) || '',
                 platformId: (activeFilters.platformId as any) || '',
-                channelType: (activeFilters.channelType as any) || 'all',
               }}
               onFilterChange={handleFilterChange}
             />
@@ -1470,62 +1474,73 @@ export default function ConversationPage() {
           );
           const renderList = (list: typeof filteredConversations) => (
             <div className="space-y-1">
-              {list.map(conv => (
-                <div key={conv.id} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => handleConversationSelect(conv.id)}
-                    className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800' : 'hover:bg-muted'}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={conv.channel_logo_url || ''} />
-                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <p className="text-xs text-muted-foreground truncate mt-1">{stripMarkdown(conv.last_message_preview) || '—'}</p>
-                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span className="text-xs text-muted-foreground truncate">
-                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                            </span>
+              {list.map(conv => {
+                const isMe = (conv.assignee_user_id === currentUserId || conv.collaborator_user_id === currentUserId);
+                // Use yellow tint for my threads, unless selected (blue)
+                const baseClass = isMe
+                  ? 'bg-yellow-50/60 dark:bg-yellow-900/20 hover:bg-yellow-100/80 dark:hover:bg-yellow-900/30'
+                  : 'hover:bg-muted';
+                const activeClass = selectedThreadId === conv.id
+                  ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800'
+                  : baseClass;
+
+                return (
+                  <div key={conv.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${activeClass}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={conv.channel_logo_url || ''} />
+                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
+                            <p className="text-xs text-muted-foreground truncate mt-1">{stripMarkdown(conv.last_message_preview) || '—'}</p>
+                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                              <span className="text-xs text-muted-foreground truncate">
+                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                        <div className="flex flex-col items-end">
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">{getListTimestamp(conv)}</span>
-                          <div className="mt-1">{renderStatus(conv)}</div>
+                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">{getListTimestamp(conv)}</span>
+                            <div className="mt-1">{renderStatus(conv)}</div>
+                          </div>
+                          {(conv.channel_provider || conv.channel?.provider) ? (
+                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                            </Badge>
+                          ) : <span />}
                         </div>
-                        {(conv.channel_provider || conv.channel?.provider) ? (
-                          <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                            {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                          </Badge>
-                        ) : <span />}
                       </div>
-                    </div>
-                  </button>
-                  {!conv.contact_id && canDeleteConversation && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                          onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Delete conversation</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              ))}
+                    </button>
+                    {!conv.contact_id && canDeleteConversation && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete conversation</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
           const renderContent = () => {
@@ -1619,33 +1634,7 @@ export default function ConversationPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {selectedConversation.assigned && selectedConversation.assignee_name && (
-                  <div className="hidden md:flex items-center gap-2 mr-2 border-r pr-3 h-8">
-                    <span className="text-xs text-muted-foreground">Handled by</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium">{selectedConversation.assignee_name}</span>
-                      {(() => {
-                        const presence = getAgentPresence(
-                          selectedConversation.assignee_user_id || selectedConversation.super_agent_id,
-                          selectedConversation.assignee_last_seen_at || selectedConversation.super_agent_last_seen_at
-                        );
-                        if (presence) {
-                          return (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className={`h-2.5 w-2.5 rounded-full ${presence.color} ring-1 ring-background cursor-help`} />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{presence.label}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  </div>
-                )}
+
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

@@ -20,7 +20,7 @@ interface PresenceContextType {
 const PresenceContext = createContext<PresenceContextType | undefined>(undefined);
 
 export function PresenceProvider({ children }: { children: ReactNode }) {
-    const { user } = useAuth();
+    const { user, isSigningOut, isSigningOutRef } = useAuth();
     const [onlineUsers, setOnlineUsers] = useState<Record<string, PresenceUser>>({});
     const [currentUserStatus, setCurrentUserStatus] = useState<UserStatus>('online');
     const channelRef = useRef<RealtimeChannel | null>(null);
@@ -33,7 +33,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
 
     // 1. Setup Realtime Presence
     useEffect(() => {
-        if (!user) {
+        if (!user || isSigningOut || isSigningOutRef.current) {
             setOnlineUsers({});
             return;
         }
@@ -92,11 +92,11 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
             channel.unsubscribe();
             channelRef.current = null;
         };
-    }, [user]);
+    }, [user, isSigningOut]);
 
     // 2. Track & Broadcast Status
     const trackStatus = async (status: UserStatus) => {
-        if (!channelRef.current || !user) return;
+        if (!channelRef.current || !user || isSigningOut || isSigningOutRef.current) return;
 
         const payload: PresenceUser = {
             user_id: user.id,
@@ -114,7 +114,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     };
 
     const updateDbLastSeen = async () => {
-        if (!user) return;
+        if (!user || isSigningOut || isSigningOutRef.current) return;
         try {
             await supabase.from('users_profile').update({
                 last_seen_at: new Date().toISOString()
