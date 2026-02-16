@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.86] FE WEB CEKAT 2026-02-16
+### Database & Security
+- **RLS Policy Synchronization**: Performed a full audit and synchronization of Row Level Security (RLS) policies between Development and Main production environments.
+  - **Threads**: Expanded permissions to allow Master Agents to create and delete threads.
+  - **Messages**: Added missing `anon_messages_update_by_account` for guest updates and normalized authenticated update permissions.
+  - **Channels**: Fixed access scope issues by implementing `can_access_super_scope`, allowing proper team member access.
+  - **Migrations Applied**: `20260216_sync_threads_policies.sql`, `20260216_sync_messages_updates.sql`, `20260216_sync_channels_policies.sql`.
+
+
 # [0.1.85] FE WEB CEKAT 2026-02-16
 ### Live Chat & Notifications
 - **Inline System Messages**: System messages (e.g., "Assignee changed") now appear as centered, distinct blocks within the chat timeline instead of generic bubbles, improving readability and context.
