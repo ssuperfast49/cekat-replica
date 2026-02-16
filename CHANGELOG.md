@@ -1,5 +1,11 @@
 # Change Log
 
+# [0.1.87] FE WEB CEKAT 2026-02-16
+### Live Chat
+- **Image Rendering Fix**: Resolved an issue where images sent without captions were invisible in the LiveChat UI. The renderer now correctly displays messages with attachments even if the text body is empty.
+- **Attachment Persistence**: Fixed a Row Level Security (RLS) policy issue that prevented `file_link` updates from persisting. The update policy now robustly checks both the `account_id` column and `additional_data` JSON field.
+
+
 # [0.1.86] FE WEB CEKAT 2026-02-16
 ### Database & Security
 - **RLS Policy Synchronization**: Performed a full audit and synchronization of Row Level Security (RLS) policies between Development and Main production environments.

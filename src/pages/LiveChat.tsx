@@ -1361,7 +1361,8 @@ export default function LiveChat() {
                 )}
                 {sortedMessages.map((m) => {
                   // Don't render empty messages or streaming messages with no content
-                  if (!m.body || (m.streaming && m.body.trim() === '')) {
+                  // Allow messages with file_link even if body is empty
+                  if ((!m.body && !m.file_link) || (m.streaming && (!m.body || m.body.trim() === ''))) {
                     return null;
                   }
 
