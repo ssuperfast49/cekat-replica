@@ -522,7 +522,7 @@ FOR SELECT
 TO authenticated
 USING (
   has_perm('read_channel_owned', 'threads')
-  AND public.threads.super_agent_id = auth.uid()
+  AND EXISTS (SELECT 1 FROM public.channels c WHERE c.id = public.threads.channel_id AND c.super_agent_id = auth.uid())
 );
 
 -- READ: collaborator
@@ -573,7 +573,7 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
   has_perm('create', 'threads')
-  AND public.threads.super_agent_id = auth.uid()
+  AND EXISTS (SELECT 1 FROM public.channels c WHERE c.id = public.threads.channel_id AND c.super_agent_id = auth.uid())
 );
 
 -- UPDATE: update_own
@@ -583,11 +583,11 @@ FOR UPDATE
 TO authenticated
 USING (
   has_perm('update', 'threads')
-  AND public.threads.super_agent_id = auth.uid()
+  AND EXISTS (SELECT 1 FROM public.channels c WHERE c.id = public.threads.channel_id AND c.super_agent_id = auth.uid())
 )
 WITH CHECK (
   has_perm('update', 'threads')
-  AND public.threads.super_agent_id = auth.uid()
+  AND EXISTS (SELECT 1 FROM public.channels c WHERE c.id = public.threads.channel_id AND c.super_agent_id = auth.uid())
 );
 
 -- DELETE: delete_own
@@ -597,7 +597,7 @@ FOR DELETE
 TO authenticated
 USING (
   has_perm('delete', 'threads')
-  AND public.threads.super_agent_id = auth.uid()
+  AND EXISTS (SELECT 1 FROM public.channels c WHERE c.id = public.threads.channel_id AND c.super_agent_id = auth.uid())
 );
 
 --------------------------------------------------------------

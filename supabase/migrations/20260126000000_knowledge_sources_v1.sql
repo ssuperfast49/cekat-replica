@@ -131,6 +131,7 @@ $$;
 -- 7. Enforce RLS on public.files (Security & API Exposure)
 alter table public.files enable row level security;
 
+drop policy if exists "Enable all access for org members" on public.files;
 create policy "Enable all access for org members"
 on public.files for all
 to authenticated

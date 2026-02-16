@@ -37,7 +37,7 @@ export default function LiveChat() {
   // Support either :platform_id or :platformId param
   const pid = useMemo(() => platform_id || platformId || "unknown", [platform_id, platformId]);
 
-  type ChatMessage = { id: string; role: "user" | "assistant"; body: string; at: string; order: number; streaming?: boolean; type?: "text" | "image" | "video" | "file" | "voice"; file_link?: string };
+  type ChatMessage = { id: string; role: "user" | "assistant" | "system"; body: string; at: string; order: number; streaming?: boolean; type?: "text" | "image" | "video" | "file" | "voice"; file_link?: string; payload?: any };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
@@ -271,19 +271,8 @@ export default function LiveChat() {
     if (!ok) playSequence([1046.5, 1318.5, 1568.0, [1046.5, 1318.5, 1568.0, 2093.0]], 120, 0.06);
   };
 
-  const notifySystemMessage = (message: { id?: string; body?: string }) => {
-    if (!message?.id) return;
-    if (systemNotificationIdsRef.current.has(message.id)) return;
-    systemNotificationIdsRef.current.add(message.id);
-    if (!notificationsReadyRef.current) return;
-    const content = String(message.body || '').trim();
-    if (!content) return;
-    import('@/components/ui/sonner')
-      .then(({ toast }) => {
-        toast.info(content, { duration: 3500 });
-      })
-      .catch(() => { });
-  };
+  // notifySystemMessage removed
+
 
   const nextAssistantTimestamp = () => new Date(Date.now() + 1).toISOString();
 
@@ -428,11 +417,19 @@ export default function LiveChat() {
       for (const r of rows) {
         if (!r?.id) continue;
         if (r.role === 'system') {
-          notifySystemMessage(r);
-          continue;
+          // Allow system messages to be added to the list
         }
-        const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+
+        let role: "user" | "assistant" | "system" = "user";
+        if (r.role === 'system') {
+          role = 'system';
+        } else if (r.role === 'agent' || r.role === 'assistant') {
+          role = 'assistant';
+        } else {
+          role = 'user';
+        }
         let inheritedOrder: number | null = null;
+
 
         if (role === 'assistant' && streamingDraftIdRef.current) {
           for (const [key, value] of map.entries()) {
@@ -694,9 +691,10 @@ export default function LiveChat() {
               const row = payload?.new || payload?.old;
               if (!row) return;
               if (row?.role === 'system') {
-                notifySystemMessage(row);
+                upsertFromRows([row]);
                 return;
               }
+
               if (ev === 'DELETE') {
                 return;
               }
@@ -1122,18 +1120,22 @@ export default function LiveChat() {
                   // Only process agent/assistant messages from immediate refresh
                   for (const r of data) {
                     if (!r?.id) continue;
+                    let role: "user" | "assistant" | "system" = "user";
                     if (r.role === 'system') {
-                      notifySystemMessage(r);
+                      role = 'system';
+                    } else if (r.role === 'agent' || r.role === 'assistant') {
+                      role = 'assistant';
+                    } else {
+                      role = 'user';
+                    }
+
+                    // SKIP user messages from immediate refresh to avoid duplicates with optimistic UI
+                    if (role === 'user') {
                       continue;
                     }
-                    const role: "user" | "assistant" = (r.role === 'agent' || r.role === 'assistant') ? 'assistant' : 'user';
+
                     let inheritedOrder: number | null = null;
 
-                    // SKIP user messages from immediate refresh
-                    if (role === 'user') {
-
-                      continue;
-                    }
 
                     const existing = map.get(r.id);
                     const item: ChatMessage = existing ?? {
@@ -1361,6 +1363,21 @@ export default function LiveChat() {
                   // Don't render empty messages or streaming messages with no content
                   if (!m.body || (m.streaming && m.body.trim() === '')) {
                     return null;
+                  }
+
+                  if (m.role === 'system') {
+                    return (
+                      <div key={m.id} className="flex justify-center my-4">
+                        <div className="text-center">
+                          <div className="text-sm text-slate-500 bg-slate-100/50 px-3 py-1 rounded-full border border-slate-100">
+                            {m.body || 'System event'}
+                          </div>
+                          <div className="flex items-center justify-center gap-2 mt-1 text-[10px] text-slate-400">
+                            <span>{fmt(m.at)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
                   }
 
 

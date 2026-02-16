@@ -154,6 +154,26 @@ export const useConversations = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const filtersRef = useRef<ThreadFilters>({});
+
+  // Refs for accessing latest state in realtime callbacks
+  const conversationsRef = useRef<ConversationWithDetails[]>([]);
+  const userRef = useRef<string | null>(null);
+
+  // Sync refs
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      userRef.current = data.user?.id || null;
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      userRef.current = session?.user?.id || null;
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
 
@@ -957,7 +977,7 @@ export const useConversations = () => {
 
   // Takeover: set collaborator to current user, status -> pending, do NOT touch assignee_user_id
   const takeoverThread = async (threadId: string) => {
-    const { error: rpcError, data: rpcData } = await protectedSupabase.rpc('takeover_thread', { p_thread_id: threadId });
+    const { error: rpcError, data: rpcData } = await (protectedSupabase.rpc as any)('takeover_thread', { p_thread_id: threadId });
     if (rpcError) {
       console.warn('takeover_thread RPC failed, falling back to direct update', rpcError);
       const { data: authData } = await supabase.auth.getUser();
@@ -1253,6 +1273,24 @@ export const useConversations = () => {
         if (message && message.direction === 'in' && document.visibilityState === 'visible') {
           // Play notification sound for incoming messages
           playNotificationSound('incoming');
+
+          // Check for collaborator notification
+          const currentUserId = userRef.current;
+          if (currentUserId) {
+            // Find the conversation regarding this message
+            // We use conversationsRef to get the latest list without dependency cycle
+            const conv = conversationsRef.current.find(c => c.id === message.thread_id);
+            if (conv && conv.collaborator_user_id === currentUserId) {
+              // Show toast for collaborator
+              import('sonner').then(({ toast }) => {
+                toast.info(`New message from ${conv.contact_name}`, {
+                  description: message.body ? (message.body.length > 50 ? message.body.substring(0, 50) + '...' : message.body) : 'Sent an attachment',
+                  duration: 4000,
+                });
+              });
+            }
+          }
+
           // Immediately update the conversation preview and re-sort
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(100); // Also do a full refresh for consistency

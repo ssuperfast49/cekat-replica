@@ -1,5 +1,15 @@
 # Change Log
 
+# [0.1.85] FE WEB CEKAT 2026-02-16
+### Live Chat & Notifications
+- **Inline System Messages**: System messages (e.g., "Assignee changed") now appear as centered, distinct blocks within the chat timeline instead of generic bubbles, improving readability and context.
+  - Updated: `src/pages/LiveChat.tsx`
+- **Collaborator Notifications**: Agents now receive real-time toast notifications when a collaborator sends a message in a thread they are viewing, ensuring seamless multi-agent coordination.
+  - Updated: `src/hooks/useConversations.ts`
+- **Database Policy Sync**: Gap analysis identified and resolved missing RLS policies (`anon_threads_by_account`, `anon_messages_by_account`) on the Main production environment, ensuring consistent guest access for LiveChat across Dev and Prod.
+  - Applied migration: `supabase/migrations/20260216_livechat_schema_and_policies.sql`
+
+
 # [0.1.84] FE WEB CEKAT 2026-02-16
 ### Conversation UI Improvements
 - **Collaborator Highlight**: Conversations where the current user is a collaborator are now highlighted in yellow and sorted to the top of the list for immediate visibility.
