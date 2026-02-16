@@ -79,7 +79,7 @@ export interface Message {
   thread_id: string;
   direction: 'in' | 'out' | null;
   role: 'user' | 'assistant' | 'agent' | 'system';
-  type: 'text' | 'image' | 'file' | 'voice' | 'event' | 'note';
+  type: 'text' | 'image' | 'video' | 'file' | 'voice' | 'event' | 'note';
   body: string | null;
   payload: any | null;
   actor_kind: 'customer' | 'agent' | 'ai' | 'system' | null;
@@ -89,6 +89,7 @@ export interface Message {
   edited_at: string | null;
   edit_reason: string | null;
   created_at: string;
+  file_link?: string | null;
 }
 
 export interface ConversationWithDetails extends Thread {
@@ -120,6 +121,8 @@ export interface ConversationWithDetails extends Thread {
   unreplied?: boolean;
   super_agent_id?: string | null;
   super_agent_name?: string | null;
+  assignee_last_seen_at?: string | null;
+  super_agent_last_seen_at?: string | null;
 }
 
 export interface MessageWithDetails extends Message {
@@ -151,6 +154,26 @@ export const useConversations = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const filtersRef = useRef<ThreadFilters>({});
+
+  // Refs for accessing latest state in realtime callbacks
+  const conversationsRef = useRef<ConversationWithDetails[]>([]);
+  const userRef = useRef<string | null>(null);
+
+  // Sync refs
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      userRef.current = data.user?.id || null;
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      userRef.current = session?.user?.id || null;
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
 
@@ -323,13 +346,15 @@ export const useConversations = () => {
       ));
 
       let userIdToName: Record<string, string> = {};
+      let userIdToLastSeen: Record<string, string | null> = {};
       if (userIds.length > 0) {
         const { data: profiles, error: profileErr } = await protectedSupabase
           .from('users_profile')
-          .select('user_id, display_name')
+          .select('user_id, display_name, last_seen_at')
           .in('user_id', userIds);
         if (profileErr) throw profileErr;
         userIdToName = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.display_name || '—']));
+        userIdToLastSeen = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.last_seen_at || null]));
       }
 
       // Transform data to match the expected format
@@ -392,6 +417,8 @@ export const useConversations = () => {
           ai_access_enabled: thread.ai_access_enabled ?? false,
           super_agent_id: channelSuperAgentId,
           super_agent_name: channelSuperAgentName,
+          assignee_last_seen_at: assignment.assignee_user_id ? (userIdToLastSeen[assignment.assignee_user_id] || null) : null,
+          super_agent_last_seen_at: channelSuperAgentId ? (userIdToLastSeen[channelSuperAgentId] || null) : null,
           status: currentStatus,
           unreplied,
         } as ConversationWithDetails;
@@ -498,7 +525,8 @@ export const useConversations = () => {
           in_reply_to,
           edited_at,
           edit_reason,
-          created_at
+          created_at,
+          file_link
         `)
         .eq('thread_id', threadId)
         .order('seq', { ascending: true });
@@ -534,10 +562,12 @@ export const useConversations = () => {
   }, []);
 
   // Send a new message
+  // Send a new message
   const sendMessage = async (
     threadId: string,
     messageText: string,
-    role: 'agent' | 'assistant' = 'assistant'
+    role: 'agent' | 'assistant' = 'assistant',
+    attachment?: { url: string; type: 'image' | 'video' | 'file' | 'voice' }
   ) => {
     try {
       setError(null);
@@ -555,11 +585,12 @@ export const useConversations = () => {
         thread_id: threadId,
         direction: 'out' as const,
         role: role,
-        type: 'text' as const,
+        type: attachment ? attachment.type : 'text' as const,
         body: messageText,
         payload: {},
         actor_kind: 'agent' as const,
-        actor_id: null
+        actor_id: null,
+        file_link: attachment?.url || null
       };
 
       // Optimistically push a pending message to UI
@@ -569,7 +600,7 @@ export const useConversations = () => {
         thread_id: threadId,
         direction: 'out',
         role,
-        type: 'text',
+        type: attachment ? attachment.type : 'text',
         body: messageText,
         payload: {},
         actor_kind: 'agent',
@@ -581,7 +612,8 @@ export const useConversations = () => {
         created_at: new Date().toISOString(),
         contact_name: '',
         contact_avatar: 'A',
-        _status: 'pending'
+        _status: 'pending',
+        file_link: attachment?.url || null
       };
       setMessages(prev => [...prev, optimistic]);
 
@@ -945,7 +977,7 @@ export const useConversations = () => {
 
   // Takeover: set collaborator to current user, status -> pending, do NOT touch assignee_user_id
   const takeoverThread = async (threadId: string) => {
-    const { error: rpcError, data: rpcData } = await protectedSupabase.rpc('takeover_thread', { p_thread_id: threadId });
+    const { error: rpcError, data: rpcData } = await (protectedSupabase.rpc as any)('takeover_thread', { p_thread_id: threadId });
     if (rpcError) {
       console.warn('takeover_thread RPC failed, falling back to direct update', rpcError);
       const { data: authData } = await supabase.auth.getUser();
@@ -1241,6 +1273,24 @@ export const useConversations = () => {
         if (message && message.direction === 'in' && document.visibilityState === 'visible') {
           // Play notification sound for incoming messages
           playNotificationSound('incoming');
+
+          // Check for collaborator notification
+          const currentUserId = userRef.current;
+          if (currentUserId) {
+            // Find the conversation regarding this message
+            // We use conversationsRef to get the latest list without dependency cycle
+            const conv = conversationsRef.current.find(c => c.id === message.thread_id);
+            if (conv && conv.collaborator_user_id === currentUserId) {
+              // Show toast for collaborator
+              import('sonner').then(({ toast }) => {
+                toast.info(`New message from ${conv.contact_name}`, {
+                  description: message.body ? (message.body.length > 50 ? message.body.substring(0, 50) + '...' : message.body) : 'Sent an attachment',
+                  duration: 4000,
+                });
+              });
+            }
+          }
+
           // Immediately update the conversation preview and re-sort
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(100); // Also do a full refresh for consistency

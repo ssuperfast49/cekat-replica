@@ -663,6 +663,7 @@ export type Database = {
           direction: Database["public"]["Enums"]["message_direction"] | null
           edit_reason: string | null
           edited_at: string | null
+          file_link: string | null
           id: string
           in_reply_to: string | null
           payload: Json | null
@@ -679,6 +680,7 @@ export type Database = {
           direction?: Database["public"]["Enums"]["message_direction"] | null
           edit_reason?: string | null
           edited_at?: string | null
+          file_link?: string | null
           id?: string
           in_reply_to?: string | null
           payload?: Json | null
@@ -695,6 +697,7 @@ export type Database = {
           direction?: Database["public"]["Enums"]["message_direction"] | null
           edit_reason?: string | null
           edited_at?: string | null
+          file_link?: string | null
           id?: string
           in_reply_to?: string | null
           payload?: Json | null
@@ -1350,6 +1353,7 @@ export type Database = {
           display_name: string | null
           is_2fa_email_enabled: boolean | null
           is_active: boolean
+          last_seen_at: string | null
           max_tokens_per_day: number
           max_tokens_per_month: number
           timezone: string | null
@@ -1363,6 +1367,7 @@ export type Database = {
           display_name?: string | null
           is_2fa_email_enabled?: boolean | null
           is_active?: boolean
+          last_seen_at?: string | null
           max_tokens_per_day?: number
           max_tokens_per_month?: number
           timezone?: string | null
@@ -1376,6 +1381,7 @@ export type Database = {
           display_name?: string | null
           is_2fa_email_enabled?: boolean | null
           is_active?: boolean
+          last_seen_at?: string | null
           max_tokens_per_day?: number
           max_tokens_per_month?: number
           timezone?: string | null
@@ -1587,7 +1593,7 @@ export type Database = {
       label_scope: "contact" | "thread"
       message_direction: "in" | "out"
       message_role: "user" | "assistant" | "agent" | "system"
-      message_type: "text" | "image" | "file" | "voice" | "event" | "note"
+      message_type: "text" | "image" | "video" | "file" | "voice" | "event" | "note"
       thread_status: "open" | "pending" | "closed"
       user_role: "agent" | "supervisor" | "super_agent"
     }
@@ -1721,7 +1727,7 @@ export const Constants = {
       label_scope: ["contact", "thread"],
       message_direction: ["in", "out"],
       message_role: ["user", "assistant", "agent", "system"],
-      message_type: ["text", "image", "file", "voice", "event", "note"],
+      message_type: ["text", "image", "video", "file", "voice", "event", "note"],
       thread_status: ["open", "pending", "closed"],
       user_role: ["agent", "supervisor", "super_agent"],
     },

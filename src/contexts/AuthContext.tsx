@@ -16,6 +16,8 @@ interface AuthContextType {
   otpEvaluated: boolean;
   accountDeactivated: boolean;
   setAccountDeactivated: (value: boolean) => void;
+  isSigningOut: boolean;
+  isSigningOutRef: React.MutableRefObject<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,7 +58,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (uid) {
             return localStorage.getItem(`otpVerified:${uid}`) === 'true';
           }
-        } catch {}
+        } catch { }
       }
       return false;
     } catch { return false; }
@@ -66,14 +68,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [accountStatusChecked, setAccountStatusChecked] = useState<boolean>(false);
   const [isCheckingAccount, setIsCheckingAccount] = useState<boolean>(false);
   const [checkAccountStatusCallCount, setCheckAccountStatusCallCount] = useState<number>(0);
-  
+
   // Removed noisy debug logging for accountDeactivated state changes
-  
+
   // Reset account status check when user changes
   useEffect(() => {
     setAccountStatusChecked(false);
   }, [user?.id]);
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
+  const isSigningOutRef = useRef<boolean>(false);
   const lastLoginLoggedUserIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   useEffect(() => { currentUserIdRef.current = user?.id ?? null; }, [user?.id]);
@@ -90,7 +93,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         localStorage.removeItem(key);
         localStorage.removeItem('otpVerified');
       }
-    } catch {}
+    } catch { }
   }, [session?.user?.id]);
 
   const checkAccountStatus = async (currentSession: Session | null) => {
@@ -98,12 +101,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const callCount = checkAccountStatusCallCount + 1;
     setCheckAccountStatusCallCount(callCount);
     // Trimmed verbose debug logs from account status check
-    
+
     if (!userId) {
       setAccountDeactivated(false);
       return true;
     }
-    
+
     // Avoid duplicate checks for the same user within this lifecycle
     if (isCheckingAccount) {
       return !accountDeactivated;
@@ -112,35 +115,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return !accountDeactivated;
     }
     setIsCheckingAccount(true);
-    
+
     try {
       const { data, error } = await supabase
         .from('users_profile')
         .select('is_active')
         .eq('user_id', userId)
         .maybeSingle();
-      
+
       if (error) {
         console.error('Error checking account status:', error);
         // On transient errors (e.g., during tab resume), do not block access.
         // We'll keep previous state and allow UI to continue.
         return !accountDeactivated;
       }
-      
+
       // If profile row is missing, block access (fail closed for security)
       if (!data) {
         // Treat as transient during resume to avoid false blocks; allow UI and re-check later
         return !accountDeactivated;
       }
-      
+
       const isActive = data.is_active === true;
-      
+
       if (!isActive) {
         // Account is deactivated - redirect to warning page
         navigate('/account-deactivated', { replace: true });
         return false;
       }
-      
+
       setAccountDeactivated(false);
       setAccountStatusChecked(true);
       return true;
@@ -160,7 +163,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         const key = currentSession?.user?.id ? `otpRequired:${currentSession.user.id}` : 'otpRequired';
         localStorage.removeItem(key);
-      } catch {}
+      } catch { }
       return false;
     }
     try {
@@ -176,7 +179,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         try {
           const key = currentSession?.user?.id ? `otpRequired:${currentSession.user.id}` : 'otpRequired';
           localStorage.setItem(key, 'true');
-        } catch {}
+        } catch { }
         return true;
       }
       const isEnabled = (data as any)?.is_2fa_email_enabled === true;
@@ -185,7 +188,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const key = currentSession?.user?.id ? `otpRequired:${currentSession.user.id}` : 'otpRequired';
         if (isEnabled) localStorage.setItem(key, 'true');
         else localStorage.removeItem(key);
-      } catch {}
+      } catch { }
       return !!isEnabled;
     } catch (e) {
       console.warn('Failed to evaluate 2FA profile flag', e);
@@ -194,7 +197,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         const key = currentSession?.user?.id ? `otpRequired:${currentSession.user.id}` : 'otpRequired';
         localStorage.setItem(key, 'true');
-      } catch {}
+      } catch { }
       return true;
     }
   };
@@ -229,7 +232,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         try {
           localStorage.removeItem('otpRequired');
           localStorage.removeItem('otpVerified');
-        } catch {}
+        } catch { }
 
         // Prefer LocalStorage first to avoid flicker/empty state on refresh
         try {
@@ -245,19 +248,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 setUser(parsed.user as User);
                 break;
               }
-            } catch {}
+            } catch { }
           }
           // Clean up stale Supabase project tokens, but never remove the active project's token
           if (SUPABASE_AUTH_TOKEN_KEY) {
             const staleKeys = keys.filter(k => k !== SUPABASE_AUTH_TOKEN_KEY);
             staleKeys.forEach(k => {
-              try { localStorage.removeItem(k); } catch {}
+              try { localStorage.removeItem(k); } catch { }
             });
           } else {
             // If we cannot determine the current project, remove only known legacy refs
             localStorage.removeItem('sb-yoekcpoppfudmqtvjcby-auth-token');
           }
-        } catch {}
+        } catch { }
 
         const sessionResult = await Promise.race([
           supabase.auth.getSession().catch(() => ({ data: { session: null } })),
@@ -304,14 +307,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // Only set user as signed in if account is active
           setSession(initialSession);
           setUser(initialSession.user);
-          
+
           // Store user_id in localStorage for reliable access (since Supabase sessioning can be unreliable)
           try {
             if (initialSession.user?.id) {
               localStorage.setItem('app.currentUserId', initialSession.user.id);
               localStorage.setItem('app.currentUserEmail', initialSession.user.email || '');
             }
-          } catch {}
+          } catch { }
           // Defer OTP decision until profile evaluation completes to avoid flicker
           if (!loadingGuardTriggered) {
             window.clearTimeout(loadingGuard);
@@ -320,11 +323,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // Evaluate in background
           evaluateOtpWithGuard(
             updateOtpRequirementFromProfile(initialSession)
-            .then((enabled) => {
-              // On hard refresh, preserve any existing OTP verification state.
-              // Only set whether OTP is required; do not reset verification here.
-              setOtpRequired(!!enabled);
-            })
+              .then((enabled) => {
+                // On hard refresh, preserve any existing OTP verification state.
+                // Only set whether OTP is required; do not reset verification here.
+                setOtpRequired(!!enabled);
+              })
           );
           return;
         } else {
@@ -363,7 +366,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
               setUser(nextSession?.user ?? null);
               return;
             }
-            
+
             // Check account status first before setting user as signed in
             const isAccountActive = await Promise.race([
               checkAccountStatus(nextSession),
@@ -379,67 +382,67 @@ export function AuthProvider({ children }: AuthProviderProps) {
               setLoading(false);
               return;
             }
-            
+
             // Set user as signed in (account status is checked during login)
             setSession(nextSession);
             setUser(nextSession?.user ?? null);
-            
+
             // Non-blocking log once per user per lifecycle
             const uid = nextSession?.user?.id || null;
             if (uid && lastLoginLoggedUserIdRef.current !== uid) {
-              logAction({ action: 'auth.login', resource: 'auth', userId: uid, context: {} }).catch(() => {});
+              logAction({ action: 'auth.login', resource: 'auth', userId: uid, context: {} }).catch(() => { });
               lastLoginLoggedUserIdRef.current = uid;
-              
+
               // Store user_id in localStorage for reliable access (since Supabase sessioning can be unreliable)
               try {
                 localStorage.setItem('app.currentUserId', uid);
                 localStorage.setItem('app.currentUserEmail', nextSession?.user?.email || '');
-              } catch {}
+              } catch { }
             }
-            
+
             // Preserve OTP verification if it was already satisfied for this user
             let persistedVerified = false;
             try {
               const key = uid ? `otpVerified:${uid}` : 'otpVerified';
               persistedVerified = localStorage.getItem(key) === 'true' || localStorage.getItem('otpVerified') === 'true';
-            } catch {}
+            } catch { }
             setOtpVerified(!!persistedVerified);
-            
+
             // Defer OTP decision until profile is fetched to prevent flicker
             try {
               const key = nextSession?.user?.id ? `otpRequired:${nextSession.user.id}` : 'otpRequired';
               localStorage.removeItem(key);
-            } catch {}
-            
+            } catch { }
+
             // Do NOT block UI on profile fetch or 2FA send when tab visibility changes
             setOtpEvaluated(false);
             setLoading(false);
-            
+
             evaluateOtpWithGuard(
               updateOtpRequirementFromProfile(nextSession)
-              .then((enabled) => {
-                if (enabled && !persistedVerified) {
-                  const currentUserId = nextSession?.user?.id || null;
-                  if (currentUserId && sent2faForUserIdRef.current !== currentUserId) {
-                    supabase.functions.invoke('send-2fa-login-email', {
-                      headers: nextSession?.access_token ? { Authorization: `Bearer ${nextSession.access_token}` } : undefined,
-                    }).then(() => {
-                      sent2faForUserIdRef.current = currentUserId;
-                    }).catch((fnErr) => {
-                      console.warn('2FA send function failed', fnErr);
-                    });
+                .then((enabled) => {
+                  if (enabled && !persistedVerified) {
+                    const currentUserId = nextSession?.user?.id || null;
+                    if (currentUserId && sent2faForUserIdRef.current !== currentUserId) {
+                      supabase.functions.invoke('send-2fa-login-email', {
+                        headers: nextSession?.access_token ? { Authorization: `Bearer ${nextSession.access_token}` } : undefined,
+                      }).then(() => {
+                        sent2faForUserIdRef.current = currentUserId;
+                      }).catch((fnErr) => {
+                        console.warn('2FA send function failed', fnErr);
+                      });
+                    }
                   }
-                }
-                setOtpRequired(!!enabled);
-              })
+                  setOtpRequired(!!enabled);
+                })
             );
             // Persist last login payload for immediate reuse on next refresh
-            try { localStorage.setItem('app.lastAuthEvent', JSON.stringify({ event, at: Date.now(), user: nextSession?.user || null })); } catch {}
+            try { localStorage.setItem('app.lastAuthEvent', JSON.stringify({ event, at: Date.now(), user: nextSession?.user || null })); } catch { }
             return; // early exit; we've already set loading state
           }
           // If user is in password recovery, only require OTP if enabled in profile
           if (event === 'PASSWORD_RECOVERY') {
-            try { localStorage.setItem('auth.intent', 'recovery'); } catch {}
+            try { localStorage.setItem('auth.intent', 'recovery'); } catch { }
             // Strip Supabase hash fragments so router can navigate cleanly
             try {
               if (window.location.hash) {
@@ -447,7 +450,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 url.hash = '';
                 window.history.replaceState({}, document.title, url.toString());
               }
-            } catch {}
+            } catch { }
             // Ensure we land on the dedicated reset password page
             if (window.location.pathname !== '/reset-password') {
               navigate('/reset-password', { replace: true });
@@ -476,18 +479,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
             // Non-blocking log - only if we have a valid user and org context
             if (user?.id) {
               // Try to log the logout action, but don't fail if it doesn't work
-              logAction({ 
-                action: 'auth.logout', 
-                resource: 'auth', 
-                userId: user.id, 
-                context: {} 
-              }).catch(() => {});
+              logAction({
+                action: 'auth.logout',
+                resource: 'auth',
+                userId: user.id,
+                context: {}
+              }).catch(() => { });
             }
             setOtpRequired(false);
             setOtpVerified(false);
             setIsSigningOut(false);
             setAccountDeactivated(false);
-            
+
             // Clear all cache on sign out
             try {
               // Clear all localStorage items
@@ -501,9 +504,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
               keysToRemove.forEach(key => {
                 try {
                   localStorage.removeItem(key);
-                } catch {}
+                } catch { }
               });
-              
+
               // Clear all sessionStorage
               const sessionKeysToRemove: string[] = [];
               for (let i = 0; i < sessionStorage.length; i++) {
@@ -515,13 +518,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
               sessionKeysToRemove.forEach(key => {
                 try {
                   sessionStorage.removeItem(key);
-                } catch {}
+                } catch { }
               });
             } catch (cacheError) {
               console.warn('Error clearing cache on sign out:', cacheError);
             }
           }
-        } catch {}
+        } catch { }
 
         // For non-auth-critical events (TOKEN_REFRESHED, USER_UPDATED, etc.), never block UI
         if (event !== 'SIGNED_IN') {
@@ -541,14 +544,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const refreshSession = async () => {
       try {
         await supabase.auth.getSession();
-      } catch {}
+      } catch { }
     };
     const onVisibilityChange = () => {
       try {
         if (document.visibilityState === 'visible') {
           refreshSession();
         }
-      } catch {}
+      } catch { }
     };
     window.addEventListener('focus', refreshSession);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -556,22 +559,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const keepaliveId = window.setInterval(() => {
       try {
         if (document.visibilityState === 'visible') {
-          supabase.auth.getSession().catch(() => {});
+          supabase.auth.getSession().catch(() => { });
         }
-      } catch {}
+      } catch { }
     }, 4 * 60 * 1000);
     return () => {
       window.removeEventListener('focus', refreshSession);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      try { clearInterval(keepaliveId); } catch {}
+      try { clearInterval(keepaliveId); } catch { }
     };
   }, []);
 
   const signOut = useCallback(async () => {
     try {
       setIsSigningOut(true);
-      
-      // Clear all cache before signing out
+      isSigningOutRef.current = true;
+
+      // Set last_seen_at to null to immediately offline the user
+      if (user?.id) {
+        console.log(`[Auth] Attempting to clear presence for user ${user.id}...`);
+        try {
+          // Drain any pending presence updates
+          console.log('[Auth] Draining in-flight requests...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          // @ts-ignore
+          const { data: success, error } = await supabase.rpc('go_offline');
+
+          if (error) {
+            console.error('[Auth] Failed to clear presence (RPC Error):', error);
+          } else {
+            console.log(`[Auth] Presence cleared successfully via RPC. Result: ${success}`);
+          }
+        } catch (err) {
+          console.warn('[Auth] Failed to clear last_seen_at on logout (Exception):', err);
+        }
+      } else {
+        console.warn('[Auth] No user ID found during sign out, skipping presence clear.');
+      }
+
+      // Clear all cache before signing out (moved after RPC to ensure we have auth token)
       try {
         // Clear all localStorage items (including cached data)
         const keysToRemove: string[] = [];
@@ -584,9 +611,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         keysToRemove.forEach(key => {
           try {
             localStorage.removeItem(key);
-          } catch {}
+          } catch { }
         });
-        
+
         // Clear all sessionStorage
         const sessionKeysToRemove: string[] = [];
         for (let i = 0; i < sessionStorage.length; i++) {
@@ -598,9 +625,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         sessionKeysToRemove.forEach(key => {
           try {
             sessionStorage.removeItem(key);
-          } catch {}
+          } catch { }
         });
-        
+
         // Specifically clear common cache keys
         const cachePatterns = [
           'app.cached',
@@ -612,27 +639,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
           'auth.intent',
           'sb-',
         ];
-        
+
         // Clear any remaining keys matching patterns
         Object.keys(localStorage).forEach(key => {
           if (cachePatterns.some(pattern => key.includes(pattern))) {
             try {
               localStorage.removeItem(key);
-            } catch {}
+            } catch { }
           }
         });
       } catch (cacheError) {
         console.warn('Error clearing cache:', cacheError);
       }
-      
+
       // Sign out from Supabase
       await supabase.auth.signOut();
     } catch (error) {
       console.error('Error signing out:', error);
     } finally {
       setIsSigningOut(false);
+      isSigningOutRef.current = false;
     }
-  }, []);
+  }, [user]);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -655,7 +683,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     otpEvaluated,
     accountDeactivated,
     setAccountDeactivated,
-  }), [user, session, loading, signOut, refreshUser, otpRequired, otpVerified, setOtpVerified, otpEvaluated, accountDeactivated, setAccountDeactivated]);
+    isSigningOut,
+    isSigningOutRef,
+  }), [user, session, loading, signOut, refreshUser, otpRequired, otpVerified, setOtpVerified, otpEvaluated, accountDeactivated, setAccountDeactivated, isSigningOut]);
 
   return (
     <AuthContext.Provider value={value}>

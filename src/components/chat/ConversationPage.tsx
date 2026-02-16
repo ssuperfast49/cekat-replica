@@ -57,6 +57,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { LinkPreview } from "@/components/chat/LinkPreview";
+import { FileUploadButton, StagedFilePreview, uploadFileToStorage, type UploadedFile, type StagedFile, AttachmentRenderer } from "@/components/chat/FileUploadButton";
+import { usePresence } from "@/contexts/PresenceContext";
+import { formatDistanceToNow } from "date-fns";
+import { id } from "date-fns/locale";
 
 interface MatchPosition {
   start: number;
@@ -149,6 +153,42 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
   const isHumanAgent = message.role === 'assistant';
   const isAiAgent = message.role === 'agent';
 
+  const fileLink = message.file_link as string;
+  let attachType = (message.type && message.type !== 'text') ? message.type : null;
+  if (fileLink && !attachType) {
+    const ext = fileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
+    else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
+    else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
+    else attachType = 'file';
+  }
+
+  const bodyText = (message.body || '').trim();
+  const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
+  const hasRealBody = bodyText && !isFilePlaceholder;
+  // Always show text bubble if there are search matches OR if there is actual text content.
+  const showTextBubble = hasRealBody || matches.length > 0;
+  const hasAttachment = !!fileLink;
+
+  // Helper to render timestamp/status
+  const renderMetadata = (isInsideBubble: boolean) => (
+    <div className={`mt-1 flex items-center gap-1 text-[10px] ${isInsideBubble
+      ? (isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground")
+      : "text-muted-foreground"
+      } ${!isInsideBubble && isAgent ? "justify-end" : ""}`}>
+      <span>{new Date(message.created_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })}</span>
+      {isAgent && (
+        message._status === 'pending' ? (
+          <Loader2 className="h-3 w-3 animate-spin" aria-label="pending" />
+        ) : isLastMessage ? (
+          <CheckCheck className="h-3 w-3" aria-label="sent" />
+        ) : null
+      )}
+    </div>
+  );
 
   const MarkdownComponents = {
     a: ({ href, children }: any) => {
@@ -253,51 +293,56 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
           </AvatarFallback>
         </Avatar>
 
-        <div
-          className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${isAiAgent
-            ? "bg-blue-600 text-white"
-            : isHumanAgent
-              ? "bg-blue-100 text-blue-900"
-              : "bg-muted text-foreground"
-            } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
-        >
-          {matches.length > 0 ? (
-            <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-              {renderBodyWithHighlights()}
-            </p>
-          ) : (
-            <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : "dark:prose-invert"} `}>
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
-                {message.body || ''}
-              </ReactMarkdown>
+        <div className={`flex flex-col ${isAgent ? "items-end" : "items-start"} min-w-0 max-w-full space-y-1`}>
+          {hasAttachment && (
+            <div className="max-w-full">
+              <AttachmentRenderer
+                fileLink={fileLink}
+                type={attachType as 'image' | 'video' | 'file' | 'voice'}
+              />
             </div>
           )}
-          {(() => {
-            const urls = extractUrls(message.body);
-            if (urls.length === 0) return null;
 
-            return (
-              <div className="space-y-2 mt-2">
-                {urls.map((u) => !isImageLink(u) && (
-                  <LinkPreview key={u} url={u} isDark={isAiAgent} />
-                ))}
-              </div>
-            );
-          })()}
-          <div className={`mt-1 flex items-center gap-1 text-[10px] ${isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground"
-            }`}>
-            <span>{new Date(message.created_at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit"
-            })}</span>
-            {isAgent && (
-              message._status === 'pending' ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-label="pending" />
-              ) : isLastMessage ? (
-                <CheckCheck className="h-3 w-3" aria-label="sent" />
-              ) : null
-            )}
-          </div>
+          {showTextBubble && (
+            <div
+              className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${isAiAgent
+                ? "bg-blue-600 text-white"
+                : isHumanAgent
+                  ? "bg-blue-100 text-blue-900"
+                  : "bg-muted text-foreground"
+                } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
+            >
+              {matches.length > 0 ? (
+                <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                  {renderBodyWithHighlights()}
+                </p>
+              ) : (
+                <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${isAiAgent ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : "dark:prose-invert"} `}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={MarkdownComponents}>
+                    {message.body || ''}
+                  </ReactMarkdown>
+                </div>
+              )}
+
+              {(() => {
+                const urls = extractUrls(message.body);
+                if (urls.length === 0) return null;
+
+                return (
+                  <div className="space-y-2 mt-2">
+                    {urls.map((u) => !isImageLink(u) && (
+                      <LinkPreview key={u} url={u} isDark={isAiAgent} />
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {renderMetadata(true)}
+            </div>
+          )}
+
+          {/* If no text bubble, show metadata outside */}
+          {!showTextBubble && renderMetadata(false)}
         </div>
       </div>
     </div>
@@ -318,6 +363,10 @@ export default function ConversationPage() {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // File upload state
+  const [stagedFile, setStagedFile] = useState<StagedFile | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   const trimmedSearch = messageSearch.trim();
 
@@ -370,6 +419,17 @@ export default function ConversationPage() {
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
   const [superAgentMemberAgentIds, setSuperAgentMemberAgentIds] = useState<string[]>([]);
+
+  const handleFileStaged = (file: StagedFile) => {
+    setStagedFile(file);
+  };
+
+  const handleRemoveFile = () => {
+    setStagedFile(null);
+  };
+
+
+
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
 
   // Options for the "Handled By" selector: only Super Agents
@@ -402,6 +462,21 @@ export default function ConversationPage() {
 
   // Derive current handled-by (assignee) without referencing selectedConversation (avoid TDZ)
   const [handledByOverride, setHandledByOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
+
+  const { onlineUsers } = usePresence();
+
+  const getAgentPresence = (userId: string | null | undefined, lastSeenAt: string | null | undefined) => {
+    if (!userId) return null;
+    const online = onlineUsers[userId];
+    if (online) {
+      if (online.status === 'idle') return { color: 'bg-orange-500', label: 'Idle' };
+      return { color: 'bg-green-500', label: 'Online' };
+    }
+    if (lastSeenAt) {
+      return { color: 'bg-gray-400', label: `Seen ${formatDistanceToNow(new Date(lastSeenAt), { addSuffix: true, locale: id })}` };
+    }
+    return { color: 'bg-gray-300', label: 'Offline' };
+  };
 
   const derivedHandledById = useMemo(() => {
     if (!selectedThreadId) return null;
@@ -777,11 +852,16 @@ export default function ConversationPage() {
       `${conv.contact_name} ${conv.last_message_preview} `.toLowerCase().includes(query.toLowerCase())
     );
     return [...list].sort((a, b) => {
+      // Sort by "Assigned to Me" first
+      const aIsMe = (a.assignee_user_id === currentUserId || a.collaborator_user_id === currentUserId) ? 1 : 0;
+      const bIsMe = (b.assignee_user_id === currentUserId || b.collaborator_user_id === currentUserId) ? 1 : 0;
+      if (aIsMe !== bIsMe) return bIsMe - aIsMe;
+
       const aTs = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
       const bTs = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
       return bTs - aTs;
     });
-  }, [conversations, query]);
+  }, [conversations, query, currentUserId]);
 
   // Smart Tab Switching: If the current tab is empty but another tab has data (based on RLS results), switch to it.
   useEffect(() => {
@@ -1114,11 +1194,32 @@ export default function ConversationPage() {
   }, [activeTab, filteredConversations, selectedThreadId, selectedConversation]);
 
   // Send message
+  // Send message
   const handleSendMessage = async () => {
     const text = draft.trim();
-    if (!text || !selectedThreadId) return;
+    if ((!text && !stagedFile) || !selectedThreadId) return;
 
     try {
+      let attachment = undefined;
+
+      // Upload file if present
+      if (stagedFile) {
+        setIsUploadingFile(true);
+        try {
+          const uploaded = await uploadFileToStorage(stagedFile.file);
+          attachment = {
+            url: uploaded.url,
+            type: uploaded.type
+          };
+        } catch (error: any) {
+          console.error("Failed to upload file:", error);
+          toast.error(error.message || "Could not upload file");
+          setIsUploadingFile(false);
+          return;
+        }
+        setIsUploadingFile(false);
+      }
+
       // Check AI message limit before sending (for AI responses)
       const { checkAIMessageLimit, autoAssignToSuperAgent } = await import('@/lib/aiMessageLimit');
       // @ts-ignore - protectedSupabase is compatible with the function signature
@@ -1188,7 +1289,8 @@ export default function ConversationPage() {
 
       // Clear input immediately and fire send without blocking UI
       setDraft("");
-      void sendMessage(selectedThreadId, text, 'assistant');
+      setStagedFile(null);
+      void sendMessage(selectedThreadId, text, 'assistant', attachment);
     } catch (error) {
       toast.error("Failed to send message");
     }
@@ -1309,13 +1411,12 @@ export default function ConversationPage() {
             <ChatFilter
               value={{
                 dateRange: activeFilters.dateRange || {},
-                inbox: (activeFilters.inbox as any) || '',
+                channelType: (activeFilters.channelType as any) || 'all',
                 label: [],
                 agent: (activeFilters.agent as any) || '',
                 status: (activeFilters.status as any) || '',
                 resolvedBy: (activeFilters.resolvedBy as any) || '',
                 platformId: (activeFilters.platformId as any) || '',
-                channelType: (activeFilters.channelType as any) || 'all',
               }}
               onFilterChange={handleFilterChange}
             />
@@ -1373,62 +1474,73 @@ export default function ConversationPage() {
           );
           const renderList = (list: typeof filteredConversations) => (
             <div className="space-y-1">
-              {list.map(conv => (
-                <div key={conv.id} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => handleConversationSelect(conv.id)}
-                    className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${selectedThreadId === conv.id ? 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800' : 'hover:bg-muted'}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={conv.channel_logo_url || ''} />
-                          <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                          <p className="text-xs text-muted-foreground truncate mt-1">{stripMarkdown(conv.last_message_preview) || '—'}</p>
-                          <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                            <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span className="text-xs text-muted-foreground truncate">
-                              {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                            </span>
+              {list.map(conv => {
+                const isMe = (conv.assignee_user_id === currentUserId || conv.collaborator_user_id === currentUserId);
+                // Use yellow tint for my threads, unless selected (blue)
+                const baseClass = isMe
+                  ? 'bg-yellow-50/60 dark:bg-yellow-900/20 hover:bg-yellow-100/80 dark:hover:bg-yellow-900/30'
+                  : 'hover:bg-muted';
+                const activeClass = selectedThreadId === conv.id
+                  ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800'
+                  : baseClass;
+
+                return (
+                  <div key={conv.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => handleConversationSelect(conv.id)}
+                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${activeClass}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={conv.channel_logo_url || ''} />
+                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
+                            <p className="text-xs text-muted-foreground truncate mt-1">{stripMarkdown(conv.last_message_preview) || '—'}</p>
+                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                              <span className="text-xs text-muted-foreground truncate">
+                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                        <div className="flex flex-col items-end">
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">{getListTimestamp(conv)}</span>
-                          <div className="mt-1">{renderStatus(conv)}</div>
+                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">{getListTimestamp(conv)}</span>
+                            <div className="mt-1">{renderStatus(conv)}</div>
+                          </div>
+                          {(conv.channel_provider || conv.channel?.provider) ? (
+                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                            </Badge>
+                          ) : <span />}
                         </div>
-                        {(conv.channel_provider || conv.channel?.provider) ? (
-                          <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                            {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                          </Badge>
-                        ) : <span />}
                       </div>
-                    </div>
-                  </button>
-                  {!conv.contact_id && canDeleteConversation && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                          onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Delete conversation</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              ))}
+                    </button>
+                    {!conv.contact_id && canDeleteConversation && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete conversation</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
           const renderContent = () => {
@@ -1522,6 +1634,7 @@ export default function ConversationPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -1639,22 +1752,35 @@ export default function ConversationPage() {
             </ScrollArea >
 
             {/* Message Input or Takeover / Join */}
-            < div className="border-t p-3 space-y-2" >
+            <div className="border-t p-3 space-y-2">
+              {stagedFile && (
+                <div className="px-2">
+                  <StagedFilePreview
+                    stagedFile={stagedFile}
+                    onRemove={handleRemoveFile}
+                    isUploading={isUploadingFile}
+                  />
+                </div>
+              )}
               {!isSelectedConversationDone && collaboratorId === user?.id && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-end gap-2">
+                  <FileUploadButton
+                    onFileStaged={handleFileStaged}
+                    disabled={isUploadingFile || !canCurrentUserSend}
+                  />
                   <Textarea
                     placeholder={`Message ${selectedConversation.contact_name}...`}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={onKeyPress}
                     className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2.5"
-                    disabled={!canCurrentUserSend}
+                    disabled={(!canCurrentUserSend) || isUploadingFile}
                     title={sendDisabledReason}
                   />
                   <Button
                     type="button"
                     onClick={handleSendMessage}
-                    disabled={!draft.trim() || !canCurrentUserSend}
+                    disabled={(!draft.trim() && !stagedFile) || !canCurrentUserSend || isUploadingFile}
                     title={sendDisabledReason || 'Send message'}
                   >
                     <Send className="h-4 w-4" />

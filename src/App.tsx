@@ -5,8 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RBACProvider } from "@/contexts/RBACContext";
+import { PresenceProvider } from "@/contexts/PresenceContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import { GlobalAudioListener } from "@/components/layout/GlobalAudioListener";
 import Index from "./pages/Index";
 import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
@@ -41,39 +43,42 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <Routes>
-                <Route path="/" element={
-                  <ProtectedRoute>
-                    <Index />
-                  </ProtectedRoute>
-                } />
-                {/* Direct route to Chat inbox */}
-                <Route path="/chat" element={
-                  <ProtectedRoute>
-                    <Index />
-                  </ProtectedRoute>
-                } />
-                <Route path="/profile" element={
-                  <ProtectedRoute>
-                    <Profile />
-                  </ProtectedRoute>
-                } />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/invite" element={<ResetPassword />} />
-                <Route path="/account-deactivated" element={<AccountDeactivated />} />
-                <Route path="/otp" element={
-                  <ProtectedRoute>
-                    <Otp />
-                  </ProtectedRoute>
-                } />
-                <Route path="/logout" element={<Logout />} />
-                <Route path="/changelog" element={<Changelog />} />
-                {/* Public, chat-only embed route */}
-                <Route path="/livechat/:platform_id" element={<LiveChat />} />
-                <Route path="/livechat/:platformId" element={<LiveChat />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+              <PresenceProvider>
+                <GlobalAudioListener />
+                <Routes>
+                  <Route path="/" element={
+                    <ProtectedRoute>
+                      <Index />
+                    </ProtectedRoute>
+                  } />
+                  {/* Direct route to Chat inbox */}
+                  <Route path="/chat" element={
+                    <ProtectedRoute>
+                      <Index />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/profile" element={
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/invite" element={<ResetPassword />} />
+                  <Route path="/account-deactivated" element={<AccountDeactivated />} />
+                  <Route path="/otp" element={
+                    <ProtectedRoute>
+                      <Otp />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/logout" element={<Logout />} />
+                  <Route path="/changelog" element={<Changelog />} />
+                  {/* Public, chat-only embed route */}
+                  <Route path="/livechat/:platform_id" element={<LiveChat />} />
+                  <Route path="/livechat/:platformId" element={<LiveChat />} />
+                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </PresenceProvider>
             </TooltipProvider>
           </RBACProvider>
         </AuthProvider>

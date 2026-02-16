@@ -26,6 +26,7 @@ export interface AgentWithDetails {
   primaryRole: 'master_agent' | 'super_agent' | 'agent' | null;
   status: 'Active' | 'Inactive';
   super_agent_id?: string | null;
+  last_seen_at?: string | null;
 }
 
 export const useHumanAgents = () => {
@@ -45,7 +46,7 @@ export const useHumanAgents = () => {
         setAgents(parsed);
         return true;
       }
-    } catch {}
+    } catch { }
     return false;
   };
 
@@ -53,7 +54,7 @@ export const useHumanAgents = () => {
   const getPrimaryRole = (roles: (string | null)[]): 'master_agent' | 'super_agent' | 'agent' | null => {
     // Filter out null values and get valid roles
     const validRoles = roles?.filter((role): role is string => role !== null && role !== undefined) || [];
-    
+
     if (validRoles.includes('master_agent')) return 'master_agent';
     if (validRoles.includes('super_agent')) return 'super_agent';
     if (validRoles.includes('agent')) return 'agent';
@@ -86,7 +87,8 @@ export const useHumanAgents = () => {
         roles: validRoles,
         primaryRole: primaryRole,
         status: 'Active' as const,
-        super_agent_id: null
+        super_agent_id: null,
+        last_seen_at: null
       };
     });
   };
@@ -111,11 +113,26 @@ export const useHumanAgents = () => {
           mappings.forEach((m: any) => { byId[m.agent_user_id] = m.super_agent_id; });
           transformed = transformed.map(a => a.primaryRole === 'agent' ? { ...a, super_agent_id: byId[a.user_id] || null } : a);
         }
-      } catch {}
+
+        // Fetch last_seen_at from users_profile
+        const { data: profiles } = await supabase
+          .from('users_profile')
+          .select('user_id, last_seen_at');
+
+        if (profiles) {
+          const lastSeenMap: Record<string, string | null> = {};
+          profiles.forEach((p: any) => { lastSeenMap[p.user_id] = p.last_seen_at; });
+          transformed = transformed.map(a => ({
+            ...a,
+            last_seen_at: lastSeenMap[a.user_id] || null
+          }));
+        }
+
+      } catch { }
       shared.data = transformed;
       shared.ts = Date.now();
       shared.inFlight = null;
-      try { localStorage.setItem('app.cachedAgents', JSON.stringify(transformed)); } catch {}
+      try { localStorage.setItem('app.cachedAgents', JSON.stringify(transformed)); } catch { }
       return transformed;
     })().catch((e) => { shared.inFlight = null; throw e; });
     return shared.inFlight;
@@ -123,7 +140,30 @@ export const useHumanAgents = () => {
 
   const getAgentsCachedOrLoad = async (): Promise<AgentWithDetails[]> => {
     const fresh = shared.data && (Date.now() - shared.ts) < AGENTS_CACHE_TTL_MS;
-    if (fresh) return shared.data as AgentWithDetails[];
+
+    // Even if cache is fresh, ALWAYS update presence (last_seen_at)
+    if (fresh && shared.data) {
+      try {
+        const { data: profiles } = await supabase
+          .from('users_profile')
+          .select('user_id, last_seen_at');
+
+        if (profiles) {
+          const lastSeenMap: Record<string, string | null> = {};
+          profiles.forEach((p: any) => { lastSeenMap[p.user_id] = p.last_seen_at; });
+
+          // Update the shared cache in place with fresh presence
+          shared.data = shared.data.map(a => ({
+            ...a,
+            last_seen_at: lastSeenMap[a.user_id] || null
+          }));
+        }
+      } catch (err) {
+        console.warn('Background presence refresh failed', err);
+      }
+      return shared.data;
+    }
+
     return await fetchAgentsOnce();
   };
 
@@ -215,10 +255,10 @@ export const useHumanAgents = () => {
             .update({ is_2fa_email_enabled: enable2FAFlagForCreate })
             .eq('user_id', newUserId);
         }
-      } catch {}
+      } catch { }
 
       await fetchAgents({ force: true });
-      try { await logAction({ action: 'user.create', resource: 'user', resourceId: data?.id || null, context: agentData as any }); } catch {}
+      try { await logAction({ action: 'user.create', resource: 'user', resourceId: data?.id || null, context: agentData as any }); } catch { }
 
       const createdId = (data as any)?.id || (data as any)?.user_id || (data as any)?.user?.id || null;
 
@@ -265,7 +305,7 @@ export const useHumanAgents = () => {
       // Refresh the agents list to get updated data from v_users
       await fetchAgents({ force: true });
 
-      try { await logAction({ action: 'user.update_role', resource: 'user', resourceId: agentId, context: { role } }); } catch {}
+      try { await logAction({ action: 'user.update_role', resource: 'user', resourceId: agentId, context: { role } }); } catch { }
     } catch (error) {
       console.error('Error updating agent role:', error);
       setError(error instanceof Error ? error.message : 'Failed to update agent role');
@@ -299,7 +339,7 @@ export const useHumanAgents = () => {
       // Refresh the agents list
       await fetchAgents({ force: true });
 
-      try { await logAction({ action: 'user.delete', resource: 'user', resourceId: agentId }); } catch {}
+      try { await logAction({ action: 'user.delete', resource: 'user', resourceId: agentId }); } catch { }
     } catch (error) {
       console.error('Error deleting agent:', error);
       setError(error instanceof Error ? error.message : 'Failed to delete agent');
