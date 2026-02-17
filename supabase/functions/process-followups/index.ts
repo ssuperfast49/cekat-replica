@@ -101,6 +101,23 @@ Deno.serve(async (req) => {
 
             console.log(`Sending followup for thread ${thread.id} via ${routeKey}`);
 
+            // 3. Idempotency Check: Prevent duplicate sends if run recently
+            const { data: recentMsgs } = await supabase
+                .from("messages")
+                .select("id")
+                .eq("thread_id", thread.id)
+                .eq("role", "assistant")
+                .eq("body", messageText)
+                .gt("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString()) // last 5 mins
+                .limit(1);
+
+            if (recentMsgs && recentMsgs.length > 0) {
+                console.warn(`Followup already sent for thread ${thread.id} recently. Skipping.`);
+                await supabase.from("threads").update({ is_followup_sent: true }).eq("id", thread.id);
+                results.push({ thread_id: thread.id, status: "skipped_duplicate" });
+                continue;
+            }
+
             try {
                 // Insert message first to DB (so it shows in UI)
                 const { error: msgError } = await supabase.from("messages").insert({

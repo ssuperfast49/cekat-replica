@@ -1877,10 +1877,20 @@ export default function ConversationPage() {
             </div> */}
 
               {/* Additional Data */}
-              {/* <div>
-              <h3 className="text-sm font-medium mb-2">Additional Data</h3>
-              <Button variant="outline" className="w-full h-10">Add New Additional Info</Button>
-            </div> */}
+              {/* Additional Data / Context */}
+              {selectedConversation.additional_data && Object.keys(selectedConversation.additional_data).length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Context</h3>
+                  <div className="rounded-md border bg-muted/50 p-2 text-xs space-y-1">
+                    {Object.entries(selectedConversation.additional_data).map(([key, val]) => (
+                      <div key={key} className="flex justify-between gap-2 break-all">
+                        <span className="font-medium text-muted-foreground capitalize">{key.replace(/_/g, ' ')}:</span>
+                        <span className="text-right">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Conversation Details */}
               <div>

@@ -8,7 +8,7 @@ import { RBACProvider } from "@/contexts/RBACContext";
 import { PresenceProvider } from "@/contexts/PresenceContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
-import { GlobalAudioListener } from "@/components/layout/GlobalAudioListener";
+import { GlobalMessageListener } from "@/components/layout/GlobalMessageListener";
 import Index from "./pages/Index";
 import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
@@ -44,7 +44,7 @@ const App = () => (
               <Toaster />
               <Sonner />
               <PresenceProvider>
-                <GlobalAudioListener />
+                <GlobalMessageListener />
                 <Routes>
                   <Route path="/" element={
                     <ProtectedRoute>

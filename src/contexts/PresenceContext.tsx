@@ -29,7 +29,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
 
     // Configuration
     const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-    const DB_UPDATE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    const DB_UPDATE_INTERVAL_MS = 60 * 1000; // 1 minute (Synced with DB trigger window)
 
     // 1. Setup Realtime Presence
     useEffect(() => {
@@ -55,8 +55,14 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
 
                 Object.values(newState).forEach(presences => {
                     // Supabase returns an array of presences for each key (multi-tab support)
-                    // We take the most recent/active one
-                    const presence = presences[0];
+                    // We take the most "active" one: Online > Idle > Offline
+                    const sorted = presences.sort((a, b) => {
+                        if (a.status === 'online' && b.status !== 'online') return -1;
+                        if (a.status !== 'online' && b.status === 'online') return 1;
+                        // If statuses are same (or both not online), maybe sort by online_at?
+                        return 0;
+                    });
+                    const presence = sorted[0];
                     if (presence) {
                         users[presence.user_id] = presence;
                     }

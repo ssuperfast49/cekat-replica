@@ -1,5 +1,25 @@
 # Change Log
 
+# [0.1.88] FE WEB CEKAT 2026-02-18
+
+### Live Chat & Global Notifications
+
+- **Live Chat Refactoring**: optimizing the `LiveChat.tsx` component by splitting it into smaller, manageable sub-components (`LiveChatHeader`, `MessageList`, `MessageInput`) and extracting logic into a dedicated `useLiveChat` hook.
+  - **Performance**: Improved state management and reduced re-renders.
+  - **Deduplication**: Added `deduplication_id` to message handling to prevent duplicate message bubbles.
+  - **UI Polish**: Added "New Message" scroll bubble to indicate incoming messages when scrolled up.
+
+- **Global Message Listener**:
+  - **Centralized Notifications**: Replaced `GlobalAudioListener` with `GlobalMessageListener` to handle both audio and toast notifications for incoming messages across the entire application.
+  - **Smart Visibility**: Toast notifications now correctly respect the user's current context. Toasts are suppressed if the user is actively viewing the chat thread, even if navigating between different menus (e.g., Platforms tab).
+  - **Click Navigation**: Clicking a notification toast now smoothly navigates the user directly to the relevant chat thread.
+
+- **Handover Logic**:
+  - **n8n-First Assignment**: Removed the database trigger (`trg_reassign_to_online_agent`) that automatically reassigned threads from super agents to online basic agents. Assignment logic is now fully delegated to n8n workflows for better control and flexibility.
+
+- **Edge Functions**:
+  - **Idempotency**: Updated `process-followups` edge function to prevent duplicate processing of the same follow-up task.
+
 # [0.1.87] FE WEB CEKAT 2026-02-16
 ### Live Chat
 - **Image Rendering Fix**: Resolved an issue where images sent without captions were invisible in the LiveChat UI. The renderer now correctly displays messages with attachments even if the text body is empty.
