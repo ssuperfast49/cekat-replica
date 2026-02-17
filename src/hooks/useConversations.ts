@@ -9,47 +9,8 @@ import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
 import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 
-// Audio notification system with debouncing
-let lastNotificationTime = 0;
-const NOTIFICATION_DEBOUNCE_MS = 1000; // Prevent duplicate sounds within 1 second
+// Audio notification system moved to GlobalMessageListener
 
-// Global flag to track if the 'assigned' enum value is supported by the database
-let dbSupportsAssignedStatus = false;
-
-const playNotificationSound = (type: 'incoming' | 'outgoing' = 'incoming') => {
-  try {
-    // Check if audio is enabled
-    const audioEnabled = localStorage.getItem('audioNotifications') !== 'false';
-    if (!audioEnabled) return;
-
-    // Only play sounds when the tab is visible
-    if (document.visibilityState !== 'visible') {
-
-      return;
-    }
-
-    // Debounce notifications to prevent duplicate sounds
-    const now = Date.now();
-    if (now - lastNotificationTime < NOTIFICATION_DEBOUNCE_MS) {
-
-      return;
-    }
-    lastNotificationTime = now;
-
-    const audio = new Audio();
-
-    if (type === 'incoming') {
-      // Use the message pop alert for incoming messages
-      audio.src = '/tones/mixkit-message-pop-alert-2354.mp3';
-    } else {
-      // Use the long pop for outgoing messages (optional)
-      audio.src = '/tones/mixkit-long-pop-2358.wav';
-    }
-
-    audio.volume = 0.7; // Set a reasonable volume
-    audio.play().catch(() => { });
-  } catch { }
-};
 
 export interface Thread {
   id: string;
@@ -1271,35 +1232,13 @@ export const useConversations = () => {
         // Skip outgoing messages (direction: 'out') to avoid refresh when sending
         const message = payload.new;
         if (message && message.direction === 'in' && document.visibilityState === 'visible') {
-          // Play notification sound for incoming messages
-          playNotificationSound('incoming');
-
-          // Check for collaborator notification
-          const currentUserId = userRef.current;
-          if (currentUserId) {
-            // Find the conversation regarding this message
-            // We use conversationsRef to get the latest list without dependency cycle
-            const conv = conversationsRef.current.find(c => c.id === message.thread_id);
-            if (conv && conv.collaborator_user_id === currentUserId) {
-              // Show toast for collaborator
-              import('sonner').then(({ toast }) => {
-                toast.info(`New message from ${conv.contact_name}`, {
-                  description: message.body ? (message.body.length > 50 ? message.body.substring(0, 50) + '...' : message.body) : 'Sent an attachment',
-                  duration: 4000,
-                });
-              });
-            }
-          }
-
           // Immediately update the conversation preview and re-sort
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(100); // Also do a full refresh for consistency
           // Check auto-resolve after user message (cancels auto-resolve)
           checkAutoResolve();
         } else if (message && (message.role === 'system' || message.type === 'event') && document.visibilityState === 'visible') {
-          // Play notification sound for system messages
-          playNotificationSound('incoming');
-          // Immediately update the conversation preview and re-sort
+          // Immediately update the conversation preview
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(200); // Also do a full refresh for consistency
         } else if (
@@ -1365,9 +1304,8 @@ export const useConversations = () => {
         filter: `thread_id=eq.${selectedThreadId}`
       }, (payload) => {
         const message = payload.new as any;
-        // Play notification sound for incoming messages
         if (message && message.direction === 'in') {
-          playNotificationSound('incoming');
+          // Audio handled by GlobalMessageListener
         }
         // Apply realtime payload to state to avoid full refresh jumps
         setMessages(prev => {
@@ -1460,7 +1398,7 @@ export const useConversations = () => {
     // Audio notification controls
     enableAudioNotifications: () => { localStorage.setItem('audioNotifications', 'true'); },
     disableAudioNotifications: () => { localStorage.setItem('audioNotifications', 'false'); },
-    testAudioNotification: () => { playNotificationSound('incoming'); },
+    testAudioNotification: () => { console.log('Audio test not implemented in hook'); },
     createConversation,
     assignThread,
     assignThreadToUser,
