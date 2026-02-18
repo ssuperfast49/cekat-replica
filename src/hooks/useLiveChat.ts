@@ -13,7 +13,7 @@ import { toast } from "sonner";
 // Use provided ringtones from public/tones (can be overridden via window.chatConfig)
 const LOW_TONE_URL = '/tones/mixkit-message-pop-alert-2354.mp3';
 const HIGH_TONE_URL = '/tones/mixkit-long-pop-2358.wav';
-const sendMessageRetryDelay = 1000;
+const sendMessageRetryDelay = 10000;
 const sendMessageMaxAttempts = 3;
 
 export function useLiveChat() {
