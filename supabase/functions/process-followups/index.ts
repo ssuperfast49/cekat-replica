@@ -70,36 +70,16 @@ Deno.serve(async (req) => {
             // Determine provider route
             let routeKey = "";
             const provider = (channels.provider || "").toLowerCase();
+            const isWeb = provider === "web";
 
             if (provider === "whatsapp" || provider === "waha" || provider === "whatsapp_cloud") {
                 routeKey = "whatsapp.send_message";
             } else if (provider === "telegram" || provider === "tele") {
                 routeKey = "telegram.send_message";
-            } else if (provider === "web") {
-                routeKey = "web.send_message";
-            } else {
+            } else if (!isWeb) {
                 console.warn(`Unsupported provider ${provider} for thread ${thread.id}`);
                 continue;
             }
-
-            const webhookUrl = `${PROXY_FUNCTION_URL}/${routeKey}`;
-
-            // Construct payload compatible with the webhook handlers
-            const payload = {
-                channel_id: channels.id,
-                contact_id: thread.contact_id,
-                contact_phone: contacts?.phone || null,
-                external_id: contacts?.external_id || null,
-                text: messageText,
-                type: "text",
-                direction: "out",
-                role: "assistant",
-                payload: {
-                    is_auto_followup: true
-                }
-            };
-
-            console.log(`Sending followup for thread ${thread.id} via ${routeKey}`);
 
             // 3. Idempotency Check: Prevent duplicate sends if run recently
             const { data: recentMsgs } = await supabase
@@ -119,57 +99,82 @@ Deno.serve(async (req) => {
             }
 
             try {
-                // Insert message first to DB (so it shows in UI)
-                const { error: msgError } = await supabase.from("messages").insert({
-                    thread_id: thread.id,
-                    direction: "out",
-                    role: "assistant",
-                    type: "text",
-                    body: messageText,
-                    actor_kind: "ai",
-                    payload: { is_auto_followup: true }
-                });
+                if (isWeb) {
+                    // --- WEB PROVIDER: Insert directly to DB, No Webhook ---
+                    const { error: msgError } = await supabase.from("messages").insert({
+                        thread_id: thread.id,
+                        direction: "out",
+                        role: "assistant",
+                        type: "text",
+                        body: messageText,
+                        actor_kind: "ai",
+                        payload: { is_auto_followup: true }
+                    });
 
-                if (msgError) {
-                    console.error(`Failed to insert message for ${thread.id}: ${msgError.message}`);
-                    // If DB insert fails, we probably shouldn't send the webhook?
-                    // Or we attempt anyway? Let's be safe and skip.
-                    results.push({ thread_id: thread.id, status: "db_error", error: msgError.message });
-                    continue;
-                }
+                    if (msgError) {
+                        console.error(`Failed to insert message for ${thread.id}: ${msgError.message}`);
+                        results.push({ thread_id: thread.id, status: "db_error", error: msgError.message });
+                        continue;
+                    }
 
-                // Call Webhook to actually send it
-                const res = await fetch(webhookUrl, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${SERVICE_KEY}`,
-                    },
-                    body: JSON.stringify(payload),
-                });
-
-                if (res.ok) {
-                    // Update thread state so we don't send again
+                    // Update thread state
                     await supabase
                         .from("threads")
                         .update({ is_followup_sent: true })
                         .eq("id", thread.id);
 
-                    results.push({ thread_id: thread.id, status: "sent" });
-                } else {
-                    const txt = await res.text();
-                    console.error(`Webhook failed for ${thread.id}: ${txt}`);
-                    // Note: we already inserted the message. Should we delete it? 
-                    // Ideally yes, but for now we leave it or user sees "ghost" message.
-                    // We won't mark is_followup_sent=true, so it might retry? 
-                    // Retrying inserts duplicate messages. 
-                    // Complex error handling needed. For MVP, we'll mark as sent to avoid spam loop, but log error.
-                    await supabase
-                        .from("threads")
-                        .update({ is_followup_sent: true }) // Prevent infinite loop of failed sends
-                        .eq("id", thread.id);
+                    results.push({ thread_id: thread.id, status: "sent_db_only" });
 
-                    results.push({ thread_id: thread.id, status: "failed_webhook", error: txt });
+                } else {
+                    // --- EXTERNAL PROVIDER: Send Webhook, No DB Insert (Webhook handles it) ---
+                    const webhookUrl = `${PROXY_FUNCTION_URL}/${routeKey}`;
+
+                    const payload = {
+                        channel_id: channels.id,
+                        contact_id: thread.contact_id,
+                        contact_phone: contacts?.phone || null,
+                        external_id: contacts?.external_id || null,
+                        text: messageText,
+                        type: "text",
+                        direction: "out",
+                        role: "assistant",
+                        payload: {
+                            is_auto_followup: true
+                        }
+                    };
+
+                    console.log(`Sending followup for thread ${thread.id} via ${routeKey}`);
+
+                    const res = await fetch(webhookUrl, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${SERVICE_KEY}`,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (res.ok) {
+                        // Update thread state so we don't send again
+                        await supabase
+                            .from("threads")
+                            .update({ is_followup_sent: true })
+                            .eq("id", thread.id);
+
+                        results.push({ thread_id: thread.id, status: "sent_webhook" });
+                    } else {
+                        const txt = await res.text();
+                        console.error(`Webhook failed for ${thread.id}: ${txt}`);
+                        // Do NOT update is_followup_sent so it retries? 
+                        // Or update to prevent loop? 
+                        // For safety, let's update it but log error, similar to before.
+                        await supabase
+                            .from("threads")
+                            .update({ is_followup_sent: true })
+                            .eq("id", thread.id);
+
+                        results.push({ thread_id: thread.id, status: "failed_webhook", error: txt });
+                    }
                 }
             } catch (err: any) {
                 console.error(`Error processing ${thread.id}`, err);

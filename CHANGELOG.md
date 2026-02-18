@@ -1,5 +1,19 @@
 # Change Log
 
+# [0.1.89] FE WEB CEKAT 2026-02-19
+
+### Live Chat & Follow-up Automation
+
+- **Follow-up Reliability**: Refactored `process-followups` edge function to split logic for 'web' vs external providers.
+  - **Web Provider**: Now inserts follow-up messages directly into the database, bypassing the webhook to ensure reliable delivery and prevent "phantom success" issues.
+  - **External Providers**: Continues to use webhooks for WhatsApp/Telegram.
+  - **Cleanup**: Removed duplicate `invoke-process-followups` cron job from the Main environment.
+
+- **Duplicate Message Fix**: Resolved a race condition where the first message in a Live Chat session was often duplicated.
+  - **Root Cause**: The client's retry timeout (1s) was shorter than the backend's processing time for new sessions (Welcome Message + AI response).
+  - **Fix**: Increased `sendMessageRetryDelay` in `useLiveChat.ts` from 1s to 10s to accommodate backend processing time.
+  - Updated: `src/hooks/useLiveChat.ts`
+
 # [0.1.88] FE WEB CEKAT 2026-02-18
 
 ### Live Chat & Global Notifications
