@@ -419,19 +419,31 @@ const ConnectedPlatforms = () => {
             <CardContent>
               <div className="relative">
                 <Textarea
-                  value={`<script>
+                  value={`<!-- Step 1: Set your config (EDIT THIS) -->
+<script>
+window.chatConfig = {
+  username: '',   // Your user's identifier (e.g. 'simegantara')
+  web: '',        // Your site/brand name  (e.g. 'beat4d')
+};
+</script>
+
+<!-- Step 2: Chat widget loader (DO NOT EDIT BELOW) -->
+<script>
 (function(){
-  // Lightweight chat embed - uses YOUR project's origin
   var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
-  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'${APP_ORIGIN}'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
-  cfg.position=cfg.position||'bottom-right'; cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
+  var cfg=w.chatConfig||{}; cfg.baseUrl='${APP_ORIGIN}'; cfg.platformId='${selectedPlatformData?.id || '{platform_id}'}';
+  cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
   var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+
            '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+
            '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';
   var s=d.createElement('style'); s.type='text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);
   var bubble=d.createElement('button'); bubble.id='chat-bubble'; bubble.setAttribute('aria-label','Open chat'); bubble.innerHTML='💬';
   var panel=d.createElement('div'); panel.id='chat-panel';
-  var iframe=d.createElement('iframe'); iframe.src=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);
+  var iframeSrc=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); var qs=[];
+  if(cfg.username) qs.push('username='+encodeURIComponent(cfg.username));
+  if(cfg.web) qs.push('web='+encodeURIComponent(cfg.web));
+  if(qs.length) iframeSrc+='?'+qs.join('&');
+  var iframe=d.createElement('iframe'); iframe.src=iframeSrc; iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);
   bubble.addEventListener('click',function(){ panel.classList.toggle('open'); });
   d.body.appendChild(bubble); d.body.appendChild(panel);
 })();
@@ -447,23 +459,7 @@ const ConnectedPlatforms = () => {
                         size="icon"
                         className="h-8 w-8"
                         onClick={async () => {
-                          const embedCode = `<script>
-(function(){
-  // Lightweight chat embed - uses YOUR project's origin
-  var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
-  var cfg=w.chatConfig||{}; cfg.baseUrl=cfg.baseUrl||'${APP_ORIGIN}'; cfg.platformId=cfg.platformId||'${selectedPlatformData?.id || '{platform_id}'}';
-  cfg.position=cfg.position||'bottom-right'; cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
-  var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+
-           '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+
-           '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';
-  var s=d.createElement('style'); s.type='text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);
-  var bubble=d.createElement('button'); bubble.id='chat-bubble'; bubble.setAttribute('aria-label','Open chat'); bubble.innerHTML='💬';
-  var panel=d.createElement('div'); panel.id='chat-panel';
-  var iframe=d.createElement('iframe'); iframe.src=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);
-  bubble.addEventListener('click',function(){ panel.classList.toggle('open'); });
-  d.body.appendChild(bubble); d.body.appendChild(panel);
-})();
-</script>`;
+                          const embedCode = `<!-- Step 1: Set your config (EDIT THIS) -->\n<script>\nwindow.chatConfig = {\n  username: '',   // Your user's identifier (e.g. 'simegantara')\n  web: '',        // Your site/brand name  (e.g. 'beat4d')\n};\n</script>\n\n<!-- Step 2: Chat widget loader (DO NOT EDIT BELOW) -->\n<script>\n(function(){\n  var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;\n  var cfg=w.chatConfig||{}; cfg.baseUrl='${APP_ORIGIN}'; cfg.platformId='${selectedPlatformData?.id || '{platform_id}'}';\n  cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';\n  var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+\n           '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+\n           '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';\n  var s=d.createElement('style'); s.type='text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);\n  var bubble=d.createElement('button'); bubble.id='chat-bubble'; bubble.setAttribute('aria-label','Open chat'); bubble.innerHTML='\\uD83D\\uDCAC';\n  var panel=d.createElement('div'); panel.id='chat-panel';\n  var iframeSrc=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); var qs=[];\n  if(cfg.username) qs.push('username='+encodeURIComponent(cfg.username));\n  if(cfg.web) qs.push('web='+encodeURIComponent(cfg.web));\n  if(qs.length) iframeSrc+='?'+qs.join('&');\n  var iframe=d.createElement('iframe'); iframe.src=iframeSrc; iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);\n  bubble.addEventListener('click',function(){ panel.classList.toggle('open'); });\n  d.body.appendChild(bubble); d.body.appendChild(panel);\n})();\n</script>`;
                           try {
                             await navigator.clipboard.writeText(embedCode);
                             toast({

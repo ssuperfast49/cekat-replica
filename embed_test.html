@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Website - Chat Embed Test</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            padding: 40px;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            color: #333;
+        }
+
+        h1 {
+            color: #1d4ed8;
+        }
+
+        .note {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>My Website</h1>
+    <p>This page simulates a customer's website. The chat widget below is loaded from the embed code
+        copied from the platform details page.</p>
+    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore
+        magna aliqua.</p>
+
+    <div class="note">
+        💡 <strong>Tip:</strong> Open DevTools → Network tab to verify <code>username</code> and <code>web</code>
+        are sent in the request payload.
+    </div>
+
+    <!-- ============================================== -->
+    <!-- PASTE YOUR EMBED CODE BELOW THIS LINE          -->
+    <!-- ============================================== -->
+    <!-- Step 1: Set your config (EDIT THIS) -->
+    <script>
+        window.chatConfig = {
+            username: 'simegantara',   // Your user's identifier (e.g. 'simegantara')
+            web: 'beat4d',        // Your site/brand name  (e.g. 'beat4d')
+        };
+    </script>
+
+    <!-- Step 2: Chat widget loader (DO NOT EDIT BELOW) -->
+    <script>
+        (function () {
+            var w = window, d = document; if (w.chatWidgetLoaded) return; w.chatWidgetLoaded = true;
+            var cfg = w.chatConfig || {}; cfg.baseUrl = 'http://localhost:8080'; cfg.platformId = '6a24d748-71f9-41b0-ade6-235bad2f3167';
+            cfg.width = cfg.width || '360px'; cfg.height = cfg.height || '560px';
+            var css = '#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}' +
+                '#chat-panel{position:fixed;right:20px;bottom:92px;width:' + cfg.width + ';height:' + cfg.height + ';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}' +
+                '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';
+            var s = d.createElement('style'); s.type = 'text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);
+            var bubble = d.createElement('button'); bubble.id = 'chat-bubble'; bubble.setAttribute('aria-label', 'Open chat'); bubble.innerHTML = '\uD83D\uDCAC';
+            var panel = d.createElement('div'); panel.id = 'chat-panel';
+            var iframeSrc = cfg.baseUrl + '/livechat/' + encodeURIComponent(cfg.platformId); var qs = [];
+            if (cfg.username) qs.push('username=' + encodeURIComponent(cfg.username));
+            if (cfg.web) qs.push('web=' + encodeURIComponent(cfg.web));
+            if (qs.length) iframeSrc += '?' + qs.join('&');
+            var iframe = d.createElement('iframe'); iframe.src = iframeSrc; iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = '0'; panel.appendChild(iframe);
+            bubble.addEventListener('click', function () { panel.classList.toggle('open'); });
+            d.body.appendChild(bubble); d.body.appendChild(panel);
+        })();
+    </script>
+
+</body>
+
+</html>

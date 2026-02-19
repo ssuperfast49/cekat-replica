@@ -343,12 +343,29 @@ export function AttachmentRenderer({
 
     if (!fileLink) return null;
 
+    // Extract file name from URL if not provided
+    const displayName = fileName || (() => {
+        try {
+            const urlPath = new URL(fileLink).pathname;
+            const lastSegment = urlPath.split('/').pop() || 'file';
+            // Decode URI and truncate hash-style names
+            const decoded = decodeURIComponent(lastSegment);
+            return decoded.length > 40 ? decoded.slice(0, 37) + '...' : decoded;
+        } catch {
+            return 'Download file';
+        }
+    })();
+
+    // Determine extension for PDF detection
+    const ext = fileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+    const isPdf = ext === 'pdf' || type === 'file' && displayName.toLowerCase().endsWith('.pdf');
+
     if (type === "image") {
         return (
             <>
                 <img
                     src={fileLink}
-                    alt={fileName || "Image"}
+                    alt={displayName}
                     className="max-w-full h-auto rounded-lg max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
                     loading="lazy"
                     onClick={() => setIsViewerOpen(true)}
@@ -358,7 +375,7 @@ export function AttachmentRenderer({
                     onClose={() => setIsViewerOpen(false)}
                     src={fileLink}
                     mediaType="image"
-                    fileName={fileName}
+                    fileName={displayName}
                 />
             </>
         );
@@ -385,6 +402,43 @@ export function AttachmentRenderer({
         );
     }
 
+    // PDF: show embedded preview with download option
+    if (isPdf) {
+        return (
+            <>
+                <div
+                    className="w-64 h-48 rounded-lg overflow-hidden border bg-white cursor-pointer hover:opacity-90 transition-opacity relative group"
+                    onClick={() => setIsViewerOpen(true)}
+                >
+                    <embed
+                        src={`${fileLink}#toolbar=0&navpanes=0&scrollbar=0`}
+                        type="application/pdf"
+                        className="w-full h-full pointer-events-none"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <span className="bg-white/90 text-xs font-medium px-2 py-1 rounded shadow">Click to preview</span>
+                    </div>
+                </div>
+                <a
+                    href={fileLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-1.5 mt-1 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm"
+                >
+                    <FileIcon className="h-4 w-4 text-red-500" />
+                    <span className="truncate max-w-[200px]">{displayName}</span>
+                </a>
+                <MediaViewerModal
+                    isOpen={isViewerOpen}
+                    onClose={() => setIsViewerOpen(false)}
+                    src={fileLink}
+                    mediaType="pdf"
+                    fileName={displayName}
+                />
+            </>
+        );
+    }
+
     // Default: file/document
     return (
         <a
@@ -395,7 +449,7 @@ export function AttachmentRenderer({
         >
             <FileIcon className="h-5 w-5 text-primary" />
             <span className="text-sm truncate max-w-[200px]">
-                {fileName || "Download file"}
+                {displayName}
             </span>
         </a>
     );

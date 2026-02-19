@@ -1,5 +1,30 @@
 # Change Log
 
+# [0.1.90] FE WEB CEKAT 2026-02-20
+
+### Attachment Rendering
+
+- **External Platform Fix**: Fixed images from Telegram/WhatsApp (via n8n) not rendering in the chat UI. These messages store the Supabase storage URL in the `body` field with `type: 'text'` and `file_link: null`, causing them to appear as raw URL links instead of images.
+  - Added detection logic in `ConversationPage.tsx` and `MessageList.tsx` to identify body-only storage URLs and treat them as attachments.
+  - Extension-less URLs (Telegram hash-style filenames like `AgACAgUAAxkBAAP...`) now default to `image` type instead of generic `file`.
+  - Raw URL text bubble is suppressed when an attachment is detected.
+
+- **AttachmentRenderer Enhancements**: Improved the shared `AttachmentRenderer` component in `FileUploadButton.tsx`.
+  - Added PDF embedded preview with click-to-view and download link.
+  - Auto-extracts file name from URL when not provided by the message.
+
+### Embed Widget
+
+- **Embed Code UX**: Restructured the embed code in platform details (`ConnectedPlatforms.tsx`) into two clear sections:
+  - **Step 1**: A config block (`window.chatConfig = { username, web }`) that users edit.
+  - **Step 2**: The widget loader script marked "DO NOT EDIT" with `baseUrl` and `platformId` pre-filled.
+
+- **Iframe Scrollbar Fix**: Fixed vertical scrollbar appearing inside the embedded LiveChat iframe (`LiveChat.tsx`). Added a `useEffect` to set `overflow: hidden` and `height: 100%` on `html`/`body`/`#root` only for the livechat route.
+
+- **Body Margin Reset**: Added `margin: 0; padding: 0` to body in `index.css` to prevent browser default margins from causing layout overflow.
+
+- **embed_test.html**: Simplified to simulate a real customer's website — paste the embed code, change `username` and `web`, done.
+
 # [0.1.89] FE WEB CEKAT 2026-02-19
 
 ### Live Chat & Follow-up Automation

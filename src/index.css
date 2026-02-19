@@ -109,12 +109,14 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    padding: 0;
   }
 
   /* Override browser default autofill background to match theme */
   input:-webkit-autofill,
-  input:-webkit-autofill:hover, 
-  input:-webkit-autofill:focus, 
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
   input:-webkit-autofill:active {
     -webkit-box-shadow: 0 0 0 30px hsl(var(--background)) inset !important;
     -webkit-text-fill-color: hsl(var(--foreground)) !important;

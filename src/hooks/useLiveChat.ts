@@ -54,6 +54,17 @@ export function useLiveChat() {
     // Session & Account
     const [accountId, setAccountId] = useState<string | null>(() => {
         if (typeof window === 'undefined') return null;
+        // 1. Check URL query param (from embed script: 'account_id' or 'username')
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const fromUrl = urlParams.get('account_id') || urlParams.get('username');
+            if (fromUrl) {
+                // Persist to localStorage so subsequent navigations keep it
+                try { window.localStorage.setItem('account_id', fromUrl); } catch { }
+                return fromUrl;
+            }
+        } catch { }
+        // 2. Check localStorage
         const storage = window.localStorage;
         const channelKey = `livechat_account_${window.location.pathname}`;
         const candidateKeys = ['user_id', 'userId', 'account_id', 'accountId'];
@@ -66,6 +77,14 @@ export function useLiveChat() {
         const generated = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `anon_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         try { storage.setItem(channelKey, generated); } catch { }
         return generated;
+    });
+
+    // Web identifier (from embed script query param)
+    const [webId] = useState<string | undefined>(() => {
+        if (typeof window === 'undefined') return undefined;
+        try {
+            return new URLSearchParams(window.location.search).get('web') || undefined;
+        } catch { return undefined; }
     });
 
     const [sessionId, setSessionId] = useState(() => {
@@ -736,6 +755,7 @@ export function useLiveChat() {
                 username: username || undefined,
                 ai_profile_id: aiProfileId,
                 stream: true,
+                web: webId,
                 ...(uploadedFile && {
                     type: uploadedFile.type,
                     file_link: uploadedFile.url,
