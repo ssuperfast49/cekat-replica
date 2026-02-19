@@ -77,8 +77,8 @@ export function MessageList({
     };
 
     return (
-        <div className="relative">
-            <ScrollArea className="h-[450px] p-4" viewportRef={viewportRef}>
+        <div className="relative flex-1 min-h-0 flex flex-col">
+            <ScrollArea className="flex-1 p-4" viewportRef={viewportRef}>
                 <div className="space-y-3">
                     {booting && (
                         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -109,17 +109,20 @@ export function MessageList({
                         return (() => {
                             const bodyText = (m.body || '').trim();
                             const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
-                            const hasRealBody = bodyText && !isFilePlaceholder;
+                            // Detect if body is purely a storage URL (n8n stores Telegram/WhatsApp attachments this way)
+                            const isBodyStorageUrl = !m.file_link && /^https?:\/\/[^\s]+\.supabase\.co\/storage\//.test(bodyText) && !/\s/.test(bodyText);
+                            const hasRealBody = bodyText && !isFilePlaceholder && !isBodyStorageUrl;
+                            const effectiveFileLink = isBodyStorageUrl ? bodyText : m.file_link;
 
                             let attachType: string | null = null;
-                            if (m.file_link) {
+                            if (effectiveFileLink) {
                                 attachType = (m.type && m.type !== 'text') ? m.type : null;
                                 if (!attachType) {
-                                    const ext = m.file_link.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+                                    const ext = effectiveFileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
                                     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
                                     else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
                                     else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
-                                    else attachType = 'file';
+                                    else attachType = isBodyStorageUrl ? 'image' : 'file';
                                 }
                             }
 
@@ -143,10 +146,10 @@ export function MessageList({
                                 <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                                     <div className={`flex ${m.role === "user" ? "flex-row-reverse" : "flex-row"} items-end gap-2 max-w-[85%]`}>
                                         <div className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"} min-w-0 max-w-full space-y-1`}>
-                                            {m.file_link && attachType && (
+                                            {effectiveFileLink && attachType && (
                                                 <div className="max-w-full">
                                                     <AttachmentRenderer
-                                                        fileLink={m.file_link}
+                                                        fileLink={effectiveFileLink}
                                                         type={attachType as any}
                                                     />
                                                 </div>
