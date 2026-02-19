@@ -39,6 +39,7 @@ export function useLiveChat() {
     const audioLowRef = useRef<HTMLAudioElement | null>(null);
     const audioHighRef = useRef<HTMLAudioElement | null>(null);
     const threadIdRef = useRef<string | null>(null);
+    const threadStatusRef = useRef<string | null>(null);
     const streamingDraftIdRef = useRef<string | null>(null);
     const lastOptimisticIdRef = useRef<string | null>(null);
     const attachToThreadRef = useRef<((tid: string) => Promise<void>) | null>(null);
@@ -570,6 +571,14 @@ export function useLiveChat() {
             notificationsReadyRef.current = false;
             clearCatchUpTimers();
             try {
+                // Fetch current thread status
+                const { data: threadRow } = await supabase
+                    .from('threads')
+                    .select('status')
+                    .eq('id', tid)
+                    .maybeSingle();
+                threadStatusRef.current = threadRow?.status || null;
+
                 const { data } = await supabase
                     .from('messages')
                     .select('id, role, body, created_at, file_link, type')
@@ -638,6 +647,16 @@ export function useLiveChat() {
                     const reopenedId = await reopenThreadIfResolved(payload?.new);
                     await attachToThread(reopenedId || tid);
                 } catch (err) { }
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, (payload: any) => {
+                const row = payload?.new;
+                if (!row?.id || row.id !== threadIdRef.current) return;
+                const newStatus = row.status || null;
+                threadStatusRef.current = newStatus;
+                // If thread is pending (assigned to human), stop loading/typing animation
+                if (newStatus === 'pending') {
+                    setLoading(false);
+                }
             })
             .subscribe(() => setBooting(false));
 
@@ -719,6 +738,44 @@ export function useLiveChat() {
         }]);
         lastOptimisticIdRef.current = tempId;
         playLow();
+
+        // If thread is pending (assigned to human), skip AI response entirely
+        const isAssigned = threadStatusRef.current === 'pending';
+        if (isAssigned) {
+            // Just send the message via webhook without expecting AI response
+            try {
+                const body = {
+                    deduplication_id: crypto.randomUUID(),
+                    message: text || (uploadedFile ? (isMediaAttachment ? '' : uploadedFile.fileName) : ''),
+                    session_id: sessionId,
+                    account_id: accountId || undefined,
+                    timestamp: createdAt,
+                    channel_id: pid,
+                    username: username || undefined,
+                    ai_profile_id: aiProfileId,
+                    stream: false,
+                    ...(uploadedFile && {
+                        type: uploadedFile.type,
+                        file_link: uploadedFile.url,
+                        file_name: uploadedFile.fileName,
+                        mime_type: uploadedFile.mimeType,
+                    }),
+                } as const;
+
+                callWebhook(
+                    WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    },
+                ).catch(() => { });
+            } catch { }
+
+            // No loading state, no streaming, no AI typing animation
+            return;
+        }
+
         setLoading(true);
 
         const streamingId = `streaming-${Date.now()}`;
