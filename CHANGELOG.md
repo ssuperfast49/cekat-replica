@@ -1,6 +1,6 @@
 # Change Log
 
-# [0.1.90] FE WEB CEKAT 2026-02-20
+# [0.1.91] FE WEB CEKAT 2026-02-20
 
 ### Attachment Rendering
 
@@ -24,6 +24,15 @@
 - **Body Margin Reset**: Added `margin: 0; padding: 0` to body in `index.css` to prevent browser default margins from causing layout overflow.
 
 - **embed_test.html**: Simplified to simulate a real customer's website — paste the embed code, change `username` and `web`, done.
+
+# [0.1.90] FE WEB CEKAT 2026-02-19
+
+### Live Chat
+
+- **Assigned Status Logic**: Updated `useLiveChat` to strictly treat `pending` thread status as "Assigned".
+  - **Typing Indicator**: The "AI is typing..." animation is now suppressed when a thread is assigned (pending).
+  - **AI Handover**: The frontend now skips waiting for an AI response when validity checks confirm the thread is handled by a human agent, preventing accidental AI replies during handover.
+  - Updated: `src/hooks/useLiveChat.ts`
 
 # [0.1.89] FE WEB CEKAT 2026-02-19
 
@@ -60,22 +69,26 @@
   - **Idempotency**: Updated `process-followups` edge function to prevent duplicate processing of the same follow-up task.
 
 # [0.1.87] FE WEB CEKAT 2026-02-16
+
 ### Live Chat
+
 - **Image Rendering Fix**: Resolved an issue where images sent without captions were invisible in the LiveChat UI. The renderer now correctly displays messages with attachments even if the text body is empty.
 - **Attachment Persistence**: Fixed a Row Level Security (RLS) policy issue that prevented `file_link` updates from persisting. The update policy now robustly checks both the `account_id` column and `additional_data` JSON field.
 
-
 # [0.1.86] FE WEB CEKAT 2026-02-16
+
 ### Database & Security
+
 - **RLS Policy Synchronization**: Performed a full audit and synchronization of Row Level Security (RLS) policies between Development and Main production environments.
   - **Threads**: Expanded permissions to allow Master Agents to create and delete threads.
   - **Messages**: Added missing `anon_messages_update_by_account` for guest updates and normalized authenticated update permissions.
   - **Channels**: Fixed access scope issues by implementing `can_access_super_scope`, allowing proper team member access.
   - **Migrations Applied**: `20260216_sync_threads_policies.sql`, `20260216_sync_messages_updates.sql`, `20260216_sync_channels_policies.sql`.
 
-
 # [0.1.85] FE WEB CEKAT 2026-02-16
+
 ### Live Chat & Notifications
+
 - **Inline System Messages**: System messages (e.g., "Assignee changed") now appear as centered, distinct blocks within the chat timeline instead of generic bubbles, improving readability and context.
   - Updated: `src/pages/LiveChat.tsx`
 - **Collaborator Notifications**: Agents now receive real-time toast notifications when a collaborator sends a message in a thread they are viewing, ensuring seamless multi-agent coordination.
@@ -83,23 +96,28 @@
 - **Database Policy Sync**: Gap analysis identified and resolved missing RLS policies (`anon_threads_by_account`, `anon_messages_by_account`) on the Main production environment, ensuring consistent guest access for LiveChat across Dev and Prod.
   - Applied migration: `supabase/migrations/20260216_livechat_schema_and_policies.sql`
 
-
 # [0.1.84] FE WEB CEKAT 2026-02-16
+
 ### Conversation UI Improvements
+
 - **Collaborator Highlight**: Conversations where the current user is a collaborator are now highlighted in yellow and sorted to the top of the list for immediate visibility.
 - **Header Cleanup**: Removed the redundant "Handled by" section from the conversation header since this info is already visible in the sidebar.
 
 ### Presence System Fixes
+
 - **Immediate Offline Status**: Fixed logout flow to immediately set `last_seen_at` to `NULL` via a secure RPC (`go_offline`), ensuring users appear offline instantly.
   - Mitigated race conditions where client-side heartbeats could overwrite the offline status.
 - **Stale Data Fix**: Updated `useHumanAgents` hook to always fetch fresh presence data, preventing "Seen X ago" statuses from persisting incorrectly due to caching.
 
 ### Database & Diagnostics
+
 - **Debug Logging**: Added `debug_events` table and triggers to log `last_seen_at` changes for precise debugging of presence issues.
 - **Migration**: Consolidated debug logic and offline RPC into `supabase/migrations/20260216_go_offline_rpc.sql`.
 
 # [0.1.83] FE WEB CEKAT 2026-02-14
+
 ### Human Agents UI
+
 - **Status Column Split**: Separated "Presence" and "Account Status" into distinct columns in the Human Agents table.
   - **Presence**: Displays real-time status (Online/Idle/Offline) with visual indicators. Read-only.
   - **Status**: Displays account status (Active/Inactive) with a dropdown for toggling activation.
@@ -107,7 +125,9 @@
   - Updated: `src/components/humanagents/HumanAgents.tsx`
 
 # [0.1.82] FE WEB CEKAT 2026-02-14
+
 ### Presence System & User Status
+
 - **Presence System**: Implemented real-time user presence tracking (Online, Idle, Offline).
   - Added `PresenceContext` to manage status broadcasting and idle detection (5-minute timeout).
   - **Offline Persistence**: Added `last_seen_at` to `users_profile` to show "Seen X ago" for offline users.
@@ -119,17 +139,20 @@
 - **Migration**: `supabase/migrations/20260214000000_add_last_seen_at.sql`
 
 # [0.1.81] FE WEB CEKAT 2026-02-13
+
 ### Global Notification Features
+
 - **Global Audio Listener**: Added a dedicated component `GlobalAudioListener` that plays a notification sound for incoming user messages, ensuring agents never miss a reply even when navigating other pages.
   - **Smart Routing**: The sound only plays for the specific agent assigned to the thread, or for all **superadmins** (who monitor everything).
   - **Persistence**: Mounted at the root level (`App.tsx`), so it works globally across the application.
   - **Sound Source**: Uses the standard system alert sound (`/tones/mixkit-message-pop-alert-2354.mp3`).
   - **Tech**: Uses a dedicated Supabase Realtime subscription to `messages` (INSERT) that filters for `role=user` to catch customer replies immediately.
 
-
 # [0.1.80] FE/DB CEKAT 2026-02-10
+
 ### Chat Attachments Improvements & Fixes
-- **Persistence Fix**: Solved critical issue where file attachments were not persisting. 
+
+- **Persistence Fix**: Solved critical issue where file attachments were not persisting.
   - Frontend now explicitly updates `file_link` and `type` in `messages` table after webhook creation.
   - Added retry logic to ensure message exists before update.
 - **Video Support**: Added full support for video attachments.
@@ -143,12 +166,14 @@
 - **Files**: `LiveChat.tsx`, `ConversationPage.tsx`, `FileUploadButton.tsx`, `MediaViewerModal.tsx`
 
 # [0.1.79] FE/DB CEKAT 2026-02-10
+
 ### File Attachment Support
+
 - **File Attachments**: Added WhatsApp-like file attachment support to all chat interfaces:
   - **LiveChat** - End-user chat widget
   - **ConversationPage** - Agent inbox message viewing
   - **ChatPreview** - AI Agent Settings demo chat
-- **New Component**: `FileUploadButton.tsx` with upload progress 
+- **New Component**: `FileUploadButton.tsx` with upload progress
 - **Storage Bucket**: Created `chat-attachments` (10MB limit)
   - Images: jpeg, png, gif, webp
   - Documents: PDF
@@ -157,7 +182,9 @@
 - **Migration**: `supabase/migrations/20260210010000_chat_attachments.sql`
 
 # [0.1.78] FE/BE/DB CEKAT 2026-02-09
+
 ### Follow-up Message Automation - Separate Settings
+
 - **Separate Unassigned & Assigned Settings**: Follow-up messages can now be configured independently for:
   - **Unassigned Threads** (status = `open`) - When AI is handling
   - **Assigned Threads** (status = `pending`) - When human agent is handling
@@ -169,7 +196,9 @@
 - **Edge Function**: Updated `process-followups` to handle both `open` and `pending` statuses
 
 # [0.1.77] BE/DB CEKAT 2026-02-09
+
 ### Follow-up Message Automation
+
 - **Status Filter Fix**: Follow-up messages now only trigger for **Unassigned** (status = `open`) threads.
   - Follow-ups will NOT be scheduled when a thread is Assigned (`pending`) or Done (`closed`).
   - Clears any pending follow-up when thread status changes from open.
