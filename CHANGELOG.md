@@ -1,5 +1,19 @@
 # Change Log
 
+# [0.1.92] FE WEB CEKAT 2026-02-21
+
+### Messaging & Webhooks
+
+- **Payload Standardization**: Updated the outbound message webhook payload in `useConversations.ts` for consistency with backend requirements.
+  - Added `thread_id` to the payload.
+  - Renamed `contact_id` to `actor_id` to better represent the message sender.
+  - Automatically populates `actor_id` with the current admin user's ID for messages sent from the dashboard.
+- **External Channel Optimization**: Refactored `sendMessage` logic for Telegram and WhatsApp channels.
+  - Frontend now skips direct database insertion for these channels, delegating the operation to n8n workflows to ensure a single source of truth and consistency with automated replies.
+  - Implemented updated optimistic state handling: messages are marked as 'sent' locally and replaced by the real database record once synced via Supabase Realtime/n8n.
+- **Automated Follow-ups**: Prepared an updated version of the `process-followups` edge function with aligned payload structures (`thread_id` inclusion and `actor_id: null` for automated actions).
+  - Updated: `src/hooks/useConversations.ts`, `.artifacts/process-followups-updated.ts`
+
 # [0.1.91] FE WEB CEKAT 2026-02-20
 
 ### Attachment Rendering
