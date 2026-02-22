@@ -1,5 +1,13 @@
 # Change Log
 
+# [0.1.93] FE WEB CEKAT 2026-02-22
+
+### Messaging & Webhooks
+
+- **Attachment Forwarding**: Enhanced the outbound webhook payload to support media messages.
+  - Added `file_url` field to forward attachment URLs (images, videos, etc.) to external channel providers.
+  - Updated `type` field to be dynamic based on the media type (e.g., 'image', 'video', 'file') instead of hardcoded to 'text'.
+
 # [0.1.92] FE WEB CEKAT 2026-02-21
 
 ### Messaging & Webhooks

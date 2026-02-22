@@ -628,9 +628,10 @@ export const useConversations = () => {
             contact_phone: contactData?.phone || null,
             external_id: contactData?.external_id || null,
             text: messageText,
-            type: 'text',
+            type: attachment ? attachment.type : 'text',
             direction: 'out',
-            role: role
+            role: role,
+            file_url: attachment?.url || null
           };
 
           const webhookResponse = await callWebhook(endpoint, {
