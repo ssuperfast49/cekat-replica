@@ -542,6 +542,11 @@ export const useConversations = () => {
 
       if (threadError) throw threadError;
 
+      // Determine if the channel is an external provider (telegram/whatsapp)
+      // For external channels, we skip the DB insert and let n8n handle it
+      const channelProvider = ((threadData as any)?.channels?.provider as string || '').toLowerCase();
+      const isExternalChannel = ['telegram', 'whatsapp'].includes(channelProvider);
+
       const newMessage = {
         thread_id: threadId,
         direction: 'out' as const,
@@ -578,14 +583,19 @@ export const useConversations = () => {
       };
       setMessages(prev => [...prev, optimistic]);
 
-      // Insert message into database (authoritative)
-      const { data, error } = await supabase
-        .from('messages')
-        .insert([newMessage])
-        .select()
-        .single();
+      // For external channels (telegram/whatsapp), skip DB insert;
+      // the n8n workflow will insert the message after sending it.
+      let data: any = null;
+      if (!isExternalChannel) {
+        const { data: insertedData, error } = await supabase
+          .from('messages')
+          .insert([newMessage])
+          .select()
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
+        data = insertedData;
+      }
 
       // Get contact details for webhook payload
       const { data: contactData, error: contactError } = await supabase
@@ -607,15 +617,21 @@ export const useConversations = () => {
         if (provider && provider.toLowerCase() !== 'web') {
           const endpoint = resolveSendMessageEndpoint(provider);
 
+          // Get current logged-in admin user ID for the payload
+          const { data: authData } = await supabase.auth.getUser();
+          const currentUserId = authData?.user?.id || null;
+
           const webhookPayload = {
+            thread_id: threadId,
             channel_id: threadData.channel_id,
-            contact_id: threadData.contact_id,
+            actor_id: currentUserId,
             contact_phone: contactData?.phone || null,
             external_id: contactData?.external_id || null,
             text: messageText,
-            type: 'text',
+            type: attachment ? attachment.type : 'text',
             direction: 'out',
-            role: role
+            role: role,
+            file_url: attachment?.url || null
           };
 
           const webhookResponse = await callWebhook(endpoint, {
@@ -635,8 +651,18 @@ export const useConversations = () => {
         // Don't throw here - we still want to save the message locally even if webhook fails
       }
 
-      // Replace optimistic pending with fresh list including the inserted message
-      await fetchMessages(threadId);
+      if (isExternalChannel) {
+        // For external channels, keep the optimistic message visible
+        // and mark it as 'sent'. Realtime will replace it once n8n inserts the real message.
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === optimisticId ? { ...m, _status: 'sent' as const } : m
+          )
+        );
+      } else {
+        // Replace optimistic pending with fresh list including the inserted message
+        await fetchMessages(threadId);
+      }
 
       // Update conversation preview locally to avoid unnecessary refresh
       updateConversationPreview(threadId, {
