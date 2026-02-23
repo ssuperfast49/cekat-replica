@@ -1,0 +1,897 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "modelId": {
+                    "__rl": true,
+                    "value": "gpt-5.2-2025-12-11",
+                    "mode": "id"
+                },
+                "messages": {
+                    "values": [
+                        {
+                            "content": "=<system_configuration>\n  <instruction_tone>\n    You are a precise execution engine. Your output to the user must strictly follow the personality defined in the <persona_definition> block. Your internal reasoning must be logical, objective, and adhere to the <execution_protocol>.\n  </instruction_tone>\n\n  <persona_definition>\n    {{ $('Verify HMAC1').first().json.data.ai_profile.system_prompt }}\n  </persona_definition>\n</system_configuration>\n\n<user_profile>\n  Name: {{ $('Verify HMAC1').first().json.data.contact_info.name }}\n  Email: {{ $('Verify HMAC1').first().json.data.contact_info.email }}\n  Phone: {{ $('Verify HMAC1').first().json.data.contact_info.phone_number }}\n  Bank: {{ $('Verify HMAC1').first().json.data.contact_info.bank_name }}\n  Account Name: {{ $('Verify HMAC1').first().json.data.contact_info.account_name }}\n  User ID: {{ $('Verify HMAC1').first().json.data.contact_info.username || $('Verify HMAC1').first().json.data.account_id }}\n  Account Number: {{ $('Verify HMAC1').first().json.data.contact_info.account_number }}\n  Web: {{ $('Verify HMAC1').first().json.data.contact_info.website || $('Verify HMAC1').first().json.data.web }}\n</user_profile>\n\n<input_data>\n  <current_message_active>\n  {{ $('Verify HMAC1').first().json.data.message }}\n  </current_message_active>\n\n  <image_id_active>\n  {{ $('Verify HMAC1').first().json.data.file_link }}\n  </image_id_active>\n\n  <chat_history_read_only>\n  {{ $('Verify HMAC1').first().json.data.chat_history }}\n  </chat_history_read_only>\n</input_data>\n\n<reference_data>\n  <transfer_conditions>\n  {{ $('Verify HMAC1').first().json.data.ai_profile.transfer_conditions }}\n  </transfer_conditions>\n\n  <qna_database>\n  {{ JSON.stringify($('Verify HMAC1').first().json.data.ai_profile.qna) }}\n  </qna_database>\n\n  <guide_content>\n  {{ $('Verify HMAC1').first().json.data.ai_profile.guide_content }}\n  </guide_content>\n</reference_data>\n\n<execution_protocol>\n  Analyse <input_data> and execute exactlm.\n\n  [PRIORITY 1: SAFETY & ESCALATION LOGIC]\n  CRITICAL: Evaluate <transfer_conditions> against <current_message_active> ONLY.\n  - Ignore <chat_history_read_only> for escalation decisions.\n  - If and ONLY IF <current_message_active> violates <transfer_conditions>, call tool \"Handover Tool\" immediately.\n\n  [PRIORITY 2: VISUAL ANALYSIS]\n  - If <image_id_active> is not empty/null, call tool \"Call 'Analyze Image Workflow Dev'\". Do not generate user response yet.\n\n  [PRIORITY 3: EXACT MATCH QnA]\n  - Search <qna_database> for a match with <current_message_active>.\n  - If matched, output the mapped answer verbatim and stop.\n\n  [PRIORITY 4: DATA CAPTURE]\n  - If <current_message_active> contains new user profile info (name, email, phone, username/user id, web, bank, account name, account number), call tool \"Save User Profile Info\".\n  - Only capture values explicitly provided in <current_message_active>.\n\n  [PRIORITY 5: PAYMENT INFO TOOL]\n  Trigger tool \"Call 'Get Payment Info'\" ONLY if:\n  - <current_message_active> asks about withdraw/deposit status\n  - type is determined: \"withdraw\" or \"deposit\"\n  - username exists (Account Name or User ID)\n  - web exists\n  - username is NOT UUID\n\n  If web/username/type is missing -> ask ONE short question. Do NOT call tool.\n\n  [PRIORITY 6: KNOWLEDGE RETRIEVAL]\n  - If answer is not confidently found in <persona_definition> or <guide_content>, call tool \"Call 'Knowledge Sources Workflow Dev'\".\n  - If tool output is empty, ask ONE short clarifying question.\n\n  [PRIORITY 6.5: NUMBERED-OPTION RESOLUTION]\n  - If <current_message_active> is ONLY a number (e.g., \"1\", \"2\") or matches \"nomor X\"/\"pilih X\":\n    1) Interpret it as selecting from the MOST RECENT numbered options presented by the assistant in <chat_history_read_only>.\n    2) \"Most recent\" = the latest assistant message (closest above) that contains an enumerated list (e.g., lines starting with \"1.\", \"2.\", etc.).\n    3) Ignore older lists if a newer list exists.\n    4) After mapping, restate the chosen label explicitly (e.g., \"kamu pilih nomor 2 = Hapus data profil\").\n    5) If there is no prior assistant numbered list, ask ONE short clarifying question.\n    6) If multiple numbered lists exist in the last assistant message, ask ONE short clarifying question: \"Nomor 2 yang dimaksud dari pilihan yang mana?\"\n\n  [PRIORITY 7: AMBIGUITY RULE]\n  - If intent (withdraw/deposit) was already confirmed in <chat_history_read_only>, do NOT ask it again.\n  - If handover/transfer System message exists in <chat_history_read_only>, treat it as past event only. Do not trigger transfer again unless <current_message_active> matches <transfer_conditions>.\n\n  [PRIORITY 8: NORMAL RESPONSE]\n  - Otherwise respond normally using <persona_definition> style.\n</execution_protocol>\n",
+                            "role": "system"
+                        },
+                        {
+                            "content": "={{ $('Verify HMAC1').first().json.data.message }}"
+                        }
+                    ]
+                },
+                "simplify": false,
+                "options": {
+                    "temperature": "={{ $('Verify HMAC1').first().json.data.ai_profile.response_temperature === \"Balanced\" ? 0.5 : $('Verify HMAC1').first().json.data.ai_profile.response_temperature === \"Conservative\" ? 0.3 : 0.7 }}"
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.openAi",
+            "typeVersion": 1.8,
+            "position": [
+                2568,
+                -1024
+            ],
+            "id": "8263f1e6-049b-4d82-a536-1106986292f1",
+            "name": "Message a model",
+            "executeOnce": false,
+            "alwaysOutputData": true,
+            "credentials": {
+                "openAiApi": {
+                    "id": "Q3UkiQM3oEtWKDfP",
+                    "name": "OpenAi account sebentar"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "value": "UkG2SXX4HqzElcQE",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/UkG2SXX4HqzElcQE",
+                    "cachedResultName": "Verify HMAC"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {}
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1.3,
+            "position": [
+                -2096,
+                -1120
+            ],
+            "id": "4fbba00c-cede-4e81-b355-eb2426553d14",
+            "name": "Verify HMAC1"
+        },
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "chat-ai-agent-settings-dev",
+                "responseMode": "lastNode",
+                "options": {
+                    "binaryData": true
+                }
+            },
+            "id": "b30f1026-dca3-4048-8636-f83a7c7f1fdc",
+            "name": "Test Agent Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                -2320,
+                -1120
+            ],
+            "webhookId": "telegram-send"
+        },
+        {
+            "parameters": {
+                "description": "Retrieves relevant knowledge from the organization's knowledge sources.\nUse when the answer is not found in QnA or requires product/system-specific facts.\nReturns a list of matched documents with content, metadata, and similarity.\n",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "v5LEhW90YqPrXbZw",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/v5LEhW90YqPrXbZw",
+                    "cachedResultName": "Knowledge Sources Workflow Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "ai_profile_id": "={{ $('Verify HMAC1').first().json.data.ai_profile.id }}",
+                        "input": "={{ $('Verify HMAC1').first().json.data.message }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "ai_profile_id",
+                            "displayName": "ai_profile_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "input",
+                            "displayName": "input",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2384,
+                -800
+            ],
+            "id": "a095b0ed-0b51-4824-baaa-fa324bb0688c",
+            "name": "Call 'Knowledge Sources Workflow Dev'"
+        },
+        {
+            "parameters": {
+                "description": "Call this tool the condition in the system prompt fulfilled.",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "JYqcWu4zjwJRdf27",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/JYqcWu4zjwJRdf27",
+                    "cachedResultName": "Telegram Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "thread_id": "={{ $('Verify HMAC1').first().json.data.thread_id }}",
+                        "contact_id": "={{ $('Verify HMAC1').first().json.data.contact_id }}",
+                        "super_agent_id": "={{ $('Verify HMAC1').first().json.data.super_agent_id }}",
+                        "handover_reason": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('handover_reason', `Write a short, human-readable reason for handing over to a human agent.\nOne sentence only. No explanations. Max 120 characters.\n`, 'string') }}",
+                        "channel_id": "={{ $('Verify HMAC1').first().json.data.channel_id }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "thread_id",
+                            "displayName": "thread_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "channel_id",
+                            "displayName": "channel_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "contact_id",
+                            "displayName": "contact_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "super_agent_id",
+                            "displayName": "super_agent_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "handover_reason",
+                            "displayName": "handover_reason",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "platform",
+                            "displayName": "platform",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": true
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2512,
+                -800
+            ],
+            "id": "be971a24-afa5-4db1-886e-bdb523cb0d99",
+            "name": "Call 'Handover Tool'"
+        },
+        {
+            "parameters": {
+                "description": "Call this tool if the user send an image",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "4OvXEgRxyyAUf3LL",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/4OvXEgRxyyAUf3LL",
+                    "cachedResultName": "Analyze Image Workflow Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "caption": "={{ $('Verify HMAC1').first().json.data.message }}",
+                        "file_id": "={{ $('Verify HMAC1').first().json.data.file_link }}",
+                        "secret_token": "={{ $('Verify HMAC1').first().json.data.thread_id }}",
+                        "contact_id": "={{ $('Verify HMAC1').first().json.data.contact_id }}",
+                        "thread_id": "={{ $('Verify HMAC1').first().json.data.thread_id }}",
+                        "platform": "livechat"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "file_id",
+                            "displayName": "file_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "caption",
+                            "displayName": "caption",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "secret_token",
+                            "displayName": "secret_token",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "thread_id",
+                            "displayName": "thread_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "contact_id",
+                            "displayName": "contact_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "platform",
+                            "displayName": "platform",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2640,
+                -800
+            ],
+            "id": "8c83a592-adbb-40fe-9ab1-88e5bd24a2e4",
+            "name": "Call 'AI Analyze Image Workflow Dev'"
+        },
+        {
+            "parameters": {
+                "description": "Call this tool if user",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "J3v2KDqFoAq8ChqY",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/J3v2KDqFoAq8ChqY",
+                    "cachedResultName": "Store User Profile Info Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('name', `user's real name`, 'string') }}",
+                        "username": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('username', `user's name in the app web or the user id`, 'string') }}",
+                        "phone_number": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('phone_number', `user phone number`, 'string') }}",
+                        "bank_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('bank_name', `bank that user uses\ntype in bank code, ex:\n- BCA\n- BNI\n- UOB\n- CIMB\n\nex: `, 'string') }}",
+                        "account_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('account_name', `user bank's account name`, 'string') }}",
+                        "account_number": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('account_number', `user account number for in the bank`, 'string') }}",
+                        "email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('email', `user's email`, 'string') }}",
+                        "contact_id": "={{ $('Verify HMAC1').first().json.data.contact_id }}",
+                        "id": "={{ $('Verify HMAC1').first().json.data.contact_info.id }}",
+                        "website": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('website', `the website`, 'string') }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "id",
+                            "displayName": "id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "contact_id",
+                            "displayName": "contact_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "name",
+                            "displayName": "name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "username",
+                            "displayName": "username",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "email",
+                            "displayName": "email",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "phone_number",
+                            "displayName": "phone_number",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "bank_name",
+                            "displayName": "bank_name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "account_name",
+                            "displayName": "account_name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "account_number",
+                            "displayName": "account_number",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "website",
+                            "displayName": "website",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2768,
+                -800
+            ],
+            "id": "be5b8b6e-e319-4f9a-aa3a-8bac5d0fa3ce",
+            "name": "Call 'Store Important Information Workflow Dev'"
+        },
+        {
+            "parameters": {
+                "description": "Call this tool if theres an account_name or user_id which will be set intot the username and is not a UUID and the user is asking about withdraw/deposit payment status, the type is either withdraw/deposit",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "6wZTEQ2g83YF77Ei",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/6wZTEQ2g83YF77Ei",
+                    "cachedResultName": "Get Payment Info"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "web": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('web', ``, 'string') }}",
+                        "username": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('username', ``, 'string') }}",
+                        "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', ``, 'string') }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "web",
+                            "displayName": "web",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "username",
+                            "displayName": "username",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "type",
+                            "displayName": "type",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2896,
+                -800
+            ],
+            "id": "3dd179e2-6a1c-40cb-9098-8f131b828e0b",
+            "name": "Call 'Get Payment Info'"
+        },
+        {
+            "parameters": {
+                "errorMessage": "Current Quota Exceeded"
+            },
+            "type": "n8n-nodes-base.stopAndError",
+            "typeVersion": 1,
+            "position": [
+                3776,
+                -928
+            ],
+            "id": "ff5db5dc-7dbe-44df-8e27-1c73e90a1335",
+            "name": "Stop and Error"
+        },
+        {
+            "parameters": {
+                "tableId": "messages",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Verify HMAC1').first().json.data.thread_id }}"
+                        },
+                        {
+                            "fieldId": "direction",
+                            "fieldValue": "out"
+                        },
+                        {
+                            "fieldId": "role",
+                            "fieldValue": "agent"
+                        },
+                        {
+                            "fieldId": "body",
+                            "fieldValue": "={{ $('Message a model').item.json.choices[0].message.content }}"
+                        },
+                        {
+                            "fieldId": "actor_kind",
+                            "fieldValue": "ai"
+                        },
+                        {
+                            "fieldId": "actor_id",
+                            "fieldValue": "={{ $('Verify HMAC1').first().json.data.ai_profile.id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                3776,
+                -1776
+            ],
+            "id": "aefc6b13-88ff-4a87-9da7-7205455ae0b2",
+            "name": "Create AI Agent Message1",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "tableId": "token_usage_logs",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "total_tokens",
+                            "fieldValue": "={{ $('Message a model').item.json.usage.total_tokens }}"
+                        },
+                        {
+                            "fieldId": "prompt_tokens",
+                            "fieldValue": "={{ $('Message a model').item.json.usage.prompt_tokens }}"
+                        },
+                        {
+                            "fieldId": "completion_tokens",
+                            "fieldValue": "={{ $('Message a model').item.json.usage.completion_tokens }}"
+                        },
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Verify HMAC1').first().json.data.thread_id }}"
+                        },
+                        {
+                            "fieldId": "org_id",
+                            "fieldValue": "00000000-0000-0000-0000-000000000001"
+                        },
+                        {
+                            "fieldId": "user_id",
+                            "fieldValue": "={{ $('Verify HMAC1').first().json.data.super_agent_id }}"
+                        },
+                        {
+                            "fieldId": "model",
+                            "fieldValue": "={{ $('Message a model').item.json.model }}"
+                        },
+                        {
+                            "fieldId": "provider",
+                            "fieldValue": "livechat"
+                        },
+                        {
+                            "fieldId": "channel_id",
+                            "fieldValue": "={{ $('Verify HMAC1').first().json.data.channel_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                4000,
+                -1776
+            ],
+            "id": "57a0df21-bd50-4726-80f5-93d806768e7b",
+            "name": "Log Token Usage1",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "threads",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "contact_id",
+                            "keyValue": "={{ $('Verify HMAC1').first().json.data.contact_id }}"
+                        },
+                        {
+                            "keyName": "channel_id",
+                            "keyValue": "={{ $('Verify HMAC1').first().json.data.channel_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                4224,
+                -1776
+            ],
+            "id": "55d45809-d6fa-45ec-8e22-48e1aad8e4ff",
+            "name": "Last Get Thread",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "a3d0dccd-a140-4962-9eed-bdcf6f71504e",
+                            "leftValue": "={{ $json.ai_handoff_at }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "string",
+                                "operation": "empty",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                4448,
+                -1776
+            ],
+            "id": "1054aed4-7bb4-4cf6-a8c2-83928772b579",
+            "name": "If AI Handoff Empty"
+        },
+        {
+            "parameters": {
+                "tableId": "messages",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "role",
+                            "fieldValue": "system"
+                        },
+                        {
+                            "fieldId": "type",
+                            "fieldValue": "event"
+                        },
+                        {
+                            "fieldId": "body",
+                            "fieldValue": "Auto-handover triggered by AI agent."
+                        },
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Verify HMAC1').first().json.data.thread_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                4672,
+                -1776
+            ],
+            "id": "b380d8cb-a1f8-4c48-b392-1a00bce3856b",
+            "name": "Create Log Message",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Test Agent Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Verify HMAC1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Verify HMAC1": {
+            "main": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Knowledge Sources Workflow Dev'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Handover Tool'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'AI Analyze Image Workflow Dev'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Store Important Information Workflow Dev'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Get Payment Info'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Message a model": {
+            "main": [
+                [
+                    {
+                        "node": "Create AI Agent Message1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create AI Agent Message1": {
+            "main": [
+                [
+                    {
+                        "node": "Log Token Usage1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log Token Usage1": {
+            "main": [
+                [
+                    {
+                        "node": "Last Get Thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Last Get Thread": {
+            "main": [
+                [
+                    {
+                        "node": "If AI Handoff Empty",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If AI Handoff Empty": {
+            "main": [
+                [],
+                [
+                    {
+                        "node": "Create Log Message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "meta": {
+        "templateCredsSetupCompleted": true,
+        "instanceId": "d83aed271c098b1503de79984bdb7981d79c54fa4b65e1ec800e9fe14106c5f7"
+    }
+}

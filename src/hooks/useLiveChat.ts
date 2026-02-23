@@ -16,6 +16,24 @@ const HIGH_TONE_URL = '/tones/mixkit-long-pop-2358.wav';
 const sendMessageRetryDelay = 10000;
 const sendMessageMaxAttempts = 3;
 
+// Edge function helper — calls livechat-orchestrator with service-role privileges
+async function callOrchestrator(action: string, params: Record<string, any>): Promise<any> {
+    const url = `${SUPABASE_URL}/functions/v1/livechat-orchestrator`;
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ action, ...params }),
+    });
+    if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(`Orchestrator ${action} failed (${resp.status}): ${body}`);
+    }
+    return resp.json();
+}
+
 export function useLiveChat() {
     const { platform_id, platformId } = useParams();
     const pid = useMemo(() => platform_id || platformId || "unknown", [platform_id, platformId]);
@@ -42,6 +60,8 @@ export function useLiveChat() {
     const threadStatusRef = useRef<string | null>(null);
     const streamingDraftIdRef = useRef<string | null>(null);
     const lastOptimisticIdRef = useRef<string | null>(null);
+    const contactIdRef = useRef<string | null>(null);
+    const isNewThreadRef = useRef(false);
     const attachToThreadRef = useRef<((tid: string) => Promise<void>) | null>(null);
     const pendingThreadAttachRef = useRef(false);
     const pendingThreadInfoRef = useRef<{ alias: string; startedAt: string } | null>(null);
@@ -441,7 +461,7 @@ export function useLiveChat() {
         try {
             const { data } = await supabase
                 .from('threads')
-                .select('id, created_at, additional_data, assignee_user_id, status, account_id, resolved_at, resolved_by_user_id, contacts(name)')
+                .select('id, contact_id, created_at, additional_data, assignee_user_id, status, account_id, resolved_at, resolved_by_user_id, contacts(name)')
                 .eq('channel_id', pid)
                 .order('last_msg_at', { ascending: false })
                 .order('created_at', { ascending: false })
@@ -686,23 +706,45 @@ export function useLiveChat() {
         if (!text && !stagedFile) return;
         const createdAt = new Date().toISOString();
 
+        // ── 1. Thread resolution ──
+        // Try local find first
         if (!threadIdRef.current) {
             try {
                 const existingThread = await findThreadForCurrentSession();
                 if (existingThread?.id) {
+                    if (existingThread.contact_id) contactIdRef.current = existingThread.contact_id;
                     const reopenedId = await reopenThreadIfResolved(existingThread);
                     if (reopenedId) await attachToThreadRef.current?.(reopenedId);
                 }
             } catch (err) { }
         }
 
+        // If still no thread, call edge fn to create one (bypasses RLS)
         if (!threadIdRef.current) {
-            pendingThreadAttachRef.current = true;
-            pendingThreadInfoRef.current = { alias: username, startedAt: new Date().toISOString() };
-            scheduleThreadAttachRetries([0, 300, 900, 2000]);
+            try {
+                const result = await callOrchestrator('ensure_thread', {
+                    account_id: accountId || '',
+                    channel_id: pid,
+                    session_id: sessionId,
+                    username: username || '',
+                });
+                if (result.thread_id) {
+                    isNewThreadRef.current = result.is_new;
+                    contactIdRef.current = result.contact_id;
+                    await attachToThreadRef.current?.(result.thread_id);
+                    if (result.ai_profile_id && !aiProfileId) setAiProfileId(result.ai_profile_id);
+                    threadStatusRef.current = result.thread_status ?? 'open';
+                }
+            } catch (err) {
+                console.error('[LiveChat] ensure_thread failed', err);
+                // Fallback to old retry behaviour
+                pendingThreadAttachRef.current = true;
+                pendingThreadInfoRef.current = { alias: username, startedAt: new Date().toISOString() };
+                scheduleThreadAttachRetries([0, 300, 900, 2000]);
+            }
         }
 
-        // Check AI Message Limit
+        // ── 2. AI Message Limit check ──
         if (threadIdRef.current) {
             try {
                 const { checkAIMessageLimit, autoAssignToSuperAgent } = await import('@/lib/aiMessageLimit');
@@ -720,6 +762,7 @@ export function useLiveChat() {
             } catch (error) { }
         }
 
+        // ── 3. File upload ──
         let uploadedFile: UploadedFile | null = null;
         if (stagedFile) {
             setIsUploadingFile(true);
@@ -737,12 +780,11 @@ export function useLiveChat() {
         const isAttachment = !!uploadedFile;
         const hasText = text.length > 0;
 
-        // Prepare messages to insert
+        // ── 4. Prepare messages ──
         const messagesToInsert: any[] = [];
         const optimisticMessages: any[] = [];
 
         if (isAttachment) {
-            // Row 1: Image URL
             const attachId = crypto.randomUUID();
             const attachMsg = {
                 id: attachId,
@@ -754,13 +796,8 @@ export function useLiveChat() {
                 payload: {}
             };
             messagesToInsert.push(attachMsg);
-            optimisticMessages.push({
-                ...attachMsg,
-                at: createdAt,
-                order: nextOrder()
-            });
+            optimisticMessages.push({ ...attachMsg, at: createdAt, order: nextOrder() });
 
-            // Row 2: Caption (if any)
             if (hasText) {
                 const textId = crypto.randomUUID();
                 const textMsg = {
@@ -773,14 +810,9 @@ export function useLiveChat() {
                     payload: {}
                 };
                 messagesToInsert.push(textMsg);
-                optimisticMessages.push({
-                    ...textMsg,
-                    at: new Date(Date.now() + 1).toISOString(),
-                    order: nextOrder()
-                });
+                optimisticMessages.push({ ...textMsg, at: new Date(Date.now() + 1).toISOString(), order: nextOrder() });
             }
         } else {
-            // Regular text
             const textId = crypto.randomUUID();
             const textMsg = {
                 id: textId,
@@ -792,14 +824,10 @@ export function useLiveChat() {
                 payload: {}
             };
             messagesToInsert.push(textMsg);
-            optimisticMessages.push({
-                ...textMsg,
-                at: createdAt,
-                order: nextOrder()
-            });
+            optimisticMessages.push({ ...textMsg, at: createdAt, order: nextOrder() });
         }
 
-        // Direct DB insert if thread is available
+        // ── 5. Insert user message into DB (always — fixes first-message bug) ──
         if (threadIdRef.current && messagesToInsert.length > 0) {
             try {
                 await supabase.from('messages').insert(messagesToInsert);
@@ -809,48 +837,38 @@ export function useLiveChat() {
         }
 
         setMessages((prev) => [...prev, ...optimisticMessages]);
-        lastOptimisticIdRef.current = optimisticMessages[0].id; // Use primary (attachment or text) for dedupe
+        lastOptimisticIdRef.current = optimisticMessages[0].id;
         playLow();
-
         setDraft("");
 
-        // If thread is pending (assigned to human), skip AI response entirely
+        // ── 6. Pending thread path — no AI call ──
         const isAssigned = threadStatusRef.current === 'pending';
         if (isAssigned) {
-            // Just send the message via webhook without expecting AI response
-            try {
-                const primaryMessageId = optimisticMessages[0].id;
-                const body = {
-                    id: primaryMessageId,
-                    deduplication_id: primaryMessageId,
-                    message: text || (uploadedFile?.url || ''),
-                    session_id: sessionId,
-                    account_id: accountId || undefined,
-                    timestamp: createdAt,
-                    channel_id: pid,
-                    username: username || undefined,
-                    ai_profile_id: aiProfileId,
-                    stream: false,
-                    ...(uploadedFile && {
-                        type: uploadedFile.type,
-                        file_link: uploadedFile.url,
-                        file_name: uploadedFile.fileName,
-                        mime_type: uploadedFile.mimeType,
-                    }),
-                } as const;
-
-                callWebhook(
-                    WEBHOOK_CONFIG.ENDPOINTS.AI_AGENT.CHAT_SETTINGS,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    },
-                ).catch(() => { });
-            } catch { }
-
-            // No loading state, no streaming, no AI typing animation
+            // No AI response expected; message already inserted above
             return;
+        }
+
+        // ── 7. Fetch AI context via edge fn ──
+        let aiContext: { ai_profile: any; contact_info: any; chat_history: string; super_agent_id: string } | null = null;
+        if (threadIdRef.current) {
+            try {
+                aiContext = await callOrchestrator('get_ai_context', {
+                    thread_id: threadIdRef.current,
+                    channel_id: pid,
+                    contact_id: contactIdRef.current || '',
+                });
+            } catch (err) {
+                console.warn('[LiveChat] get_ai_context failed', err);
+            }
+        }
+
+        // ── 7b. Insert welcome message BEFORE AI call (so it renders first) ──
+        if (isNewThreadRef.current && threadIdRef.current && aiContext?.ai_profile?.welcome_message) {
+            callOrchestrator('insert_welcome_message', {
+                thread_id: threadIdRef.current,
+                welcome_message: aiContext.ai_profile.welcome_message,
+            }).catch((e: any) => console.warn('[LiveChat] insert_welcome_message failed', e));
+            isNewThreadRef.current = false;
         }
 
         setLoading(true);
@@ -860,26 +878,23 @@ export function useLiveChat() {
         streamingDraftIdRef.current = streamingId;
 
         try {
-            const primaryMessageId = optimisticMessages[0].id;
-            const body = {
-                id: primaryMessageId,
-                deduplication_id: primaryMessageId,
+            // ── 8. Build new webhook payload ──
+            const webhookPayload = {
                 message: text || (uploadedFile?.url || ''),
-                session_id: sessionId,
                 account_id: accountId || undefined,
-                timestamp: createdAt,
                 channel_id: pid,
+                session_id: sessionId,
                 username: username || undefined,
-                ai_profile_id: aiProfileId,
-                stream: true,
                 web: webId,
-                ...(uploadedFile && {
-                    type: uploadedFile.type,
-                    file_link: uploadedFile.url,
-                    file_name: uploadedFile.fileName,
-                    mime_type: uploadedFile.mimeType,
-                }),
-            } as const;
+                file_link: uploadedFile?.url || undefined,
+                stream: true,
+                thread_id: threadIdRef.current,
+                contact_id: contactIdRef.current || undefined,
+                super_agent_id: aiContext?.super_agent_id || undefined,
+                ai_profile: aiContext?.ai_profile || undefined,
+                contact_info: aiContext?.contact_info || undefined,
+                chat_history: aiContext?.chat_history || '',
+            };
 
             let attempt = 0;
             let resp: Response | null = null;
@@ -890,7 +905,7 @@ export function useLiveChat() {
                         {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body),
+                            body: JSON.stringify(webhookPayload),
                         },
                         { forceLegacy: attempt > 0 },
                     );
@@ -902,21 +917,11 @@ export function useLiveChat() {
 
             if (!resp || !resp.ok) throw new Error("Webhook failed");
 
-            // Attach Thread Check
-            let attachedThreadId = threadIdRef.current;
-            try {
-                const foundThread = await findThreadForCurrentSession();
-                if (foundThread?.id) {
-                    const reopenedId = await reopenThreadIfResolved(foundThread);
-                    attachedThreadId = reopenedId || foundThread.id;
-                    if (threadIdRef.current !== attachedThreadId) await attachToThreadRef.current?.(attachedThreadId);
-                }
-            } catch { }
+            // Schedule catch-ups for realtime sync
+            scheduleCatchUps(threadIdRef.current, upsertFromRows, [0, 600, 1800, 4000, 9000, 15000]);
 
-            const targetThreadId = attachedThreadId ?? threadIdRef.current;
-
-            scheduleCatchUps(targetThreadId, upsertFromRows, [0, 600, 1800, 4000, 9000, 15000]);
-
+            // ── 9. Stream AI response ──
+            let fullAiResponse = '';
             if (resp.body) {
                 const reader = resp.body.getReader();
                 const decoder = new TextDecoder();
@@ -935,20 +940,33 @@ export function useLiveChat() {
                                     const data = line.slice(6);
                                     if (data === '[DONE]') { finalizeAssistantMessage(streamingId); break; }
                                     const parsed = JSON.parse(data);
-                                    if (parsed.content || parsed.delta) appendAssistantChunk(streamingId, parsed.content || parsed.delta);
+                                    const chunk = parsed.content || parsed.delta || '';
+                                    if (chunk) {
+                                        fullAiResponse += chunk;
+                                        appendAssistantChunk(streamingId, chunk);
+                                    }
                                 } else {
                                     const parsed = JSON.parse(line);
-                                    if (parsed.content || parsed.delta) appendAssistantChunk(streamingId, parsed.content || parsed.delta);
+                                    const chunk = parsed.content || parsed.delta || '';
+                                    if (chunk) {
+                                        fullAiResponse += chunk;
+                                        appendAssistantChunk(streamingId, chunk);
+                                    }
                                 }
-                            } catch { appendAssistantChunk(streamingId, line); }
+                            } catch { appendAssistantChunk(streamingId, line); fullAiResponse += line; }
                         }
                     }
                 } finally { reader.releaseLock(); }
             } else {
                 const data = await resp.json();
-                finalizeAssistantMessage(streamingId, data.output || data.content || "Sorry, I couldn't process your message.");
+                fullAiResponse = data.output || data.content || "Sorry, I couldn't process your message.";
+                finalizeAssistantMessage(streamingId, fullAiResponse);
             }
             playHigh();
+
+            // ── 10. Post-response ──
+            // AI message insert, token logging, and handover check are handled by n8n post-AI nodes.
+            // Welcome message was already inserted in Step 7b (before AI call).
 
         } catch (e) {
             console.error('Send error:', e);
