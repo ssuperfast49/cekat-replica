@@ -1,0 +1,2117 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "9e7591f6-ca4c-4362-92b4-515cf4a5659f",
+                            "leftValue": "={{ $json }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "object",
+                                "operation": "notEmpty",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                -1424,
+                -1120
+            ],
+            "id": "b93a36e5-a0e3-45bf-9e70-a5cf9f0f621c",
+            "name": "If Threads Exists1"
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "channels",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "id",
+                            "keyValue": "={{ $('Verify HMAC1').item.json.data.channel_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                -1200,
+                -1024
+            ],
+            "id": "bcb6fad6-55b9-44f0-88ad-2153b472725d",
+            "name": "Get Channel5",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "tableId": "contacts",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "org_id",
+                            "fieldValue": "={{ $('Get Channel5').item.json.org_id }}"
+                        },
+                        {
+                            "fieldId": "name",
+                            "fieldValue": "={{ $('Verify HMAC1').item.json.data.username }}"
+                        },
+                        {
+                            "fieldId": "external_id",
+                            "fieldValue": "={{ $('Verify HMAC1').item.json.data.session_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                -528,
+                -952
+            ],
+            "id": "5af98bdc-af22-4e56-855a-cc1549e04486",
+            "name": "Create Contact1",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "14ab638e-5405-4fd7-8737-af18c0316ac7",
+                            "leftValue": "={{ $('Verify HMAC1').item.json.data.message }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "string",
+                                "operation": "notExists",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "or"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                -80,
+                -1240
+            ],
+            "id": "a1fd1a9d-2fc5-4584-ae69-227c425226fd",
+            "name": "If Message Not Valid"
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "channels",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "id",
+                            "keyValue": "={{ $('Verify HMAC1').item.json.data.channel_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                144,
+                -1120
+            ],
+            "id": "000d1f2c-f939-4900-ac3c-d838a1199ae1",
+            "name": "Get Channel",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "ai_profiles",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "id",
+                            "keyValue": "={{ $json.ai_profile_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                368,
+                -1120
+            ],
+            "id": "569ac17c-aa8a-4da1-87a3-982b69e86966",
+            "name": "Get AI Agent1",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "modelId": {
+                    "__rl": true,
+                    "value": "gpt-5.2-2025-12-11",
+                    "mode": "id"
+                },
+                "messages": {
+                    "values": [
+                        {
+                            "content": "=<system_configuration>\n  <instruction_tone>\n    You are a precise execution engine. Your output to the user must strictly follow the personality defined in the <persona_definition> block. Your internal reasoning must be logical, objective, and adhere to the <execution_protocol>.\n  </instruction_tone>\n\n  <persona_definition>\n    {{ $('Get AI Agent1').first().json.system_prompt }}\n  </persona_definition>\n</system_configuration>\n\n<user_profile>\n  Name: {{ $('Get Contact Info').first().json.name }}\n  Email: {{ $('Get Contact Info').first().json.email }}\n  Phone: {{ $('Get Contact Info').first().json.phone_number }}\n  Bank: {{ $('Get Contact Info').first().json.bank_name }}\n  Account Name: {{ $('Get Contact Info').first().json.account_name }}\n  User ID: {{ $('Get Contact Info').first().json.username || $('Verify HMAC1').first().json.data.account_id }}\n  Account Number: {{ $('Get Contact Info').first().json.account_number }}\n  Web: {{ $('Get Contact Info').first().json.website || $('Verify HMAC1').first().json.data.web }}\n</user_profile>\n\n<input_data>\n  <current_message_active>\n  {{ $('Verify HMAC1').first().json.data.message }}\n  </current_message_active>\n\n  <image_id_active>\n  {{ $('Verify HMAC1').first().json.data.file_link }}\n  </image_id_active>\n\n  <chat_history_read_only>\n  {{ $json.history_text }}\n  </chat_history_read_only>\n</input_data>\n\n<reference_data>\n  <transfer_conditions>\n  {{ $('Get AI Agent1').first().json.transfer_conditions }}\n  </transfer_conditions>\n\n  <qna_database>\n  {{ JSON.stringify($('Get AI Agent1').first().json.qna) }}\n  </qna_database>\n\n  <guide_content>\n  {{ $('Get AI Agent1').first().json.guide_content }}\n  </guide_content>\n</reference_data>\n\n<execution_protocol>\n  Analyse <input_data> and execute exactlm.\n\n  [PRIORITY 1: SAFETY & ESCALATION LOGIC]\n  CRITICAL: Evaluate <transfer_conditions> against <current_message_active> ONLY.\n  - Ignore <chat_history_read_only> for escalation decisions.\n  - If and ONLY IF <current_message_active> violates <transfer_conditions>, call tool \"Handover Tool\" immediately.\n\n  [PRIORITY 2: VISUAL ANALYSIS]\n  - If <image_id_active> is not empty/null, call tool \"Call 'Analyze Image Workflow Dev'\". Do not generate user response yet.\n\n  [PRIORITY 3: EXACT MATCH QnA]\n  - Search <qna_database> for a match with <current_message_active>.\n  - If matched, output the mapped answer verbatim and stop.\n\n  [PRIORITY 4: DATA CAPTURE]\n  - If <current_message_active> contains new user profile info (name, email, phone, username/user id, web, bank, account name, account number), call tool \"Save User Profile Info\".\n  - Only capture values explicitly provided in <current_message_active>.\n\n  [PRIORITY 5: PAYMENT INFO TOOL]\n  Trigger tool \"Call 'Get Payment Info'\" ONLY if:\n  - <current_message_active> asks about withdraw/deposit status\n  - type is determined: \"withdraw\" or \"deposit\"\n  - username exists (Account Name or User ID)\n  - web exists\n  - username is NOT UUID\n\n  If web/username/type is missing -> ask ONE short question. Do NOT call tool.\n\n  [PRIORITY 6: KNOWLEDGE RETRIEVAL]\n  - If answer is not confidently found in <persona_definition> or <guide_content>, call tool \"Call 'Knowledge Sources Workflow Dev'\".\n  - If tool output is empty, ask ONE short clarifying question.\n\n  [PRIORITY 6.5: NUMBERED-OPTION RESOLUTION]\n  - If <current_message_active> is ONLY a number (e.g., \"1\", \"2\") or matches \"nomor X\"/\"pilih X\":\n    1) Interpret it as selecting from the MOST RECENT numbered options presented by the assistant in <chat_history_read_only>.\n    2) \"Most recent\" = the latest assistant message (closest above) that contains an enumerated list (e.g., lines starting with \"1.\", \"2.\", etc.).\n    3) Ignore older lists if a newer list exists.\n    4) After mapping, restate the chosen label explicitly (e.g., \"kamu pilih nomor 2 = Hapus data profil\").\n    5) If there is no prior assistant numbered list, ask ONE short clarifying question.\n    6) If multiple numbered lists exist in the last assistant message, ask ONE short clarifying question: \"Nomor 2 yang dimaksud dari pilihan yang mana?\"\n\n  [PRIORITY 7: AMBIGUITY RULE]\n  - If intent (withdraw/deposit) was already confirmed in <chat_history_read_only>, do NOT ask it again.\n  - If handover/transfer System message exists in <chat_history_read_only>, treat it as past event only. Do not trigger transfer again unless <current_message_active> matches <transfer_conditions>.\n\n  [PRIORITY 8: NORMAL RESPONSE]\n  - Otherwise respond normally using <persona_definition> style.\n</execution_protocol>\n",
+                            "role": "system"
+                        },
+                        {
+                            "content": "={{ $('Verify HMAC1').first().json.data.message }}"
+                        }
+                    ]
+                },
+                "simplify": false,
+                "options": {
+                    "temperature": "={{ $('Get AI Agent1').first().json.response_temperature === \"Balanced\" ? 0.5 : $('Get AI Agent1').first().json.response_temperature === \"Conservative\" ? 0.3 : 0.7 }}"
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.openAi",
+            "typeVersion": 1.8,
+            "position": [
+                2568,
+                -1024
+            ],
+            "id": "8263f1e6-049b-4d82-a536-1106986292f1",
+            "name": "Message a model",
+            "executeOnce": false,
+            "alwaysOutputData": true,
+            "credentials": {
+                "openAiApi": {
+                    "id": "Q3UkiQM3oEtWKDfP",
+                    "name": "OpenAi account sebentar"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "contacts",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "name",
+                            "keyValue": "={{ $('Verify HMAC1').item.json.data.username }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                1264,
+                -1024
+            ],
+            "id": "97a205df-fa65-45f9-84ed-6a2ef7a1189e",
+            "name": "Get Contact1",
+            "alwaysOutputData": false,
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "05841049-ea53-4fdb-8e7d-0bff509e94d1",
+                            "name": "thread_id",
+                            "value": "={{ $('Get Thread').item.json.id || $('Create Thread').item.json.id}}",
+                            "type": "string"
+                        },
+                        {
+                            "id": "10ea1c69-4b31-4417-873b-d75dc937195f",
+                            "name": "contact_id",
+                            "value": "={{ $('Get Contact1').item.json.id }}",
+                            "type": "string"
+                        },
+                        {
+                            "id": "9761f75b-c218-4292-996b-2b7ff2a148f8",
+                            "name": "channel_id",
+                            "value": "={{ $('Get Channel').item.json.id }}",
+                            "type": "string"
+                        },
+                        {
+                            "id": "eca3ad92-e601-41e3-a614-d970505d46f0",
+                            "name": "ai_agent_id",
+                            "value": "={{ $('Get AI Agent1').item.json.id }}",
+                            "type": "string"
+                        },
+                        {
+                            "id": "823c6696-e7a4-4de5-b501-c6541da960e5",
+                            "name": "bot_token",
+                            "value": "={{ null }}",
+                            "type": "string"
+                        },
+                        {
+                            "id": "fe828c71-6e19-4c9b-ac06-e83fd003f6cb",
+                            "name": "super_agent_id",
+                            "value": "={{ $('Get Channel').item.json.super_agent_id }}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                1712,
+                -1024
+            ],
+            "id": "c928031c-a4c0-4215-9625-3f8b2bd094b4",
+            "name": "Set Fields"
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "users_profile",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "user_id",
+                            "keyValue": "={{ $('Get Channel').item.json.super_agent_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                592,
+                -1120
+            ],
+            "id": "d6ac83d1-a865-403f-95f2-7c3ee1a03940",
+            "name": "Get SuperAgent for Limit",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "1fe84423-b9e5-4191-bf0e-8308ac72f9b1",
+                            "leftValue": "={{ $json.token_limit_enabled }}",
+                            "rightValue": "=",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "or"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                816,
+                -1120
+            ],
+            "id": "df957668-d30a-4ce2-b1c8-525bfdc8f7a5",
+            "name": "If Token Limit Enabled"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "1fe84423-b9e5-4191-bf0e-8308ac72f9b1",
+                            "leftValue": "={{ $json.monthly_used_tokens }}",
+                            "rightValue": "={{ $json.max_tokens_per_month }}",
+                            "operator": {
+                                "type": "number",
+                                "operation": "gte"
+                            }
+                        },
+                        {
+                            "id": "e59a3fe1-4ff2-483a-bf9b-6932d742fe5e",
+                            "leftValue": "={{ $json.daily_used_tokens }}",
+                            "rightValue": "={{ $json.max_tokens_per_day }}",
+                            "operator": {
+                                "type": "number",
+                                "operation": "gte"
+                            }
+                        }
+                    ],
+                    "combinator": "or"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                1040,
+                -1192
+            ],
+            "id": "3298b375-3a70-44e7-8d1e-1b2c187f773a",
+            "name": "If Limit Exceeded"
+        },
+        {
+            "parameters": {
+                "tableId": "messages",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Get Thread').item.json.id || $('Create Thread1').item.json.id }}"
+                        },
+                        {
+                            "fieldId": "role",
+                            "fieldValue": "user"
+                        },
+                        {
+                            "fieldId": "actor_kind",
+                            "fieldValue": "=customer"
+                        },
+                        {
+                            "fieldId": "actor_id",
+                            "fieldValue": "={{ $json.id }}"
+                        },
+                        {
+                            "fieldId": "body",
+                            "fieldValue": "={{ $('Verify HMAC1').item.json.data.message }}"
+                        },
+                        {
+                            "fieldId": "direction",
+                            "fieldValue": "in"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                1488,
+                -1240
+            ],
+            "id": "7b43e24d-b0fe-4f53-a529-950aeebfca7b",
+            "name": "Create User Message2",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "contacts",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "id",
+                            "keyValue": "={{ $('Verify HMAC1').item.json.data.username }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                1264,
+                -1240
+            ],
+            "id": "7809012a-d4e7-44c8-b0d1-a31c8ec4b947",
+            "name": "Get Contact2",
+            "alwaysOutputData": true,
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "tableId": "threads",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "org_id",
+                            "fieldValue": "={{ $('Get Channel5').item.json.org_id }}"
+                        },
+                        {
+                            "fieldId": "contact_id",
+                            "fieldValue": "={{  $('If Contact Exists').item.json.id || $json.id }}"
+                        },
+                        {
+                            "fieldId": "channel_id",
+                            "fieldValue": "={{ $('Get Channel5').item.json.id }}"
+                        },
+                        {
+                            "fieldId": "status",
+                            "fieldValue": "open"
+                        },
+                        {
+                            "fieldId": "assignee_user_id",
+                            "fieldValue": "={{ $('Get Channel5').item.json.super_agent_id }}"
+                        },
+                        {
+                            "fieldId": "account_id",
+                            "fieldValue": "={{ $('Verify HMAC1').item.json.data.account_id }}"
+                        },
+                        {
+                            "fieldId": "assignee_user_id",
+                            "fieldValue": "={{ $('Get Channel5').item.json.super_agent_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                -304,
+                -1024
+            ],
+            "id": "0be018eb-4f08-4e70-acc5-e5175dfc3d3b",
+            "name": "Create Thread",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "6faa6c9c-f621-4b64-9d94-96762059bda9",
+                            "leftValue": "={{ $json }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "object",
+                                "operation": "notEmpty",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                -752,
+                -1024
+            ],
+            "id": "b13126b1-38b0-495b-9b51-ed0dca6fa395",
+            "name": "If Contact Exists"
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "contacts",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "name",
+                            "keyValue": "={{ $('Verify HMAC1').item.json.data.username }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                -976,
+                -1024
+            ],
+            "id": "91e6f076-eed9-4852-b099-371750905b68",
+            "name": "Get Contact3",
+            "alwaysOutputData": true,
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "value": "UkG2SXX4HqzElcQE",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/UkG2SXX4HqzElcQE",
+                    "cachedResultName": "Verify HMAC"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {}
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1.3,
+            "position": [
+                -2096,
+                -1120
+            ],
+            "id": "4fbba00c-cede-4e81-b355-eb2426553d14",
+            "name": "Verify HMAC1"
+        },
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "chat-ai-agent-settings-dev",
+                "responseMode": "lastNode",
+                "options": {
+                    "binaryData": true
+                }
+            },
+            "id": "b30f1026-dca3-4048-8636-f83a7c7f1fdc",
+            "name": "Test Agent Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                -2320,
+                -1120
+            ],
+            "webhookId": "telegram-send"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "708a4e73-af35-47ff-924d-4698d7072418",
+                            "leftValue": "={{ $json.status }}",
+                            "rightValue": "pending",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                -304,
+                -1240
+            ],
+            "id": "992f2478-b657-480c-aacd-aea7354284f5",
+            "name": "If Thread Status Pending"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "select\n  role,\n  body,\n  actor_kind,\n  created_at\nfrom public.messages\nwhere thread_id = '{{$json.thread_id}}'::uuid\n  and type = 'text'\n  and body is not null\norder by created_at desc\nlimit {{ $('Get AI Agent1').item.json.history_limit }};\n",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                1936,
+                -1024
+            ],
+            "id": "a9b29ac6-eb70-4db1-b830-cfb80f507bd7",
+            "name": "Postgres Memory",
+            "alwaysOutputData": true,
+            "credentials": {
+                "postgres": {
+                    "id": "ZJmDU61pRbaSbp2D",
+                    "name": "Postgres from field"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "jsCode": "const history = items\n  .filter(i => i.json.body)\n  .reverse() // ⬅️ ini kuncinya, bro\n  .map(i => {\n    const r = i.json.role;\n    const who =\n      r === \"user\" ? \"User\"\n      : (r === \"agent\" || r === \"ai\") ? \"Assistant\"\n      : \"System\";\n    return `${who}: ${i.json.body}`;\n  })\n  .join(\"\\n\");\n\nreturn [{\n  json: {\n    history_text: history,\n  }\n}];\n"
+            },
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2160,
+                -1024
+            ],
+            "id": "92896a71-dd5c-4ebf-b7dd-0c54cb83495b",
+            "name": "Normalize Chat History"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "WITH selected_channel AS (\n  SELECT id, ai_profile_id\n  FROM channels\n  where ai_profile_id = '{{ $('Get Channel5').item.json.ai_profile_id }}'\n)\nSELECT ap.*\nFROM ai_profiles ap\nJOIN selected_channel sc ON sc.ai_profile_id = ap.id LIMIT (1);\n",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                -80,
+                -1024
+            ],
+            "id": "c560dc72-b573-44df-a6b7-9013866dc060",
+            "name": "Get AI Agent SQL query",
+            "credentials": {
+                "postgres": {
+                    "id": "ZJmDU61pRbaSbp2D",
+                    "name": "Postgres from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "description": "Retrieves relevant knowledge from the organization's knowledge sources.\nUse when the answer is not found in QnA or requires product/system-specific facts.\nReturns a list of matched documents with content, metadata, and similarity.\n",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "v5LEhW90YqPrXbZw",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/v5LEhW90YqPrXbZw",
+                    "cachedResultName": "Knowledge Sources Workflow Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "ai_profile_id": "={{ $('Get AI Agent1').first().json.id }}",
+                        "input": "={{ $('Verify HMAC1').first().json.data.message }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "ai_profile_id",
+                            "displayName": "ai_profile_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "input",
+                            "displayName": "input",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2384,
+                -800
+            ],
+            "id": "a095b0ed-0b51-4824-baaa-fa324bb0688c",
+            "name": "Call 'Knowledge Sources Workflow Dev'"
+        },
+        {
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "ecb2407a-04c0-4bbf-8885-ef9245f2b6ee",
+                            "name": "supabase_host",
+                            "value": "https://bkynymyhbfrhvwxqqttk.supabase.co",
+                            "type": "string"
+                        },
+                        {
+                            "id": "d75d327f-ff8d-45c6-8426-b8e7748c784f",
+                            "name": "service_role",
+                            "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJreW55bXloYmZyaHZ3eHFxdHRrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzkzOTU3MiwiZXhwIjoyMDc5NTE1NTcyfQ.EZn_xHDYNR1KRZrE--mWmDHBnbIbieiDNLjexw38wp0",
+                            "type": "string"
+                        },
+                        {
+                            "id": "1bf6d7a8-f42e-4cc4-acee-087dd73aa971",
+                            "name": "postgres_host",
+                            "value": "aws-1-ap-southeast-1.pooler.supabase.com",
+                            "type": "string"
+                        },
+                        {
+                            "id": "b961baf9-7b52-48b2-9d37-c1b543460086",
+                            "name": "postgres_user",
+                            "value": "postgres.bkynymyhbfrhvwxqqttk",
+                            "type": "string"
+                        },
+                        {
+                            "id": "1c58ec1f-41d4-4e6a-9e43-06fb9419281f",
+                            "name": "postgres_password",
+                            "value": "!Resha752001",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                -1872,
+                -1120
+            ],
+            "id": "ca943aa9-c22c-4b9e-90b0-e7d98da0d076",
+            "name": "Creds"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT t.*\nFROM threads t\nLEFT JOIN contacts c\n  ON c.id = t.contact_id\nWHERE\n  (\n    c.name = '{{ $('Verify HMAC1').item.json.data.username }}'\n    OR t.account_id = '{{ $('Verify HMAC1').item.json.data.account_id }}'\n  )\n  AND t.channel_id = '{{ $('Verify HMAC1').item.json.data.channel_id }}';",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                -1648,
+                -1120
+            ],
+            "id": "e29ba70b-d02a-4e5f-a5e9-013da87150ed",
+            "name": "Get Thread",
+            "alwaysOutputData": true,
+            "credentials": {
+                "postgres": {
+                    "id": "ZJmDU61pRbaSbp2D",
+                    "name": "Postgres from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "description": "Call this tool the condition in the system prompt fulfilled.",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "JYqcWu4zjwJRdf27",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/JYqcWu4zjwJRdf27",
+                    "cachedResultName": "Telegram Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "thread_id": "={{ $('Set Fields').first().json.thread_id }}",
+                        "contact_id": "={{ $('Set Fields').first().json.contact_id }}",
+                        "super_agent_id": "={{ $('Set Fields').first().json.super_agent_id }}",
+                        "handover_reason": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('handover_reason', `Write a short, human-readable reason for handing over to a human agent.\nOne sentence only. No explanations. Max 120 characters.\n`, 'string') }}",
+                        "channel_id": "={{ $('Set Fields').first().json.channel_id }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "thread_id",
+                            "displayName": "thread_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "channel_id",
+                            "displayName": "channel_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "contact_id",
+                            "displayName": "contact_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "super_agent_id",
+                            "displayName": "super_agent_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "handover_reason",
+                            "displayName": "handover_reason",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "platform",
+                            "displayName": "platform",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": true
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2512,
+                -800
+            ],
+            "id": "be971a24-afa5-4db1-886e-bdb523cb0d99",
+            "name": "Call 'Handover Tool'"
+        },
+        {
+            "parameters": {
+                "description": "Call this tool if the user send an image",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "4OvXEgRxyyAUf3LL",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/4OvXEgRxyyAUf3LL",
+                    "cachedResultName": "Analyze Image Workflow Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "caption": "={{ $('Verify HMAC1').first().json.data.message }}",
+                        "file_id": "={{ $('Verify HMAC1').first().json.data.file_link }}",
+                        "secret_token": "={{ $('Set Fields').first().json.thread_id }}",
+                        "contact_id": "={{ $('Set Fields').first().json.contact_id }}",
+                        "thread_id": "={{ $('Set Fields').first().json.thread_id }}",
+                        "platform": "livechat"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "file_id",
+                            "displayName": "file_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "caption",
+                            "displayName": "caption",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "secret_token",
+                            "displayName": "secret_token",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "thread_id",
+                            "displayName": "thread_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "contact_id",
+                            "displayName": "contact_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "platform",
+                            "displayName": "platform",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2640,
+                -800
+            ],
+            "id": "8c83a592-adbb-40fe-9ab1-88e5bd24a2e4",
+            "name": "Call 'AI Analyze Image Workflow Dev'"
+        },
+        {
+            "parameters": {
+                "description": "Call this tool if user",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "J3v2KDqFoAq8ChqY",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/J3v2KDqFoAq8ChqY",
+                    "cachedResultName": "Store User Profile Info Dev"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('name', `user's real name`, 'string') }}",
+                        "username": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('username', `user's name in the app web or the user id`, 'string') }}",
+                        "phone_number": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('phone_number', `user phone number`, 'string') }}",
+                        "bank_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('bank_name', `bank that user uses\ntype in bank code, ex:\n- BCA\n- BNI\n- UOB\n- CIMB\n\nex: `, 'string') }}",
+                        "account_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('account_name', `user bank's account name`, 'string') }}",
+                        "account_number": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('account_number', `user account number for in the bank`, 'string') }}",
+                        "email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('email', `user's email`, 'string') }}",
+                        "contact_id": "={{ $('Set Fields').first().json.contact_id }}",
+                        "id": "={{ $('Get Contact Info').first().json.id }}",
+                        "website": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('website', `the website`, 'string') }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "id",
+                            "displayName": "id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "contact_id",
+                            "displayName": "contact_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "name",
+                            "displayName": "name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "username",
+                            "displayName": "username",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "email",
+                            "displayName": "email",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "phone_number",
+                            "displayName": "phone_number",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "bank_name",
+                            "displayName": "bank_name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "account_name",
+                            "displayName": "account_name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "account_number",
+                            "displayName": "account_number",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "website",
+                            "displayName": "website",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2768,
+                -800
+            ],
+            "id": "be5b8b6e-e319-4f9a-aa3a-8bac5d0fa3ce",
+            "name": "Call 'Store Important Information Workflow Dev'"
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "contact_informations",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "contact_id",
+                            "keyValue": "={{ $json.id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                1488,
+                -1024
+            ],
+            "id": "5145f566-9a41-463f-8457-c4f57562485f",
+            "name": "Get Contact Info",
+            "alwaysOutputData": true,
+            "credentials": {
+                "supabaseApi": {
+                    "id": "KElPuu6GHdUT2Y5H",
+                    "name": "Dev Account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "description": "Call this tool if theres an account_name or user_id which will be set intot the username and is not a UUID and the user is asking about withdraw/deposit payment status, the type is either withdraw/deposit",
+                "workflowId": {
+                    "__rl": true,
+                    "value": "6wZTEQ2g83YF77Ei",
+                    "mode": "list",
+                    "cachedResultUrl": "/workflow/6wZTEQ2g83YF77Ei",
+                    "cachedResultName": "Get Payment Info"
+                },
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "web": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('web', ``, 'string') }}",
+                        "username": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('username', ``, 'string') }}",
+                        "type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('type', ``, 'string') }}"
+                    },
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "web",
+                            "displayName": "web",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "username",
+                            "displayName": "username",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        },
+                        {
+                            "id": "type",
+                            "displayName": "type",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "canBeUsedToMatch": true,
+                            "type": "string",
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+            "typeVersion": 2.2,
+            "position": [
+                2896,
+                -800
+            ],
+            "id": "3dd179e2-6a1c-40cb-9098-8f131b828e0b",
+            "name": "Call 'Get Payment Info'"
+        },
+        {
+            "parameters": {
+                "errorMessage": "Current Quota Exceeded"
+            },
+            "type": "n8n-nodes-base.stopAndError",
+            "typeVersion": 1,
+            "position": [
+                3776,
+                -928
+            ],
+            "id": "ff5db5dc-7dbe-44df-8e27-1c73e90a1335",
+            "name": "Stop and Error"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "33cd832a-bc4a-48e9-b71e-5f889cea63e6",
+                            "leftValue": "={{ $json }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "object",
+                                "operation": "notEmpty",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                3552,
+                -1024
+            ],
+            "id": "e2ec88b0-ce13-48d8-8cca-93f973278d44",
+            "name": "If Answer Exists"
+        },
+        {
+            "parameters": {
+                "tableId": "token_usage_logs",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "total_tokens",
+                            "fieldValue": "={{ $('Message a model').item.json.usage.total_tokens }}"
+                        },
+                        {
+                            "fieldId": "prompt_tokens",
+                            "fieldValue": "={{ $('Message a model').item.json.usage.prompt_tokens }}"
+                        },
+                        {
+                            "fieldId": "completion_tokens",
+                            "fieldValue": "={{ $('Message a model').item.json.usage.completion_tokens }}"
+                        },
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Get Thread').first().json.id || $('Create Thread').first().json.id }}"
+                        },
+                        {
+                            "fieldId": "org_id",
+                            "fieldValue": "00000000-0000-0000-0000-000000000001"
+                        },
+                        {
+                            "fieldId": "user_id",
+                            "fieldValue": "={{ $('Get SuperAgent for Limit').first().json.user_id }}"
+                        },
+                        {
+                            "fieldId": "model",
+                            "fieldValue": "={{ $('Message a model').item.json.model }}"
+                        },
+                        {
+                            "fieldId": "provider",
+                            "fieldValue": "whatsapp"
+                        },
+                        {
+                            "fieldId": "channel_id",
+                            "fieldValue": "={{ $('Get Thread').first().json.channel_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                4000,
+                -1120
+            ],
+            "id": "57a0df21-bd50-4726-80f5-93d806768e7b",
+            "name": "Log Token Usage1",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "tableId": "messages",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Set Fields').first().json.thread_id }}"
+                        },
+                        {
+                            "fieldId": "direction",
+                            "fieldValue": "out"
+                        },
+                        {
+                            "fieldId": "role",
+                            "fieldValue": "agent"
+                        },
+                        {
+                            "fieldId": "body",
+                            "fieldValue": "={{ $('Message a model').item.json.choices[0].message.content }}"
+                        },
+                        {
+                            "fieldId": "actor_kind",
+                            "fieldValue": "ai"
+                        },
+                        {
+                            "fieldId": "actor_id",
+                            "fieldValue": "={{ $('Set Fields').first().json.ai_agent_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                3776,
+                -1120
+            ],
+            "id": "aefc6b13-88ff-4a87-9da7-7205455ae0b2",
+            "name": "Create AI Agent Message1",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "tableId": "messages",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "role",
+                            "fieldValue": "system"
+                        },
+                        {
+                            "fieldId": "type",
+                            "fieldValue": "event"
+                        },
+                        {
+                            "fieldId": "body",
+                            "fieldValue": "Auto-handover triggered by AI agent."
+                        },
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Set Fields').first().json.thread_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                4672,
+                -1120
+            ],
+            "id": "b380d8cb-a1f8-4c48-b392-1a00bce3856b",
+            "name": "Create Log Message",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "a3d0dccd-a140-4962-9eed-bdcf6f71504e",
+                            "leftValue": "={{ $json.ai_handoff_at }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "string",
+                                "operation": "empty",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                4448,
+                -1120
+            ],
+            "id": "1054aed4-7bb4-4cf6-a8c2-83928772b579",
+            "name": "If AI Handoff Empty"
+        },
+        {
+            "parameters": {
+                "operation": "get",
+                "tableId": "threads",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "contact_id",
+                            "keyValue": "={{ $('Set Fields').first().json.contact_id }}"
+                        },
+                        {
+                            "keyName": "channel_id",
+                            "keyValue": "={{ $('Set Fields').first().json.channel_id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                4224,
+                -1120
+            ],
+            "id": "55d45809-d6fa-45ec-8e22-48e1aad8e4ff",
+            "name": "Last Get Thread",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "80c40905-3303-449a-947a-6b7e306432de",
+                            "leftValue": "={{ $(\"Create Thread\").isExecuted }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                3104,
+                -1024
+            ],
+            "id": "c35ebcf1-b699-4295-85cc-08cf1611f62f",
+            "name": "If New Thread"
+        },
+        {
+            "parameters": {
+                "tableId": "messages",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "thread_id",
+                            "fieldValue": "={{ $('Create Thread').item.json.id }}"
+                        },
+                        {
+                            "fieldId": "direction",
+                            "fieldValue": "out"
+                        },
+                        {
+                            "fieldId": "role",
+                            "fieldValue": "agent"
+                        },
+                        {
+                            "fieldId": "actor_kind",
+                            "fieldValue": "=ai"
+                        },
+                        {
+                            "fieldId": "body",
+                            "fieldValue": "={{ $('Get AI Agent1').item.json.welcome_message }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                3328,
+                -1096
+            ],
+            "id": "2c8aac96-1447-4307-83e8-63373e592e2e",
+            "name": "Create Welcome Message1",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "UYgS8fSIc69Jh6dO",
+                    "name": "Supabase from field"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "If Threads Exists1": {
+            "main": [
+                [
+                    {
+                        "node": "If Thread Status Pending",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Get Channel5",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Channel5": {
+            "main": [
+                [
+                    {
+                        "node": "Get Contact3",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Contact1": {
+            "main": [
+                [
+                    {
+                        "node": "Create Thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Message Not Valid": {
+            "main": [
+                [],
+                [
+                    {
+                        "node": "Get Channel",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Channel": {
+            "main": [
+                [
+                    {
+                        "node": "Get AI Agent1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get AI Agent1": {
+            "main": [
+                [
+                    {
+                        "node": "Get SuperAgent for Limit",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Message a model": {
+            "main": [
+                [
+                    {
+                        "node": "If New Thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Contact1": {
+            "main": [
+                [
+                    {
+                        "node": "Get Contact Info",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Fields": {
+            "main": [
+                [
+                    {
+                        "node": "Postgres Memory",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get SuperAgent for Limit": {
+            "main": [
+                [
+                    {
+                        "node": "If Token Limit Enabled",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Token Limit Enabled": {
+            "main": [
+                [
+                    {
+                        "node": "If Limit Exceeded",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Get Contact1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Limit Exceeded": {
+            "main": [
+                [
+                    {
+                        "node": "Get Contact2",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Get Contact1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Contact2": {
+            "main": [
+                [
+                    {
+                        "node": "Create User Message2",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Thread": {
+            "main": [
+                [
+                    {
+                        "node": "Get AI Agent SQL query",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Contact Exists": {
+            "main": [
+                [
+                    {
+                        "node": "Create Thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Create Contact1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Contact3": {
+            "main": [
+                [
+                    {
+                        "node": "If Contact Exists",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Verify HMAC1": {
+            "main": [
+                [
+                    {
+                        "node": "Creds",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Test Agent Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Verify HMAC1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Thread Status Pending": {
+            "main": [
+                [],
+                [
+                    {
+                        "node": "If Message Not Valid",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Postgres Memory": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize Chat History",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Normalize Chat History": {
+            "main": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get AI Agent SQL query": {
+            "main": [
+                [
+                    {
+                        "node": "Get Channel",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Knowledge Sources Workflow Dev'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Creds": {
+            "main": [
+                [
+                    {
+                        "node": "Get Thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Thread": {
+            "main": [
+                [
+                    {
+                        "node": "If Threads Exists1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Handover Tool'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'AI Analyze Image Workflow Dev'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Store Important Information Workflow Dev'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Contact Info": {
+            "main": [
+                [
+                    {
+                        "node": "Set Fields",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call 'Get Payment Info'": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "Message a model",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Answer Exists": {
+            "main": [
+                [
+                    {
+                        "node": "Create AI Agent Message1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Stop and Error",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log Token Usage1": {
+            "main": [
+                [
+                    {
+                        "node": "Last Get Thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create AI Agent Message1": {
+            "main": [
+                [
+                    {
+                        "node": "Log Token Usage1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If AI Handoff Empty": {
+            "main": [
+                [],
+                [
+                    {
+                        "node": "Create Log Message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Last Get Thread": {
+            "main": [
+                [
+                    {
+                        "node": "If AI Handoff Empty",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If New Thread": {
+            "main": [
+                [
+                    {
+                        "node": "Create Welcome Message1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "If Answer Exists",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Welcome Message1": {
+            "main": [
+                [
+                    {
+                        "node": "If Answer Exists",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {
+        "Test Agent Webhook": [
+            {
+                "headers": {
+                    "host": "primary-production-376c.up.railway.app",
+                    "user-agent": "Deno/2.1.4 (variant; SupabaseEdgeRuntime/1.70.3)",
+                    "content-length": "607",
+                    "accept": "*/*",
+                    "accept-encoding": "gzip",
+                    "accept-language": "*",
+                    "backend_is_origin": "1",
+                    "cdn-loop": "Fastly",
+                    "content-type": "application/json",
+                    "fastly-client-ip": "47.129.117.210",
+                    "fastly-ff": "scJ4iSV4UkyHDI2juJNzrcUzYk/oO1PMCyYg4bz5Utg=!QPG!cache-qpg1229-QPG",
+                    "fastly-orig-accept-encoding": "gzip,br",
+                    "fastly-ssl": "1",
+                    "x-forwarded-for": "47.129.117.210, 23.235.35.29",
+                    "x-forwarded-host": "primary-production-376c.up.railway.app",
+                    "x-forwarded-proto": "https",
+                    "x-forwarded-server": "cache-qpg1229-QPG",
+                    "x-key-id": "chat.settings:1",
+                    "x-nonce": "5089f32c-ae63-4a22-8a95-4b9d1af4e608",
+                    "x-railway-edge": "railway/asia-southeast1-eqsg3a",
+                    "x-railway-request-id": "hfiV8meITZW1AIsDVOLIQQ",
+                    "x-real-ip": "23.235.35.29",
+                    "x-request-start": "1771842883977",
+                    "x-signature": "437fa69f01acebf5d83cd5fa3ef2582098d2808b1bc67225aa6a7b23d0ec41af",
+                    "x-timer": "S1771842884.971487,VS0",
+                    "x-timestamp": "1771842883956",
+                    "x-varnish": "910594942"
+                },
+                "params": {},
+                "query": {},
+                "body": {},
+                "webhookUrl": "https://primary-production-376c.up.railway.app/webhook/chat-ai-agent-settings-dev",
+                "executionMode": "production"
+            }
+        ]
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true,
+        "instanceId": "d83aed271c098b1503de79984bdb7981d79c54fa4b65e1ec800e9fe14106c5f7"
+    }
+}

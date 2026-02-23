@@ -1,5 +1,19 @@
 # Change Log
 
+# [0.1.97] FE/BE CEKAT 2026-02-23
+
+### LiveChat Architecture & Orchestration
+
+- **Frontend-driven Orchestration**: Refactored the LiveChat widget (`useLiveChat.ts`) to handle core database operations natively.
+  - Replaced the monolithic n8n webhook with a streamlined flow, shifting the responsibility of thread creation, context fetching, and welcome messages to the frontend.
+  - Integrated a new Supabase edge function (`livechat-orchestrator`) to bypass RLS for secure, anonymous contact and thread creation (`ensure_thread`), and to fetch AI profile context (`get_ai_context`).
+- **Post-Response Pipeline**:
+  - The n8n workflow is now simplified and strictly focuses on AI agent routing, knowledge retrieval, and logging AI message responses (`insert_ai_message`, `log_token_usage`, `check_handover`).
+- **Bug Fixes & UX Polish**:
+  - **Returning Visitor Recognition**: Fixed a bug where returning visitors wouldn't have their `contact_id` resolved locally, ensuring n8n always receives valid contact info.
+  - **Welcome Message Timing**: Moved the welcome message insertion to fire _before_ the AI webhook call. This guarantees the welcome bubble renders instantly before the AI response starts streaming.
+
+
 # [0.1.96] FE WEB CEKAT 2026-02-23
 
 ### Embed Widget
