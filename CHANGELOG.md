@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.1.96] FE WEB CEKAT 2026-02-23
+
+### Embed Widget
+
+- **Auto-detect Username**: Updated the embed code config to automatically extract the logged-in username from the host site's navbar DOM (`document.querySelector('.navbar-right strong').innerText.trim()`) instead of requiring manual input. This applies to both the preview textarea and the copy-to-clipboard snippet.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
 # [0.1.95] FE WEB CEKAT 2026-02-23
 
 ### Messaging Architecture & Attachments
