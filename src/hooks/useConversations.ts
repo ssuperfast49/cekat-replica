@@ -553,47 +553,90 @@ export const useConversations = () => {
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id || null;
 
-      // For web/livechat: if an image attachment exists, prioritize the image URL as body
-      const hasImageAttachment = attachment && attachment.type === 'image';
-      const messageBody = (isWebChannel && hasImageAttachment)
-        ? attachment.url
-        : messageText;
+      const hasAttachment = !!attachment;
+      const hasCaption = messageText.trim().length > 0;
 
-      const newMessage = {
+      // Prepare messages to insert
+      const messagesToInsert: any[] = [];
+      const optimisticMessages: MessageWithDetails[] = [];
+
+      const baseMessage = {
         thread_id: threadId,
         direction: 'out' as const,
         role: role,
-        type: attachment ? attachment.type : 'text' as const,
-        body: messageBody,
         payload: {},
         actor_kind: 'agent' as const,
         actor_id: currentUserId,
-        file_link: attachment?.url || null
+        created_at: new Date().toISOString(),
       };
 
-      // Optimistically push a pending message to UI
-      const optimisticId = `tmp_${Math.random().toString(36).slice(2)}`;
-      const optimistic: MessageWithDetails = {
-        id: optimisticId,
-        thread_id: threadId,
-        direction: 'out',
-        role,
-        type: attachment ? attachment.type : 'text',
-        body: messageBody,
-        payload: {},
-        actor_kind: 'agent',
-        actor_id: currentUserId,
-        seq: 0,
-        in_reply_to: null,
-        edited_at: null,
-        edit_reason: null,
-        created_at: new Date().toISOString(),
-        contact_name: '',
-        contact_avatar: 'A',
-        _status: 'pending',
-        file_link: attachment?.url || null
-      };
-      setMessages(prev => [...prev, optimistic]);
+      if (hasAttachment) {
+        // Row 1: The attachment (image/video/etc URL in body)
+        const attachId = `tmp_${Math.random().toString(36).slice(2)}`;
+        const attachMsg = {
+          ...baseMessage,
+          type: attachment.type,
+          body: attachment.url,
+        };
+        messagesToInsert.push(attachMsg);
+        optimisticMessages.push({
+          ...attachMsg,
+          id: attachId,
+          seq: 0,
+          in_reply_to: null,
+          edited_at: null,
+          edit_reason: null,
+          contact_name: '',
+          contact_avatar: 'A',
+          _status: 'pending',
+        } as MessageWithDetails);
+
+        // Row 2: The caption (if any)
+        if (hasCaption) {
+          const captionId = `tmp_${Math.random().toString(36).slice(2)}`;
+          const captionMsg = {
+            ...baseMessage,
+            type: 'text' as const,
+            body: messageText,
+            created_at: new Date(Date.now() + 1).toISOString(), // Ensure order
+          };
+          messagesToInsert.push(captionMsg);
+          optimisticMessages.push({
+            ...captionMsg,
+            id: captionId,
+            seq: 0,
+            in_reply_to: null,
+            edited_at: null,
+            edit_reason: null,
+            contact_name: '',
+            contact_avatar: 'A',
+            _status: 'pending',
+          } as MessageWithDetails);
+        }
+      } else {
+        // Regular text message
+        const textId = `tmp_${Math.random().toString(36).slice(2)}`;
+        const textMsg = {
+          ...baseMessage,
+          type: 'text' as const,
+          body: messageText,
+        };
+        messagesToInsert.push(textMsg);
+        optimisticMessages.push({
+          ...textMsg,
+          id: textId,
+          seq: 0,
+          in_reply_to: null,
+          edited_at: null,
+          edit_reason: null,
+          contact_name: '',
+          contact_avatar: 'A',
+          _status: 'pending',
+        } as MessageWithDetails);
+      }
+
+      // Optimistically push messages to UI
+      setMessages(prev => [...prev, ...optimisticMessages]);
 
       // For external channels (telegram/whatsapp), skip DB insert;
       // the n8n workflow will insert the message after sending it.
@@ -601,12 +644,13 @@ export const useConversations = () => {
       if (!isExternalChannel) {
         const { data: insertedData, error } = await supabase
           .from('messages')
-          .insert([newMessage])
-          .select()
-          .single();
+          .insert(messagesToInsert.map(({ thread_id, direction, role, type, body, payload, actor_kind, actor_id }) => ({
+            thread_id, direction, role, type, body, payload, actor_kind, actor_id
+          })))
+          .select();
 
         if (error) throw error;
-        data = insertedData;
+        data = insertedData?.[0]; // return first one or handle array? Usually one if no caption, two if caption.
       }
 
       // Get contact details for webhook payload
@@ -660,11 +704,12 @@ export const useConversations = () => {
       }
 
       if (isExternalChannel) {
-        // For external channels, keep the optimistic message visible
-        // and mark it as 'sent'. Realtime will replace it once n8n inserts the real message.
+        // For external channels, keep the optimistic messages visible
+        // and mark them as 'sent'. Realtime will replace them once n8n inserts the real messages.
+        const optimisticIds = new Set(optimisticMessages.map(m => m.id));
         setMessages(prev =>
           prev.map(m =>
-            m.id === optimisticId ? { ...m, _status: 'sent' as const } : m
+            optimisticIds.has(m.id) ? { ...m, _status: 'sent' as const } : m
           )
         );
       } else {

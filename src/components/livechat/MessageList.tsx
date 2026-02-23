@@ -108,25 +108,20 @@ export function MessageList({
 
                         return (() => {
                             const bodyText = (m.body || '').trim();
-                            const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
-                            // Detect if body is purely a storage URL (n8n stores Telegram/WhatsApp attachments this way)
-                            const isBodyStorageUrl = !m.file_link && /^https?:\/\/[^\s]+\.supabase\.co\/storage\//.test(bodyText) && !/\s/.test(bodyText);
-                            // If body equals file_link, it means body is just the attachment URL (e.g. admin sent image to livechat) — don't render as text
-                            const isBodySameAsFileLink = m.file_link && bodyText === m.file_link;
-                            const hasRealBody = bodyText && !isFilePlaceholder && !isBodyStorageUrl && !isBodySameAsFileLink;
-                            const effectiveFileLink = isBodyStorageUrl ? bodyText : m.file_link;
+                            const isText = m.type === 'text' || !m.type;
+                            const isAttachment = !isText && bodyText;
 
-                            let attachType: string | null = null;
-                            if (effectiveFileLink) {
-                                attachType = (m.type && m.type !== 'text') ? m.type : null;
-                                if (!attachType) {
-                                    const ext = effectiveFileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
-                                    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
-                                    else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
-                                    else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
-                                    else attachType = isBodyStorageUrl ? 'image' : 'file';
-                                }
+                            let attachType = m.type;
+                            if (isAttachment && (!attachType || attachType === 'text')) {
+                                const ext = bodyText.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+                                if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
+                                else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
+                                else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
+                                else attachType = 'file';
                             }
+
+                            const hasRealBody = isText && bodyText.length > 0;
+                            const effectiveFileLink = isAttachment ? bodyText : null;
 
                             // Customize link color for User bubble
                             const finalComponents = m.role === "user" ? {

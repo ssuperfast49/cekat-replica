@@ -7,7 +7,6 @@ export type ChatMessage = {
     order: number;
     streaming?: boolean;
     type?: "text" | "image" | "video" | "file" | "voice";
-    file_link?: string;
     payload?: any;
 };
 

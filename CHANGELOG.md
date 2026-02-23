@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.95] FE WEB CEKAT 2026-02-23
+
+### Messaging Architecture & Attachments
+
+- **Unified Message Body**: Deprecated and removed the `file_link` column from the database interaction layer. All message content—whether plain text or attachment URLs—is now stored consistently in the `body` field.
+- **Two-Row Image-with-Caption Pattern**: Refactored both the Admin Dashboard and LiveChat widget to handle captioned images as two distinct database rows (an attachment row followed by a text row). This ensures cleaner searchability and more robust rendering across all channels.
+- **Smart Media Rendering**: Rewrote the rendering logic in `MessageList.tsx` and `ConversationPage.tsx` to dynamically detect and display attachments based on message type and file extension, eliminating the previous "double image" rendering bug.
+- **Cleanup**: Professionally removed legacy `file_link` checks and redundant `isBodySameAsFileLink` logic, simplifying the frontend rendering engine.
+
 # [0.1.94] FE WEB CEKAT 2026-02-23
 
 ### Messaging & UI/UX
