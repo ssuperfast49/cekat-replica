@@ -111,7 +111,9 @@ export function MessageList({
                             const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText);
                             // Detect if body is purely a storage URL (n8n stores Telegram/WhatsApp attachments this way)
                             const isBodyStorageUrl = !m.file_link && /^https?:\/\/[^\s]+\.supabase\.co\/storage\//.test(bodyText) && !/\s/.test(bodyText);
-                            const hasRealBody = bodyText && !isFilePlaceholder && !isBodyStorageUrl;
+                            // If body equals file_link, it means body is just the attachment URL (e.g. admin sent image to livechat) — don't render as text
+                            const isBodySameAsFileLink = m.file_link && bodyText === m.file_link;
+                            const hasRealBody = bodyText && !isFilePlaceholder && !isBodyStorageUrl && !isBodySameAsFileLink;
                             const effectiveFileLink = isBodyStorageUrl ? bodyText : m.file_link;
 
                             let attachType: string | null = null;

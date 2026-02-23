@@ -741,13 +741,35 @@ export function useLiveChat() {
         }
 
         setDraft("");
-        const tempId = `temp-${Date.now()}`;
+        const messageId = crypto.randomUUID();
+        const isImageAttachment = uploadedFile && uploadedFile.type === 'image';
         const isMediaAttachment = uploadedFile && (uploadedFile.type === 'image' || uploadedFile.type === 'video');
-        const displayBody = uploadedFile
-            ? (text ? text : (isMediaAttachment ? '' : `📎 ${uploadedFile.fileName}`))
-            : text;
+
+        // For images, prioritize the URL as body if no caption (consistent with admin dash)
+        const displayBody = (isImageAttachment && !text)
+            ? uploadedFile.url
+            : (text || (uploadedFile ? (isMediaAttachment ? '' : `📎 ${uploadedFile.fileName}`) : text));
+
+        // Direct DB insert if thread is available
+        if (threadIdRef.current) {
+            try {
+                await supabase.from('messages').insert([{
+                    id: messageId,
+                    thread_id: threadIdRef.current,
+                    role: 'user',
+                    direction: 'in',
+                    body: displayBody,
+                    type: (uploadedFile?.type as any) || 'text',
+                    file_link: uploadedFile?.url || null,
+                    payload: {}
+                }]);
+            } catch (err) {
+                console.warn('[LiveChat] direct insert failed', err);
+            }
+        }
+
         setMessages((prev) => [...prev, {
-            id: tempId,
+            id: messageId,
             role: "user",
             body: displayBody,
             at: createdAt,
@@ -755,7 +777,7 @@ export function useLiveChat() {
             type: uploadedFile?.type || "text",
             file_link: uploadedFile?.url
         }]);
-        lastOptimisticIdRef.current = tempId;
+        lastOptimisticIdRef.current = messageId;
         playLow();
 
         // If thread is pending (assigned to human), skip AI response entirely
@@ -764,8 +786,9 @@ export function useLiveChat() {
             // Just send the message via webhook without expecting AI response
             try {
                 const body = {
-                    deduplication_id: crypto.randomUUID(),
-                    message: text || (uploadedFile ? (isMediaAttachment ? '' : uploadedFile.fileName) : ''),
+                    id: messageId,
+                    deduplication_id: messageId,
+                    message: displayBody,
                     session_id: sessionId,
                     account_id: accountId || undefined,
                     timestamp: createdAt,
@@ -803,8 +826,9 @@ export function useLiveChat() {
 
         try {
             const body = {
-                deduplication_id: crypto.randomUUID(),
-                message: text || (uploadedFile ? (isMediaAttachment ? '' : uploadedFile.fileName) : ''),
+                id: messageId,
+                deduplication_id: messageId,
+                message: displayBody,
                 session_id: sessionId,
                 account_id: accountId || undefined,
                 timestamp: createdAt,
@@ -854,26 +878,6 @@ export function useLiveChat() {
             } catch { }
 
             const targetThreadId = attachedThreadId ?? threadIdRef.current;
-
-            if (uploadedFile) {
-                // Persist file logic
-                const persistFileLink = async (tid: string) => {
-                    const delays = [200, 600, 1500, 3000, 5000];
-                    for (let i = 0; i < delays.length; i++) {
-                        await new Promise(r => setTimeout(r, delays[i]));
-                        try {
-                            const { data: recentMsg } = await supabase.from('messages').select('id')
-                                .eq('thread_id', tid).eq('role', 'user').is('file_link', null)
-                                .order('created_at', { ascending: false }).limit(1).single();
-                            if (recentMsg?.id) {
-                                await supabase.from('messages').update({ file_link: uploadedFile.url, type: uploadedFile.type }).eq('id', recentMsg.id);
-                                return;
-                            }
-                        } catch { }
-                    }
-                };
-                if (targetThreadId) persistFileLink(targetThreadId);
-            }
 
             scheduleCatchUps(targetThreadId, upsertFromRows, [0, 600, 1800, 4000, 9000, 15000]);
 

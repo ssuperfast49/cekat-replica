@@ -169,7 +169,9 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
 
   const bodyText = rawBody;
   const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText) || isBodyStorageUrl;
-  const hasRealBody = bodyText && !isFilePlaceholder;
+  // If body equals file_link, it means body is just the attachment URL (e.g. admin sent image to livechat) — don't render as text
+  const isBodySameAsFileLink = fileLink && bodyText === fileLink;
+  const hasRealBody = bodyText && !isFilePlaceholder && !isBodySameAsFileLink;
   // Always show text bubble if there are search matches OR if there is actual text content.
   const showTextBubble = hasRealBody || matches.length > 0;
   const hasAttachment = !!fileLink;

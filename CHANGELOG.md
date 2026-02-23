@@ -1,5 +1,17 @@
 # Change Log
 
+# [0.1.94] FE WEB CEKAT 2026-02-23
+
+### Messaging & UI/UX
+
+- **Omnichannel Direct Insertion**: Enabled instant database insertion for both the LiveChat widget (user side) and the Conversation Page (admin side). This bypasses webhook latency for "web" channel messages, ensuring a much snappier chat experience.
+- **Deduplication & Sync Protocol**: Implemented client-side UUID generation shared between direct inserts and webhook payloads. This allows the backend (n8n) to deduplicate incoming messages and ensures the frontend UI can seamlessly merge optimistic states with real records.
+- **Image Priority Logic**:
+  - Both admin and user messages now automatically set the image public URL as the message `body` if no text caption is provided.
+  - Refined `MessageList.tsx` and `ConversationPage.tsx` to detect when `body` matches `file_link`, suppressing the redundant raw URL text bubble.
+- **Admin Attribution Tracking**: Fixed `actor_id` and `actor_kind` population in `useConversations.ts`, ensuring all dashboard responses are accurately attributed to the responding agent in the database.
+- **Cleanup**: Removed the legacy `persistFileLink` retry loop in `useLiveChat.ts` as file links are now handled in the primary message insert.
+
 # [0.1.93] FE WEB CEKAT 2026-02-22
 
 ### Messaging & Webhooks

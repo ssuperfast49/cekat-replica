@@ -8,6 +8,7 @@ import { resolveSendMessageEndpoint } from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
 import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
+import { SUPABASE_URL } from '@/config/supabase';
 
 // Audio notification system moved to GlobalMessageListener
 
@@ -546,16 +547,27 @@ export const useConversations = () => {
       // For external channels, we skip the DB insert and let n8n handle it
       const channelProvider = ((threadData as any)?.channels?.provider as string || '').toLowerCase();
       const isExternalChannel = ['telegram', 'whatsapp'].includes(channelProvider);
+      const isWebChannel = channelProvider === 'web';
+
+      // Get current logged-in admin user ID (needed for both DB insert & webhook)
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+
+      // For web/livechat: if an image attachment exists, prioritize the image URL as body
+      const hasImageAttachment = attachment && attachment.type === 'image';
+      const messageBody = (isWebChannel && hasImageAttachment)
+        ? attachment.url
+        : messageText;
 
       const newMessage = {
         thread_id: threadId,
         direction: 'out' as const,
         role: role,
         type: attachment ? attachment.type : 'text' as const,
-        body: messageText,
+        body: messageBody,
         payload: {},
         actor_kind: 'agent' as const,
-        actor_id: null,
+        actor_id: currentUserId,
         file_link: attachment?.url || null
       };
 
@@ -567,10 +579,10 @@ export const useConversations = () => {
         direction: 'out',
         role,
         type: attachment ? attachment.type : 'text',
-        body: messageText,
+        body: messageBody,
         payload: {},
         actor_kind: 'agent',
-        actor_id: null,
+        actor_id: currentUserId,
         seq: 0,
         in_reply_to: null,
         edited_at: null,
@@ -616,10 +628,6 @@ export const useConversations = () => {
 
         if (provider && provider.toLowerCase() !== 'web') {
           const endpoint = resolveSendMessageEndpoint(provider);
-
-          // Get current logged-in admin user ID for the payload
-          const { data: authData } = await supabase.auth.getUser();
-          const currentUserId = authData?.user?.id || null;
 
           const webhookPayload = {
             thread_id: threadId,
