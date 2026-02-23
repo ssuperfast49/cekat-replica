@@ -1,5 +1,33 @@
 # Change Log
 
+# [0.1.96] FE WEB CEKAT 2026-02-23
+
+### Embed Widget
+
+- **Auto-detect Username**: Updated the embed code config to automatically extract the logged-in username from the host site's navbar DOM (`document.querySelector('.navbar-right strong').innerText.trim()`) instead of requiring manual input. This applies to both the preview textarea and the copy-to-clipboard snippet.
+  - Updated: `src/components/platforms/ConnectedPlatforms.tsx`
+
+# [0.1.95] FE WEB CEKAT 2026-02-23
+
+### Messaging Architecture & Attachments
+
+- **Unified Message Body**: Deprecated and removed the `file_link` column from the database interaction layer. All message content—whether plain text or attachment URLs—is now stored consistently in the `body` field.
+- **Two-Row Image-with-Caption Pattern**: Refactored both the Admin Dashboard and LiveChat widget to handle captioned images as two distinct database rows (an attachment row followed by a text row). This ensures cleaner searchability and more robust rendering across all channels.
+- **Smart Media Rendering**: Rewrote the rendering logic in `MessageList.tsx` and `ConversationPage.tsx` to dynamically detect and display attachments based on message type and file extension, eliminating the previous "double image" rendering bug.
+- **Cleanup**: Professionally removed legacy `file_link` checks and redundant `isBodySameAsFileLink` logic, simplifying the frontend rendering engine.
+
+# [0.1.94] FE WEB CEKAT 2026-02-23
+
+### Messaging & UI/UX
+
+- **Omnichannel Direct Insertion**: Enabled instant database insertion for both the LiveChat widget (user side) and the Conversation Page (admin side). This bypasses webhook latency for "web" channel messages, ensuring a much snappier chat experience.
+- **Deduplication & Sync Protocol**: Implemented client-side UUID generation shared between direct inserts and webhook payloads. This allows the backend (n8n) to deduplicate incoming messages and ensures the frontend UI can seamlessly merge optimistic states with real records.
+- **Image Priority Logic**:
+  - Both admin and user messages now automatically set the image public URL as the message `body` if no text caption is provided.
+  - Refined `MessageList.tsx` and `ConversationPage.tsx` to detect when `body` matches `file_link`, suppressing the redundant raw URL text bubble.
+- **Admin Attribution Tracking**: Fixed `actor_id` and `actor_kind` population in `useConversations.ts`, ensuring all dashboard responses are accurately attributed to the responding agent in the database.
+- **Cleanup**: Removed the legacy `persistFileLink` retry loop in `useLiveChat.ts` as file links are now handled in the primary message insert.
+
 # [0.1.93] FE WEB CEKAT 2026-02-22
 
 ### Messaging & Webhooks

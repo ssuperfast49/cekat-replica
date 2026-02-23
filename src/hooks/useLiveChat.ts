@@ -341,27 +341,23 @@ export function useLiveChat() {
                     let bestKey: string | null = null;
                     let bestOrder: number | null = null;
                     let bestDiff = Number.POSITIVE_INFINITY;
-                    let bestTempFileLink: string | undefined = undefined;
                     let bestTempType: string | undefined = undefined;
                     for (const [key, value] of map.entries()) {
                         if (!key.startsWith('temp-')) continue;
                         if (value.role !== 'user') continue;
-                        const isAttachmentMatch = value.file_link && r.file_link && value.file_link === r.file_link;
                         const isBodyMatch = (value.body || '').trim() === (r.body || '').trim();
-                        if (!isAttachmentMatch && !isBodyMatch) continue;
+                        if (!isBodyMatch) continue;
                         const tempAt = new Date(value.at).getTime();
                         const diff = Number.isFinite(tempAt) ? Math.abs(incomingAt - tempAt) : 0;
                         if (diff < bestDiff) {
                             bestDiff = diff;
                             bestKey = key;
                             bestOrder = value.order ?? null;
-                            bestTempFileLink = value.file_link;
                             bestTempType = value.type;
                         }
                     }
                     if (bestKey) {
                         inheritedOrder = bestOrder;
-                        if (!r.file_link && bestTempFileLink) r.file_link = bestTempFileLink;
                         if (!r.type && bestTempType) r.type = bestTempType;
                         map.delete(bestKey);
                         lastOptimisticIdRef.current = null;
@@ -376,7 +372,6 @@ export function useLiveChat() {
                 if (existing) {
                     if (existing.body !== body) { existing.body = body; changed = true; }
                     if (existing.at !== createdAt) { existing.at = createdAt; changed = true; }
-                    if (r.file_link && existing.file_link !== r.file_link) { existing.file_link = r.file_link; changed = true; }
                     if (r.type && !existing.type) { existing.type = r.type; changed = true; }
                     if (role === 'assistant' && existing.streaming) { existing.streaming = false; changed = true; }
                 } else {
@@ -386,7 +381,6 @@ export function useLiveChat() {
                         body,
                         at: createdAt,
                         order: inheritedOrder ?? nextOrder(),
-                        ...(r.file_link ? { file_link: r.file_link } : {}),
                         ...(r.type ? { type: r.type } : {}),
                     };
                     map.set(item.id, item);
@@ -740,32 +734,96 @@ export function useLiveChat() {
             setStagedFile(null);
         }
 
-        setDraft("");
-        const tempId = `temp-${Date.now()}`;
-        const isMediaAttachment = uploadedFile && (uploadedFile.type === 'image' || uploadedFile.type === 'video');
-        const displayBody = uploadedFile
-            ? (text ? text : (isMediaAttachment ? '' : `📎 ${uploadedFile.fileName}`))
-            : text;
-        setMessages((prev) => [...prev, {
-            id: tempId,
-            role: "user",
-            body: displayBody,
-            at: createdAt,
-            order: nextOrder(),
-            type: uploadedFile?.type || "text",
-            file_link: uploadedFile?.url
-        }]);
-        lastOptimisticIdRef.current = tempId;
+        const isAttachment = !!uploadedFile;
+        const hasText = text.length > 0;
+
+        // Prepare messages to insert
+        const messagesToInsert: any[] = [];
+        const optimisticMessages: any[] = [];
+
+        if (isAttachment) {
+            // Row 1: Image URL
+            const attachId = crypto.randomUUID();
+            const attachMsg = {
+                id: attachId,
+                thread_id: threadIdRef.current,
+                role: 'user',
+                direction: 'in',
+                body: uploadedFile.url,
+                type: uploadedFile.type as any,
+                payload: {}
+            };
+            messagesToInsert.push(attachMsg);
+            optimisticMessages.push({
+                ...attachMsg,
+                at: createdAt,
+                order: nextOrder()
+            });
+
+            // Row 2: Caption (if any)
+            if (hasText) {
+                const textId = crypto.randomUUID();
+                const textMsg = {
+                    id: textId,
+                    thread_id: threadIdRef.current,
+                    role: 'user',
+                    direction: 'in',
+                    body: text,
+                    type: 'text' as any,
+                    payload: {}
+                };
+                messagesToInsert.push(textMsg);
+                optimisticMessages.push({
+                    ...textMsg,
+                    at: new Date(Date.now() + 1).toISOString(),
+                    order: nextOrder()
+                });
+            }
+        } else {
+            // Regular text
+            const textId = crypto.randomUUID();
+            const textMsg = {
+                id: textId,
+                thread_id: threadIdRef.current,
+                role: 'user',
+                direction: 'in',
+                body: text,
+                type: 'text' as any,
+                payload: {}
+            };
+            messagesToInsert.push(textMsg);
+            optimisticMessages.push({
+                ...textMsg,
+                at: createdAt,
+                order: nextOrder()
+            });
+        }
+
+        // Direct DB insert if thread is available
+        if (threadIdRef.current && messagesToInsert.length > 0) {
+            try {
+                await supabase.from('messages').insert(messagesToInsert);
+            } catch (err) {
+                console.warn('[LiveChat] direct insert failed', err);
+            }
+        }
+
+        setMessages((prev) => [...prev, ...optimisticMessages]);
+        lastOptimisticIdRef.current = optimisticMessages[0].id; // Use primary (attachment or text) for dedupe
         playLow();
+
+        setDraft("");
 
         // If thread is pending (assigned to human), skip AI response entirely
         const isAssigned = threadStatusRef.current === 'pending';
         if (isAssigned) {
             // Just send the message via webhook without expecting AI response
             try {
+                const primaryMessageId = optimisticMessages[0].id;
                 const body = {
-                    deduplication_id: crypto.randomUUID(),
-                    message: text || (uploadedFile ? (isMediaAttachment ? '' : uploadedFile.fileName) : ''),
+                    id: primaryMessageId,
+                    deduplication_id: primaryMessageId,
+                    message: text || (uploadedFile?.url || ''),
                     session_id: sessionId,
                     account_id: accountId || undefined,
                     timestamp: createdAt,
@@ -802,9 +860,11 @@ export function useLiveChat() {
         streamingDraftIdRef.current = streamingId;
 
         try {
+            const primaryMessageId = optimisticMessages[0].id;
             const body = {
-                deduplication_id: crypto.randomUUID(),
-                message: text || (uploadedFile ? (isMediaAttachment ? '' : uploadedFile.fileName) : ''),
+                id: primaryMessageId,
+                deduplication_id: primaryMessageId,
+                message: text || (uploadedFile?.url || ''),
                 session_id: sessionId,
                 account_id: accountId || undefined,
                 timestamp: createdAt,
@@ -854,26 +914,6 @@ export function useLiveChat() {
             } catch { }
 
             const targetThreadId = attachedThreadId ?? threadIdRef.current;
-
-            if (uploadedFile) {
-                // Persist file logic
-                const persistFileLink = async (tid: string) => {
-                    const delays = [200, 600, 1500, 3000, 5000];
-                    for (let i = 0; i < delays.length; i++) {
-                        await new Promise(r => setTimeout(r, delays[i]));
-                        try {
-                            const { data: recentMsg } = await supabase.from('messages').select('id')
-                                .eq('thread_id', tid).eq('role', 'user').is('file_link', null)
-                                .order('created_at', { ascending: false }).limit(1).single();
-                            if (recentMsg?.id) {
-                                await supabase.from('messages').update({ file_link: uploadedFile.url, type: uploadedFile.type }).eq('id', recentMsg.id);
-                                return;
-                            }
-                        } catch { }
-                    }
-                };
-                if (targetThreadId) persistFileLink(targetThreadId);
-            }
 
             scheduleCatchUps(targetThreadId, upsertFromRows, [0, 600, 1800, 4000, 9000, 15000]);
 

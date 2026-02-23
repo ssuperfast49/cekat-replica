@@ -153,23 +153,21 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
   const isHumanAgent = message.role === 'assistant';
   const isAiAgent = message.role === 'agent';
 
-  // Detect if body is purely a storage URL (n8n stores Telegram/WhatsApp attachments this way)
-  const rawBody = (message.body || '').trim();
-  const isBodyStorageUrl = !message.file_link && /^https?:\/\/[^\s]+\.supabase\.co\/storage\//.test(rawBody) && !/\s/.test(rawBody);
-  const fileLink = isBodyStorageUrl ? rawBody : (message.file_link as string);
+  const bodyText = (message.body || '').trim();
+  const isText = message.type === 'text' || !message.type || message.type === 'event' || message.type === 'note';
+  const isAttachment = !isText && bodyText.length > 0;
 
-  let attachType = (message.type && message.type !== 'text') ? message.type : null;
-  if (fileLink && !attachType) {
-    const ext = fileLink.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
+  let attachType = message.type;
+  if (isAttachment && (!attachType || attachType === 'text')) {
+    const ext = bodyText.split('.').pop()?.toLowerCase()?.split('?')[0] ?? '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) attachType = 'image';
     else if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) attachType = 'video';
     else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext)) attachType = 'voice';
-    else attachType = isBodyStorageUrl ? 'image' : 'file';
+    else attachType = 'file';
   }
 
-  const bodyText = rawBody;
-  const isFilePlaceholder = /^\[(?:Image|Video|File):\s/.test(bodyText) || /^📎\s/.test(bodyText) || isBodyStorageUrl;
-  const hasRealBody = bodyText && !isFilePlaceholder;
+  const fileLink = isAttachment ? bodyText : null;
+  const hasRealBody = isText && bodyText.length > 0;
   // Always show text bubble if there are search matches OR if there is actual text content.
   const showTextBubble = hasRealBody || matches.length > 0;
   const hasAttachment = !!fileLink;

@@ -8,6 +8,7 @@ import { resolveSendMessageEndpoint } from '@/config/webhook';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
 import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
+import { SUPABASE_URL } from '@/config/supabase';
 
 // Audio notification system moved to GlobalMessageListener
 
@@ -546,42 +547,96 @@ export const useConversations = () => {
       // For external channels, we skip the DB insert and let n8n handle it
       const channelProvider = ((threadData as any)?.channels?.provider as string || '').toLowerCase();
       const isExternalChannel = ['telegram', 'whatsapp'].includes(channelProvider);
+      const isWebChannel = channelProvider === 'web';
 
-      const newMessage = {
+      // Get current logged-in admin user ID (needed for both DB insert & webhook)
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id || null;
+
+      const hasAttachment = !!attachment;
+      const hasCaption = messageText.trim().length > 0;
+
+      // Prepare messages to insert
+      const messagesToInsert: any[] = [];
+      const optimisticMessages: MessageWithDetails[] = [];
+
+      const baseMessage = {
         thread_id: threadId,
         direction: 'out' as const,
         role: role,
-        type: attachment ? attachment.type : 'text' as const,
-        body: messageText,
         payload: {},
         actor_kind: 'agent' as const,
-        actor_id: null,
-        file_link: attachment?.url || null
+        actor_id: currentUserId,
+        created_at: new Date().toISOString(),
       };
 
-      // Optimistically push a pending message to UI
-      const optimisticId = `tmp_${Math.random().toString(36).slice(2)}`;
-      const optimistic: MessageWithDetails = {
-        id: optimisticId,
-        thread_id: threadId,
-        direction: 'out',
-        role,
-        type: attachment ? attachment.type : 'text',
-        body: messageText,
-        payload: {},
-        actor_kind: 'agent',
-        actor_id: null,
-        seq: 0,
-        in_reply_to: null,
-        edited_at: null,
-        edit_reason: null,
-        created_at: new Date().toISOString(),
-        contact_name: '',
-        contact_avatar: 'A',
-        _status: 'pending',
-        file_link: attachment?.url || null
-      };
-      setMessages(prev => [...prev, optimistic]);
+      if (hasAttachment) {
+        // Row 1: The attachment (image/video/etc URL in body)
+        const attachId = `tmp_${Math.random().toString(36).slice(2)}`;
+        const attachMsg = {
+          ...baseMessage,
+          type: attachment.type,
+          body: attachment.url,
+        };
+        messagesToInsert.push(attachMsg);
+        optimisticMessages.push({
+          ...attachMsg,
+          id: attachId,
+          seq: 0,
+          in_reply_to: null,
+          edited_at: null,
+          edit_reason: null,
+          contact_name: '',
+          contact_avatar: 'A',
+          _status: 'pending',
+        } as MessageWithDetails);
+
+        // Row 2: The caption (if any)
+        if (hasCaption) {
+          const captionId = `tmp_${Math.random().toString(36).slice(2)}`;
+          const captionMsg = {
+            ...baseMessage,
+            type: 'text' as const,
+            body: messageText,
+            created_at: new Date(Date.now() + 1).toISOString(), // Ensure order
+          };
+          messagesToInsert.push(captionMsg);
+          optimisticMessages.push({
+            ...captionMsg,
+            id: captionId,
+            seq: 0,
+            in_reply_to: null,
+            edited_at: null,
+            edit_reason: null,
+            contact_name: '',
+            contact_avatar: 'A',
+            _status: 'pending',
+          } as MessageWithDetails);
+        }
+      } else {
+        // Regular text message
+        const textId = `tmp_${Math.random().toString(36).slice(2)}`;
+        const textMsg = {
+          ...baseMessage,
+          type: 'text' as const,
+          body: messageText,
+        };
+        messagesToInsert.push(textMsg);
+        optimisticMessages.push({
+          ...textMsg,
+          id: textId,
+          seq: 0,
+          in_reply_to: null,
+          edited_at: null,
+          edit_reason: null,
+          contact_name: '',
+          contact_avatar: 'A',
+          _status: 'pending',
+        } as MessageWithDetails);
+      }
+
+      // Optimistically push messages to UI
+      setMessages(prev => [...prev, ...optimisticMessages]);
 
       // For external channels (telegram/whatsapp), skip DB insert;
       // the n8n workflow will insert the message after sending it.
@@ -589,12 +644,13 @@ export const useConversations = () => {
       if (!isExternalChannel) {
         const { data: insertedData, error } = await supabase
           .from('messages')
-          .insert([newMessage])
-          .select()
-          .single();
+          .insert(messagesToInsert.map(({ thread_id, direction, role, type, body, payload, actor_kind, actor_id }) => ({
+            thread_id, direction, role, type, body, payload, actor_kind, actor_id
+          })))
+          .select();
 
         if (error) throw error;
-        data = insertedData;
+        data = insertedData?.[0]; // return first one or handle array? Usually one if no caption, two if caption.
       }
 
       // Get contact details for webhook payload
@@ -616,10 +672,6 @@ export const useConversations = () => {
 
         if (provider && provider.toLowerCase() !== 'web') {
           const endpoint = resolveSendMessageEndpoint(provider);
-
-          // Get current logged-in admin user ID for the payload
-          const { data: authData } = await supabase.auth.getUser();
-          const currentUserId = authData?.user?.id || null;
 
           const webhookPayload = {
             thread_id: threadId,
@@ -652,11 +704,12 @@ export const useConversations = () => {
       }
 
       if (isExternalChannel) {
-        // For external channels, keep the optimistic message visible
-        // and mark it as 'sent'. Realtime will replace it once n8n inserts the real message.
+        // For external channels, keep the optimistic messages visible
+        // and mark them as 'sent'. Realtime will replace them once n8n inserts the real messages.
+        const optimisticIds = new Set(optimisticMessages.map(m => m.id));
         setMessages(prev =>
           prev.map(m =>
-            m.id === optimisticId ? { ...m, _status: 'sent' as const } : m
+            optimisticIds.has(m.id) ? { ...m, _status: 'sent' as const } : m
           )
         );
       } else {
