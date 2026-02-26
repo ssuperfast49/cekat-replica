@@ -87,7 +87,7 @@ export function MessageList({
                         </div>
                     )}
                     {sortedMessages.map((m) => {
-                        if ((!m.body && !m.file_link) || (m.streaming && (!m.body || m.body.trim() === ''))) {
+                        if (!m.body || (m.streaming && (!m.body || m.body.trim() === ''))) {
                             return null;
                         }
 
