@@ -67,14 +67,14 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "chat-ai-agent-settings-dev",
+        "path": "chat-ai-agent-settings",
         "responseMode": "lastNode",
         "options": {
           "binaryData": true
         }
       },
       "id": "b30f1026-dca3-4048-8636-f83a7c7f1fdc",
-      "name": "Test Agent Webhook",
+      "name": "Agent Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
@@ -789,7 +789,7 @@
     }
   ],
   "connections": {
-    "Test Agent Webhook": {
+    "Agent Webhook": {
       "main": [
         [
           {
