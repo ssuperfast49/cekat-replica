@@ -434,7 +434,7 @@ export function useLiveChat() {
         if (!threadId) return;
         const { data } = await supabase
             .from('messages')
-            .select('id, role, body, created_at, file_link, type')
+            .select('id, role, body, created_at, type')
             .eq('thread_id', threadId)
             .order('created_at', { ascending: true });
         if (Array.isArray(data)) hydrate(data);
@@ -614,7 +614,7 @@ export function useLiveChat() {
 
                 const { data } = await supabase
                     .from('messages')
-                    .select('id, role, body, created_at, file_link, type')
+                    .select('id, role, body, created_at, type')
                     .eq('thread_id', tid)
                     .order('created_at', { ascending: true });
                 if (Array.isArray(data)) upsertFromRows(data);
@@ -888,7 +888,6 @@ export function useLiveChat() {
                 session_id: sessionId,
                 username: username || undefined,
                 web: webId,
-                file_link: uploadedFile?.url || undefined,
                 stream: true,
                 thread_id: threadIdRef.current,
                 contact_id: contactIdRef.current || undefined,
