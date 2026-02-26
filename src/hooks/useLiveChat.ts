@@ -830,7 +830,9 @@ export function useLiveChat() {
         // ── 5. Insert user message into DB (always — fixes first-message bug) ──
         if (threadIdRef.current && messagesToInsert.length > 0) {
             try {
-                await supabase.from('messages').insert(messagesToInsert);
+                await callOrchestrator('insert_user_messages', {
+                    messages: messagesToInsert
+                });
             } catch (err) {
                 console.warn('[LiveChat] direct insert failed', err);
             }

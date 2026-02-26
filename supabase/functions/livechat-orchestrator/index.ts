@@ -251,6 +251,17 @@ async function insertWelcomeMessage(p: {
     return { ok: true };
 }
 
+// ───── ACTION: insert_user_messages ─────
+async function insertUserMessages(p: {
+    messages: any[];
+}) {
+    if (!p.messages || p.messages.length === 0) return { ok: true, skipped: true };
+    const { error } = await sb.from("messages").insert(p.messages);
+    if (error)
+        throw new Error("insert_user_messages failed: " + error.message);
+    return { ok: true };
+}
+
 // ───── ACTION: log_token_usage ─────
 async function logTokenUsage(p: {
     total_tokens: number;
@@ -322,6 +333,7 @@ const ACTIONS: Record<string, (p: any) => Promise<any>> = {
     get_ai_context: getAiContext,
     insert_ai_message: insertAiMessage,
     insert_welcome_message: insertWelcomeMessage,
+    insert_user_messages: insertUserMessages,
     log_token_usage: logTokenUsage,
     check_handover: checkHandover,
 };

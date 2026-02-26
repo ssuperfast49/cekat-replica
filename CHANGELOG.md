@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.98] FE/BE CEKAT 2026-02-26
+
+### LiveChat & Database Security
+
+- **Direct Message Insertion via Edge Function**: Resolved an issue where user messages sent from the LiveChat widget were not saving to the database.
+  - The frontend (`useLiveChat.ts`) now routes user message insertions through the `livechat-orchestrator` Supabase edge function instead of attempting direct database inserts.
+  - This securely bypasses Row Level Security (RLS) policies that previously blocked anonymous users from writing to the `messages` table.
+  - Ensured both Dev and Prod environments are fully synchronized and the edge function is successfully deployed to both.
+
 # [0.1.97] FE/BE CEKAT 2026-02-23
 
 ### LiveChat Architecture & Orchestration
