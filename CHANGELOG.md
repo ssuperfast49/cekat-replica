@@ -1,5 +1,16 @@
 # Change Log
 
+# [0.1.102] FE/BE CEKAT 2026-02-27
+
+### LiveChat AI & Attachments
+
+- **AI Handover Bypass**: Resolved an issue where the AI would still reply to user messages after a thread was taken over by a human agent.
+  - Added an `is_assigned` property to the outbound webhook payload in `useLiveChat.ts` to explicitly notify the backend of the thread's status.
+  - Slipped a new `If` node into the `livechat_simplified.json` n8n workflow to intercept and halt execution if the thread is assigned to a human.
+- **Image Attachment Delivery**: Fixed a bug where uploading files or images would not reach the AI agent in n8n.
+  - Restored the `file_link` property in the `useLiveChat.ts` payload.
+  - Resolved a short-circuit logic error where specifying a text caption alongside an image would cause the image URL to be suppressed from the payload.
+
 # [0.1.101] FE/BE CEKAT 2026-02-26
 
 ### LiveChat & Database Security

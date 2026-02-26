@@ -844,16 +844,12 @@ export function useLiveChat() {
         playLow();
         setDraft("");
 
-        // ── 6. Pending thread path — no AI call ──
+        // ── 6. Check Assigned (Handover) State ──
         const isAssigned = threadStatusRef.current === 'pending';
-        if (isAssigned) {
-            // No AI response expected; message already inserted above
-            return;
-        }
 
-        // ── 7. Fetch AI context via edge fn ──
+        // ── 7. Fetch AI context via edge fn (Skip if assigned) ──
         let aiContext: { ai_profile: any; contact_info: any; chat_history: string; super_agent_id: string } | null = null;
-        if (threadIdRef.current) {
+        if (threadIdRef.current && !isAssigned) {
             try {
                 aiContext = await callOrchestrator('get_ai_context', {
                     thread_id: threadIdRef.current,
@@ -874,28 +870,31 @@ export function useLiveChat() {
             isNewThreadRef.current = false;
         }
 
-        setLoading(true);
-
         const streamingId = `streaming-${Date.now()}`;
-        setStreamingMessageId(streamingId);
-        streamingDraftIdRef.current = streamingId;
+        if (!isAssigned) {
+            setLoading(true);
+            setStreamingMessageId(streamingId);
+            streamingDraftIdRef.current = streamingId;
+        }
 
         try {
             // ── 8. Build new webhook payload ──
             const webhookPayload = {
-                message: text || (uploadedFile?.url || ''),
+                message: text || '',
+                file_link: uploadedFile?.url || undefined,
                 account_id: accountId || undefined,
                 channel_id: pid,
                 session_id: sessionId,
                 username: username || undefined,
                 web: webId,
-                stream: true,
+                stream: !isAssigned, // Don't stream if assigned since AI won't reply
                 thread_id: threadIdRef.current,
                 contact_id: contactIdRef.current || undefined,
                 super_agent_id: aiContext?.super_agent_id || undefined,
                 ai_profile: aiContext?.ai_profile || undefined,
                 contact_info: aiContext?.contact_info || undefined,
                 chat_history: aiContext?.chat_history || '',
+                is_assigned: isAssigned // Pass handover state to n8n
             };
 
             let attempt = 0;

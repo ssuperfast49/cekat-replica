@@ -1,0 +1,26 @@
+If Threads Exists1
+Get Channel5
+Create Contact1
+If Message Not Valid
+Get Channel
+Get AI Agent1
+Get Contact1
+Set Fields
+Get SuperAgent for Limit
+If Token Limit Enabled
+If Limit Exceeded
+Create User Message2
+Get Contact2
+Create Thread
+If Contact Exists
+Get Contact3
+If Thread Status Pending
+Postgres Memory
+Normalize Chat History
+Get AI Agent SQL query
+Creds
+Get Thread
+Get Contact Info
+If Answer Exists
+If New Thread
+Create Welcome Message1
