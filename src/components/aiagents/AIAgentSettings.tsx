@@ -36,8 +36,7 @@ interface ChatMessage {
   content: string;
   sender: 'user' | 'ai';
   timestamp: Date;
-  type?: 'text' | 'image' | 'file' | 'voice';
-  file_link?: string;
+  type?: 'text' | 'image' | 'video' | 'file' | 'voice';
 }
 
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -141,11 +140,10 @@ const ChatPreview = ({
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      content: displayContent,
+      content: uploadedFile ? uploadedFile.url : inputMessage,
       sender: 'user',
       timestamp: new Date(),
-      type: uploadedFile?.type || 'text',
-      file_link: uploadedFile?.url
+      type: uploadedFile?.type || 'text'
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -163,7 +161,6 @@ const ChatPreview = ({
         // Attachment fields (optional)
         ...(uploadedFile && {
           type: uploadedFile.type,
-          file_link: uploadedFile.url,
           file_name: uploadedFile.fileName,
           mime_type: uploadedFile.mimeType,
         }),
@@ -322,10 +319,10 @@ const ChatPreview = ({
                 }`}
             >
               {/* Render attachment if present */}
-              {message.file_link && message.type && message.type !== 'text' && (
+              {message.type && message.type !== 'text' && (
                 <div className="mb-2">
                   <AttachmentRenderer
-                    fileLink={message.file_link}
+                    fileLink={message.content}
                     type={message.type}
                   />
                 </div>
