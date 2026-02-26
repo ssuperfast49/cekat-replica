@@ -1,5 +1,15 @@
 # Change Log
 
+# [0.1.99] FE WEB CEKAT 2026-02-26
+
+### Messages Data Structure Cleanup
+
+- **Full Removal of `file_link`**: Completed the deprecation of the `file_link` column by removing all remaining code references across the application.
+  - **Hook**: Removed `file_link` from Supabase queries and webhook payloads in `useLiveChat.ts`.
+  - **Components**: Updated `MessageList.tsx` and `AIAgentSettings.tsx` to use the unified `body` (or `content`) field for media URLs.
+  - **Types**: Manually synchronized `src/integrations/supabase/types.ts` and `ChatMessage` interfaces to reflect the schema change.
+  - **Bug Fix**: Resolved a type mismatch in `AIAgentSettings.tsx` where the `video` type was previously missing.
+
 # [0.1.98] FE WEB CEKAT 2026-02-27
 
 ### Messages Data Stucture

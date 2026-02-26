@@ -663,7 +663,6 @@ export type Database = {
           direction: Database["public"]["Enums"]["message_direction"] | null
           edit_reason: string | null
           edited_at: string | null
-          file_link: string | null
           id: string
           in_reply_to: string | null
           payload: Json | null
@@ -680,7 +679,6 @@ export type Database = {
           direction?: Database["public"]["Enums"]["message_direction"] | null
           edit_reason?: string | null
           edited_at?: string | null
-          file_link?: string | null
           id?: string
           in_reply_to?: string | null
           payload?: Json | null
@@ -697,7 +695,6 @@ export type Database = {
           direction?: Database["public"]["Enums"]["message_direction"] | null
           edit_reason?: string | null
           edited_at?: string | null
-          file_link?: string | null
           id?: string
           in_reply_to?: string | null
           payload?: Json | null
