@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.1.101] FE/BE CEKAT 2026-02-26
+
+### LiveChat & Database Security
+
+- **Webhook Payload Reliability**: Fixed a bug where `contact_id` was occasionally excluded from the outbound AI agent webhook payload (specifically after page reloads).
+  - The `useLiveChat` hook now explicitly fetches and re-hydrates the `contact_id` when attaching to pre-existing threads.
+
 # [0.1.100] FE/BE CEKAT 2026-02-26
 
 ### LiveChat & Database Security

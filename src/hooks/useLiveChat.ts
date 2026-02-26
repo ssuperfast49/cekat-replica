@@ -604,13 +604,14 @@ export function useLiveChat() {
             notificationsReadyRef.current = false;
             clearCatchUpTimers();
             try {
-                // Fetch current thread status
+                // Fetch current thread status and contact
                 const { data: threadRow } = await supabase
                     .from('threads')
-                    .select('status')
+                    .select('status, contact_id')
                     .eq('id', tid)
                     .maybeSingle();
                 threadStatusRef.current = threadRow?.status || null;
+                if (threadRow?.contact_id) contactIdRef.current = threadRow.contact_id;
 
                 const { data } = await supabase
                     .from('messages')
