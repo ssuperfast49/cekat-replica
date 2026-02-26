@@ -51,7 +51,6 @@ export interface Message {
   edited_at: string | null;
   edit_reason: string | null;
   created_at: string;
-  file_link?: string | null;
 }
 
 export interface ConversationWithDetails extends Thread {
@@ -487,8 +486,7 @@ export const useConversations = () => {
           in_reply_to,
           edited_at,
           edit_reason,
-          created_at,
-          file_link
+          created_at
         `)
         .eq('thread_id', threadId)
         .order('seq', { ascending: true });

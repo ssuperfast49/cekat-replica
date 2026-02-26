@@ -1,5 +1,11 @@
 # Change Log
 
+# [0.1.98] FE WEB CEKAT 2026-02-27
+
+### Messages Data Stucture
+
+- **Unified Message Body**: Deprecated and removed the `file_link` column from the database interaction layer. All message content—whether plain text or attachment URLs—is now stored consistently in the `body` field.
+
 # [0.1.97] FE/BE CEKAT 2026-02-23
 
 ### LiveChat Architecture & Orchestration
@@ -12,7 +18,6 @@
 - **Bug Fixes & UX Polish**:
   - **Returning Visitor Recognition**: Fixed a bug where returning visitors wouldn't have their `contact_id` resolved locally, ensuring n8n always receives valid contact info.
   - **Welcome Message Timing**: Moved the welcome message insertion to fire _before_ the AI webhook call. This guarantees the welcome bubble renders instantly before the AI response starts streaming.
-
 
 # [0.1.96] FE WEB CEKAT 2026-02-23
 
