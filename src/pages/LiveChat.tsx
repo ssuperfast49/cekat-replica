@@ -47,6 +47,7 @@ export default function LiveChat() {
     endRef,
     showScrollButton,
     scrollToBottom,
+    isAssignedToHuman,
   } = useLiveChat();
 
   const fmt = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -77,6 +78,7 @@ export default function LiveChat() {
               loading={loading}
               isUploadingFile={isUploadingFile}
               onSend={handleSend}
+              isAssignedToHuman={isAssignedToHuman}
             />
           </CardContent>
         </Card>

@@ -1764,7 +1764,8 @@ export default function ConversationPage() {
                   />
                 </div>
               )}
-              {!isSelectedConversationDone && collaboratorId === user?.id && (
+              {/* Show message input only when: assigned flow + user is the collaborator + not done */}
+              {!isSelectedConversationDone && selectedConversationFlow === 'assigned' && collaboratorId === user?.id && (
                 <div className="flex items-end gap-2">
                   <FileUploadButton
                     onFileStaged={handleFileStaged}
@@ -1789,8 +1790,10 @@ export default function ConversationPage() {
                   </Button>
                 </div>
               )}
+              {/* Show takeover button when: unassigned OR (assigned but not the collaborator) and not done */}
               {
-                (!isSelectedConversationDone && collaboratorId !== user?.id) && (
+                !isSelectedConversationDone &&
+                (selectedConversationFlow === 'unassigned' || collaboratorId !== user?.id) && (
                   <Button
                     type="button"
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"

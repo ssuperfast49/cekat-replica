@@ -741,7 +741,8 @@ const HumanAgents = () => {
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        {!isPending && (
+                        {/* Edit Limits: only for master/super agents, not basic agents */}
+                        {!isPending && stub.primaryRole !== 'agent' && (
                           <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
                             <Button
                               size="sm"

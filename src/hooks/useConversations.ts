@@ -141,13 +141,7 @@ export const useConversations = () => {
   const scheduleConversationsRefresh = (delayMs: number = 400) => {
     try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     conversationsRefreshTimer.current = window.setTimeout(() => {
-      // Only refresh if the document is visible to prevent unnecessary fetches when tab is hidden
-      if (document.visibilityState === 'visible') {
-        // Prevent parallel fetches
-        if (!loading) {
-          fetchConversations(undefined, { silent: true });
-        }
-      }
+      fetchConversations(undefined, { silent: true });
     }, delayMs) as unknown as number;
   };
 
@@ -955,6 +949,7 @@ export const useConversations = () => {
       } else {
         updatePayload.assigned_by_user_id = null;
         updatePayload.assigned_at = null;
+        updatePayload.collaborator_user_id = null; // clear collaborator when unassigning
       }
 
       const { error: updateErr } = await supabase
@@ -1070,6 +1065,17 @@ export const useConversations = () => {
   const unassignThread = async (threadId: string) => {
     const { data, error } = await protectedSupabase.rpc('unassign_thread', { p_thread_id: threadId });
     if (error) throw error;
+
+    // Guarantee AI access is re-enabled and collaborator cleared when thread goes back to Unassigned,
+    // regardless of what the RPC does internally.
+    try {
+      await protectedSupabase
+        .from('threads')
+        .update({ ai_access_enabled: true, ai_handoff_at: null, handover_reason: null, collaborator_user_id: null })
+        .eq('id', threadId);
+    } catch (aiErr) {
+      console.warn('[useConversations] Failed to restore ai_access_enabled on unassign', aiErr);
+    }
 
     // Log system event for unassign action
     try {
@@ -1273,20 +1279,14 @@ export const useConversations = () => {
       .channel('threads-realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'threads' }, (payload) => {
         applyThreadRealtimePatch(payload.new);
-        if (document.visibilityState === 'visible') {
-          scheduleConversationsRefresh(400);
-        }
+        scheduleConversationsRefresh(400);
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads' }, (payload) => {
         // Inserts may come from other clients; do a light refresh to surface them
-        if (document.visibilityState === 'visible') {
-          scheduleConversationsRefresh(300);
-        }
+        scheduleConversationsRefresh(300);
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'threads' }, () => {
-        if (document.visibilityState === 'visible') {
-          scheduleConversationsRefresh(300);
-        }
+        scheduleConversationsRefresh(300);
       })
       .subscribe();
 
@@ -1308,13 +1308,13 @@ export const useConversations = () => {
         // Only refresh for incoming messages or system messages
         // Skip outgoing messages (direction: 'out') to avoid refresh when sending
         const message = payload.new;
-        if (message && message.direction === 'in' && document.visibilityState === 'visible') {
+        if (message && message.direction === 'in') {
           // Immediately update the conversation preview and re-sort
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(100); // Also do a full refresh for consistency
           // Check auto-resolve after user message (cancels auto-resolve)
           checkAutoResolve();
-        } else if (message && (message.role === 'system' || message.type === 'event') && document.visibilityState === 'visible') {
+        } else if (message && (message.role === 'system' || message.type === 'event')) {
           // Immediately update the conversation preview
           updateConversationPreview(message.thread_id, message);
           scheduleConversationsRefresh(200); // Also do a full refresh for consistency
@@ -1323,14 +1323,13 @@ export const useConversations = () => {
           // so newly created/AI-started conversations bubble to the top
           message &&
           message.direction === 'out' &&
-          (message.role === 'agent' || message.role === 'assistant') &&
-          document.visibilityState === 'visible'
+          (message.role === 'agent' || message.role === 'assistant')
         ) {
           // No sound for outgoing
           updateConversationPreview(message.thread_id, message);
           // Light refresh to keep ordering accurate
           scheduleConversationsRefresh(200);
-        } else if (message && message.role === 'agent' && message.direction === 'out' && document.visibilityState === 'visible') {
+        } else if (message && message.role === 'agent' && message.direction === 'out') {
           // AI responded, auto-resolve timer will be set by database trigger
           // Check for any threads that might be ready for auto-resolve
           checkAutoResolve();
@@ -1343,9 +1342,7 @@ export const useConversations = () => {
         table: 'messages'
       }, () => {
         // Only refresh on message updates that might affect conversation preview
-        if (document.visibilityState === 'visible') {
-          scheduleConversationsRefresh(500);
-        }
+        scheduleConversationsRefresh(500);
       })
       .on('postgres_changes', {
         event: 'DELETE',
@@ -1353,9 +1350,7 @@ export const useConversations = () => {
         table: 'messages'
       }, () => {
         // Refresh on message deletion as it affects conversation state
-        if (document.visibilityState === 'visible') {
-          scheduleConversationsRefresh(300);
-        }
+        scheduleConversationsRefresh(300);
       })
       .subscribe();
 

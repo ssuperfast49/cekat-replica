@@ -12,6 +12,7 @@ interface MessageInputProps {
     loading: boolean;
     isUploadingFile: boolean;
     onSend: () => void;
+    isAssignedToHuman?: boolean;
 }
 
 export function MessageInput({
@@ -21,18 +22,26 @@ export function MessageInput({
     setStagedFile,
     loading,
     isUploadingFile,
-    onSend
+    onSend,
+    isAssignedToHuman = false,
 }: MessageInputProps) {
 
     const onKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
+            if ((!draft.trim() && !stagedFile) || loading || isUploadingFile) return;
             onSend();
         }
     };
 
     return (
         <div className="p-3 border-t border-blue-100 rounded-b-2xl bg-blue-50/40">
+            {isAssignedToHuman && (
+                <div className="mb-2 px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 text-xs font-medium flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    Agent sedang menangani percakapan ini
+                </div>
+            )}
             {stagedFile && (
                 <div className="mb-2">
                     <StagedFilePreview
@@ -53,7 +62,8 @@ export function MessageInput({
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={onKeyPress}
-                    className="rounded-xl min-h-[40px] max-h-[120px] resize-none px-4 py-2 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900"
+                    disabled={loading || isUploadingFile}
+                    className="rounded-xl min-h-[40px] max-h-[120px] resize-none px-4 py-2 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <Button
                     onClick={onSend}
