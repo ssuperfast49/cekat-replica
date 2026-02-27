@@ -2245,7 +2245,7 @@
 ### Updates
 
 - Fixed Live chat error and detail chat
-- Update project branding to **Synka AI**
+- Update project branding to **CS Super**
 - Enhance **chat functionality**
 - Improve **permissions management**
 - Key changes include:
