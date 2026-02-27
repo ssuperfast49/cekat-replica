@@ -337,6 +337,9 @@ const Index = () => {
               <div className="flex items-center gap-2 md:gap-3">
               </div>
               <div className="flex items-center gap-3">
+                <span className="hidden sm:inline-flex items-center text-xs text-muted-foreground font-mono select-none">
+                  v{__APP_VERSION__}
+                </span>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Badge className="hidden sm:inline-flex bg-success text-success-foreground cursor-help">Online</Badge>

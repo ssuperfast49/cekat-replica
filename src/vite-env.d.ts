@@ -5,6 +5,8 @@ declare module "*.md?raw" {
   export default content;
 }
 
+declare const __APP_VERSION__: string;
+
 interface Window {
   chatConfig?: {
     baseUrl?: string;
