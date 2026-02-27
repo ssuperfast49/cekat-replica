@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.1.104] FE WEB CEKAT 2026-02-27
+
+### UI Improvements
+
+- **Version Badge**: Added application version badge to the header next to the Online status indicator. The version is dynamically injected at build-time.
+  - Updated: `src/pages/Index.tsx`, `vite.config.ts`, `src/vite-env.d.ts`
+  
 # [0.1.103] FE WEB CEKAT 2026-02-27
 
 ### LiveChat Reliability & Real-time Updates
