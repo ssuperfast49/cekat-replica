@@ -48,6 +48,8 @@ export function useLiveChat() {
     const [userScrolledUp, setUserScrolledUp] = useState(false);
     const [username, setUsername] = useState<string>("");
     const [aiProfileId, setAiProfileId] = useState<string | null>(null);
+    const [threadStatus, setThreadStatus] = useState<string | null>(null);
+    const [isAssignedToHuman, setIsAssignedToHuman] = useState<boolean>(false);
 
     // Refs
     const viewportRef = useRef<HTMLDivElement>(null);
@@ -58,6 +60,7 @@ export function useLiveChat() {
     const audioHighRef = useRef<HTMLAudioElement | null>(null);
     const threadIdRef = useRef<string | null>(null);
     const threadStatusRef = useRef<string | null>(null);
+    const aiAccessEnabledRef = useRef<boolean>(true);
     const streamingDraftIdRef = useRef<string | null>(null);
     const lastOptimisticIdRef = useRef<string | null>(null);
     const contactIdRef = useRef<string | null>(null);
@@ -68,6 +71,7 @@ export function useLiveChat() {
     const threadAttachTimersRef = useRef<number[]>([]);
     const catchUpTimersRef = useRef<number[]>([]);
     const pendingCatchUpRef = useRef(false);
+    const periodicCatchUpRef = useRef<number | null>(null);
     const notificationsReadyRef = useRef(false);
     const systemNotificationIdsRef = useRef<Set<string>>(new Set());
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
@@ -461,7 +465,7 @@ export function useLiveChat() {
         try {
             const { data } = await supabase
                 .from('threads')
-                .select('id, contact_id, created_at, additional_data, assignee_user_id, status, account_id, resolved_at, resolved_by_user_id, contacts(name)')
+                .select('id, contact_id, created_at, additional_data, assignee_user_id, status, account_id, resolved_at, resolved_by_user_id, ai_access_enabled, contacts(name)')
                 .eq('channel_id', pid)
                 .order('last_msg_at', { ascending: false })
                 .order('created_at', { ascending: false })
@@ -502,15 +506,27 @@ export function useLiveChat() {
         try {
             const { error } = await supabase
                 .from('threads')
-                .update({ status: 'pending', assignee_user_id: null, resolved_at: null, resolved_by_user_id: null })
+                .update({
+                    status: 'pending',
+                    assignee_user_id: null,
+                    collaborator_user_id: null,
+                    resolved_at: null,
+                    resolved_by_user_id: null,
+                    // Re-enable AI access so it responds in the new conversation cycle
+                    ai_access_enabled: true,
+                    ai_handoff_at: null,
+                    handover_reason: null,
+                })
                 .eq('id', row.id);
             if (error) throw error;
+            // Sync refs so the current send call uses the correct AI access state
+            aiAccessEnabledRef.current = true;
             return row.id;
         } catch (err) {
             console.warn('[LiveChat] failed to reopen resolved thread', err);
             return row?.id || null;
         }
-    }, []);
+    }, [supabase]);
 
     const scheduleThreadAttachRetries = useCallback((delays: number[] = []) => {
         clearThreadAttachTimers();
@@ -573,6 +589,15 @@ export function useLiveChat() {
     useEffect(() => { return () => clearCatchUpTimers(); }, []);
     useEffect(() => { return () => clearThreadAttachTimers(); }, [clearThreadAttachTimers]);
     useEffect(() => { return () => { if (streamingMessageId) streamingDraftIdRef.current = null; }; }, [streamingMessageId]);
+    useEffect(() => {
+        return () => {
+            // Clear the periodic catch-up interval on unmount
+            if (periodicCatchUpRef.current) {
+                clearInterval(periodicCatchUpRef.current);
+                periodicCatchUpRef.current = null;
+            }
+        };
+    }, []);
 
     useEffect(() => {
         const fetchAiProfileId = async () => {
@@ -607,11 +632,15 @@ export function useLiveChat() {
                 // Fetch current thread status and contact
                 const { data: threadRow } = await supabase
                     .from('threads')
-                    .select('status, contact_id')
+                    .select('status, contact_id, ai_access_enabled')
                     .eq('id', tid)
                     .maybeSingle();
                 threadStatusRef.current = threadRow?.status || null;
+                aiAccessEnabledRef.current = threadRow?.ai_access_enabled ?? true;
                 if (threadRow?.contact_id) contactIdRef.current = threadRow.contact_id;
+                // Update reactive state so UI re-renders on thread attach
+                setThreadStatus(threadRow?.status || null);
+                setIsAssignedToHuman(threadRow?.ai_access_enabled === false);
 
                 const { data } = await supabase
                     .from('messages')
@@ -639,6 +668,42 @@ export function useLiveChat() {
                         });
                 sub = subscribeToThread(tid);
                 scheduleCatchUps(tid, upsertFromRows, [0, 800, 2000, 5000, 10000]);
+
+                // Periodic fallback polling: if realtime subscription goes silent
+                // (e.g. network hiccup, iframe background, etc.) this guarantees
+                // messages and thread status are re-synced every 30 seconds.
+                if (periodicCatchUpRef.current) {
+                    clearInterval(periodicCatchUpRef.current);
+                    periodicCatchUpRef.current = null;
+                }
+                periodicCatchUpRef.current = window.setInterval(async () => {
+                    try {
+                        // Re-fetch messages
+                        await requestCatchUpFetch(threadIdRef.current, upsertFromRows);
+                        // Also re-sync thread status (ai_access_enabled, status)
+                        if (threadIdRef.current) {
+                            const { data: tRow } = await supabase
+                                .from('threads')
+                                .select('status, ai_access_enabled')
+                                .eq('id', threadIdRef.current)
+                                .maybeSingle();
+                            if (tRow) {
+                                const st = tRow.status || null;
+                                if (st !== threadStatusRef.current) {
+                                    threadStatusRef.current = st;
+                                    setThreadStatus(st);
+                                }
+                                const aiEnabled = tRow.ai_access_enabled ?? true;
+                                if (aiEnabled !== aiAccessEnabledRef.current) {
+                                    aiAccessEnabledRef.current = aiEnabled;
+                                    setIsAssignedToHuman(!aiEnabled);
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[LiveChat] periodic catch-up failed', err);
+                    }
+                }, 10_000) as unknown as number;
             } finally {
                 notificationsReadyRef.current = true;
                 setBooting(false);
@@ -687,9 +752,14 @@ export function useLiveChat() {
                 if (!row?.id || row.id !== threadIdRef.current) return;
                 const newStatus = row.status || null;
                 threadStatusRef.current = newStatus;
-                // If thread is pending (assigned to human), stop loading/typing animation
-                if (newStatus === 'pending') {
-                    setLoading(false);
+                // Update reactive state so UI re-renders on status changes (resolved, assigned, unassigned)
+                setThreadStatus(newStatus);
+                if (row.ai_access_enabled !== undefined) {
+                    aiAccessEnabledRef.current = row.ai_access_enabled;
+                    const assigned = row.ai_access_enabled === false;
+                    setIsAssignedToHuman(assigned);
+                    // If AI access is disabled (assigned to human), stop loading/typing animation
+                    if (assigned) setLoading(false);
                 }
             })
             .subscribe(() => setBooting(false));
@@ -704,8 +774,63 @@ export function useLiveChat() {
     // Send Handlers
     const handleSend = async () => {
         const text = draft.trim();
-        if (!text && !stagedFile) return;
+        const activeStagedFile = stagedFile;
+        if (!text && !activeStagedFile) return;
         const createdAt = new Date().toISOString();
+
+        // ── 0. Optimistic UI & Local State Reset ──
+        setDraft("");
+        if (activeStagedFile) {
+            setStagedFile(null);
+        }
+
+        // Chat is handed over to human when ai_access_enabled is false
+        const isAssigned = aiAccessEnabledRef.current === false;
+        if (!isAssigned) {
+            setLoading(true);
+        }
+
+        const optimisticMessages: any[] = [];
+        let localPreviewUrl = '';
+
+        if (activeStagedFile) {
+            try { localPreviewUrl = URL.createObjectURL(activeStagedFile.file); } catch (e) { }
+            optimisticMessages.push({
+                id: `temp-${crypto.randomUUID()}`,
+                role: 'user',
+                direction: 'in',
+                body: localPreviewUrl || 'Uploading file...',
+                type: activeStagedFile.type.startsWith('image/') ? 'image' : 'file',
+                at: createdAt,
+                order: nextOrder()
+            });
+            if (text) {
+                optimisticMessages.push({
+                    id: `temp-${crypto.randomUUID()}`,
+                    role: 'user',
+                    direction: 'in',
+                    body: text,
+                    type: 'text',
+                    at: new Date(Date.now() + 1).toISOString(),
+                    order: nextOrder()
+                });
+            }
+        } else {
+            optimisticMessages.push({
+                id: `temp-${crypto.randomUUID()}`,
+                role: 'user',
+                direction: 'in',
+                body: text,
+                type: 'text',
+                at: createdAt,
+                order: nextOrder()
+            });
+        }
+
+        setMessages((prev) => [...prev, ...optimisticMessages]);
+        lastOptimisticIdRef.current = optimisticMessages[0].id;
+        playLow();
+        setTimeout(() => scrollToBottom(), 50);
 
         // ── 1. Thread resolution ──
         // Try local find first
@@ -754,10 +879,12 @@ export function useLiveChat() {
                     const assignResult = await autoAssignToSuperAgent(supabase, threadIdRef.current, limitInfo.superAgentId);
                     if (assignResult.success) {
                         toast.error(`Batas pesan AI telah tercapai. Percakapan dialihkan ke super agent.`);
+                        setLoading(false);
                         return;
                     }
                 } else if (limitInfo.isExceeded) {
                     toast.error(`Batas pesan AI tercapai. Tidak ada agen tersedia.`);
+                    setLoading(false);
                     return;
                 }
             } catch (error) { }
@@ -765,17 +892,17 @@ export function useLiveChat() {
 
         // ── 3. File upload ──
         let uploadedFile: UploadedFile | null = null;
-        if (stagedFile) {
+        if (activeStagedFile) {
             setIsUploadingFile(true);
             try {
-                uploadedFile = await uploadFileToStorage(stagedFile.file);
+                uploadedFile = await uploadFileToStorage(activeStagedFile.file);
             } catch (error: any) {
                 toast.error(`Upload failed: ${error.message}`);
                 setIsUploadingFile(false);
+                setLoading(false);
                 return;
             }
             setIsUploadingFile(false);
-            setStagedFile(null);
         }
 
         const isAttachment = !!uploadedFile;
@@ -783,11 +910,10 @@ export function useLiveChat() {
 
         // ── 4. Prepare messages ──
         const messagesToInsert: any[] = [];
-        const optimisticMessages: any[] = [];
 
         if (isAttachment) {
             const attachId = crypto.randomUUID();
-            const attachMsg = {
+            messagesToInsert.push({
                 id: attachId,
                 thread_id: threadIdRef.current,
                 role: 'user',
@@ -795,13 +921,11 @@ export function useLiveChat() {
                 body: uploadedFile.url,
                 type: uploadedFile.type as any,
                 payload: {}
-            };
-            messagesToInsert.push(attachMsg);
-            optimisticMessages.push({ ...attachMsg, at: createdAt, order: nextOrder() });
+            });
 
             if (hasText) {
                 const textId = crypto.randomUUID();
-                const textMsg = {
+                messagesToInsert.push({
                     id: textId,
                     thread_id: threadIdRef.current,
                     role: 'user',
@@ -809,13 +933,11 @@ export function useLiveChat() {
                     body: text,
                     type: 'text' as any,
                     payload: {}
-                };
-                messagesToInsert.push(textMsg);
-                optimisticMessages.push({ ...textMsg, at: new Date(Date.now() + 1).toISOString(), order: nextOrder() });
+                });
             }
         } else {
             const textId = crypto.randomUUID();
-            const textMsg = {
+            messagesToInsert.push({
                 id: textId,
                 thread_id: threadIdRef.current,
                 role: 'user',
@@ -823,9 +945,7 @@ export function useLiveChat() {
                 body: text,
                 type: 'text' as any,
                 payload: {}
-            };
-            messagesToInsert.push(textMsg);
-            optimisticMessages.push({ ...textMsg, at: createdAt, order: nextOrder() });
+            });
         }
 
         // ── 5. Insert user message into DB (always — fixes first-message bug) ──
@@ -839,13 +959,8 @@ export function useLiveChat() {
             }
         }
 
-        setMessages((prev) => [...prev, ...optimisticMessages]);
-        lastOptimisticIdRef.current = optimisticMessages[0].id;
-        playLow();
-        setDraft("");
-
         // ── 6. Check Assigned (Handover) State ──
-        const isAssigned = threadStatusRef.current === 'pending';
+        // (isAssigned already evaluated at the top of handleSend)
 
         // ── 7. Fetch AI context via edge fn (Skip if assigned) ──
         let aiContext: { ai_profile: any; contact_info: any; chat_history: string; super_agent_id: string } | null = null;
@@ -872,7 +987,6 @@ export function useLiveChat() {
 
         const streamingId = `streaming-${Date.now()}`;
         if (!isAssigned) {
-            setLoading(true);
             setStreamingMessageId(streamingId);
             streamingDraftIdRef.current = streamingId;
         }
@@ -1009,6 +1123,8 @@ export function useLiveChat() {
         endRef,
         showScrollButton,
         scrollToBottom,
-        userScrolledUp
+        userScrolledUp,
+        threadStatus,
+        isAssignedToHuman,
     };
 }

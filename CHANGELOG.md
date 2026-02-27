@@ -1,5 +1,42 @@
 # Change Log
 
+# [0.1.103] FE WEB CEKAT 2026-02-27
+
+### LiveChat Reliability & Real-time Updates
+
+- **Periodic Fallback Polling**: Added a periodic 10-second `setInterval` inside `attachToThread` in `useLiveChat.ts` as a safety net for when Supabase realtime subscriptions go silent (network blip, iframe background, etc.).
+  - Re-fetches all messages and re-syncs thread `status` / `ai_access_enabled` from the database if changed.
+  - Properly cleared on thread change or component unmount to prevent memory leaks.
+  - Updated: `src/hooks/useLiveChat.ts`
+- **Always-on Realtime Refresh**: Removed the `document.visibilityState === 'visible'` guard from `scheduleConversationsRefresh` and all realtime event handlers in `useConversations.ts`.
+  - Thread and message updates now always trigger UI refreshes regardless of tab focus, preventing the agent panel from going stale when the tab is backgrounded.
+  - Updated: `src/hooks/useConversations.ts`
+
+### AI Agent Access Reset
+
+- **AI Re-enabled on Thread Reopen**: When a member sends a message to a resolved thread, `reopenThreadIfResolved` now explicitly resets `ai_access_enabled: true`, `ai_handoff_at: null`, and `handover_reason: null` so the AI agent immediately responds to the new conversation cycle.
+  - Updated: `src/hooks/useLiveChat.ts`
+- **AI Re-enabled on Unassign (via RPC)**: The `unassignThread` post-RPC direct update in `useConversations.ts` now also guarantees `ai_access_enabled: true` regardless of what the `unassign_thread` RPC does internally.
+  - Updated: `src/hooks/useConversations.ts`
+
+### Collaborator Cleared on Unassign
+
+- **Full Reset When Going Unassigned**: `collaborator_user_id` is now cleared to `null` in all three paths that move a thread to Unassigned:
+  - `reopenThreadIfResolved` (`useLiveChat.ts`) — when a member chats back on a resolved thread.
+  - `unassignThread` post-RPC update (`useConversations.ts`) — manual "Move to Unassigned" button.
+  - `assignThreadToUser` with null assignee (`useConversations.ts`) — supervisor reassigning to nobody.
+  - Updated: `src/hooks/useLiveChat.ts`, `src/hooks/useConversations.ts`
+
+### Conversation Input / Takeover Logic
+
+- **Correct Input vs. Takeover Button**: Refined `ConversationPage.tsx` conditional rendering so the message input only appears when the thread is `assigned` flow **and** the current user is the collaborator. The "Takeover Chat" button is shown when the thread is in `unassigned` flow, or when the current user is not the collaborator (and thread is not done).
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Human Agents Settings
+
+- **Edit Limits Button — Super/Master Only**: The yellow "Edit Limits" (token cap) button is no longer shown on basic `agent` rows in the Human Agents table. It now only appears for `super_agent` and `master_agent` rows.
+  - Updated: `src/components/humanagents/HumanAgents.tsx`
+
 # [0.1.102] FE/BE CEKAT 2026-02-27
 
 ### LiveChat AI & Attachments

@@ -63,7 +63,7 @@
                 '#chat-panel{position:fixed;right:20px;bottom:92px;width:' + cfg.width + ';height:' + cfg.height + ';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}' +
                 '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';
             var s = d.createElement('style'); s.type = 'text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);
-            var bubble = d.createElement('button'); bubble.id = 'chat-bubble'; bubble.setAttribute('aria-label', 'Open chat'); bubble.innerHTML = '\uD83D\uDCAC';
+            var bubble = d.createElement('button'); bubble.id = 'chat-bubble'; bubble.setAttribute('aria-label', 'Open chat'); bubble.innerHTML = '💬';
             var panel = d.createElement('div'); panel.id = 'chat-panel';
             var iframeSrc = cfg.baseUrl + '/livechat/' + encodeURIComponent(cfg.platformId); var qs = [];
             if (cfg.username) qs.push('username=' + encodeURIComponent(cfg.username));
