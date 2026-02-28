@@ -54,8 +54,8 @@ export default function LiveChat() {
 
   return (
     <div className="h-screen overflow-hidden bg-gradient-to-br from-blue-50 to-white flex items-center justify-center">
-      <div className="mx-auto w-full max-w-xl h-full flex flex-col">
-        <Card className="border border-blue-100 shadow-xl rounded-2xl bg-white/90 backdrop-blur flex-1 flex flex-col overflow-hidden">
+      <div className="mx-auto w-full max-w-xl h-full flex flex-col sm:p-4">
+        <Card className="border-0 sm:border sm:border-blue-100 sm:shadow-xl rounded-none sm:rounded-2xl bg-white/90 backdrop-blur flex-1 flex flex-col overflow-hidden">
           <CardContent className="p-0 flex-1 flex flex-col overflow-hidden">
             <LiveChatHeader />
 

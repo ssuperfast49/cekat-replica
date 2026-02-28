@@ -1,5 +1,20 @@
 # Change Log
 
+# [0.1.106] FE/BE CEKAT 2026-03-01
+
+### LiveChat & Widget Embed
+
+- **LiveChat Minimize Functionality**: Added a functional minimize/close button (X icon) to the LiveChat widget header.
+  - The widget now emits a `CEKAT_CHAT_MINIMIZE` postMessage event when the close button is clicked.
+  - Updated the embed code snippets (in `embed_test.html` and `ConnectedPlatforms.tsx`) to listen for this event and correctly hide the chat iframe by removing the open class.
+  - Updated: `src/components/livechat/LiveChatHeader.tsx`, `embed_test.html`, `src/components/platforms/ConnectedPlatforms.tsx`
+
+### Database Security & Storage
+
+- **Anonymous File Uploads**: Fixed an issue where anonymous users were getting RLS violations when trying to upload images or files in the LiveChat widget.
+  - Added new RLS policies for the `chat-attachments` bucket to explicitly grant `INSERT` and `UPDATE` permissions on `storage.objects` for the `anon` and `authenticated` roles.
+  - Migration Applied: `supabase/migrations/20260228125800_fix_chat_attachments_rls.sql`
+
 # [0.1.105] FE/BE CEKAT 2026-02-28
 
 ### Super Agent Management

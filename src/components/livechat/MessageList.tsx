@@ -141,7 +141,7 @@ export function MessageList({
 
                             return (
                                 <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                                    <div className={`flex ${m.role === "user" ? "flex-row-reverse" : "flex-row"} items-end gap-2 max-w-[85%]`}>
+                                    <div className={`flex ${m.role === "user" ? "flex-row-reverse" : "flex-row"} items-end gap-2 max-w-[92%] sm:max-w-[85%]`}>
                                         <div className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"} min-w-0 max-w-full space-y-1`}>
                                             {effectiveFileLink && attachType && (
                                                 <div className="max-w-full">
