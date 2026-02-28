@@ -35,7 +35,7 @@ export function MessageInput({
     };
 
     return (
-        <div className="p-3 border-t border-blue-100 rounded-b-2xl bg-blue-50/40">
+        <div className="p-3 border-t border-blue-100 sm:rounded-b-2xl rounded-none bg-blue-50/40">
             {isAssignedToHuman && (
                 <div className="mb-2 px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 text-xs font-medium flex items-center gap-1.5">
                     <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />

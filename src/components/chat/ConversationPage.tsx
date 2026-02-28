@@ -1191,9 +1191,17 @@ export default function ConversationPage() {
       } else {
         // No threads available in this tab; clear selection to avoid showing a stale thread.
         setSelectedThreadId(null);
+        // Clear thread and contact parameters from URL to prevent auto-select from reverting the tab
+        try {
+          const next = new URLSearchParams(window.location.search);
+          let changed = false;
+          if (next.has('thread')) { next.delete('thread'); changed = true; }
+          if (next.has('contact')) { next.delete('contact'); changed = true; }
+          if (changed) setSearchParams(next, { replace: true });
+        } catch { }
       }
     }
-  }, [activeTab, filteredConversations, selectedThreadId, selectedConversation]);
+  }, [activeTab, filteredConversations, selectedThreadId, selectedConversation, setSearchParams]);
 
   // Send message
   // Send message
