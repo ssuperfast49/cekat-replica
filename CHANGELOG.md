@@ -1,9 +1,16 @@
 # Change Log
 
+# [0.1.107] FE/BE CEKAT 2026-03-01
+
+### LiveChat & Widget Embed
+
+- **LiveChat Mobile Layout Fix**: Replaced `h-screen` with `fixed inset-0` in `LiveChat.tsx` to ensure the chat interface fits securely within the visible viewport on mobile devices, preventing the input area from being cut off by browser address bars.
+
 # [0.1.106] FE/BE CEKAT 2026-03-01
 
 ### LiveChat & Widget Embed
 
+- **LiveChat Mobile Layout Fix**: Replaced `h-screen` with `fixed inset-0` in `LiveChat.tsx` to ensure the chat interface fits securely within the visible viewport on mobile devices, preventing the input area from being cut off by browser address bars.
 - **LiveChat Minimize Functionality**: Added a functional minimize/close button (X icon) to the LiveChat widget header.
   - The widget now emits a `CEKAT_CHAT_MINIMIZE` postMessage event when the close button is clicked.
   - Updated the embed code snippets (in `embed_test.html` and `ConnectedPlatforms.tsx`) to listen for this event and correctly hide the chat iframe by removing the open class.
