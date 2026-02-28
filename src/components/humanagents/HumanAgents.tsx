@@ -56,6 +56,13 @@ const HumanAgents = () => {
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [selectedSuperForNewAgent, setSelectedSuperForNewAgent] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmDeleteInput, setConfirmDeleteInput] = useState("");
+  const [pendingDeleteStats, setPendingDeleteStats] = useState<{
+    loading: boolean;
+    aiAgents: { id: string, name: string }[];
+    humanAgents: { id: string, name: string }[];
+    threadCount: number;
+  } | null>(null);
   const [deletingAgent, setDeletingAgent] = useState(false);
   const [agentPendingDelete, setAgentPendingDelete] = useState<AgentWithDetails | null>(null);
   const { toast } = useToast();
@@ -474,7 +481,7 @@ const HumanAgents = () => {
                               )}
                               {canDeleteAgent(stub) && (
                                 <PermissionGate permission={'super_agents.delete'}>
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => openDeleteModal(stub)}><Trash2 className="h-4 w-4" /></Button>
                                 </PermissionGate>
                               )}
                             </div>
@@ -537,7 +544,7 @@ const HumanAgents = () => {
                                 )}
                                 {canDeleteAgent(stub) && (
                                   <PermissionGate permission={'super_agents.delete'}>
-                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                    <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => openDeleteModal(stub)}><Trash2 className="h-4 w-4" /></Button>
                                   </PermissionGate>
                                 )}
                               </div>
@@ -597,7 +604,7 @@ const HumanAgents = () => {
                                     )}
                                     {canDeleteAgent(child) && (
                                       <PermissionGate permission={'super_agents.delete'}>
-                                        <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(child); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                        <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => openDeleteModal(child)}><Trash2 className="h-4 w-4" /></Button>
                                       </PermissionGate>
                                     )}
                                   </div>
@@ -661,7 +668,7 @@ const HumanAgents = () => {
                               )}
                               {canDeleteAgent(stub) && (
                                 <PermissionGate permission={'super_agents.delete'}>
-                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => openDeleteModal(stub)}><Trash2 className="h-4 w-4" /></Button>
                                 </PermissionGate>
                               )}
                             </div>
@@ -793,7 +800,7 @@ const HumanAgents = () => {
                                 <Button
                                   size="sm"
                                   className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                                  onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
+                                  onClick={() => openDeleteModal(stub)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -806,7 +813,7 @@ const HumanAgents = () => {
                               <Button
                                 size="sm"
                                 className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white"
-                                onClick={() => { setAgentPendingDelete(stub); setConfirmDeleteOpen(true); }}
+                                onClick={() => openDeleteModal(stub)}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -860,7 +867,7 @@ const HumanAgents = () => {
             </Pagination>
           </div>
         </div>
-      </div>
+      </div >
     );
   };
 
@@ -999,6 +1006,54 @@ const HumanAgents = () => {
       });
     } finally {
       setDeletingAgent(false);
+    }
+  };
+
+  const openDeleteModal = async (agent: AgentWithDetails) => {
+    setAgentPendingDelete(agent);
+    setConfirmDeleteInput("");
+    setPendingDeleteStats(null);
+    setConfirmDeleteOpen(true);
+
+    if (agent.primaryRole === 'super_agent') {
+      setPendingDeleteStats({ loading: true, aiAgents: [], humanAgents: [], threadCount: 0 });
+      try {
+        const [aiRes, humanRes] = await Promise.all([
+          (supabase as any).from('ai_profiles').select('id, name').eq('super_agent_id', agent.user_id),
+          (supabase as any).from('super_agent_members').select('agent_user_id').eq('super_agent_id', agent.user_id)
+        ]);
+
+        let childAgentIds: string[] = [];
+        let humanAgentsList: { id: string, name: string }[] = [];
+
+        if (humanRes.data && humanRes.data.length > 0) {
+          childAgentIds = humanRes.data.map(d => d.agent_user_id).filter(Boolean) as string[];
+          if (childAgentIds.length > 0) {
+            const { data: profiles } = await (supabase as any).from('users_profile').select('user_id, display_name, email').in('user_id', childAgentIds);
+            if (profiles) {
+              humanAgentsList = profiles.map((p: any) => ({
+                id: p.user_id,
+                name: p.display_name || p.email || 'Unknown Agent'
+              }));
+            }
+          }
+        }
+
+        const allUserIds = [agent.user_id, ...childAgentIds];
+        const { count: threadCount } = await (supabase as any).from('threads')
+          .select('id', { count: 'exact', head: true })
+          .in('assignee_user_id', allUserIds);
+
+        setPendingDeleteStats({
+          loading: false,
+          aiAgents: aiRes.data?.map((a: any) => ({ id: a.id, name: a.name })) || [],
+          humanAgents: humanAgentsList,
+          threadCount: threadCount || 0
+        });
+      } catch (err) {
+        console.error("Failed to fetch dependencies", err);
+        setPendingDeleteStats({ loading: false, aiAgents: [], humanAgents: [], threadCount: 0 });
+      }
     }
   };
 
@@ -1556,17 +1611,53 @@ const HumanAgents = () => {
               Are you sure you want to permanently delete {agentPendingDelete?.display_name || 'this agent'}?
               This will remove their profile and role assignments. This action cannot be undone.
             </p>
+
+            {pendingDeleteStats && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                <p className="font-semibold mb-1">Warning: Cascade Deletion</p>
+                {pendingDeleteStats.loading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Fetching impacted dependents...
+                  </div>
+                ) : (
+                  <ul className="list-disc pl-4 text-xs space-y-1">
+                    {pendingDeleteStats.aiAgents.length > 0 && (
+                      <li><span className="font-semibold">AI Agents:</span> {pendingDeleteStats.aiAgents.map(a => a.name).join(', ')}</li>
+                    )}
+                    {pendingDeleteStats.humanAgents.length > 0 && (
+                      <li><span className="font-semibold">Human Agents:</span> {pendingDeleteStats.humanAgents.map(h => h.name).join(', ')}</li>
+                    )}
+                    <li><span className="font-semibold">Threads Affected:</span> {pendingDeleteStats.threadCount}</li>
+                  </ul>
+                )}
+              </div>
+            )}
+
             <div className="rounded-md border p-3 bg-muted/30 text-sm">
               <div><span className="text-muted-foreground">Name:</span> {agentPendingDelete?.display_name || '—'}</div>
               <div><span className="text-muted-foreground">Email:</span> {agentPendingDelete?.email || '—'}</div>
               <div><span className="text-muted-foreground">Role:</span> {agentPendingDelete?.primaryRole || '—'}</div>
             </div>
+
+            <div className="space-y-2 pt-2">
+              <Label htmlFor="confirm-delete" className="text-sm">
+                Type <span className="font-semibold">{agentPendingDelete?.display_name || agentPendingDelete?.email}</span> to confirm
+              </Label>
+              <Input
+                id="confirm-delete"
+                value={confirmDeleteInput}
+                onChange={(e) => setConfirmDeleteInput(e.target.value)}
+                placeholder={agentPendingDelete?.display_name || agentPendingDelete?.email || ""}
+                disabled={deletingAgent}
+              />
+            </div>
+
             <div className="flex gap-2 pt-2">
               <Button
                 variant="destructive"
                 className="flex-1"
                 onClick={() => agentPendingDelete && handleDeleteAgent(agentPendingDelete.user_id)}
-                disabled={deletingAgent}
+                disabled={deletingAgent || (!agentPendingDelete?.display_name && !agentPendingDelete?.email) || (confirmDeleteInput !== (agentPendingDelete?.display_name || agentPendingDelete?.email))}
               >
                 {deletingAgent ? (
                   <span className="inline-flex items-center gap-2">

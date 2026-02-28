@@ -1,5 +1,15 @@
 # Change Log
 
+# [0.1.105] FE/BE CEKAT 2026-02-28
+
+### Super Agent Management
+
+- **Cascade Deletion**: Replacing the restrict constraint, deleting a Super Agent now successfully performs a cascade deletion of all their assigned AI Agents, Human Agents, and nullifies their thread assignments.
+  - **Database Migration**: Replaced the `RESTRICT` foreign key constraint on `ai_profiles.super_agent_id` with `ON DELETE CASCADE`. Added a `cascade_delete_agent` RPC to cleanly wipe child agents.
+  - **Edge Function**: Updated `admin-delete-user` to bypass the generic 409 conflict. It now actively finds and deletes child agents before deleting the target super agent to ensure no orphaned relational data remains.
+  - **Confirmation UI**: The Delete Agent modal in the Human Agents table now actively fetches and displays the names of all AI Agents and Human Agents that will be destroyed, along with the total count of affected threads. Added a required text input confirmation before deletion can proceed.
+  - Updated: `src/components/humanagents/HumanAgents.tsx`, `supabase/functions/admin-delete-user/index.ts`, `supabase/migrations/20260228125600_super_agent_cascade.sql`
+
 # [0.1.104] FE WEB CEKAT 2026-02-27
 
 ### UI Improvements
