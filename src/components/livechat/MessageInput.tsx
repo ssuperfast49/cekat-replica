@@ -29,7 +29,7 @@ export function MessageInput({
     const onKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if ((!draft.trim() && !stagedFile) || loading || isUploadingFile) return;
+            if ((!draft.trim() && !stagedFile) || isUploadingFile) return;
             onSend();
         }
     };
@@ -54,7 +54,7 @@ export function MessageInput({
             <div className="flex items-center gap-2">
                 <FileUploadButton
                     onFileStaged={setStagedFile}
-                    disabled={loading || isUploadingFile || !!stagedFile}
+                    disabled={isUploadingFile || !!stagedFile}
                     className="text-blue-600 hover:text-blue-700 hover:bg-blue-100"
                 />
                 <Textarea
@@ -62,12 +62,12 @@ export function MessageInput({
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={onKeyPress}
-                    disabled={loading || isUploadingFile}
+                    disabled={isUploadingFile}
                     className="rounded-xl min-h-[40px] max-h-[120px] resize-none px-4 py-2 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <Button
                     onClick={onSend}
-                    disabled={(!draft.trim() && !stagedFile) || loading || isUploadingFile}
+                    disabled={(!draft.trim() && !stagedFile) || isUploadingFile}
                     className="rounded-full h-10 w-10 p-0 bg-blue-600 hover:bg-blue-700 text-white"
                 >
                     <Send className="h-4 w-4" />

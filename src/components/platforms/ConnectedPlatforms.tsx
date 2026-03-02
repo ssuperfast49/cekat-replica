@@ -419,36 +419,22 @@ const ConnectedPlatforms = () => {
             <CardContent>
               <div className="relative">
                 <Textarea
-                  value={`<!-- Step 1: Set your config (EDIT THIS) -->
+                  value={`<!-- Start of Chat Widget -->
 <script>
 window.chatConfig = {
-  username: document.querySelector('.navbar-right strong').innerText.trim(),   // Your user's identifier (e.g. 'simegantara')
-  web: '',        // Your site/brand name  (e.g. 'beat4d')
+  baseUrl: '${APP_ORIGIN}',
+  platformId: '${selectedPlatformData?.id || '{platform_id}'}',
+  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier (e.g. 'simegantara')
+  web: '', // Optional site/brand name (e.g. 'beat4d')
 };
+(function(w, d) {
+  var s = d.createElement('script');
+  s.async = true;
+  s.src = window.chatConfig.baseUrl + '/widget.js';
+  d.head.appendChild(s);
+})(window, document);
 </script>
-
-<!-- Step 2: Chat widget loader (DO NOT EDIT BELOW) -->
-<script>
-(function(){
-  var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;
-  var cfg=w.chatConfig||{}; cfg.baseUrl='${APP_ORIGIN}'; cfg.platformId='${selectedPlatformData?.id || '{platform_id}'}';
-  cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';
-  var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+
-           '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+
-           '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';
-  var s=d.createElement('style'); s.type='text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);
-  var bubble=d.createElement('button'); bubble.id='chat-bubble'; bubble.setAttribute('aria-label','Open chat'); bubble.innerHTML='💬';
-  var panel=d.createElement('div'); panel.id='chat-panel';
-  var iframeSrc=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); var qs=[];
-  if(cfg.username) qs.push('username='+encodeURIComponent(cfg.username));
-  if(cfg.web) qs.push('web='+encodeURIComponent(cfg.web));
-  if(qs.length) iframeSrc+='?'+qs.join('&');
-  var iframe=d.createElement('iframe'); iframe.src=iframeSrc; iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);
-  bubble.addEventListener('click',function(){ panel.classList.toggle('open'); });
-  w.addEventListener('message',function(e){if(e.data&&e.data.type==='CEKAT_CHAT_MINIMIZE'){panel.classList.remove('open');}});
-  d.body.appendChild(bubble); d.body.appendChild(panel);
-})();
-</script>`}
+<!-- End of Chat Widget -->`}
                   readOnly
                   className="font-mono text-xs h-48 bg-muted pr-12"
                 />
@@ -460,7 +446,7 @@ window.chatConfig = {
                         size="icon"
                         className="h-8 w-8"
                         onClick={async () => {
-                          const embedCode = `<!-- Step 1: Set your config (EDIT THIS) -->\n<script>\nwindow.chatConfig = {\n  username: document.querySelector('.navbar-right strong').innerText.trim(),   // Your user's identifier (e.g. 'simegantara')\n  web: '',        // Your site/brand name  (e.g. 'beat4d')\n};\n</script>\n\n<!-- Step 2: Chat widget loader (DO NOT EDIT BELOW) -->\n<script>\n(function(){\n  var w=window,d=document; if(w.chatWidgetLoaded) return; w.chatWidgetLoaded=true;\n  var cfg=w.chatConfig||{}; cfg.baseUrl='${APP_ORIGIN}'; cfg.platformId='${selectedPlatformData?.id || '{platform_id}'}';\n  cfg.width=cfg.width||'360px'; cfg.height=cfg.height||'560px';\n  var css='#chat-bubble{position:fixed;right:20px;bottom:20px;z-index:999999;background:#1d4ed8;color:#fff;border-radius:9999px;width:56px;height:56px;box-shadow:0 8px 20px rgba(0,0,0,.2);border:0;cursor:pointer;font-size:24px;line-height:56px;text-align:center}'+\n           '#chat-panel{position:fixed;right:20px;bottom:92px;width:'+cfg.width+';height:'+cfg.height+';max-width:calc(100% - 40px);max-height:70vh;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,.25);border-radius:12px;overflow:hidden;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .2s ease,transform .2s ease;background:#fff}'+\n           '#chat-panel.open{opacity:1;transform:translateY(0);pointer-events:auto}';\n  var s=d.createElement('style'); s.type='text/css'; s.appendChild(d.createTextNode(css)); d.head.appendChild(s);\n  var bubble=d.createElement('button'); bubble.id='chat-bubble'; bubble.setAttribute('aria-label','Open chat'); bubble.innerHTML='💬';\n  var panel=d.createElement('div'); panel.id='chat-panel';\n  var iframeSrc=cfg.baseUrl+'/livechat/'+encodeURIComponent(cfg.platformId); var qs=[];\n  if(cfg.username) qs.push('username='+encodeURIComponent(cfg.username));\n  if(cfg.web) qs.push('web='+encodeURIComponent(cfg.web));\n  if(qs.length) iframeSrc+='?'+qs.join('&');\n  var iframe=d.createElement('iframe'); iframe.src=iframeSrc; iframe.style.width='100%'; iframe.style.height='100%'; iframe.style.border='0'; panel.appendChild(iframe);\n  bubble.addEventListener('click',function(){ panel.classList.toggle('open'); });\n  w.addEventListener('message',function(e){if(e.data&&e.data.type==='CEKAT_CHAT_MINIMIZE'){panel.classList.remove('open');}});\n  d.body.appendChild(bubble); d.body.appendChild(panel);\n})();\n</script>`;
+                          const embedCode = `<!-- Start of Chat Widget -->\n<script>\nwindow.chatConfig = {\n  baseUrl: '${APP_ORIGIN}',\n  platformId: '${selectedPlatformData?.id || '{platform_id}'}',\n  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier (e.g. 'simegantara')\n  web: '', // Optional site/brand name (e.g. 'beat4d')\n};\n(function(w, d) {\n  var s = d.createElement('script');\n  s.async = true;\n  s.src = window.chatConfig.baseUrl + '/widget.js';\n  d.head.appendChild(s);\n})(window, document);\n</script>\n<!-- End of Chat Widget -->`;
                           try {
                             await navigator.clipboard.writeText(embedCode);
                             toast({
