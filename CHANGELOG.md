@@ -1,5 +1,13 @@
 # Change Log
 
+# [0.1.108] FE/BE CEKAT 2026-03-02
+
+### LiveChat Embed Refactor
+
+- **External Script Loader**: Extracted the LiveChat widget injection logic into an external script file (`public/widget.js`) to significantly reduce the size of the embed code placed on customer websites.
+- **Dynamic Configuration**: The embed snippet now only contains an essential configuration block (`window.chatConfig`) and a tiny script loader, reducing potential styling conflicts with host websites.
+- Updated: `src/components/platforms/ConnectedPlatforms.tsx`, `embed_test.html`, `public/widget.js`
+
 # [0.1.107] FE/BE CEKAT 2026-03-01
 
 ### LiveChat & Widget Embed
