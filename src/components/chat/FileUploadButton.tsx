@@ -53,7 +53,10 @@ export function getFileIcon(mimeType: string) {
 }
 
 // Utility function to upload a file to Supabase Storage
-export async function uploadFileToStorage(file: File): Promise<UploadedFile> {
+// Pass an optional `client` to use a specific supabase instance (e.g. the LiveChat anonymous client)
+export async function uploadFileToStorage(file: File, client?: any): Promise<UploadedFile> {
+    const storageClient = client ?? supabase;
+
     // Generate unique filename
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
@@ -62,7 +65,7 @@ export async function uploadFileToStorage(file: File): Promise<UploadedFile> {
     const filePath = `attachments/${fileName}`;
 
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { data, error } = await storageClient.storage
         .from("chat-attachments")
         .upload(filePath, file, {
             cacheControl: "3600",
@@ -74,7 +77,7 @@ export async function uploadFileToStorage(file: File): Promise<UploadedFile> {
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = storageClient.storage
         .from("chat-attachments")
         .getPublicUrl(filePath);
 

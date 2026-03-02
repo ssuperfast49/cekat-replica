@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.109] FE/BE CEKAT 2026-03-02
+
+### LiveChat Bug Fixes
+
+- **Image Upload Fix (Production)**: LiveChat widget now uses its own anonymous Supabase client (with `persistSession: false` and `x-account-id` header) when uploading files to `chat-attachments` storage. Previously, the main app client was used which lacks a valid auth session inside the iframe, causing RLS policy violations on production.
+- **Image Rendering on Refresh**: Images stored with `type='text'` in the database (fallback or older records) now correctly render as images in `MessageList.tsx` by detecting the Supabase storage URL pattern (`chat-attachments`) even when the `type` field doesn't match.
+- **Infinite Scroll Fix**: Auto-scroll to bottom no longer forces the chat down when the user has manually scrolled up to read older messages. A "New message" button now appears instead.
+- Updated: `src/components/chat/FileUploadButton.tsx`, `src/hooks/useLiveChat.ts`, `src/components/livechat/MessageList.tsx`
+
 # [0.1.108] FE/BE CEKAT 2026-03-02
 
 ### LiveChat Embed Refactor

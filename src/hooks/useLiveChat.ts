@@ -233,16 +233,32 @@ export function useLiveChat() {
             viewport.addEventListener("scroll", handleScroll);
             return () => viewport.removeEventListener("scroll", handleScroll);
         }
-    }, []);
+    }, [handleScroll]); // Added dependency to ensure stable reference
 
     useEffect(() => {
         if (messages.length > 0) {
             const lastMsg = messages[messages.length - 1];
-            if (lastMsg.role === 'user') {
-                scrollToBottom();
-            } else if (!userScrolledUp) {
-                scrollToBottom();
+
+            // Auto scroll if user sent the latest message
+            if (lastMsg.role === 'user' && !lastMsg.id.startsWith('temp-')) {
+                scrollToBottom("auto"); // Quick scroll for user's own text
+                return;
+            }
+
+            // Always scroll if user hasn't manually scrolled up
+            if (!userScrolledUp) {
+                // Determine behavior based on if there are attachments which take time to load
+                // Or if it's just plain text
+                const hasAttachment = lastMsg.body?.match(/^https?:\/\/[^\s]+$/) && lastMsg.type !== 'text';
+
+                if (hasAttachment) {
+                    // Allow browser to calculate layout slightly before scrolling
+                    setTimeout(() => scrollToBottom("smooth"), 100);
+                } else {
+                    scrollToBottom("smooth");
+                }
             } else {
+                // They scrolled up, so just show the tiny button
                 setShowScrollButton(true);
             }
         }
@@ -895,7 +911,7 @@ export function useLiveChat() {
         if (activeStagedFile) {
             setIsUploadingFile(true);
             try {
-                uploadedFile = await uploadFileToStorage(activeStagedFile.file);
+                uploadedFile = await uploadFileToStorage(activeStagedFile.file, supabase);
             } catch (error: any) {
                 toast.error(`Upload failed: ${error.message}`);
                 setIsUploadingFile(false);
