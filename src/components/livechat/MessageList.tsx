@@ -108,7 +108,12 @@ export function MessageList({
 
                         return (() => {
                             const bodyText = (m.body || '').trim();
-                            const isText = m.type === 'text' || !m.type;
+                            // If it's an uploaded attachment URL without spaces, treat it as an attachment even if type says 'text'
+                            const isAttachmentUrl = bodyText.match(/^https?:\/\/[^\s]+$/) !== null &&
+                                (bodyText.includes('supabase.co/storage/v1/object/public/chat-attachments') ||
+                                    bodyText.includes('chat-attachments'));
+
+                            const isText = (m.type === 'text' || !m.type) && !isAttachmentUrl;
                             const isAttachment = !isText && bodyText;
 
                             let attachType = m.type;
