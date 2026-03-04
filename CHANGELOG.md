@@ -1,5 +1,16 @@
 # Change Log
 
+# [0.1.110] FE/BE CEKAT 2026-03-05
+
+### Token Limit Header Indicator
+
+- **Real-Time Token Tracking**: Added a new header component that visually tracks and displays token limits (daily and monthly) directly from the `users_profile` table.
+- **Role-Based Visibility**:
+  - **Super Agents / Human Agents**: See their own (or their parent Super Agent's) token usage as distinct visual pills.
+  - **Master Agents**: See a comprehensive dropdown containing the token usage of all Super Agents with limits enabled.
+- **Visual Thresholds**: Usage badges automatically turn Red and display a warning icon when usage approaches or exceeds 95% of the limit.
+- **Realtime Fallback System**: Token limits update immediately via Supabase Realtime subscriptions, backed by a robust 10-second polling fallback to guarantee freshness even across tabs.
+- Updated: `src/components/layout/TokenLimitIndicator.tsx`, `src/hooks/useTokenLimit.ts`, `src/pages/Index.tsx`
 # [0.1.109] FE/BE CEKAT 2026-03-02
 
 ### LiveChat Bug Fixes

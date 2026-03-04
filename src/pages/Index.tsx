@@ -29,6 +29,7 @@ import RoleGate from "@/components/rbac/RoleGate";
 import { useNavigation } from "@/hooks/useNavigation";
 import { useRBAC } from "@/contexts/RBACContext";
 import { NAVIGATION_ORDER, NavKey } from "@/config/navigation";
+import { TokenLimitIndicator } from "@/components/layout/TokenLimitIndicator";
 import { cn } from "@/lib/utils";
 import { ROLES } from "@/types/rbac";
 
@@ -335,6 +336,7 @@ const Index = () => {
           <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-8">
               <div className="flex items-center gap-2 md:gap-3">
+                <TokenLimitIndicator />
               </div>
               <div className="flex items-center gap-3">
                 <span className="hidden sm:inline-flex items-center text-xs text-muted-foreground font-mono select-none">
