@@ -719,7 +719,7 @@ export function useLiveChat() {
                     } catch (err) {
                         console.warn('[LiveChat] periodic catch-up failed', err);
                     }
-                }, 10_000) as unknown as number;
+                }, 5_000) as unknown as number;
             } finally {
                 notificationsReadyRef.current = true;
                 setBooting(false);

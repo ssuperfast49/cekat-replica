@@ -175,7 +175,7 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
   // Helper to render timestamp/status
   const renderMetadata = (isInsideBubble: boolean) => (
     <div className={`mt-1 flex items-center gap-1 text-[10px] ${isInsideBubble
-      ? (isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700" : "text-muted-foreground")
+      ? (isAiAgent ? "text-blue-100" : isHumanAgent ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground")
       : "text-muted-foreground"
       } ${!isInsideBubble && isAgent ? "justify-end" : ""}`}>
       <span>{new Date(message.created_at).toLocaleTimeString([], {
@@ -210,7 +210,7 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className={isAiAgent ? "text-blue-300 font-medium underline hover:text-white" : "text-blue-600 font-medium underline hover:text-blue-800"}
+          className={isAiAgent ? "text-blue-300 font-medium underline hover:text-white" : "text-blue-600 dark:text-blue-300 font-medium underline hover:text-blue-800 dark:hover:text-blue-100"}
         >
           {children}
         </a>
@@ -310,7 +310,7 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
               className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${isAiAgent
                 ? "bg-blue-600 text-white"
                 : isHumanAgent
-                  ? "bg-blue-100 text-blue-900"
+                  ? "bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100"
                   : "bg-muted text-foreground"
                 } ${highlighted ? 'ring-2 ring-yellow-300' : ''}`}
             >
