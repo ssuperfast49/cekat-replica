@@ -1,5 +1,22 @@
 # Change Log
 
+# [0.1.111] FE WEB CEKAT 2026-03-07
+
+### Realtime Polling Improvements
+
+- **Faster Fallback Polling**: Reduced all realtime fallback polling intervals to 5 seconds for snappier message delivery when Supabase Realtime events are missed.
+  - **LiveChat Widget**: Periodic catch-up polling reduced from 10s → 5s.
+  - **Admin Conversation Panel**: Message refresh fallback reduced from 30s → 5s.
+  - **Auto-Resolve Check**: Interval reduced from 30s → 5s.
+  - Updated: `src/hooks/useLiveChat.ts`, `src/hooks/useConversations.ts`
+
+### Dark Mode Chat Fix
+
+- **Human Agent Bubble Visibility**: Fixed unreadable human agent chat messages in dark mode.
+  - Added `dark:bg-blue-900` and `dark:text-blue-100` to the human agent message bubble.
+  - Fixed metadata timestamp color (`dark:text-blue-300`) and link colors (`dark:text-blue-300`, `dark:hover:text-blue-100`) for proper contrast.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
 # [0.1.110] FE/BE CEKAT 2026-03-05
 
 ### Token Limit Header Indicator

@@ -1268,7 +1268,7 @@ export const useConversations = () => {
       if (document.visibilityState === 'visible') {
         checkAutoResolve();
       }
-    }, 30000); // Check every 30 seconds
+    }, 5000); // Check every 5 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -1364,8 +1364,8 @@ export const useConversations = () => {
   useEffect(() => {
     if (!selectedThreadId) return;
 
-    // Set up a periodic refresh as a fallback (every 30 seconds)
-    const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 30000);
+    // Set up a periodic refresh as a fallback (every 5 seconds)
+    const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 5000);
 
     const channel = supabase
       .channel(`messages-${selectedThreadId}`)
