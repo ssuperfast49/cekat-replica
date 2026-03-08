@@ -356,6 +356,11 @@ export function useLiveChat() {
             for (const r of rows) {
                 if (!r?.id) continue;
 
+                // Lift the user's ban if a human agent replies
+                if (r.role === 'agent') {
+                    rateLimitHook.clearBan();
+                }
+
                 let role: "user" | "assistant" | "system" = "user";
                 if (r.role === 'system') {
                     role = 'system';
@@ -442,7 +447,7 @@ export function useLiveChat() {
             }
             return arr;
         });
-    }, []);
+    }, [rateLimitHook.clearBan]);
 
     // Initialization & Realtime
     const clearCatchUpTimers = () => {
