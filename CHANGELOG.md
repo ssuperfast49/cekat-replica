@@ -1,5 +1,26 @@
 # Change Log
 
+# [0.1.112] FE WEB CEKAT 2026-03-08
+
+### Rate Limiting / Spam Ban
+
+- **Anti-Spam Rate Limit**: Users who send 5+ messages within 5 seconds are temporarily banned from chatting for 5 minutes.
+  - New `useRateLimit` hook tracks message timestamps, detects spam, manages ban state with countdown timer, persists to `sessionStorage`.
+  - **LiveChat**: Red "⛔ Terlalu banyak aksi, mohon tunggu X menit XX detik" banner, disabled input/send/upload, local system message as fallback.
+  - **Admin Panel (Web)**: Ban message inserted as system event in DB.
+  - **Admin Panel (WA/Telegram)**: Ban message delivered via `proxy-n8n SEND_MESSAGE` webhook.
+  - Updated: `src/hooks/useRateLimit.ts` [NEW], `src/hooks/useLiveChat.ts`, `src/components/livechat/MessageInput.tsx`, `src/pages/LiveChat.tsx`, `src/components/chat/ConversationPage.tsx`
+
+### Scroll-to-Bottom Fix
+
+- **Prevented forced scroll on polling**: Chat no longer jumps to bottom every 5 seconds when reading older messages. Auto-scroll only triggers when near the bottom (within 150px) or when switching threads.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Periodic Conversation List Refresh
+
+- **Basic Agent Handover Visibility**: Added 5-second periodic `fetchConversations` fallback so basic agents see newly assigned/handed-over threads without needing to refresh the page. Runs only when tab is visible.
+  - Updated: `src/hooks/useConversations.ts`
+
 # [0.1.111] FE WEB CEKAT 2026-03-07
 
 ### Realtime Polling Improvements

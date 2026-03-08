@@ -9,6 +9,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { uploadFileToStorage, type UploadedFile, type StagedFile } from "@/components/chat/FileUploadButton";
 import { ChatMessage } from "@/types/liveChat";
 import { toast } from "sonner";
+import { useRateLimit } from "@/hooks/useRateLimit";
 
 // Use provided ringtones from public/tones (can be overridden via window.chatConfig)
 const LOW_TONE_URL = '/tones/mixkit-message-pop-alert-2354.mp3';
@@ -50,6 +51,7 @@ export function useLiveChat() {
     const [aiProfileId, setAiProfileId] = useState<string | null>(null);
     const [threadStatus, setThreadStatus] = useState<string | null>(null);
     const [isAssignedToHuman, setIsAssignedToHuman] = useState<boolean>(false);
+    const rateLimitHook = useRateLimit();
 
     // Refs
     const viewportRef = useRef<HTMLDivElement>(null);
@@ -792,6 +794,24 @@ export function useLiveChat() {
         const text = draft.trim();
         const activeStagedFile = stagedFile;
         if (!text && !activeStagedFile) return;
+
+        // ── Rate-limit guard ──
+        if (rateLimitHook.recordSend()) {
+            const banMsg = rateLimitHook.getBanMessage();
+            if (banMsg) {
+                setMessages(prev => [...prev, {
+                    id: `ban-${Date.now()}`,
+                    role: 'system' as const,
+                    direction: 'in' as const,
+                    body: `⛔ ${banMsg}`,
+                    type: 'text' as const,
+                    at: new Date().toISOString(),
+                    order: nextOrder(),
+                }]);
+                setTimeout(() => scrollToBottom(), 50);
+            }
+            return;
+        }
         const createdAt = new Date().toISOString();
 
         // ── 0. Optimistic UI & Local State Reset ──
@@ -1142,5 +1162,7 @@ export function useLiveChat() {
         userScrolledUp,
         threadStatus,
         isAssignedToHuman,
+        isBanned: rateLimitHook.isBanned,
+        banCountdown: rateLimitHook.banCountdown,
     };
 }

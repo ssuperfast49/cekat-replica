@@ -48,6 +48,8 @@ export default function LiveChat() {
     showScrollButton,
     scrollToBottom,
     isAssignedToHuman,
+    isBanned,
+    banCountdown,
   } = useLiveChat();
 
   const fmt = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -79,6 +81,8 @@ export default function LiveChat() {
               isUploadingFile={isUploadingFile}
               onSend={handleSend}
               isAssignedToHuman={isAssignedToHuman}
+              isBanned={isBanned}
+              banCountdown={banCountdown}
             />
           </CardContent>
         </Card>
