@@ -40,7 +40,8 @@ import { supabase, protectedSupabase } from "@/lib/supabase";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLES } from "@/types/rbac";
-import { setSendMessageProvider } from "@/config/webhook";
+import { setSendMessageProvider, resolveSendMessageEndpoint } from "@/config/webhook";
+import { callWebhook } from "@/lib/webhookClient";
 import { isDocumentHidden, onDocumentVisible, stripMarkdown, isImageLink, extractUrls } from "@/lib/utils";
 import {
   AlertDialog,
@@ -61,6 +62,7 @@ import { FileUploadButton, StagedFilePreview, uploadFileToStorage, type Uploaded
 import { usePresence } from "@/contexts/PresenceContext";
 import { formatDistanceToNow } from "date-fns";
 import { id } from "date-fns/locale";
+import { useRateLimit } from "@/hooks/useRateLimit";
 
 interface MatchPosition {
   start: number;
@@ -417,6 +419,7 @@ export default function ConversationPage() {
   const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'} `, [user?.id]);
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
+  const rateLimitHook = useRateLimit();
 
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
@@ -1135,13 +1138,27 @@ export default function ConversationPage() {
     }
   };
 
-  // Simple + reliable: always keep chat pinned to bottom on message updates (realtime/refetch).
+  // Auto-scroll to bottom only when the user is already near the bottom (not scrolled up).
+  // Also force-scroll when the selected thread changes (fresh thread load).
+  const prevThreadRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
-    try {
-      viewport.scrollTop = viewport.scrollHeight;
-    } catch { }
+
+    const isNewThread = prevThreadRef.current !== selectedThreadId;
+    prevThreadRef.current = selectedThreadId;
+
+    // If switching threads, always scroll to bottom
+    if (isNewThread) {
+      try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+      return;
+    }
+
+    // Only auto-scroll if user is near the bottom (within 150px)
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom < 150) {
+      try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+    }
   }, [messages, selectedThreadId]);
 
   // Handle conversation selection
@@ -1208,6 +1225,60 @@ export default function ConversationPage() {
   const handleSendMessage = async () => {
     const text = draft.trim();
     if ((!text && !stagedFile) || !selectedThreadId) return;
+
+    // ── Rate-limit guard ──
+    if (rateLimitHook.recordSend()) {
+      const banMsg = rateLimitHook.getBanMessage();
+      if (banMsg) {
+        const provider = (selectedConversation?.channel?.provider || '').toLowerCase();
+        const isExternal = ['telegram', 'whatsapp'].includes(provider);
+
+        if (isExternal && selectedConversation) {
+          // Send ban message to the customer via proxy-n8n SEND_MESSAGE
+          try {
+            const endpoint = resolveSendMessageEndpoint(provider);
+            const { data: contactData } = await supabase
+              .from('contacts')
+              .select('phone, external_id')
+              .eq('id', selectedConversation.contact_id)
+              .single();
+            await callWebhook(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                thread_id: selectedThreadId,
+                channel_id: selectedConversation.channel_id,
+                actor_id: user?.id || null,
+                contact_phone: contactData?.phone || null,
+                external_id: contactData?.external_id || null,
+                text: `⛔ ${banMsg}`,
+                type: 'text',
+                direction: 'out',
+                role: 'assistant',
+              }),
+            });
+          } catch (e) {
+            console.warn('[RateLimit] Failed to send ban message via webhook', e);
+          }
+        } else {
+          // Web channel: insert ban message directly as system event
+          try {
+            await protectedSupabase.from('messages').insert([{
+              thread_id: selectedThreadId,
+              direction: null,
+              role: 'system',
+              type: 'event',
+              body: `⛔ ${banMsg}`,
+              payload: { event: 'rate_limit' },
+            }]);
+          } catch (e) {
+            console.warn('[RateLimit] Failed to insert ban message', e);
+          }
+        }
+        toast.error(banMsg);
+      }
+      return;
+    }
 
     try {
       let attachment = undefined;
@@ -1774,28 +1845,36 @@ export default function ConversationPage() {
               )}
               {/* Show message input only when: assigned flow + user is the collaborator + not done */}
               {!isSelectedConversationDone && selectedConversationFlow === 'assigned' && collaboratorId === user?.id && (
-                <div className="flex items-end gap-2">
-                  <FileUploadButton
-                    onFileStaged={handleFileStaged}
-                    disabled={isUploadingFile || !canCurrentUserSend}
-                  />
-                  <Textarea
-                    placeholder={`Message ${selectedConversation.contact_name}...`}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={onKeyPress}
-                    className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2.5"
-                    disabled={(!canCurrentUserSend) || isUploadingFile}
-                    title={sendDisabledReason}
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleSendMessage}
-                    disabled={(!draft.trim() && !stagedFile) || !canCurrentUserSend || isUploadingFile}
-                    title={sendDisabledReason || 'Send message'}
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                <div>
+                  {rateLimitHook.isBanned && rateLimitHook.banCountdown && (
+                    <div className="mb-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-medium flex items-center gap-2">
+                      <span className="text-base">⛔</span>
+                      <span>Terlalu banyak aksi, mohon tunggu <strong>{rateLimitHook.banCountdown}</strong></span>
+                    </div>
+                  )}
+                  <div className="flex items-end gap-2">
+                    <FileUploadButton
+                      onFileStaged={handleFileStaged}
+                      disabled={isUploadingFile || !canCurrentUserSend || rateLimitHook.isBanned}
+                    />
+                    <Textarea
+                      placeholder={rateLimitHook.isBanned ? "Anda diblokir sementara..." : `Message ${selectedConversation.contact_name}...`}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={onKeyPress}
+                      className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2.5"
+                      disabled={(!canCurrentUserSend) || isUploadingFile || rateLimitHook.isBanned}
+                      title={sendDisabledReason}
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleSendMessage}
+                      disabled={(!draft.trim() && !stagedFile) || !canCurrentUserSend || isUploadingFile || rateLimitHook.isBanned}
+                      title={sendDisabledReason || 'Send message'}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               )}
               {/* Show takeover button when: unassigned OR (assigned but not the collaborator) and not done */}

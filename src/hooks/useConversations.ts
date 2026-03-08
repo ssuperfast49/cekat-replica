@@ -1273,6 +1273,19 @@ export const useConversations = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Periodic conversation list fallback refresh (every 5 seconds).
+  // Ensures newly assigned threads appear for basic agents even when
+  // Realtime events are filtered/dropped by RLS during handovers.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchConversations(undefined, { silent: true });
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Realtime: keep conversations list in sync with DB
   useEffect(() => {
     const channel = supabase
