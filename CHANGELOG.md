@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.113] FE WEB CEKAT 2026-03-08
+
+### Ban Lift on Agent Reply
+
+- **Automatic Ban Removal**: When a visitor is temporarily banned from chatting due to rate limits (5+ messages in 5s), the ban is now automatically lifted if a human agent replies to their conversation.
+  - Updates the `useRateLimit` hook to expose a `clearBan` function.
+  - Fixes the LiveChat message incoming handler to clear the ban only when `role === 'agent'`, ensuring AI replies do not prematurely lift the ban.
+  - Updated: `src/hooks/useRateLimit.ts`, `src/hooks/useLiveChat.ts`
+
 # [0.1.112] FE WEB CEKAT 2026-03-08
 
 ### Rate Limiting / Spam Ban

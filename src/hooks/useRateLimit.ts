@@ -114,10 +114,22 @@ export function useRateLimit() {
         return `Terlalu banyak aksi, mohon tunggu ${formatCountdown(bannedUntil - Date.now())}`;
     }, [bannedUntil]);
 
+    /** Manually lift the ban */
+    const clearBan = useCallback(() => {
+        setBannedUntil(null);
+        setBanCountdown('');
+        try { sessionStorage.removeItem(STORAGE_KEY); } catch { }
+        if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+        }
+    }, []);
+
     return {
         isBanned,
         banCountdown,
         recordSend,
         getBanMessage,
+        clearBan,
     };
 }
