@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.1.114] FE WEB CEKAT 2026-03-09
+
+### LiveChat Mobile Layout
+
+- **Elevated Mobile Widget**: Adjusted the positioning of the chat widget on mobile screens (≤ 768px). The chat launcher bubble and the opened panel sit 70px higher to prevent overlapping with external bottom navigation bars.
+  - Updated: `public/widget.js`
+
 # [0.1.113] FE WEB CEKAT 2026-03-08
 
 ### Ban Lift on Agent Reply
