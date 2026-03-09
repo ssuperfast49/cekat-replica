@@ -23,7 +23,7 @@ export interface AgentWithDetails {
   timezone: string | null;
   created_at: string;
   roles: string[];
-  primaryRole: 'master_agent' | 'super_agent' | 'agent' | null;
+  primaryRole: 'master_agent' | 'super_agent' | 'agent' | 'audit' | null;
   status: 'Active' | 'Inactive';
   super_agent_id?: string | null;
   last_seen_at?: string | null;
@@ -51,13 +51,14 @@ export const useHumanAgents = () => {
   };
 
   // Helper function to get primary role from roles array
-  const getPrimaryRole = (roles: (string | null)[]): 'master_agent' | 'super_agent' | 'agent' | null => {
+  const getPrimaryRole = (roles: (string | null)[]): 'master_agent' | 'super_agent' | 'agent' | 'audit' | null => {
     // Filter out null values and get valid roles
     const validRoles = roles?.filter((role): role is string => role !== null && role !== undefined) || [];
 
     if (validRoles.includes('master_agent')) return 'master_agent';
     if (validRoles.includes('super_agent')) return 'super_agent';
     if (validRoles.includes('agent')) return 'agent';
+    if (validRoles.includes('audit')) return 'audit';
     return null;
   };
 
@@ -188,7 +189,7 @@ export const useHumanAgents = () => {
   const createAgent = async (agentData: {
     full_name: string;
     email: string;
-    role: 'master_agent' | 'super_agent' | 'agent';
+    role: 'master_agent' | 'super_agent' | 'agent' | 'audit';
     super_agent_id?: string | null;
     org_id?: string | null;
   }) => {
@@ -271,7 +272,7 @@ export const useHumanAgents = () => {
   };
 
   // Update agent role
-  const updateAgentRole = async (agentId: string, role: 'master_agent' | 'super_agent' | 'agent') => {
+  const updateAgentRole = async (agentId: string, role: 'master_agent' | 'super_agent' | 'agent' | 'audit') => {
     try {
       setError(null);
 

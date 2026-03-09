@@ -4,13 +4,13 @@ import { useAuth } from './AuthContext';
 import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
 import { PERMISSIONS_SCHEMA } from '@/config/permissions';
 import { clearAuthzSensitiveCaches, emitAuthzChanged } from '@/lib/authz';
-import type { 
-  Role, 
-  Permission, 
-  RoleWithPermissions, 
+import type {
+  Role,
+  Permission,
+  RoleWithPermissions,
   UserWithRoles,
   PermissionName,
-  RoleName 
+  RoleName
 } from '@/types/rbac';
 
 interface RBACContextType {
@@ -74,7 +74,7 @@ export function RBACProvider({ children }: RBACProviderProps) {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(key, fingerprint);
       }
-    } catch {}
+    } catch { }
   };
 
   const fetchUserRBAC = async (userId: string, opts?: { background?: boolean }) => {
@@ -186,13 +186,13 @@ export function RBACProvider({ children }: RBACProviderProps) {
           emitAuthzChanged('user_roles-realtime-change');
           try {
             await fetchUserRBAC(uid, { background: true });
-          } catch {}
+          } catch { }
         }
       )
       .subscribe();
 
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try { supabase.removeChannel(channel); } catch { }
     };
   }, [user?.id, accountDeactivated]);
 
@@ -204,6 +204,20 @@ export function RBACProvider({ children }: RBACProviderProps) {
     if (userRoles.some(r => r.name === 'master_agent')) return true;
 
     const normalizedInput = String(permission).trim().toLowerCase();
+
+    // Audit Role Bypass: Allow all read/view actions
+    if (userRoles.some(r => r.name === 'audit')) {
+      const isReadOnly =
+        normalizedInput.endsWith('.read') ||
+        normalizedInput.endsWith('.read_all') ||
+        normalizedInput.endsWith('.read_own') ||
+        normalizedInput.endsWith('.read_channel_owned') ||
+        normalizedInput.endsWith('.read_collaborator') ||
+        normalizedInput.endsWith(': read') ||
+        normalizedInput.includes('.view_');
+
+      if (isReadOnly) return true;
+    }
 
     // 1) Direct match against human-readable name (e.g., "Messages: Read")
     const matchedByName = userPermissions.some(p => (p.name || '').trim().toLowerCase() === normalizedInput);
@@ -261,12 +275,12 @@ export function RBACProvider({ children }: RBACProviderProps) {
         p_resource: resource,
         p_action: action
       });
-      
+
       if (error) {
         console.error('Error checking permission:', error);
         return false;
       }
-      
+
       return data === true;
     } catch (err) {
       console.error('Error in hasPermissionDB:', err);

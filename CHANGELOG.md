@@ -1,5 +1,18 @@
 # Change Log
 
+# [0.1.115] FE/BE CEKAT 2026-03-10
+
+### Audit Role Implementation
+
+- **Read-Only Audit Role**: Introduced a new `audit` role modeled after the `master_agent` but with strict read-only permissions across the entire application interface.
+  - Added the `audit` role to the `ROLES` constant and updated `types/rbac.ts`.
+  - Automatically maps read-only permission checks (`.read`, `.read_all`, `.read_own`, `.view_...`) while explicitly blocking edit and modify actions within `RBACContext.tsx`.
+  - Adjusted agent lists and filtering logic in `HumanAgents.tsx` to include and distinguish the `audit` role, including custom styling for the role badge.
+  - Created a new Supabase migration to update the `get_audit_logs` SQL procedure, granting users with the `audit` role full visibility of organization-wide logs.
+- **Strict UI Barriers in Chat**: Enforced read-only mode in the active conversation interface (`ConversationPage.tsx`) to prevent unintended state modifications by auditors.
+  - Automatically disables chat message text inputs, file attachments, and hides the Send button.
+  - Hides major state manipulation components ("Takeover Chat", "Resolve", and "Move to Unassigned") for `audit` users.
+
 # [0.1.114] FE WEB CEKAT 2026-03-09
 
 ### LiveChat Mobile Layout
@@ -65,6 +78,7 @@
 - **Visual Thresholds**: Usage badges automatically turn Red and display a warning icon when usage approaches or exceeds 95% of the limit.
 - **Realtime Fallback System**: Token limits update immediately via Supabase Realtime subscriptions, backed by a robust 10-second polling fallback to guarantee freshness even across tabs.
 - Updated: `src/components/layout/TokenLimitIndicator.tsx`, `src/hooks/useTokenLimit.ts`, `src/pages/Index.tsx`
+
 # [0.1.109] FE/BE CEKAT 2026-03-02
 
 ### LiveChat Bug Fixes
