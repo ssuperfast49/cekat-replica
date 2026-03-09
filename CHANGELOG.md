@@ -1,5 +1,13 @@
 # Change Log
 
+# [0.1.116] FE WEB CEKAT 2026-03-10
+
+### Navigation Restrictions
+
+- **Audit Role Sidebar Cleanup**: Hidden administrative menus from the sidebar specifically for the `audit` role to simplify the interface and prevent access to configuration areas.
+  - Hidden menus: **Human Agents**, **Connected Platforms**, and **AI Agents**.
+  - Updated: `src/config/navigation.ts`
+
 # [0.1.115] FE/BE CEKAT 2026-03-10
 
 ### Audit Role Implementation
