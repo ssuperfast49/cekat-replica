@@ -3,7 +3,7 @@ import { ROLES } from '@/types/rbac';
 import type { RoleName } from '@/types/rbac';
 import { PERMISSIONS_SCHEMA } from '@/config/permissions';
 
-export type NavKey = 
+export type NavKey =
   | "chat"
   | "admin"
   | "analytics"
@@ -13,7 +13,7 @@ export type NavKey =
   | "aiagents"
   | "humanagents"
   | "permissions";
-  // | "settings"; // Temporarily hidden
+// | "settings"; // Temporarily hidden
 
 export interface NavigationItem {
   key: NavKey;
@@ -73,7 +73,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     requireAll: false,
     description: "View and manage conversations"
   },
-  
+
   analytics: {
     key: "analytics",
     label: "Analytics",
@@ -89,9 +89,10 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     icon: ClipboardList,
     permissions: ['audit_logs.read'],
     requireAll: true,
+    forbiddenRoles: [ROLES.AUDIT],
     description: "View user action logs"
   },
-  
+
   contacts: {
     key: "contacts",
     label: "Contacts",
@@ -100,16 +101,17 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     requireAll: false,
     description: "Manage customer contacts and identities"
   },
-  
+
   platforms: {
     key: "platforms",
     label: "Connected Platforms",
     icon: PlugZap,
     permissions: readPerms('channels'),
     requireAll: false,
+    forbiddenRoles: [ROLES.AUDIT],
     description: "Manage connected channels and integrations"
   },
-  
+
   aiagents: {
     key: "aiagents",
     label: "AI Agents",
@@ -117,9 +119,9 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     permissions: readPerms('ai_profiles'),
     requireAll: false,
     description: "Configure and manage AI agents",
-    forbiddenRoles: [ROLES.AGENT],
+    forbiddenRoles: [ROLES.AGENT, ROLES.AUDIT],
   },
-  
+
   humanagents: {
     key: "humanagents",
     label: "Human Agents",
@@ -128,6 +130,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     permissions: readPerms('super_agents'),
     requireAll: false,
     roleBypass: [ROLES.MASTER_AGENT, ROLES.SUPER_AGENT],
+    forbiddenRoles: [ROLES.AUDIT],
     description: "Manage human agent assignments and roles"
   },
 
@@ -140,7 +143,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
     requiredRoles: [ROLES.MASTER_AGENT],
     description: "Manage roles and permissions"
   },
-  
+
   // Settings menu temporarily hidden
   // settings: {
   //   key: "settings",
@@ -162,7 +165,7 @@ export const NAVIGATION_CONFIG: Record<NavKey, NavigationItem> = {
 export const NAVIGATION_ORDER: NavKey[] = [
   "admin",
   "chat",
-  "analytics", 
+  "analytics",
   "logs",
   "contacts",
   "platforms",
