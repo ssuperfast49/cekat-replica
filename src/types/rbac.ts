@@ -46,6 +46,7 @@ export const ROLES = {
   MASTER_AGENT: 'master_agent',
   SUPER_AGENT: 'super_agent',
   AGENT: 'agent',
+  AUDIT: 'audit',
 } as const;
 
 // Type helpers

@@ -402,7 +402,8 @@ export default function ConversationPage() {
   const { hasRole, hasPermission } = useRBAC();
   const isMasterAgent = hasRole('master_agent');
   const isSuperAgent = hasRole('super_agent');
-  const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent;
+  const isAudit = hasRole(ROLES.AUDIT);
+  const isRegularAgentOnly = hasRole('agent') && !isMasterAgent && !isSuperAgent && !isAudit;
   const canMoveToUnassigned = isMasterAgent || isSuperAgent;
   const canSendMessagesPermission = hasPermission('messages.create');
   const currentUserId = user?.id ?? null;
@@ -1027,9 +1028,9 @@ export default function ConversationPage() {
 
   // Only the collaborator who took over can send replies
   const roleAllowsSend = useMemo(() => {
-    if (!currentUserId) return false;
+    if (!currentUserId || isAudit) return false;
     return selectedCollaboratorId === currentUserId;
-  }, [currentUserId, selectedCollaboratorId]);
+  }, [currentUserId, selectedCollaboratorId, isAudit]);
 
   const canCurrentUserSend = roleAllowsSend;
 
@@ -1767,7 +1768,7 @@ export default function ConversationPage() {
                       {moveToUnassignedLoading ? 'Moving…' : 'Move to Unassigned'}
                     </Button>
                   )}
-                  {selectedConversation.status !== 'closed' && (
+                  {selectedConversation.status !== 'closed' && !isAudit && (
                     <Button
                       size="sm"
                       className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
@@ -1880,6 +1881,7 @@ export default function ConversationPage() {
               {/* Show takeover button when: unassigned OR (assigned but not the collaborator) and not done */}
               {
                 !isSelectedConversationDone &&
+                !isAudit &&
                 (selectedConversationFlow === 'unassigned' || collaboratorId !== user?.id) && (
                   <Button
                     type="button"
