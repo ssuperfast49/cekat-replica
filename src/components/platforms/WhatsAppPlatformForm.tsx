@@ -34,6 +34,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   const [formData, setFormData] = useState({
     platformName: "",
+    websiteId: "",
     description: "",
     phoneNumber: "",
     selectedAIAgent: "",
@@ -310,7 +311,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
     return () => clearInterval(pollInterval);
   }, [qrImageUrl, isWhatsAppConnected]);
 
-  const hasRequiredFields = Boolean(formData.platformName && formData.selectedAIAgent && selectedSuperAgentId && canCreateChannel);
+  const hasRequiredFields = Boolean(formData.platformName && formData.websiteId && formData.selectedAIAgent && selectedSuperAgentId && canCreateChannel);
 
   const handleCancel = async () => {
     try {
@@ -320,6 +321,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       // Reset all local states so popup is clean next open
       setFormData({
         platformName: "",
+        websiteId: "",
         description: "",
         phoneNumber: "",
         selectedAIAgent: "",
@@ -381,6 +383,7 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       // Reset after submit
       setFormData({
         platformName: "",
+        websiteId: "",
         description: "",
         phoneNumber: "",
         selectedAIAgent: "",

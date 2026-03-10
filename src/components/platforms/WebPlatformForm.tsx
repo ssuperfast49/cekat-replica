@@ -32,6 +32,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
   const [formData, setFormData] = useState({
     description: "",
+    websiteId: "",
     displayName: "",
     websiteUrl: "",
     businessCategory: "",
@@ -93,6 +94,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
 
   const isFormValid = Boolean(
     formData.displayName &&
+    formData.websiteId &&
     selectedSuperAgentId &&
     formData.selectedAIAgent &&
     canCreateChannel &&
@@ -121,10 +123,11 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
       await onSubmit(submitData);
       try {
         window.dispatchEvent(new CustomEvent('refresh-platforms'));
-      } catch {}
+      } catch { }
       // Clear form after successful submit
       setFormData({
         description: "",
+        websiteId: "",
         displayName: "",
         websiteUrl: "",
         businessCategory: "",
@@ -145,6 +148,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
     if (submitting) return;
     setFormData({
       description: "",
+      websiteId: "",
       displayName: "",
       websiteUrl: "",
       businessCategory: "",
@@ -166,122 +170,151 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
               Configure your new web live chat platform with all the necessary information.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="mt-6 space-y-6">
-          {/* Removed brand/org name in favor of Display Name */}
+            {/* Removed brand/org name in favor of Display Name */}
 
-          {/* Description */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
-                </TooltipContent>
-              </Tooltip>
+            {/* Description */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Textarea
+                id="description"
+                placeholder="Describe your business and what you offer"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
             </div>
-            <Textarea
-              id="description"
-              placeholder="Describe your business and what you offer"
-              value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              rows={3}
-            />
-          </div>
 
-          {/* Profile Photo / Logo */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Foto profil atau logo yang akan ditampilkan di widget live chat</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
-                {formData.profilePhoto ? (
-                  <img
-                    src={URL.createObjectURL(formData.profilePhoto)}
-                    alt="Profile"
-                    className="h-16 w-16 rounded-full object-cover"
+            {/* Profile Photo / Logo */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Foto profil atau logo yang akan ditampilkan di widget live chat</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                  {formData.profilePhoto ? (
+                    <img
+                      src={URL.createObjectURL(formData.profilePhoto)}
+                      alt="Profile"
+                      className="h-16 w-16 rounded-full object-cover"
+                    />
+                  ) : (
+                    <Upload className="h-6 w-6 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <Input
+                    id="profilePhoto"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => { const f = e.target.files?.[0] || null; setFormData(prev => ({ ...prev, profilePhoto: f })); }}
+                    className="hidden"
                   />
-                ) : (
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                )}
-              </div>
-              <div className="flex-1">
-                <Input
-                  id="profilePhoto"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e)=>{ const f = e.target.files?.[0] || null; setFormData(prev=>({ ...prev, profilePhoto: f })); }}
-                  className="hidden"
-                />
-                <Button
-                  variant="outline"
-                  onClick={()=>document.getElementById('profilePhoto')?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" /> Upload Photo
-                </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => document.getElementById('profilePhoto')?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" /> Upload Photo
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Display Name */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="displayName">Display Name *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Nama yang akan ditampilkan di widget live chat</p>
-                </TooltipContent>
-              </Tooltip>
+            {/* Display Name */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="displayName">Display Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Nama yang akan ditampilkan di widget live chat</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="displayName"
+                placeholder="Name that will appear in the chat widget"
+                value={formData.displayName}
+                onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
+              />
             </div>
-            <Input
-              id="displayName"
-              placeholder="Name that will appear in the chat widget"
-              value={formData.displayName}
-              onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
-            />
-          </div>
 
-          {/* Website URL */}
-          {/* <div className="space-y-2">
+            {/* Website ID */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="websiteId">Website ID *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>ID website untuk identifikasi pada widget live chat</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="websiteId"
+                placeholder="beat4d"
+                value={formData.websiteId}
+                onChange={(e) => setFormData(prev => ({ ...prev, websiteId: e.target.value }))}
+              />
+            </div>
+
+            {/* Website URL */}
+            {/* <div className="space-y-2">
             <Label htmlFor="websiteUrl">Website URL *</Label>
             <Input
               id="websiteUrl"
@@ -295,8 +328,8 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
             </p>
           </div> */}
 
-          {/* Business Category */}
-          {/* <div className="space-y-2">
+            {/* Business Category */}
+            {/* <div className="space-y-2">
             <Label htmlFor="businessCategory">Business Category</Label>
             <Select 
               value={formData.businessCategory} 
@@ -314,154 +347,154 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
           </div> */}
 
 
-          {/* Super Agent derived from selected AI agent */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label>Super Agent *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Super Agent yang akan mengawasi dan mengelola platform Live Chat ini</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            {humanAgentsLoading ? (
-              <div className="rounded-md border bg-muted px-3 py-2 text-sm">Loading super agents...</div>
-            ) : (
-              <Select
-                value={selectedSuperAgentId || ''}
-                onValueChange={(value) => {
-                  setSelectedSuperAgentId(value);
-                  // Reset AI/human agent selections to respect new super agent scope
-                  setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
-                }}
-                disabled={isSuperAgentUser}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a Super Agent" />
-                </SelectTrigger>
-                <SelectContent className="bg-background border z-50">
-                  {humanAgents
-                    .filter((a) => a.primaryRole === 'super_agent')
-                    .map((sa) => (
-                      <SelectItem key={sa.user_id} value={sa.user_id}>
-                        {sa.display_name || sa.email || sa.user_id.slice(0, 8)}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {'Default mengikuti super agent pada AI agent terpilih. Anda bisa mengubahnya di sini.'}
-            </p>
-          </div>
-
-          {/* Select AI Agent (filtered by selected super agent) */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="aiAgent">Select AI Agent *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Agen AI yang akan menangani percakapan otomatis di platform Live Chat ini</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            {aiAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading AI agents...</div>
-            ) : (
-              <Select 
-                value={formData.selectedAIAgent} 
-                onValueChange={(value) => {
-                  const agent = aiAgents.find(a => a.id === value);
-                  if (!selectedSuperAgentId) {
-                    toast({ title: "Select a Super Agent first", description: "Pilih super agent terlebih dahulu, lalu pilih AI agent.", variant: "destructive" });
-                    return;
-                  }
-                  if (!agent || agent.super_agent_id !== selectedSuperAgentId) {
-                    toast({ title: "AI agent tidak sesuai", description: "AI agent yang dipilih tidak berada di bawah super agent terpilih.", variant: "destructive" });
-                    return;
-                  }
-                  setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
-                </SelectTrigger>
-                <SelectContent className="bg-background border z-50">
-                  {aiAgents
-                    .filter(agent => selectedSuperAgentId ? agent.super_agent_id === selectedSuperAgentId : false)
-                    .map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            )}
-            {selectedSuperAgentId && (
-              <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-xs text-muted-foreground">
-                <span>Super Agent:</span>
-                <span className="font-medium">
-                  {selectedSuperAgent?.display_name || selectedSuperAgent?.email || selectedSuperAgentId.slice(0, 8)}
-                </span>
+            {/* Super Agent derived from selected AI agent */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label>Super Agent *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Super Agent yang akan mengawasi dan mengelola platform Live Chat ini</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
-            )}
-          </div>
-          {formData.selectedAIAgent && !selectedSuperAgentId && (
-            <p className="text-xs text-amber-600">
-              AI agent terpilih belum memiliki super agent. Tetapkan super agent di halaman AI Agents terlebih dahulu.
-            </p>
-          )}
-
-          {/* Assign Agents with role clustering */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Label>Assign Agents</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
+              {humanAgentsLoading ? (
+                <div className="rounded-md border bg-muted px-3 py-2 text-sm">Loading super agents...</div>
+              ) : (
+                <Select
+                  value={selectedSuperAgentId || ''}
+                  onValueChange={(value) => {
+                    setSelectedSuperAgentId(value);
+                    // Reset AI/human agent selections to respect new super agent scope
+                    setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
+                  }}
+                  disabled={isSuperAgentUser}
                 >
-                  <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
-                </TooltipContent>
-              </Tooltip>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a Super Agent" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border z-50">
+                    {humanAgents
+                      .filter((a) => a.primaryRole === 'super_agent')
+                      .map((sa) => (
+                        <SelectItem key={sa.user_id} value={sa.user_id}>
+                          {sa.display_name || sa.email || sa.user_id.slice(0, 8)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {'Default mengikuti super agent pada AI agent terpilih. Anda bisa mengubahnya di sini.'}
+              </p>
             </div>
-            {humanAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading human agents...</div>
-            ) : (
-              <>
-                {/* Super Agent moved above AI Agent */}
 
-                {/* <div className="space-y-1">
+            {/* Select AI Agent (filtered by selected super agent) */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="aiAgent">Select AI Agent *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Agen AI yang akan menangani percakapan otomatis di platform Live Chat ini</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {aiAgentsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+              ) : (
+                <Select
+                  value={formData.selectedAIAgent}
+                  onValueChange={(value) => {
+                    const agent = aiAgents.find(a => a.id === value);
+                    if (!selectedSuperAgentId) {
+                      toast({ title: "Select a Super Agent first", description: "Pilih super agent terlebih dahulu, lalu pilih AI agent.", variant: "destructive" });
+                      return;
+                    }
+                    if (!agent || agent.super_agent_id !== selectedSuperAgentId) {
+                      toast({ title: "AI agent tidak sesuai", description: "AI agent yang dipilih tidak berada di bawah super agent terpilih.", variant: "destructive" });
+                      return;
+                    }
+                    setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border z-50">
+                    {aiAgents
+                      .filter(agent => selectedSuperAgentId ? agent.super_agent_id === selectedSuperAgentId : false)
+                      .map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {selectedSuperAgentId && (
+                <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-xs text-muted-foreground">
+                  <span>Super Agent:</span>
+                  <span className="font-medium">
+                    {selectedSuperAgent?.display_name || selectedSuperAgent?.email || selectedSuperAgentId.slice(0, 8)}
+                  </span>
+                </div>
+              )}
+            </div>
+            {formData.selectedAIAgent && !selectedSuperAgentId && (
+              <p className="text-xs text-amber-600">
+                AI agent terpilih belum memiliki super agent. Tetapkan super agent di halaman AI Agents terlebih dahulu.
+              </p>
+            )}
+
+            {/* Assign Agents with role clustering */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Label>Assign Agents</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {humanAgentsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading human agents...</div>
+              ) : (
+                <>
+                  {/* Super Agent moved above AI Agent */}
+
+                  {/* <div className="space-y-1">
                   <div className="text-xs font-medium text-blue-700">Master Agents</div>
                   <div className="grid grid-cols-2 gap-2">
                     {humanAgents.filter(a => a.primaryRole === 'master_agent').map(ma => (
@@ -470,51 +503,51 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
                   </div>
                 </div> */}
 
-                <div className="space-y-2">
-                  <div className="text-xs font-medium">Agents {selectedSuperAgentId ? '' : '(select an AI agent first)'}</div>
-                  {(() => {
-                    const available = humanAgents
-                      .filter(a => a.primaryRole === 'agent')
-                      .filter(a => !!selectedSuperAgentId && a.super_agent_id === selectedSuperAgentId);
-                    const options: MultiSelectOption[] = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0,8)}` }));
-                    return (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <MultiSelect
-                            options={options}
-                            value={formData.selectedHumanAgents}
-                            onValueChange={(vals)=>setFormData(prev=>({ ...prev, selectedHumanAgents: vals }))}
-                            disabled={!selectedSuperAgentId}
-                            placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select an AI agent first'}
-                          />
-                          <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: options.map(o=>o.value) }))}>Select All</Button>
-                          <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </>
-            )}
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium">Agents {selectedSuperAgentId ? '' : '(select an AI agent first)'}</div>
+                    {(() => {
+                      const available = humanAgents
+                        .filter(a => a.primaryRole === 'agent')
+                        .filter(a => !!selectedSuperAgentId && a.super_agent_id === selectedSuperAgentId);
+                      const options: MultiSelectOption[] = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0, 8)}` }));
+                      return (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <MultiSelect
+                              options={options}
+                              value={formData.selectedHumanAgents}
+                              onValueChange={(vals) => setFormData(prev => ({ ...prev, selectedHumanAgents: vals }))}
+                              disabled={!selectedSuperAgentId}
+                              placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select an AI agent first'}
+                            />
+                            <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length === 0} onClick={() => setFormData(prev => ({ ...prev, selectedHumanAgents: options.map(o => o.value) }))}>Select All</Button>
+                            <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length === 0} onClick={() => setFormData(prev => ({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={handleCancel} disabled={isSubmitting || submitting}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={isSubmitting || submitting || !isFormValid}
-          >
-            {isSubmitting || submitting ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Creating...
-              </span>
-            ) : (
-              "Create Web Live Chat Platform"
-            )}
-          </Button>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={handleCancel} disabled={isSubmitting || submitting}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || submitting || !isFormValid}
+            >
+              {isSubmitting || submitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Creating...
+                </span>
+              ) : (
+                "Create Web Live Chat Platform"
+              )}
+            </Button>
           </div>
         </div>
       </DialogContent>

@@ -35,6 +35,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   const [formData, setFormData] = useState({
     displayName: "",
+    websiteId: "",
     description: "",
     telegramBotToken: "",
     selectedAIAgent: "",
@@ -89,6 +90,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   const isFormValid = Boolean(
     formData.displayName &&
+    formData.websiteId &&
     formData.selectedAIAgent &&
     formData.telegramBotToken &&
     selectedSuperAgentId &&
@@ -98,13 +100,13 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
 
   const getUserOrgId = async () => {
     if (!user) return null;
-    
+
     const { data: userOrgMember } = await supabase
       .from('org_members')
       .select('org_id')
       .eq('user_id', user.id)
       .single();
-    
+
     return userOrgMember?.org_id || null;
   };
 
@@ -245,6 +247,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         brand_name: formData.displayName,
         display_name: formData.displayName,
         description: formData.description,
+        website_id: formData.websiteId,
         telegram_bot_token: formData.telegramBotToken,
         ai_profile_id: formData.selectedAIAgent,
         human_agent_ids: formData.selectedHumanAgents,
@@ -279,7 +282,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
         // ignore body parsing errors
         webhookResult = null;
       }
-      
+
 
       // Upload avatar only after webhook success and channel exists
       try {
@@ -309,11 +312,12 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
       toast({ title: "Success", description: "Telegram channel created successfully" });
       try {
         window.dispatchEvent(new CustomEvent('refresh-platforms'));
-      } catch {}
+      } catch { }
       onClose();
       // Reset after submit
       setFormData({
         displayName: "",
+        websiteId: "",
         description: "",
         telegramBotToken: "",
         selectedAIAgent: "",
@@ -343,404 +347,433 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               Configure your new Telegram bot platform with all the necessary information.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="mt-6 space-y-6">
-          {/* Display Name */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="displayName">Display Name *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Nama yang akan ditampilkan di widget chat Telegram</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Input
-              id="displayName"
-              placeholder="Enter the display name"
-              value={formData.displayName}
-              onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
-            />
-          </div>
-
-          {/* Description */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Textarea
-              id="description"
-              placeholder="Describe your business and what you offer"
-              value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              rows={3}
-            />
-          </div>
-
-          {/* Profile Photo / Logo */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Foto profil atau logo yang akan ditampilkan di bot Telegram</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
-                {formData.profilePhoto ? (
-                  <img
-                    src={URL.createObjectURL(formData.profilePhoto)}
-                    alt="Profile"
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                )}
+            {/* Display Name */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="displayName">Display Name *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Nama yang akan ditampilkan di widget chat Telegram</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
-              <div className="flex-1">
+              <Input
+                id="displayName"
+                placeholder="Enter the display name"
+                value={formData.displayName}
+                onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
+              />
+            </div>
+
+            {/* Website ID */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="websiteId">Website ID *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>ID website untuk identifikasi pada widget live chat</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="websiteId"
+                placeholder="beat4d"
+                value={formData.websiteId}
+                onChange={(e) => setFormData(prev => ({ ...prev, websiteId: e.target.value }))}
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Deskripsi bisnis dan layanan yang akan ditampilkan kepada pelanggan</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Textarea
+                id="description"
+                placeholder="Describe your business and what you offer"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
+            </div>
+
+            {/* Profile Photo / Logo */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="profilePhoto">Profile Photo / Logo</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Foto profil atau logo yang akan ditampilkan di bot Telegram</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/25">
+                  {formData.profilePhoto ? (
+                    <img
+                      src={URL.createObjectURL(formData.profilePhoto)}
+                      alt="Profile"
+                      className="h-16 w-16 rounded-full object-cover"
+                    />
+                  ) : (
+                    <Upload className="h-6 w-6 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <Input
+                    id="profilePhoto"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => { const f = e.target.files?.[0] || null; setFormData(prev => ({ ...prev, profilePhoto: f })); }}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => document.getElementById('profilePhoto')?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" /> Upload Photo
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Telegram Bot Setup Instructions */}
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Telegram Bot Setup</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Follow these steps to set up your Telegram bot
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-sm space-y-2">
+                  <p className="font-medium">Step 1: Create a bot with BotFather</p>
+                  <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
+                    <li>Open Telegram and search for @BotFather</li>
+                    <li>Send /newbot command</li>
+                    <li>Choose a name for your bot (organization name)</li>
+                    <li>Choose a username (must end with 'bot')</li>
+                    <li>Copy the bot token provided</li>
+                  </ol>
+                </div>
+
+                <div className="text-sm space-y-2">
+                  <p className="font-medium">Step 2: Configure bot settings</p>
+                  <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
+                    <li>Send /setdescription to set bot description</li>
+                    <li>Send /setabouttext to set about text</li>
+                    <li>Send /setcommands to set available commands</li>
+                  </ol>
+                </div>
+
+                <div className="text-sm space-y-2">
+                  <p className="font-medium">Step 3: Enable webhook (optional)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Your bot will automatically receive messages once connected to our platform.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Telegram Bot Token */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="telegramBotToken">Telegram Bot Token *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Token bot Telegram yang diperoleh dari @BotFather untuk mengautentikasi bot</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2">
                 <Input
-                  id="profilePhoto"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e)=>{ const f = e.target.files?.[0] || null; setFormData(prev=>({ ...prev, profilePhoto: f })); }}
-                  className="hidden"
+                  id="telegramBotToken"
+                  type="password"
+                  placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                  value={formData.telegramBotToken}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData(prev => ({ ...prev, telegramBotToken: value }));
+                    setValidatedToken(null);
+                  }}
+                  className="flex-1"
                 />
                 <Button
-                  variant="outline"
-                  onClick={()=>document.getElementById('profilePhoto')?.click()}
+                  type="button"
+                  variant={hasValidatedCurrentToken ? "outline" : "default"}
+                  className={hasValidatedCurrentToken ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50" : ""}
+                  onClick={handleValidateToken}
+                  disabled={isValidatingToken || !formData.telegramBotToken}
                 >
-                  <Upload className="h-4 w-4 mr-2" /> Upload Photo
+                  {isValidatingToken ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Validating
+                    </span>
+                  ) : (
+                    "Validate"
+                  )}
                 </Button>
               </div>
-            </div>
-          </div>
-
-          {/* Telegram Bot Setup Instructions */}
-          <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium">Telegram Bot Setup</Label>
-                <p className="text-xs text-muted-foreground">
-                  Follow these steps to set up your Telegram bot
+              <p className="text-xs text-muted-foreground">
+                Get this token from @BotFather on Telegram. Format: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+              </p>
+              {hasValidatedCurrentToken && (
+                <p className="text-xs text-emerald-600">
+                  Bot token validated. You can now create this Telegram platform.
                 </p>
-              </div>
+              )}
             </div>
-            
-            <div className="space-y-3">
-              <div className="text-sm space-y-2">
-                <p className="font-medium">Step 1: Create a bot with BotFather</p>
-                <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
-                  <li>Open Telegram and search for @BotFather</li>
-                  <li>Send /newbot command</li>
-                  <li>Choose a name for your bot (organization name)</li>
-                  <li>Choose a username (must end with 'bot')</li>
-                  <li>Copy the bot token provided</li>
-                </ol>
-              </div>
-              
-              <div className="text-sm space-y-2">
-                <p className="font-medium">Step 2: Configure bot settings</p>
-                <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
-                  <li>Send /setdescription to set bot description</li>
-                  <li>Send /setabouttext to set about text</li>
-                  <li>Send /setcommands to set available commands</li>
-                </ol>
-              </div>
-              
-              <div className="text-sm space-y-2">
-                <p className="font-medium">Step 3: Enable webhook (optional)</p>
-                <p className="text-xs text-muted-foreground">
-                  Your bot will automatically receive messages once connected to our platform.
-                </p>
-              </div>
-            </div>
-          </div>
 
-          {/* Telegram Bot Token */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="telegramBotToken">Telegram Bot Token *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
+            {/* Super Agent (read-only) above AI Agent */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label>Super Agent *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Super Agent yang akan mengawasi dan mengelola platform Telegram ini</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {humanAgentsLoading ? (
+                <div className="rounded-md border bg-muted px-3 py-2 text-sm">Loading super agents...</div>
+              ) : (
+                <Select
+                  value={selectedSuperAgentId || ''}
+                  onValueChange={(value) => {
+                    setSelectedSuperAgentId(value);
+                    // Reset AI/human agent selections to respect new super agent scope
+                    setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
+                  }}
+                  disabled={isSuperAgentUser}
                 >
-                  <p>Token bot Telegram yang diperoleh dari @BotFather untuk mengautentikasi bot</p>
-                </TooltipContent>
-              </Tooltip>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a Super Agent" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border z-50">
+                    {humanAgents
+                      .filter((a) => a.primaryRole === 'super_agent')
+                      .map((sa) => (
+                        <SelectItem key={sa.user_id} value={sa.user_id}>
+                          {sa.display_name || sa.email || sa.user_id.slice(0, 8)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {'Default mengikuti super agent pada AI agent terpilih. Anda bisa mengubahnya di sini.'}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Input
-                id="telegramBotToken"
-                type="password"
-                placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-                value={formData.telegramBotToken}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setFormData(prev => ({ ...prev, telegramBotToken: value }));
-                  setValidatedToken(null);
-                }}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant={hasValidatedCurrentToken ? "outline" : "default"}
-                className={hasValidatedCurrentToken ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50" : ""}
-                onClick={handleValidateToken}
-                disabled={isValidatingToken || !formData.telegramBotToken}
-              >
-                {isValidatingToken ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Validating
+
+            {/* Select AI Agent (filtered by selected Super Agent) */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="aiAgent">Select AI Agent *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Agen AI yang akan menangani percakapan otomatis di platform Telegram ini</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {aiAgentsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading AI agents...</div>
+              ) : (
+                <Select
+                  value={formData.selectedAIAgent}
+                  onValueChange={(value) => {
+                    const agent = aiAgents.find(a => a.id === value);
+                    if (!selectedSuperAgentId) {
+                      toast({ title: "Select a Super Agent first", description: "Pilih super agent terlebih dahulu, lalu pilih AI agent.", variant: "destructive" });
+                      return;
+                    }
+                    if (!agent || agent.super_agent_id !== selectedSuperAgentId) {
+                      toast({ title: "AI agent tidak sesuai", description: "AI agent yang dipilih tidak berada di bawah super agent terpilih.", variant: "destructive" });
+                      return;
+                    }
+                    setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border z-50">
+                    {aiAgents
+                      .filter(agent => selectedSuperAgentId ? agent.super_agent_id === selectedSuperAgentId : false)
+                      .map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {selectedSuperAgentId && (
+                <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-xs text-muted-foreground">
+                  <span>Super Agent:</span>
+                  <span className="font-medium">
+                    {selectedSuperAgent?.display_name || selectedSuperAgent?.email || selectedSuperAgentId.slice(0, 8)}
                   </span>
-                ) : (
-                  "Validate"
-                )}
-              </Button>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Get this token from @BotFather on Telegram. Format: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-            </p>
-            {hasValidatedCurrentToken && (
-              <p className="text-xs text-emerald-600">
-                Bot token validated. You can now create this Telegram platform.
+            {formData.selectedAIAgent && !selectedSuperAgentId && (
+              <p className="text-xs text-amber-600">
+                AI agent terpilih belum memiliki super agent. Tetapkan super agent di halaman AI Agents terlebih dahulu.
               </p>
             )}
-          </div>
 
-          {/* Super Agent (read-only) above AI Agent */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label>Super Agent *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Super Agent yang akan mengawasi dan mengelola platform Telegram ini</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            {humanAgentsLoading ? (
-              <div className="rounded-md border bg-muted px-3 py-2 text-sm">Loading super agents...</div>
-            ) : (
-              <Select
-                value={selectedSuperAgentId || ''}
-                onValueChange={(value) => {
-                  setSelectedSuperAgentId(value);
-                  // Reset AI/human agent selections to respect new super agent scope
-                  setFormData(prev => ({ ...prev, selectedAIAgent: "", selectedHumanAgents: [] }));
-                }}
-                disabled={isSuperAgentUser}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a Super Agent" />
-                </SelectTrigger>
-                <SelectContent className="bg-background border z-50">
-                  {humanAgents
-                    .filter((a) => a.primaryRole === 'super_agent')
-                    .map((sa) => (
-                      <SelectItem key={sa.user_id} value={sa.user_id}>
-                        {sa.display_name || sa.email || sa.user_id.slice(0, 8)}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {'Default mengikuti super agent pada AI agent terpilih. Anda bisa mengubahnya di sini.'}
-            </p>
-          </div>
-
-          {/* Select AI Agent (filtered by selected Super Agent) */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="aiAgent">Select AI Agent *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Agen AI yang akan menangani percakapan otomatis di platform Telegram ini</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            {aiAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading AI agents...</div>
-            ) : (
-              <Select 
-                value={formData.selectedAIAgent} 
-                onValueChange={(value) => {
-                  const agent = aiAgents.find(a => a.id === value);
-                  if (!selectedSuperAgentId) {
-                    toast({ title: "Select a Super Agent first", description: "Pilih super agent terlebih dahulu, lalu pilih AI agent.", variant: "destructive" });
-                    return;
-                  }
-                  if (!agent || agent.super_agent_id !== selectedSuperAgentId) {
-                    toast({ title: "AI agent tidak sesuai", description: "AI agent yang dipilih tidak berada di bawah super agent terpilih.", variant: "destructive" });
-                    return;
-                  }
-                  setFormData(prev => ({ ...prev, selectedAIAgent: value, selectedHumanAgents: [] }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={selectedSuperAgentId ? "Choose an AI agent" : "Select a Super Agent first"} />
-                </SelectTrigger>
-                <SelectContent className="bg-background border z-50">
-                  {aiAgents
-                    .filter(agent => selectedSuperAgentId ? agent.super_agent_id === selectedSuperAgentId : false)
-                    .map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            )}
-            {selectedSuperAgentId && (
-              <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-xs text-muted-foreground">
-                <span>Super Agent:</span>
-                <span className="font-medium">
-                  {selectedSuperAgent?.display_name || selectedSuperAgent?.email || selectedSuperAgentId.slice(0, 8)}
-                </span>
+            {/* Select Human Agents (MultiSelect + Select All) */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label>Select Human Agents (optional)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
-            )}
-          </div>
-          {formData.selectedAIAgent && !selectedSuperAgentId && (
-            <p className="text-xs text-amber-600">
-              AI agent terpilih belum memiliki super agent. Tetapkan super agent di halaman AI Agents terlebih dahulu.
-            </p>
-          )}
-
-          {/* Select Human Agents (MultiSelect + Select All) */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label>Select Human Agents (optional)</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent 
-                  className="z-[9999] max-w-xs" 
-                  side="top" 
-                  align="start" 
-                  sideOffset={5} 
-                  avoidCollisions={true} 
-                  collisionPadding={20}
-                  sticky="always"
-                >
-                  <p>Agen manusia yang akan menangani percakapan yang memerlukan intervensi manual</p>
-                </TooltipContent>
-              </Tooltip>
+              {humanAgentsLoading ? (
+                <div className="text-sm text-muted-foreground">Loading human agents...</div>
+              ) : (
+                (() => {
+                  const available = humanAgents
+                    .filter(a => a.primaryRole === 'agent')
+                    .filter(a => !!selectedSuperAgentId && a.super_agent_id === selectedSuperAgentId);
+                  const options = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0, 8)}` }));
+                  return (
+                    <div className="flex items-center gap-2">
+                      <MultiSelect
+                        options={options as any}
+                        value={formData.selectedHumanAgents}
+                        onValueChange={(vals) => setFormData(prev => ({ ...prev, selectedHumanAgents: vals }))}
+                        disabled={!selectedSuperAgentId}
+                        placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select an AI agent first'}
+                      />
+                      <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length === 0} onClick={() => setFormData(prev => ({ ...prev, selectedHumanAgents: options.map((o: any) => o.value) }))}>Select All</Button>
+                      <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length === 0} onClick={() => setFormData(prev => ({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>
+                    </div>
+                  );
+                })()
+              )}
             </div>
-            {humanAgentsLoading ? (
-              <div className="text-sm text-muted-foreground">Loading human agents...</div>
-            ) : (
-              (() => {
-                    const available = humanAgents
-                      .filter(a => a.primaryRole === 'agent')
-                      .filter(a => !!selectedSuperAgentId && a.super_agent_id === selectedSuperAgentId);
-                const options = available.map(a => ({ value: a.user_id, label: a.display_name || a.email || `Agent ${a.user_id.slice(0,8)}` }));
-                return (
-                  <div className="flex items-center gap-2">
-                    <MultiSelect
-                      options={options as any}
-                      value={formData.selectedHumanAgents}
-                      onValueChange={(vals)=>setFormData(prev=>({ ...prev, selectedHumanAgents: vals }))}
-                      disabled={!selectedSuperAgentId}
-                      placeholder={selectedSuperAgentId ? 'Select human agents' : 'Select an AI agent first'}
-                    />
-                    <Button type="button" variant="outline" disabled={!selectedSuperAgentId || options.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: options.map((o:any)=>o.value) }))}>Select All</Button>
-                    <Button type="button" variant="ghost" disabled={!selectedSuperAgentId || formData.selectedHumanAgents.length===0} onClick={()=>setFormData(prev=>({ ...prev, selectedHumanAgents: [] }))}>Unselect All</Button>
-                  </div>
-                );
-              })()
-            )}
           </div>
-        </div>
 
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={()=>{ if (submitting) return; setFormData({ displayName: "", description: "", telegramBotToken: "", selectedAIAgent: "", selectedHumanAgents: [] as string[], profilePhoto: null }); setSelectedSuperAgentId(null); onClose(); }} disabled={isSubmitting || submitting}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={isSubmitting || submitting || !isFormValid}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            {isSubmitting || submitting ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Creating...
-              </span>
-            ) : (
-              "Create Telegram Bot Platform"
-            )}
-          </Button>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => { if (submitting) return; setFormData({ displayName: "", websiteId: "", description: "", telegramBotToken: "", selectedAIAgent: "", selectedHumanAgents: [] as string[], profilePhoto: null }); setSelectedSuperAgentId(null); onClose(); }} disabled={isSubmitting || submitting}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || submitting || !isFormValid}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isSubmitting || submitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Creating...
+                </span>
+              ) : (
+                "Create Telegram Bot Platform"
+              )}
+            </Button>
           </div>
         </div>
       </DialogContent>
