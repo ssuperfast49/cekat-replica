@@ -43,7 +43,7 @@ const HumanAgents = () => {
   const [usageBySuper, setUsageBySuper] = useState<Record<string, number>>({});
   const [loadingSuperUsage, setLoadingSuperUsage] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent"; phone?: string }>({
+  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent" | "audit"; phone?: string }>({
     name: "",
     email: "",
     role: "agent"
@@ -87,7 +87,7 @@ const HumanAgents = () => {
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "super_agent" | "agent">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "super_agent" | "agent" | "audit">("all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [pendingStatusFilter, setPendingStatusFilter] = useState<"all" | "invited" | "expired">("all");
   const viewerIsSuperOnly = hasRole(ROLES.SUPER_AGENT) && !hasRole(ROLES.MASTER_AGENT);
@@ -105,7 +105,7 @@ const HumanAgents = () => {
 
   // Ensure only master agents can create super agents
   useEffect(() => {
-    if (!hasRole(ROLES.MASTER_AGENT) && newAgent.role === 'super_agent') {
+    if (!hasRole(ROLES.MASTER_AGENT) && (newAgent.role === 'super_agent' || newAgent.role === 'audit')) {
       setNewAgent({ ...newAgent, role: 'agent' });
     }
   }, [hasRole, newAgent.role]);
@@ -127,7 +127,6 @@ const HumanAgents = () => {
     return { color: 'bg-gray-300', label: 'Offline' };
   };
 
-  // Form validation
   const isFormValid = newAgent.name.trim() &&
     newAgent.email.trim() &&
     (newAgent.role !== 'agent' || selectedSuperForNewAgent);
@@ -163,12 +162,12 @@ const HumanAgents = () => {
     }
   }, [error, toast]);
 
-  // Normalize role names coming from the DB view
-  const normalizeRoleName = (name: string | null | undefined): "master_agent" | "super_agent" | "agent" | null => {
+  const normalizeRoleName = (name: string | null | undefined): "master_agent" | "super_agent" | "agent" | "audit" | null => {
     if (!name) return null;
     const n = String(name).toLowerCase();
     if (n.includes('master')) return 'master_agent';
     if (n.includes('super')) return 'super_agent';
+    if (n.includes('audit')) return 'audit';
     if (n.includes('agent')) return 'agent';
     return null;
   };
@@ -187,7 +186,7 @@ const HumanAgents = () => {
     page: number;
     pageSize: number;
     search?: string;
-    role?: "master_agent" | "super_agent" | "agent" | "all";
+    role?: "master_agent" | "super_agent" | "agent" | "audit" | "all";
     activeStatus?: "all" | "active" | "inactive";
     pendingStatus?: "all" | "invited" | "expired";
   }) => {
@@ -209,14 +208,16 @@ const HumanAgents = () => {
 
       if (role && role !== "all") {
         const rolePattern =
-          role === "master_agent" ? "%master%" : role === "super_agent" ? "%super%" : "%agent%";
+          role === "master_agent" ? "%master%" : role === "super_agent" ? "%super%" : role === "audit" ? "%audit%" : "%agent%";
         query = query.ilike('role_name', rolePattern);
       }
 
       // Restrict visibility based on viewer's role
+      // Restrict visibility based on viewer's role
       const isMaster = hasRole(ROLES.MASTER_AGENT);
       const isSuper = hasRole(ROLES.SUPER_AGENT);
-      if (isSuper) {
+      const isAudit = hasRole(ROLES.AUDIT);
+      if (isSuper && !isMaster && !isAudit) {
         // For super agents, limit to self + agents assigned under them
         if (!currentUserId) {
           // Defer until we know viewer id
@@ -241,7 +242,7 @@ const HumanAgents = () => {
           // If membership lookup fails, fall back to showing only self
           query = query.eq('user_id', currentUserId);
         }
-      } else if (!isMaster) {
+      } else if (!isMaster && !isAudit && !isSuper) {
         // Regular agents have no access – return empty dataset
         if (invited) {
           setPendingRows([]);
@@ -404,6 +405,7 @@ const HumanAgents = () => {
                   const toLower = (v: any) => String(v || '').toLowerCase();
                   const isMaster = (r: any) => toLower(r.role_name).includes('master');
                   const isSuper = (r: any) => toLower(r.role_name).includes('super');
+                  const isAudit = (r: any) => toLower(r.role_name).includes('audit');
                   const isAgentOnly = (r: any) => {
                     const role = toLower(r.role_name);
                     return role === 'agent' || role === 'agent_only';
@@ -411,6 +413,7 @@ const HumanAgents = () => {
 
                   const masters = rows.filter(isMaster);
                   const supers = rows.filter(isSuper);
+                  const auditors = rows.filter(isAudit);
                   const agentsOnly = rows.filter(isAgentOnly);
                   const superById: Record<string, any> = Object.fromEntries(supers.map((s: any) => [String(s.user_id), s]));
                   const assigned: Record<string, any[]> = {};
@@ -451,6 +454,69 @@ const HumanAgents = () => {
                             <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
                             <div className="flex items-center h-8">
                               <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Master Agent</Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">—</div>
+                            <div className="flex items-center gap-2">
+                              <div className={`h-2 w-2 rounded-full ${getAgentPresence(stub.user_id, stub.last_seen_at).color}`} />
+                              <span className="text-xs">{getAgentPresence(stub.user_id, stub.last_seen_at).label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="gap-2 h-8" disabled={stub.primaryRole === 'master_agent'}>
+                                    <div className={`h-2 w-2 rounded-full ${stub.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                    <span className="text-xs">{stub.status}</span>
+                                    {stub.primaryRole !== 'master_agent' && <ChevronDown className="h-3 w-3" />}
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-background border z-50">
+                                  <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Active")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-500" />Active</div></DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleStatusChange(stub.user_id, "Inactive")}><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-gray-400" />Inactive</div></DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <PermissionGate permission={'users_profile.update_token_limit'} roleBypass={manageRoleBypass}>
+                                <Button size="sm" className="h-8 w-8 p-0 bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => openEditLimits(stub)} title="Edit limits"><Edit className="h-4 w-4" /></Button>
+                              </PermissionGate>
+                              {hasRole(ROLES.MASTER_AGENT) && (
+                                <Button size="sm" className="h-8 w-8 p-0 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => openUsageDetails(stub)} title="View token usage"><BarChart3 className="h-4 w-4" /></Button>
+                              )}
+                              {canDeleteAgent(stub) && (
+                                <PermissionGate permission={'super_agents.delete'}>
+                                  <Button size="sm" className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 text-white" onClick={() => openDeleteModal(stub)}><Trash2 className="h-4 w-4" /></Button>
+                                </PermissionGate>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {auditors.map((row: any) => {
+                        const primaryRole = 'audit' as const;
+                        const stub: AgentWithDetails = {
+                          user_id: String(row.user_id),
+                          email: row.email || '',
+                          display_name: row.agent_name || row.email || 'Unknown',
+                          avatar_url: row.avatar_url || null,
+                          timezone: null as any,
+                          created_at: '',
+                          roles: [primaryRole],
+                          primaryRole: primaryRole,
+                          status: row.is_active ? 'Active' : 'Inactive',
+                          super_agent_id: null
+                        };
+                        return (
+                          <div key={`audit-${row.user_id}`} className="grid grid-cols-[240px,1fr,180px,120px,120px,120px,120px] gap-4 p-4 items-center hover:bg-muted/30 transition-colors bg-purple-50/30 dark:bg-transparent">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="text-xs bg-purple-100 text-purple-700">{getInitials(stub.display_name || 'U')}</AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium text-purple-600 dark:text-purple-400">{stub.display_name}</span>
+                            </div>
+                            <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
+                            <div className="flex items-center h-8">
+                              <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>Audit</Badge>
                             </div>
                             <div className="text-sm text-muted-foreground">—</div>
                             <div className="flex items-center gap-2">
@@ -706,7 +772,7 @@ const HumanAgents = () => {
                       <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
                       <div className="flex items-center h-8">
                         <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>
-                          {stub.primaryRole === 'master_agent' ? 'Master Agent' : stub.primaryRole === 'super_agent' ? 'Super Agent' : 'Agent'}
+                          {stub.primaryRole === 'master_agent' ? 'Master Agent' : stub.primaryRole === 'super_agent' ? 'Super Agent' : stub.primaryRole === 'audit' ? 'Audit' : 'Agent'}
                         </Badge>
                       </div>
                       {!isPending && (
@@ -1317,7 +1383,7 @@ const HumanAgents = () => {
     }
   };
 
-  const handleRoleChange = async (agentId: string, role: "master_agent" | "super_agent" | "agent") => {
+  const handleRoleChange = async (agentId: string, role: "master_agent" | "super_agent" | "agent" | "audit") => {
     try {
       await updateAgentRole(agentId, role);
       toast({
@@ -1341,9 +1407,10 @@ const HumanAgents = () => {
     return status === "Active" ? "bg-green-500" : "bg-gray-400";
   };
 
-  const roleBadgeClass = (role: "master_agent" | "super_agent" | "agent" | null) => {
+  const roleBadgeClass = (role: "master_agent" | "super_agent" | "agent" | "audit" | null) => {
     if (role === "master_agent") return "bg-blue-100 text-blue-700";
-    if (role === "super_agent") return "bg-emerald-100 text-emerald-700";
+    if (role === "super_agent") return "bg-green-100 text-green-700";
+    if (role === "audit") return "bg-purple-100 text-purple-700";
     if (role === "agent") return "bg-gray-100 text-gray-700";
     return "bg-gray-100 text-gray-700";
   };
@@ -1460,15 +1527,14 @@ const HumanAgents = () => {
                           </Tooltip>
                         )}
                       </div>
-                      <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" })}>
+                      <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" | "audit" })}>
                         <SelectTrigger className="bg-background border">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-background border z-50">
+                          {hasRole(ROLES.MASTER_AGENT) && <SelectItem value="super_agent">Super Agent</SelectItem>}
+                          {hasRole(ROLES.MASTER_AGENT) && <SelectItem value="audit">Audit</SelectItem>}
                           <SelectItem value="agent">Agent</SelectItem>
-                          {hasRole(ROLES.MASTER_AGENT) && (
-                            <SelectItem value="super_agent">Super Agent</SelectItem>
-                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1535,14 +1601,15 @@ const HumanAgents = () => {
         </div>
         {!isSuperAgent && (
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as "all" | "master_agent" | "super_agent" | "agent")}>
-              <SelectTrigger className="w-[150px] bg-background border">
-                <SelectValue placeholder="Role" />
+            <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as "all" | "master_agent" | "super_agent" | "agent" | "audit")}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Roles" />
               </SelectTrigger>
               <SelectContent className="bg-background border z-50">
-                <SelectItem value="all">All roles</SelectItem>
+                <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="master_agent">Master Agent</SelectItem>
                 <SelectItem value="super_agent">Super Agent</SelectItem>
+                <SelectItem value="audit">Audit</SelectItem>
                 <SelectItem value="agent">Agent</SelectItem>
               </SelectContent>
             </Select>
