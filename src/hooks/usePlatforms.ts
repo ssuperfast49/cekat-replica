@@ -13,6 +13,7 @@ export interface Platform {
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   provider?: 'whatsapp' | 'web' | 'telegram';
   status: 'active' | 'inactive' | 'pending';
+  website_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +37,7 @@ export interface CreatePlatformData {
   ai_profile_id?: string; // Changed from ai_agent_id to ai_profile_id
   provider: 'whatsapp' | 'web' | 'telegram';
   human_agent_ids?: string[];
+  website_id?: string;
 }
 
 export const usePlatforms = () => {
@@ -180,6 +182,7 @@ export const usePlatforms = () => {
             human_agents: humanAgents,
             super_agent_id: ch.super_agent_id ?? null,
             credentials: ch?.credentials ?? null,
+            website_id: ch.website_id ?? null,
           } as PlatformWithAgents;
         } catch {
           return {
@@ -189,6 +192,7 @@ export const usePlatforms = () => {
             human_agents: [],
             super_agent_id: ch.super_agent_id ?? null,
             credentials: ch?.credentials ?? null,
+            website_id: ch.website_id ?? null,
           } as PlatformWithAgents;
         }
       }));
@@ -250,8 +254,8 @@ export const usePlatforms = () => {
       const normalizedWhatsAppSessionName =
         platformData.provider === 'whatsapp'
           ? String(platformData.display_name || '')
-              .toLowerCase()
-              .replace(/\s/g, '')
+            .toLowerCase()
+            .replace(/\s/g, '')
           : null;
 
       const { data: newChannel, error: platformError } = await supabase
@@ -269,6 +273,7 @@ export const usePlatforms = () => {
           ai_profile_id: platformData.ai_profile_id,
           super_agent_id: channelSuperAgentId,
           is_active: true,
+          website_id: platformData.website_id,
           // For WhatsApp, set an initial external_id to the WAHA session name.
           // This ensures the channel is addressable even before it is connected (when me.id isn't known yet).
           external_id: platformData.provider === 'whatsapp' ? normalizedWhatsAppSessionName : null,
@@ -297,7 +302,7 @@ export const usePlatforms = () => {
           resourceId: (newChannel as any)?.id ?? null,
           context: { ...platformData, super_agent_id: channelSuperAgentId } as any,
         });
-      } catch {}
+      } catch { }
 
       return newChannel;
     } catch (error: any) {
@@ -314,6 +319,7 @@ export const usePlatforms = () => {
       // Only send defined fields to avoid unintentionally nulling columns
       const channelUpdates: Record<string, any> = {};
       if (typeof updates.display_name !== 'undefined') channelUpdates.display_name = updates.display_name;
+      if (typeof updates.website_id !== 'undefined') channelUpdates.website_id = updates.website_id;
       if (typeof updates.profile_photo_url !== 'undefined') channelUpdates.profile_photo_url = updates.profile_photo_url;
       if (typeof updates.ai_profile_id !== 'undefined') {
         channelUpdates.ai_profile_id = updates.ai_profile_id;
@@ -380,7 +386,7 @@ export const usePlatforms = () => {
       // Refresh platforms list
       await fetchPlatforms();
 
-      try { await logAction({ action: 'channel.update', resource: 'channel', resourceId: platformId, context: updates as any }); } catch {}
+      try { await logAction({ action: 'channel.update', resource: 'channel', resourceId: platformId, context: updates as any }); } catch { }
     } catch (error: any) {
       console.error('Error updating platform:', error);
       setError(error.message || 'Failed to update platform');
@@ -484,7 +490,7 @@ export const usePlatforms = () => {
         .eq('id', channelId);
       if (updErr) throw updErr;
 
-      try { await logAction({ action: 'channel.avatar.update', resource: 'channel', resourceId: channelId, context: { objectPath } }); } catch {}
+      try { await logAction({ action: 'channel.avatar.update', resource: 'channel', resourceId: channelId, context: { objectPath } }); } catch { }
 
       return publicUrl;
     } catch (e: any) {
@@ -519,7 +525,7 @@ export const usePlatforms = () => {
       const objectPath = `${orgId}/${channelId}/profile/avatar.png`;
 
       // Best-effort delete; ignore 404
-      try { await supabase.storage.from(bucket).remove([objectPath]); } catch {}
+      try { await supabase.storage.from(bucket).remove([objectPath]); } catch { }
 
       // Clear DB fields (no updated_at column in channels)
       const { error: updErr } = await supabase
@@ -528,7 +534,7 @@ export const usePlatforms = () => {
         .eq('id', channelId);
       if (updErr) throw updErr;
 
-      try { await logAction({ action: 'channel.avatar.delete', resource: 'channel', resourceId: channelId, context: { objectPath } }); } catch {}
+      try { await logAction({ action: 'channel.avatar.delete', resource: 'channel', resourceId: channelId, context: { objectPath } }); } catch { }
     } catch (e: any) {
       console.error('Error deleting channel avatar:', e);
       throw new Error(e?.message || 'Failed to delete channel avatar');

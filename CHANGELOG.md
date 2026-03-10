@@ -1,5 +1,14 @@
 # Change Log
 
+# [0.1.115] FE/BE CEKAT 2026-03-10
+
+### Connected Platforms & Embed Widget
+
+- **Website ID Customization**: Added `website_id` support across all channel creation forms (Web, WhatsApp, Telegram) with a new database column.
+  - Used as an identifier in the LiveChat embed widget (`window.chatConfig.web`).
+  - Added an inline editing capability in the Channel Details UI for agents with Master or Super Agent roles.
+  - Updated: `src/hooks/usePlatforms.ts`, `src/components/platforms/ConnectedPlatforms.tsx`, `src/components/platforms/WhatsAppPlatformForm.tsx`, `src/components/platforms/TelegramPlatformForm.tsx`, `src/components/platforms/WebPlatformForm.tsx`, `supabase/migrations/20260310143500_add_website_id_to_channels.sql`
+
 # [0.1.114] FE WEB CEKAT 2026-03-09
 
 ### LiveChat Mobile Layout

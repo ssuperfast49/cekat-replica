@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Plus, HelpCircle, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2, Copy } from "lucide-react";
+import { Plus, HelpCircle, X, Upload, Trash2, MessageCircle, Globe, Send, Loader2, Copy, Check, Edit2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -48,6 +48,10 @@ const ConnectedPlatforms = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [removingAvatar, setRemovingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [editingWebsiteId, setEditingWebsiteId] = useState<string | null>(null);
+  const [newWebsiteId, setNewWebsiteId] = useState("");
+  const [isSavingWebsiteId, setIsSavingWebsiteId] = useState(false);
 
 
 
@@ -425,7 +429,7 @@ window.chatConfig = {
   baseUrl: '${APP_ORIGIN}',
   platformId: '${selectedPlatformData?.id || '{platform_id}'}',
   username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier (e.g. 'simegantara')
-  web: '', // Optional site/brand name (e.g. 'beat4d')
+  web: '${selectedPlatformData?.website_id || ''}', // Optional site/brand name (e.g. 'beat4d')
 };
 (function(w, d) {
   var s = d.createElement('script');
@@ -446,7 +450,7 @@ window.chatConfig = {
                         size="icon"
                         className="h-8 w-8"
                         onClick={async () => {
-                          const embedCode = `<!-- Start of Chat Widget -->\n<script>\nwindow.chatConfig = {\n  baseUrl: '${APP_ORIGIN}',\n  platformId: '${selectedPlatformData?.id || '{platform_id}'}',\n  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier (e.g. 'simegantara')\n  web: '', // Optional site/brand name (e.g. 'beat4d')\n};\n(function(w, d) {\n  var s = d.createElement('script');\n  s.async = true;\n  s.src = window.chatConfig.baseUrl + '/widget.js';\n  d.head.appendChild(s);\n})(window, document);\n</script>\n<!-- End of Chat Widget -->`;
+                          const embedCode = `<!-- Start of Chat Widget -->\n<script>\nwindow.chatConfig = {\n  baseUrl: '${APP_ORIGIN}',\n  platformId: '${selectedPlatformData?.id || '{platform_id}'}',\n  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier (e.g. 'simegantara')\n  web: '${selectedPlatformData?.website_id || ''}', // Optional site/brand name (e.g. 'beat4d')\n};\n(function(w, d) {\n  var s = d.createElement('script');\n  s.async = true;\n  s.src = window.chatConfig.baseUrl + '/widget.js';\n  d.head.appendChild(s);\n})(window, document);\n</script>\n<!-- End of Chat Widget -->`;
                           try {
                             await navigator.clipboard.writeText(embedCode);
                             toast({
@@ -509,6 +513,7 @@ window.chatConfig = {
         website_url: formData.websiteUrl || undefined,
         business_category: formData.businessCategory || undefined,
         description: formData.description || undefined,
+        website_id: formData.websiteId || undefined,
         ai_profile_id: formData.selectedAIAgent || undefined,
         provider: selectedPlatformType || 'web',
         human_agent_ids: formData.selectedHumanAgents,
@@ -541,6 +546,21 @@ window.chatConfig = {
   };
 
 
+
+  const handleSaveWebsiteId = async () => {
+    if (!selectedPlatformData) return;
+    setIsSavingWebsiteId(true);
+    try {
+      await updatePlatform(selectedPlatformData.id, { website_id: newWebsiteId });
+      toast({ title: 'Success', description: 'Website ID updated' });
+      setEditingWebsiteId(null);
+      await fetchPlatforms();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to update Website ID', variant: 'destructive' });
+    } finally {
+      setIsSavingWebsiteId(false);
+    }
+  };
 
   // Fetch existing WhatsApp sessions from WAHA API
   // Keep a ref for latest sessions to avoid stale closures in polling
@@ -1186,6 +1206,66 @@ window.chatConfig = {
                         </Tooltip>
                       </div>
                       <div>{selectedPlatformData.display_name || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        Website ID
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>ID website untuk identifikasi pada widget live chat</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {editingWebsiteId === selectedPlatformData.id ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={newWebsiteId}
+                              onChange={(e) => setNewWebsiteId(e.target.value)}
+                              className="h-7 w-32 text-xs"
+                              disabled={isSavingWebsiteId}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={handleSaveWebsiteId}
+                              disabled={isSavingWebsiteId}
+                            >
+                              {isSavingWebsiteId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-green-600" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setEditingWebsiteId(null)}
+                              disabled={isSavingWebsiteId}
+                            >
+                              <X className="h-3 w-3 text-red-600" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 group h-7">
+                            <span>{selectedPlatformData.website_id || '—'}</span>
+                            {canEditAgents && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  setEditingWebsiteId(selectedPlatformData.id);
+                                  setNewWebsiteId(selectedPlatformData.website_id || "");
+                                }}
+                              >
+                                <Edit2 className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <div className="flex items-center gap-2 text-muted-foreground">
