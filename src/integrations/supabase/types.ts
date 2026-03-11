@@ -1105,6 +1105,38 @@ export type Database = {
           },
         ]
       }
+      thread_reads: {
+        Row: {
+          thread_id: string
+          user_id: string
+          last_read_seq: number
+          last_read_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          thread_id: string
+          user_id: string
+          last_read_seq?: number
+          last_read_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          thread_id?: string
+          user_id?: string
+          last_read_seq?: number
+          last_read_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thread_reads_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       token_balances: {
         Row: {
           balance_tokens: number
@@ -1505,6 +1537,17 @@ export type Database = {
           reason: string
           total: number
         }[]
+      }
+      get_unread_counts: {
+        Args: { p_thread_ids: string[] }
+        Returns: {
+          thread_id: string
+          unread_count: number
+        }[]
+      }
+      mark_thread_read: {
+        Args: { p_last_read_seq: number; p_thread_id: string }
+        Returns: undefined
       }
       get_non_contained: {
         Args: {
