@@ -5,7 +5,7 @@ import { waitForAuthReady } from '@/lib/authReady';
 import WEBHOOK_CONFIG from '@/config/webhook';
 import { callWebhook } from '@/lib/webhookClient';
 import { resolveSendMessageEndpoint } from '@/config/webhook';
-import { isDocumentHidden, onDocumentVisible } from '@/lib/utils';
+import { isDocumentHidden } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
 import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 import { SUPABASE_URL } from '@/config/supabase';
@@ -80,6 +80,7 @@ export interface ConversationWithDetails extends Thread {
   assignee_name?: string;
   resolved_by_name?: string;
   unreplied?: boolean;
+  unread_count?: number;
   super_agent_id?: string | null;
   super_agent_name?: string | null;
   assignee_last_seen_at?: string | null;
@@ -108,7 +109,8 @@ export interface ThreadFilters {
   channelType?: string;
 }
 
-export const useConversations = () => {
+export const useConversations = (options?: { unreadEnabled?: boolean }) => {
+  const unreadEnabled = options?.unreadEnabled ?? true;
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [messages, setMessages] = useState<MessageWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
@@ -119,11 +121,22 @@ export const useConversations = () => {
   // Refs for accessing latest state in realtime callbacks
   const conversationsRef = useRef<ConversationWithDetails[]>([]);
   const userRef = useRef<string | null>(null);
+  const selectedThreadIdRef = useRef<string | null>(null);
+  const unreadCountsRef = useRef<Record<string, number>>({});
+  const unreadEnabledRef = useRef<boolean>(unreadEnabled);
 
   // Sync refs
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
+
+  useEffect(() => {
+    selectedThreadIdRef.current = selectedThreadId;
+  }, [selectedThreadId]);
+
+  useEffect(() => {
+    unreadEnabledRef.current = unreadEnabled;
+  }, [unreadEnabled]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -169,6 +182,76 @@ export const useConversations = () => {
       handled_by_super_agent: false,
     };
   };
+
+  const applyUnreadCounts = useCallback((
+    counts: Array<{ thread_id: string; unread_count: number }>
+  ) => {
+    if (!unreadEnabledRef.current) return;
+    const map = new Map<string, number>((counts || []).map((c) => [String(c.thread_id), Number(c.unread_count || 0)]));
+    map.forEach((value, key) => {
+      unreadCountsRef.current[key] = value;
+    });
+    setConversations((prev) => prev.map((conv) => {
+      const nextUnread = map.get(conv.id);
+      if (nextUnread === undefined || nextUnread === conv.unread_count) return conv;
+      return { ...conv, unread_count: nextUnread };
+    }));
+  }, []);
+
+  const setThreadUnread = useCallback((threadId: string, unreadCount: number) => {
+    if (!threadId) return;
+    unreadCountsRef.current[threadId] = Math.max(0, unreadCount);
+    setConversations((prev) => prev.map((conv) => (
+      conv.id === threadId ? { ...conv, unread_count: Math.max(0, unreadCount) } : conv
+    )));
+  }, []);
+
+  const incrementThreadUnread = useCallback((threadId: string, delta: number = 1) => {
+    if (!threadId) return;
+    if (!unreadEnabledRef.current) return;
+    const conv = conversationsRef.current.find((c) => c.id === threadId);
+    if (!conv?.assigned) return;
+    const nextValue = Math.max(0, (unreadCountsRef.current[threadId] ?? 0) + delta);
+    unreadCountsRef.current[threadId] = nextValue;
+    setConversations((prev) => prev.map((conv) => (
+      conv.id === threadId
+        ? { ...conv, unread_count: Math.max(0, (conv.unread_count ?? 0) + delta) }
+        : conv
+    )));
+  }, []);
+
+  const fetchUnreadCounts = useCallback(async (threadIds: string[]) => {
+    if (!threadIds || threadIds.length === 0) return;
+    if (!unreadEnabledRef.current) return;
+    if (isDocumentHidden()) return;
+    try {
+      const assignedSet = new Set(
+        (conversationsRef.current || []).filter((c) => c.assigned).map((c) => c.id)
+      );
+      const scopedIds = threadIds.filter((id) => assignedSet.has(id));
+      if (scopedIds.length === 0) return;
+      const { data, error } = await protectedSupabase.rpc('get_unread_counts', { p_thread_ids: scopedIds });
+      if (error) throw error;
+      if (!data || data.length === 0) return;
+      applyUnreadCounts((data || []) as any);
+    } catch (err) {
+      console.warn('[useConversations] Failed to fetch unread counts', err);
+    }
+  }, [applyUnreadCounts]);
+
+  const markThreadRead = useCallback(async (threadId: string, lastReadSeq?: number | null) => {
+    if (!threadId || lastReadSeq == null) return;
+    if (isDocumentHidden()) return;
+    try {
+      const { error } = await protectedSupabase.rpc('mark_thread_read', {
+        p_thread_id: threadId,
+        p_last_read_seq: lastReadSeq,
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.warn('[useConversations] Failed to mark thread read', err);
+    }
+  }, []);
 
   // More targeted refresh for specific thread updates
   const updateConversationPreview = (threadId: string, lastMessage: any) => {
@@ -312,13 +395,32 @@ export const useConversations = () => {
         userIdToLastSeen = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.last_seen_at || null]));
       }
 
+      const prevUnreadMap = new Map(Object.entries(unreadCountsRef.current || {}));
+      const prevById = new Map(
+        (conversationsRef.current || []).map((c) => [c.id, c])
+      );
+
       // Transform data to match the expected format
       const transformedData: ConversationWithDetails[] = (data || []).map((thread: any) => {
         const last = Array.isArray(thread.messages) && thread.messages.length > 0 ? thread.messages[0] : null;
-        const lastPreview = (last?.body || '').toString().replace(/\s+/g, ' ').trim();
-        const lastDir = last?.direction ?? null;
-        const lastRole = last?.role ?? null;
-        const unreplied = lastDir === 'in' || lastRole === 'user';
+        let lastPreview = (last?.body || '').toString().replace(/\s+/g, ' ').trim();
+        let lastDir = last?.direction ?? null;
+        let lastRole = last?.role ?? null;
+        let unreplied = lastDir === 'in' || lastRole === 'user';
+        let lastMsgAt = last?.created_at || thread.last_msg_at;
+
+        const prev = prevById.get(thread.id);
+        if (prev) {
+          const prevTime = new Date(prev.last_msg_at ?? prev.created_at ?? 0).getTime();
+          const nextTime = new Date(lastMsgAt ?? 0).getTime();
+          if (prevTime > nextTime) {
+            lastMsgAt = prev.last_msg_at;
+            lastPreview = prev.last_message_preview || lastPreview;
+            lastDir = prev.last_message_direction ?? lastDir;
+            lastRole = prev.last_message_role ?? lastRole;
+            unreplied = prev.unreplied ?? unreplied;
+          }
+        }
 
         // Log to verify we're getting the latest message timestamp
 
@@ -361,8 +463,8 @@ export const useConversations = () => {
           last_message_preview: lastPreview || '—',
           last_message_direction: lastDir,
           last_message_role: lastRole as any,
-          // Use the timestamp from the latest message instead of the database's last_msg_at
-          last_msg_at: last?.created_at || thread.last_msg_at,
+          // Use the newest available timestamp (preserve local realtime updates if newer)
+          last_msg_at: lastMsgAt,
           message_count: 0,
           assigned: assignment.assigned,
           assigned_by_name: thread.assigned_by_user_id ? (userIdToName[thread.assigned_by_user_id] || '—') : '—',
@@ -376,6 +478,7 @@ export const useConversations = () => {
           super_agent_last_seen_at: channelSuperAgentId ? (userIdToLastSeen[channelSuperAgentId] || null) : null,
           status: currentStatus,
           unreplied,
+          unread_count: prevUnreadMap.get(thread.id),
         } as ConversationWithDetails;
       });
 
@@ -409,6 +512,7 @@ export const useConversations = () => {
 
 
       setConversations(sortedData);
+      void fetchUnreadCounts(sortedData.map((t) => t.id));
 
       // IMPORTANT: Do not auto-sync/overwrite status from the frontend.
       // Status transitions are server-owned (RPCs / backend workflows).
@@ -508,6 +612,12 @@ export const useConversations = () => {
 
       setMessages(transformedData);
       setSelectedThreadId(threadId);
+
+      const latestSeq = transformedData.length > 0 ? transformedData[transformedData.length - 1].seq : null;
+      if (latestSeq != null && !isDocumentHidden()) {
+        void markThreadRead(threadId, latestSeq);
+        setThreadUnread(threadId, 0);
+      }
 
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -1286,6 +1396,53 @@ export const useConversations = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Ensure unread counts are fetched once for freshly loaded threads
+  useEffect(() => {
+    if (!unreadEnabledRef.current) return;
+    if (isDocumentHidden()) return;
+    const missing = conversations.filter((c) => c.unread_count === undefined && c.assigned).map((c) => c.id);
+    if (missing.length > 0) {
+      void fetchUnreadCounts(missing);
+    }
+  }, [conversations, fetchUnreadCounts]);
+
+  // Periodic unread count refresh (when visible)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!unreadEnabledRef.current) return;
+      if (isDocumentHidden()) return;
+      const ids = conversationsRef.current.filter((c) => c.assigned).map((c) => c.id);
+      if (ids.length > 0) {
+        void fetchUnreadCounts(ids);
+      }
+    }, 45000);
+
+    return () => clearInterval(interval);
+  }, [fetchUnreadCounts]);
+
+  // Refresh unread counts and mark selected thread read when tab becomes visible
+  useEffect(() => {
+    const handler = () => {
+      if (isDocumentHidden()) return;
+      const ids = conversationsRef.current.filter((c) => c.assigned).map((c) => c.id);
+      if (ids.length > 0) {
+        void fetchUnreadCounts(ids);
+      }
+      const currentThreadId = selectedThreadIdRef.current;
+      if (currentThreadId && messages.length > 0) {
+        const latestSeq = messages[messages.length - 1].seq;
+        if (latestSeq != null) {
+          void markThreadRead(currentThreadId, latestSeq);
+          setThreadUnread(currentThreadId, 0);
+        }
+      }
+    };
+    try { document.addEventListener('visibilitychange', handler); } catch { }
+    return () => {
+      try { document.removeEventListener('visibilitychange', handler); } catch { }
+    };
+  }, [fetchUnreadCounts, markThreadRead, setThreadUnread, messages]);
+
   // Realtime: keep conversations list in sync with DB
   useEffect(() => {
     const channel = supabase
@@ -1327,6 +1484,15 @@ export const useConversations = () => {
           scheduleConversationsRefresh(100); // Also do a full refresh for consistency
           // Check auto-resolve after user message (cancels auto-resolve)
           checkAutoResolve();
+          const currentSelected = selectedThreadIdRef.current;
+          if (currentSelected && message.thread_id === currentSelected) {
+            if (!isDocumentHidden()) {
+              void markThreadRead(message.thread_id, message.seq);
+              setThreadUnread(message.thread_id, 0);
+            }
+          } else {
+            incrementThreadUnread(message.thread_id, 1);
+          }
         } else if (message && (message.role === 'system' || message.type === 'event')) {
           // Immediately update the conversation preview
           updateConversationPreview(message.thread_id, message);
