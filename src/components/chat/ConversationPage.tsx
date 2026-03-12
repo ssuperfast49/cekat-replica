@@ -393,7 +393,7 @@ export default function ConversationPage() {
     clearCollaborator,
     deleteThread,
     setThreadCollaborator,
-  } = useConversations();
+  } = useConversations({ unreadEnabled: activeTab === 'assigned' });
 
   // Use the contacts and human agents hooks
   const { createContact } = useContacts();
@@ -1415,15 +1415,17 @@ export default function ConversationPage() {
     return `${mm}/${dd}/${yyyy}`;
   };
 
-  const renderStatus = (conv: ConversationWithDetails) => {
+  const renderStatus = (conv: ConversationWithDetails, opts?: { compact?: boolean }) => {
+    const compact = opts?.compact;
+    const compactClass = compact ? 'h-4 px-1.5 text-[10px] font-normal' : '';
     const category = getFlowTabForThread(conv);
     if (category === 'done') {
-      return <Badge className="bg-green-100 text-green-700 border-0">Done</Badge>;
+      return <Badge className={`${compactClass} bg-green-100 text-green-700 border-0`}>Done</Badge>;
     }
     if (category === 'assigned') {
-      return <Badge className="bg-blue-100 text-blue-700 border-0">Assigned</Badge>;
+      return <Badge className={`${compactClass} bg-blue-100 text-blue-700 border-0`}>Assigned</Badge>;
     }
-    return <Badge className="bg-secondary text-secondary-foreground">Unassigned</Badge>;
+    return <Badge className={`${compactClass} bg-secondary text-secondary-foreground`}>Unassigned</Badge>;
   };
 
   const getListTimestamp = (conv: any) => {
@@ -1558,20 +1560,25 @@ export default function ConversationPage() {
             <div className="space-y-1">
               {list.map(conv => {
                 const isMe = (conv.assignee_user_id === currentUserId || conv.collaborator_user_id === currentUserId);
+                const unreadCount = conv.unread_count ?? 0;
+                const hasUnread = activeTab === 'assigned' && unreadCount > 0;
                 // Use yellow tint for my threads, unless selected (blue)
                 const baseClass = isMe
                   ? 'bg-yellow-50/60 dark:bg-yellow-900/20 hover:bg-yellow-100/80 dark:hover:bg-yellow-900/30'
                   : 'hover:bg-muted';
+                const unreadClass = hasUnread
+                  ? 'bg-red-50/50 dark:bg-red-950/10 ring-1 ring-red-200/70 dark:ring-red-900/40 hover:bg-red-50/80 dark:hover:bg-red-950/20'
+                  : baseClass;
                 const activeClass = selectedThreadId === conv.id
                   ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800'
-                  : baseClass;
+                  : unreadClass;
 
                 return (
                   <div key={conv.id} className="relative">
                     <button
                       type="button"
                       onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 pr-12 text-left transition-colors rounded-lg ${activeClass}`}
+                      className={`w-full p-3 text-left transition-colors rounded-lg ${activeClass}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -1580,26 +1587,44 @@ export default function ConversationPage() {
                             <AvatarFallback className="text-[10px]">💬</AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                            <p className="text-xs text-muted-foreground truncate mt-1">{stripMarkdown(conv.last_message_preview) || '—'}</p>
-                            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate">
-                                {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                              </span>
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
+                              <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-muted-foreground">
+                                <span className="whitespace-nowrap">{getListTimestamp(conv)}</span>
+                                <span className="text-muted-foreground/60">•</span>
+                                {renderStatus(conv, { compact: true })}
+                              </div>
+                            </div>
+                            <div className="mt-0.5 flex items-center justify-between gap-2 min-w-0">
+                              <p className="text-xs text-muted-foreground/90 truncate min-w-0 flex-1">
+                                {stripMarkdown(conv.last_message_preview) || '—'}
+                              </p>
+                              {hasUnread ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="h-4 px-1.5 text-[10px] leading-none bg-red-500 text-white border-0 shrink-0"
+                                  aria-label={`${unreadCount} unread messages`}
+                                >
+                                  {unreadCount > 99 ? '99+' : unreadCount}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 flex items-end justify-between gap-2 min-w-0">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <span className="text-xs text-muted-foreground truncate">
+                                  {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                                </span>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                {(conv.channel_provider || conv.channel?.provider) ? (
+                                  <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                                    {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                                  </Badge>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex flex-col items-end shrink-0 w-[130px] self-stretch justify-between">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">{getListTimestamp(conv)}</span>
-                            <div className="mt-1">{renderStatus(conv)}</div>
-                          </div>
-                          {(conv.channel_provider || conv.channel?.provider) ? (
-                            <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                              {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                            </Badge>
-                          ) : <span />}
                         </div>
                       </div>
                     </button>

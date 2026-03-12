@@ -1,11 +1,24 @@
 # Change Log
 
-# [0.1.118] FE WEB CEKAT 2026-03-12
+# [0.1.119] FE WEB CEKAT 2026-03-12
 
 ### Circuit Breaker Dashboard
 
 - **Config Persistence Fix**: Fixed an issue where the "Limit Configuration" user edits in the Circuit Breaker admin panel would be immediately overwritten by background health checks. The `saveToStorage` routine now properly serializes and preserves the custom `config` object alongside state updates.
   - Updated: `src/lib/circuitBreaker.ts`
+
+# [0.1.118] FE/BE CEKAT 2026-03-11
+
+### Conversations: Unread & List UI
+
+- **Unread Badges (Assigned Only)**: Unread counts now render and refresh only in the Assigned tab to reduce noise in Unassigned/Done.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **Realtime Preview Stability**: Preserve newer in-memory previews when a background refresh returns older message metadata.
+  - Updated: `src/hooks/useConversations.ts`
+- **Conversation Card Polish**: Compact layout, aligned metadata rows, inline preview + unread count, and cohesive chip grouping.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Supabase Types Sync**: Added types for `thread_reads` and unread RPCs.
+  - Updated: `src/integrations/supabase/types.ts`
 
 # [0.1.117] FE/BE CEKAT 2026-03-10
 
