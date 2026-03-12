@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.1.120] FE WEB CEKAT 2026-03-12
+
+### Platform Management
+
+- **WhatsApp Platform Fix**: Added missing `Website ID` input field to the "Setup WhatsApp Platform" dialog. Previously, the "Create WhatsApp Platform" button remained permanently disabled because this required validation field was missing from the UI.
+  - Updated: `src/components/platforms/WhatsAppPlatformForm.tsx`
+
 # [0.1.119] FE WEB CEKAT 2026-03-12
 
 ### Circuit Breaker Dashboard
