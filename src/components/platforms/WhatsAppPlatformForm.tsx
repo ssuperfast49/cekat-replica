@@ -444,6 +444,35 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               />
             </div>
 
+            {/* Website ID */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="websiteId">Website ID *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="z-[9999] max-w-xs"
+                    side="top"
+                    align="start"
+                    sideOffset={5}
+                    avoidCollisions={true}
+                    collisionPadding={20}
+                    sticky="always"
+                  >
+                    <p>ID unik website (misal: beat4d)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Input
+                id="websiteId"
+                placeholder="beat4d"
+                value={formData.websiteId}
+                onChange={(e) => setFormData(prev => ({ ...prev, websiteId: e.target.value }))}
+              />
+            </div>
+
             {/* Profile Photo / Logo */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
