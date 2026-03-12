@@ -1,5 +1,12 @@
 # Change Log
 
+# [0.1.118] FE WEB CEKAT 2026-03-12
+
+### Circuit Breaker Dashboard
+
+- **Config Persistence Fix**: Fixed an issue where the "Limit Configuration" user edits in the Circuit Breaker admin panel would be immediately overwritten by background health checks. The `saveToStorage` routine now properly serializes and preserves the custom `config` object alongside state updates.
+  - Updated: `src/lib/circuitBreaker.ts`
+
 # [0.1.117] FE/BE CEKAT 2026-03-10
 
 ### Connected Platforms & Embed Widget

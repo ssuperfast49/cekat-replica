@@ -325,6 +325,7 @@ export class CircuitBreaker {
     try {
       if (typeof localStorage !== 'undefined') {
         const data = {
+          config: this.config,
           state: this.state,
           stateChangedAt: this.stateChangedAt,
           failures: this.failures,
