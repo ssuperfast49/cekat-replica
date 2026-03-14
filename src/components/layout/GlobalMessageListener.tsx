@@ -29,9 +29,7 @@ export function GlobalMessageListener() {
         }
 
         const playSound = () => {
-            // Check if audio is enabled
-            if (localStorage.getItem('audioNotifications') === 'false') return;
-
+            // Assume audio is enabled since we check it before calling playSound()
             const now = Date.now();
             if (now - lastNotificationTime.current < NOTIFICATION_DEBOUNCE_MS) {
                 return;
@@ -82,10 +80,11 @@ export function GlobalMessageListener() {
 
 
 
-                        // Notify audio if SuperAdmin, Assigned, or Collaborator
-                        // We play audio even if on the active thread (feedback), or maybe skip?
-                        // useConversations played audio even if visible, so we keep it.
-                        if (isSuperAdmin || isAssigned || isCollaborator) {
+                        // Get global notification setting (defaults to true)
+                        const notificationsEnabled = user?.user_metadata?.notifications_enabled !== false;
+
+                        // Notify audio if enabled AND (SuperAdmin, Assigned, or Collaborator)
+                        if (notificationsEnabled && (isSuperAdmin || isAssigned || isCollaborator)) {
                             playSound();
                         }
 
@@ -102,8 +101,8 @@ export function GlobalMessageListener() {
                             return; // Don't toast if looking at it
                         }
 
-                        // Show Toast if Assigned or Collaborator
-                        if (isAssigned || isCollaborator) {
+                        // Show Toast if enabled AND (Assigned or Collaborator)
+                        if (notificationsEnabled && (isAssigned || isCollaborator)) {
                             toast.info(`New message from ${contactName}`, {
                                 description: newMessage.body
                                     ? (newMessage.body.length > 50 ? newMessage.body.substring(0, 50) + '...' : newMessage.body)

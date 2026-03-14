@@ -6,7 +6,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import { databaseCircuitBreaker, CircuitState } from './circuitBreaker';
+import { databaseCircuitBreaker, CircuitState, FailureContext } from './circuitBreaker';
 import { classifyError, isRetryableError, getRetryDelay, getUserFriendlyMessage, ErrorCategory } from './errorHandler';
 import { defaultRateLimiter, OperationType, RateLimitResult } from './rateLimiter';
 import { defaultAdaptiveRateLimiter } from './adaptiveRateLimiter';
@@ -28,9 +28,9 @@ async function retryWithBackoff<T>(
       return await fn();
     } catch (error) {
       lastError = error;
-      
+
       const classified = classifyError(error);
-      
+
       // Don't retry if error is not retryable
       if (!classified.isRetryable) {
         throw error;
@@ -48,10 +48,10 @@ async function retryWithBackoff<T>(
 
       // Calculate delay with exponential backoff (capped at 8 seconds)
       const delay = Math.min(baseDelay * Math.pow(2, attempt), 8000);
-      
+
       // Use error-specific delay if available
       const retryDelay = classified.retryDelay || delay;
-      
+
       await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
   }
@@ -69,12 +69,12 @@ const USER_ID_CACHE_TTL = 60000; // 1 minute
  */
 async function getUserId(supabaseInstance: SupabaseClient, skipCache: boolean = false): Promise<string | null> {
   const now = Date.now();
-  
+
   // Return cached user ID if valid
   if (!skipCache && cachedUserId !== null && (now - userIdCacheTime) < USER_ID_CACHE_TTL) {
     return cachedUserId;
   }
-  
+
   try {
     // Try to get user from session (use direct call to avoid recursion)
     // Use a timeout to prevent blocking
@@ -82,9 +82,9 @@ async function getUserId(supabaseInstance: SupabaseClient, skipCache: boolean = 
     const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) => {
       setTimeout(() => resolve({ data: { session: null } }), 500); // 500ms timeout
     });
-    
+
     const { data } = await Promise.race([sessionPromise, timeoutPromise]);
-    
+
     cachedUserId = data?.session?.user?.id || null;
     userIdCacheTime = now;
     return cachedUserId;
@@ -109,26 +109,26 @@ async function checkRateLimit(
   if (bypassRateLimit) {
     return;
   }
-  
+
   // Use adaptive rate limiter for better traffic spike handling
   const resolvedUserId = userId !== undefined ? userId : await getUserId(supabaseInstance).catch(() => null);
-  
+
   // For RPC calls, be more lenient - they're typically batch operations
   if (operation === 'rpc') {
     // Get adaptive limit
     const usage = defaultAdaptiveRateLimiter.getUsage(resolvedUserId, operation, endpoint);
-    
+
     // Allow if we're under 90% of adaptive limit
     if (usage.count < usage.limit * 0.9) {
       defaultAdaptiveRateLimiter.recordRequest(resolvedUserId, operation, endpoint);
       return;
     }
-    
+
     // Otherwise check normally with adaptive limiter
     const result = defaultAdaptiveRateLimiter.checkLimit(resolvedUserId, operation, endpoint);
     if (!result.allowed) {
       const error: any = new Error(
-        result.retryAfter 
+        result.retryAfter
           ? `Rate limit exceeded. Please wait ${Math.ceil(result.retryAfter / 1000)} seconds.`
           : 'Rate limit exceeded. Please try again later.'
       );
@@ -140,13 +140,13 @@ async function checkRateLimit(
     }
     return;
   }
-  
+
   // For other operations, use adaptive rate limiter
   const result = defaultAdaptiveRateLimiter.checkLimit(resolvedUserId, operation, endpoint);
-  
+
   if (!result.allowed) {
     const error: any = new Error(
-      result.retryAfter 
+      result.retryAfter
         ? `Rate limit exceeded. Please wait ${Math.ceil(result.retryAfter / 1000)} seconds.`
         : 'Rate limit exceeded. Please try again later.'
     );
@@ -216,18 +216,18 @@ function wrapQueryBuilder(
   return new Proxy(queryBuilder, {
     get(target: any, prop: string) {
       const value = target[prop];
-      
+
       // Determine operation type based on method (rough heuristic)
       let currentOperation = operation;
       if (prop === 'insert' || prop === 'update' || prop === 'upsert' || prop === 'delete') {
         currentOperation = 'write';
       }
-      
+
       // Intercept promise methods (when query is actually executed)
       if (prop === 'then' || prop === 'catch' || prop === 'finally') {
         // When promise is awaited (then/catch is called), wrap with protections
         const originalPromise = Promise.resolve(target);
-        
+
         // Wrap with queue, rate limiting, circuit breaker, caching, and metrics
         const protectedPromise = (async () => {
           const startTime = Date.now();
@@ -236,11 +236,11 @@ function wrapQueryBuilder(
           // IMPORTANT: do NOT serve cached read results here.
           // Authorization can change server-side (e.g., user_roles updated) without a token refresh.
           // Returning cached query results can leak stale/unauthorized data in the UI.
-          
+
           // Get user ID lazily (after cache check) with timeout protection
           const userIdPromise = getUserId(supabaseInstance).catch(() => null);
           const circuitState = databaseCircuitBreaker.getState();
-          
+
           // Check rate limit with fast path for reads
           try {
             const userId = await Promise.race([
@@ -260,15 +260,17 @@ function wrapQueryBuilder(
             }
             // Silently allow other errors to prevent blocking
           }
-          
+
           // Execute directly instead of queuing to prevent deadlocks
           // Queue is disabled temporarily to prevent blocking
           let result;
           try {
-            result = await databaseCircuitBreaker.execute(() => 
+            result = await databaseCircuitBreaker.execute(() =>
               retryWithBackoff(async () => {
                 return await originalPromise;
-              })
+              }),
+              undefined,
+              { endpoint, operation: currentOperation } as FailureContext
             );
           } catch (error) {
             result = {
@@ -276,15 +278,15 @@ function wrapQueryBuilder(
               error: error,
             };
           }
-          
+
           // Cache successful read responses
           // NOTE: We intentionally do not cache read results here for correctness/security.
-          
+
           // Record metrics (non-blocking)
           const responseTime = Date.now() - startTime;
           const errorCategory = result?.error ? classifyError(result.error).category : undefined;
           const userId = await userIdPromise.catch(() => null);
-          
+
           // Record metrics asynchronously to avoid blocking
           Promise.resolve().then(() => {
             try {
@@ -302,13 +304,13 @@ function wrapQueryBuilder(
               // Ignore metric recording errors
             }
           });
-          
+
           return result;
         })().catch((error) => {
           // Record error metrics
           const responseTime = Date.now() - startTime;
           const classified = classifyError(error);
-          
+
           defaultMetricsCollector.record({
             operationType: currentOperation,
             endpoint,
@@ -319,9 +321,9 @@ function wrapQueryBuilder(
             responseTimeMs: responseTime,
             metadata: { error: error instanceof Error ? error.message : String(error) },
           });
-          
+
           // Classify and enhance error for Supabase's error format
-          
+
           // Handle rate limit errors specially
           if (error.code === 'RATE_LIMIT_EXCEEDED') {
             return {
@@ -336,7 +338,7 @@ function wrapQueryBuilder(
               },
             };
           }
-          
+
           // If error has data/error structure (Supabase format), preserve it
           if (error && typeof error === 'object' && ('data' in error || 'error' in error)) {
             return {
@@ -349,7 +351,7 @@ function wrapQueryBuilder(
               },
             };
           }
-          
+
           // Create Supabase-style error response
           const enhancedError = {
             ...classified.originalError,
@@ -357,7 +359,7 @@ function wrapQueryBuilder(
             category: classified.category,
             circuitBreaker: databaseCircuitBreaker.getState(),
           };
-          
+
           return {
             data: null,
             error: enhancedError,
@@ -390,7 +392,7 @@ function wrapQueryBuilder(
           );
         };
       }
-      
+
       // Return other properties as-is
       return value;
     },
@@ -403,7 +405,7 @@ function wrapQueryBuilder(
 export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) {
   // Store reference for getUserId
   const supabase = supabaseInstance;
-  
+
   return {
     // Wrap the 'from' method
     from: (table: string) => {
@@ -418,11 +420,11 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
       options?: { count?: 'exact' | 'planned' | 'estimated' }
     ): Promise<{ data: T | null; error: any }> => {
       const startTime = Date.now();
-      
+
       // Get user ID and circuit state lazily
       const userIdPromise = getUserId(supabase).catch(() => null);
       const circuitState = databaseCircuitBreaker.getState();
-      
+
       try {
         // For RPC, use more lenient rate limiting
         // Most RPCs are batch operations from analytics/dashboard
@@ -440,12 +442,14 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
           }
           // Silently allow other errors to prevent blocking
         }
-        
+
         // Execute directly (queue disabled to prevent deadlocks)
-        const result = await databaseCircuitBreaker.execute(() => 
+        const result = await databaseCircuitBreaker.execute(() =>
           retryWithBackoff(async () => {
             return await supabase.rpc(functionName, args, options);
-          })
+          }),
+          undefined,
+          { endpoint: functionName, operation: 'rpc' } as FailureContext
         );
 
         // NOTE: We intentionally do not cache RPC results here for correctness/security.
@@ -454,7 +458,7 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
         const responseTime = Date.now() - startTime;
         const errorCategory = result?.error ? classifyError(result.error).category : undefined;
         const userId = await userIdPromise.catch(() => null);
-        
+
         Promise.resolve().then(() => {
           try {
             defaultMetricsCollector.record({
@@ -477,7 +481,7 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
         const classified = classifyError(error);
         const responseTime = Date.now() - startTime;
         const userId = await userIdPromise.catch(() => null);
-        
+
         // Record error metric asynchronously
         Promise.resolve().then(() => {
           try {
@@ -495,7 +499,7 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
             // Ignore
           }
         });
-        
+
         return {
           data: null,
           error: {
@@ -512,76 +516,82 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
     auth: {
       getSession: async () => {
         try {
-          return await databaseCircuitBreaker.execute(() => 
+          return await databaseCircuitBreaker.execute(() =>
             supabase.auth.getSession(),
-            5000 // Shorter timeout for auth
+            5000, // Shorter timeout for auth
+            { endpoint: 'auth.getSession', operation: 'auth' } as FailureContext
           );
         } catch (error) {
           const classified = classifyError(error);
           throw new Error(classified.userMessage);
         }
       },
-      
+
       getUser: async () => {
         try {
-          return await databaseCircuitBreaker.execute(() => 
+          return await databaseCircuitBreaker.execute(() =>
             supabase.auth.getUser(),
-            5000
+            5000,
+            { endpoint: 'auth.getUser', operation: 'auth' } as FailureContext
           );
         } catch (error) {
           const classified = classifyError(error);
           throw new Error(classified.userMessage);
         }
       },
-      
+
       signOut: async () => {
         try {
-          return await databaseCircuitBreaker.execute(() => 
+          return await databaseCircuitBreaker.execute(() =>
             supabase.auth.signOut(),
-            5000
+            5000,
+            { endpoint: 'auth.signOut', operation: 'auth' } as FailureContext
           );
         } catch (error) {
           const classified = classifyError(error);
           throw new Error(classified.userMessage);
         }
       },
-      
+
       signInWithPassword: async (credentials: { email: string; password: string }) => {
         try {
-          return await databaseCircuitBreaker.execute(() => 
+          return await databaseCircuitBreaker.execute(() =>
             supabase.auth.signInWithPassword(credentials),
-            10000
+            10000,
+            { endpoint: 'auth.signInWithPassword', operation: 'auth' } as FailureContext
           );
         } catch (error) {
           const classified = classifyError(error);
           throw new Error(classified.userMessage);
         }
       },
-      
+
       signInWithOtp: async (email: string, options?: any) => {
         try {
-          return await databaseCircuitBreaker.execute(() => 
+          return await databaseCircuitBreaker.execute(() =>
             supabase.auth.signInWithOtp({ email, options }),
-            10000
+            10000,
+            { endpoint: 'auth.signInWithOtp', operation: 'auth' } as FailureContext
           );
         } catch (error) {
           const classified = classifyError(error);
           throw new Error(classified.userMessage);
         }
       },
-      
+
       verifyOtp: async (params: { email: string; token: string; type: 'email' }) => {
         try {
-          return await databaseCircuitBreaker.execute(() => 
+          return await databaseCircuitBreaker.execute(() =>
             supabase.auth.verifyOtp(params),
-            10000
+            10000,
+            { endpoint: 'auth.verifyOtp', operation: 'auth' } as FailureContext
           );
         } catch (error) {
           const classified = classifyError(error);
           throw new Error(classified.userMessage);
         }
       },
-      
+
       // Pass through other auth methods
       onAuthStateChange: supabase.auth.onAuthStateChange.bind(supabase.auth),
       resetPasswordForEmail: supabase.auth.resetPasswordForEmail.bind(supabase.auth),
@@ -601,7 +611,7 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
 
     // Expose circuit breaker for monitoring
     getCircuitBreaker: () => databaseCircuitBreaker,
-    
+
     // Get circuit breaker stats
     getCircuitBreakerStats: () => databaseCircuitBreaker.getStats(),
   };

@@ -18,6 +18,7 @@ interface AuthContextType {
   setAccountDeactivated: (value: boolean) => void;
   isSigningOut: boolean;
   isSigningOutRef: React.MutableRefObject<boolean>;
+  updateNotificationPreference: (enabled: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -671,6 +672,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
+  const updateNotificationPreference = useCallback(async (enabled: boolean) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: { notifications_enabled: enabled }
+      });
+      if (error) throw error;
+      await refreshUser();
+    } catch (error) {
+      console.error('Error updating notification preference:', error);
+      throw error;
+    }
+  }, [refreshUser]);
+
   const value = useMemo(() => ({
     user,
     session,
@@ -685,7 +699,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setAccountDeactivated,
     isSigningOut,
     isSigningOutRef,
-  }), [user, session, loading, signOut, refreshUser, otpRequired, otpVerified, setOtpVerified, otpEvaluated, accountDeactivated, setAccountDeactivated, isSigningOut]);
+    updateNotificationPreference,
+  }), [user, session, loading, signOut, refreshUser, otpRequired, otpVerified, setOtpVerified, otpEvaluated, accountDeactivated, setAccountDeactivated, isSigningOut, updateNotificationPreference]);
 
   return (
     <AuthContext.Provider value={value}>

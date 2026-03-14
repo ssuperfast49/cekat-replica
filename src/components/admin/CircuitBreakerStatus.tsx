@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { databaseCircuitBreaker, CircuitState, CircuitBreakerConfig } from '@/lib/circuitBreaker';
+import { databaseCircuitBreaker, CircuitState, CircuitBreakerConfig, FailureLogEntry } from '@/lib/circuitBreaker';
 import { defaultMetricsCollector, getMetricsStats } from '@/lib/metrics';
 import { defaultRateLimiter } from '@/lib/rateLimiter';
 import { defaultAdaptiveRateLimiter, AdaptiveConfig } from '@/lib/adaptiveRateLimiter';
@@ -48,9 +48,11 @@ export default function CircuitBreakerStatus() {
   const [metrics, setMetrics] = useState<any>(null);
   const [queueStats, setQueueStats] = useState(defaultRequestQueue.getStats());
   const [cacheStats, setCacheStats] = useState(defaultFallbackHandler.getStats());
+  const [failureLog, setFailureLog] = useState<FailureLogEntry[]>(databaseCircuitBreaker.getFailureLog());
+  const [showFailureLog, setShowFailureLog] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const { hasPermission } = useRBAC();
-  
+
   // Modal states
   const [showResetModal, setShowResetModal] = useState(false);
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -61,7 +63,7 @@ export default function CircuitBreakerStatus() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [modalMessage, setModalMessage] = useState('');
-  
+
   // Config state
   const [config, setConfig] = useState<CircuitBreakerConfig>(databaseCircuitBreaker.getConfig());
   const [editConfig, setEditConfig] = useState<CircuitBreakerConfig>(databaseCircuitBreaker.getConfig());
@@ -98,6 +100,7 @@ export default function CircuitBreakerStatus() {
         rpc: defaultAdaptiveRateLimiter.getMultiplier('rpc'),
         auth: defaultAdaptiveRateLimiter.getMultiplier('auth'),
       });
+      setFailureLog(databaseCircuitBreaker.getFailureLog());
     }, 1000);
 
     // Subscribe to circuit breaker events
@@ -232,8 +235,8 @@ export default function CircuitBreakerStatus() {
     setShowSuccessModal(true);
   };
 
-  const successRate = stats.totalRequests > 0 
-    ? ((stats.totalRequests - stats.failures) / stats.totalRequests * 100).toFixed(1)
+  const successRate = stats.totalRequests > 0
+    ? ((stats.totalRequests - stats.totalFailures) / stats.totalRequests * 100).toFixed(1)
     : '0';
 
   const readLimit = editAdaptiveConfig.baseConfig.read.limit;
@@ -284,8 +287,8 @@ export default function CircuitBreakerStatus() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              <LabelWithHelp 
-                label="Circuit State" 
+              <LabelWithHelp
+                label="Circuit State"
                 description="Status circuit breaker saat ini: CLOSED (normal, semua request diizinkan), OPEN (terhenti, memblokir semua request untuk melindungi database), atau HALF_OPEN (testing, mencoba menghubungkan kembali)"
               />
             </CardTitle>
@@ -304,8 +307,8 @@ export default function CircuitBreakerStatus() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              <LabelWithHelp 
-                label="Success Rate" 
+              <LabelWithHelp
+                label="Success Rate"
                 description="Persentase request database yang berhasil dari total request. Indikator kesehatan sistem - semakin tinggi semakin baik. Nilai rendah menunjukkan masalah potensial dengan database atau koneksi"
               />
             </CardTitle>
@@ -313,7 +316,7 @@ export default function CircuitBreakerStatus() {
           <CardContent>
             <div className="text-2xl font-semibold">{successRate}%</div>
             <div className="text-xs text-muted-foreground">
-              {stats.totalRequests - stats.failures} / {stats.totalRequests} requests
+              {stats.totalRequests - stats.totalFailures} / {stats.totalRequests} requests
             </div>
           </CardContent>
         </Card>
@@ -321,8 +324,8 @@ export default function CircuitBreakerStatus() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              <LabelWithHelp 
-                label="Total Requests" 
+              <LabelWithHelp
+                label="Total Requests"
                 description="Jumlah total request database yang telah diproses sejak circuit breaker diinisialisasi. Termasuk request yang berhasil dan gagal"
               />
             </CardTitle>
@@ -330,7 +333,7 @@ export default function CircuitBreakerStatus() {
           <CardContent>
             <div className="text-2xl font-semibold">{stats.totalRequests.toLocaleString()}</div>
             <div className="text-xs text-muted-foreground">
-              {stats.failures} failures, {stats.successes} successes
+              {stats.totalFailures} failures, {stats.totalSuccesses} successes
             </div>
           </CardContent>
         </Card>
@@ -338,8 +341,8 @@ export default function CircuitBreakerStatus() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              <LabelWithHelp 
-                label="Last Activity" 
+              <LabelWithHelp
+                label="Last Activity"
                 description="Waktu terakhir request database berhasil atau gagal. Membantu mengidentifikasi kapan masalah terakhir terjadi atau kapan sistem terakhir berfungsi normal"
               />
             </CardTitle>
@@ -375,8 +378,8 @@ export default function CircuitBreakerStatus() {
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Zap className="h-4 w-4" />
-              <LabelWithHelp 
-                label="Request Queue" 
+              <LabelWithHelp
+                label="Request Queue"
                 description="Antrian request database yang menunggu untuk diproses. Membantu menangani beban tinggi dengan mengatur prioritas dan menghindari duplikasi request"
               />
             </CardTitle>
@@ -435,8 +438,8 @@ export default function CircuitBreakerStatus() {
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Shield className="h-4 w-4" />
-              <LabelWithHelp 
-                label="Rate Limiter (Adaptive)" 
+              <LabelWithHelp
+                label="Rate Limiter (Adaptive)"
                 description="Sistem pembatas kecepatan request adaptif yang secara otomatis menyesuaikan limit berdasarkan kondisi sistem. Melindungi database dari traffic spike dan overload"
               />
             </CardTitle>
@@ -522,8 +525,8 @@ export default function CircuitBreakerStatus() {
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Database className="h-4 w-4" />
-              <LabelWithHelp 
-                label="Cache" 
+              <LabelWithHelp
+                label="Cache"
                 description="Sistem penyimpanan sementara untuk hasil query database. Mengurangi beban database dengan menyimpan hasil yang sering digunakan dan meningkatkan kecepatan response"
               />
             </CardTitle>
@@ -580,8 +583,8 @@ export default function CircuitBreakerStatus() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium">
-                <LabelWithHelp 
-                  label="Operations by Type" 
+                <LabelWithHelp
+                  label="Operations by Type"
                   description="Distribusi operasi database berdasarkan jenis (read, write, RPC, auth). Membantu memahami pola penggunaan database dan mengidentifikasi jenis operasi yang paling banyak digunakan"
                 />
               </CardTitle>
@@ -602,8 +605,8 @@ export default function CircuitBreakerStatus() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium">
-                <LabelWithHelp 
-                  label="Circuit Breaker States" 
+                <LabelWithHelp
+                  label="Circuit Breaker States"
                   description="Distribusi status circuit breaker saat operasi database dilakukan. Menunjukkan berapa banyak operasi yang terjadi pada setiap state (CLOSED, OPEN, HALF_OPEN)"
                 />
               </CardTitle>
@@ -630,8 +633,8 @@ export default function CircuitBreakerStatus() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium">
-                <LabelWithHelp 
-                  label="Limit Configuration" 
+                <LabelWithHelp
+                  label="Limit Configuration"
                   description="Konfigurasi threshold dan timeout untuk circuit breaker. Klik Edit untuk mengubah nilai-nilai ini"
                 />
               </CardTitle>
@@ -655,9 +658,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={config.failureThreshold} 
-                  disabled 
+                <Input
+                  value={config.failureThreshold}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -676,9 +679,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={config.resetTimeout} 
-                  disabled 
+                <Input
+                  value={config.resetTimeout}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -697,9 +700,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={config.successThreshold} 
-                  disabled 
+                <Input
+                  value={config.successThreshold}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -718,9 +721,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={config.monitoringPeriod} 
-                  disabled 
+                <Input
+                  value={config.monitoringPeriod}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -739,9 +742,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={config.timeout} 
-                  disabled 
+                <Input
+                  value={config.timeout}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -757,8 +760,8 @@ export default function CircuitBreakerStatus() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium">
-                <LabelWithHelp 
-                  label="Adaptive Rate Limiter Configuration" 
+                <LabelWithHelp
+                  label="Adaptive Rate Limiter Configuration"
                   description="Konfigurasi untuk adaptive rate limiter yang secara otomatis menyesuaikan limit berdasarkan kondisi sistem. Menangani traffic spike dengan lebih baik"
                 />
               </CardTitle>
@@ -782,9 +785,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={adaptiveConfig.baseConfig.read.limit} 
-                  disabled 
+                <Input
+                  value={adaptiveConfig.baseConfig.read.limit}
+                  disabled
                   className="font-mono"
                 />
                 <div className="flex items-center gap-2 text-xs">
@@ -805,9 +808,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={adaptiveConfig.baseConfig.write.limit} 
-                  disabled 
+                <Input
+                  value={adaptiveConfig.baseConfig.write.limit}
+                  disabled
                   className="font-mono"
                 />
                 <div className="flex items-center gap-2 text-xs">
@@ -828,9 +831,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={adaptiveConfig.baseConfig.rpc.limit} 
-                  disabled 
+                <Input
+                  value={adaptiveConfig.baseConfig.rpc.limit}
+                  disabled
                   className="font-mono"
                 />
                 <div className="flex items-center gap-2 text-xs">
@@ -851,9 +854,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={adaptiveConfig.baseConfig.auth.limit} 
-                  disabled 
+                <Input
+                  value={adaptiveConfig.baseConfig.auth.limit}
+                  disabled
                   className="font-mono"
                 />
                 <div className="flex items-center gap-2 text-xs">
@@ -876,9 +879,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={adaptiveConfig.minMultiplier} 
-                  disabled 
+                <Input
+                  value={adaptiveConfig.minMultiplier}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -897,9 +900,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={adaptiveConfig.maxMultiplier} 
-                  disabled 
+                <Input
+                  value={adaptiveConfig.maxMultiplier}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -960,9 +963,9 @@ export default function CircuitBreakerStatus() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Input 
-                  value={adaptiveConfig.adjustmentInterval} 
-                  disabled 
+                <Input
+                  value={adaptiveConfig.adjustmentInterval}
+                  disabled
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -1004,8 +1007,8 @@ export default function CircuitBreakerStatus() {
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-red-600 dark:text-red-400">
               <AlertCircle className="h-5 w-5" />
-              <LabelWithHelp 
-                label="Danger Zone" 
+              <LabelWithHelp
+                label="Danger Zone"
                 description="Tindakan berbahaya yang dapat mempengaruhi seluruh aplikasi. Gunakan dengan sangat hati-hati!"
               />
             </CardTitle>
@@ -1203,8 +1206,8 @@ export default function CircuitBreakerStatus() {
               </h3>
               <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 space-y-2">
                 <p className="text-sm">
-                  <strong>Circuit Breaker</strong> adalah mekanisme perlindungan yang mencegah kegagalan sistem database merambat ke seluruh aplikasi. 
-                  Seperti sekring listrik, circuit breaker akan memutuskan koneksi sementara ketika mendeteksi terlalu banyak kegagalan, 
+                  <strong>Circuit Breaker</strong> adalah mekanisme perlindungan yang mencegah kegagalan sistem database merambat ke seluruh aplikasi.
+                  Seperti sekring listrik, circuit breaker akan memutuskan koneksi sementara ketika mendeteksi terlalu banyak kegagalan,
                   sehingga memberikan waktu untuk sistem pulih dan mencegah beban berlebih.
                 </p>
                 <ul className="text-sm list-disc list-inside space-y-1 text-muted-foreground">
@@ -1329,7 +1332,7 @@ export default function CircuitBreakerStatus() {
                             <br />• <strong>Tips:</strong>
                             <br />&nbsp;&nbsp;- Nilai terlalu pendek (1-3s): Request normal bisa dianggap gagal, false positive tinggi
                             <br />&nbsp;&nbsp;- Nilai terlalu panjang (30s+): Request hang akan menunggu terlalu lama, resource terbuang
-                            <br />&nbsp;&nbsp;- Rekomendasi: 
+                            <br />&nbsp;&nbsp;- Rekomendasi:
                             <br />&nbsp;&nbsp;&nbsp;&nbsp;• Read queries: 5-10 detik
                             <br />&nbsp;&nbsp;&nbsp;&nbsp;• Write queries: 10-15 detik
                             <br />&nbsp;&nbsp;&nbsp;&nbsp;• RPC/complex queries: 15-30 detik
@@ -1400,7 +1403,7 @@ export default function CircuitBreakerStatus() {
                       <div>
                         <strong className="text-red-700 dark:text-red-300">OPEN (Terbuka)</strong>
                         <p className="text-muted-foreground">
-                          Circuit breaker mendeteksi terlalu banyak kegagalan (≥ {config.failureThreshold} dalam {(config.monitoringPeriod / 1000).toFixed(0)} detik). 
+                          Circuit breaker mendeteksi terlalu banyak kegagalan (≥ {config.failureThreshold} dalam {(config.monitoringPeriod / 1000).toFixed(0)} detik).
                           Semua request database diblokir untuk melindungi sistem. Status ini akan bertahan selama {config.resetTimeout / 1000} detik sebelum mencoba uji pemulihan.
                         </p>
                       </div>
@@ -1410,7 +1413,7 @@ export default function CircuitBreakerStatus() {
                       <div>
                         <strong className="text-yellow-700 dark:text-yellow-300">HALF_OPEN (Setengah Terbuka)</strong>
                         <p className="text-muted-foreground">
-                          Fase uji pemulihan. Setelah {config.resetTimeout / 1000} detik di status OPEN, circuit breaker mengizinkan beberapa request terbatas untuk mengecek apakah sistem sudah pulih. 
+                          Fase uji pemulihan. Setelah {config.resetTimeout / 1000} detik di status OPEN, circuit breaker mengizinkan beberapa request terbatas untuk mengecek apakah sistem sudah pulih.
                           Jika {config.successThreshold} request berhasil berturut-turut, kembali ke CLOSED. Jika gagal, kembali ke OPEN.
                         </p>
                       </div>
@@ -1461,7 +1464,7 @@ export default function CircuitBreakerStatus() {
                   <div>
                     <strong className="text-orange-800 dark:text-orange-200">1. Jangan Panik - Ini Tindakan Perlindungan Otomatis</strong>
                     <p className="text-muted-foreground mt-1">
-                      Circuit breaker terbuka adalah mekanisme perlindungan yang bekerja secara otomatis. 
+                      Circuit breaker terbuka adalah mekanisme perlindungan yang bekerja secara otomatis.
                       Aplikasi sengaja memblokir request untuk mencegah database crash.
                     </p>
                   </div>
@@ -1492,7 +1495,7 @@ export default function CircuitBreakerStatus() {
                   <div>
                     <strong className="text-orange-800 dark:text-orange-200">4. Tunggu Pemulihan Otomatis</strong>
                     <p className="text-muted-foreground mt-1">
-                      Circuit breaker akan otomatis mencoba uji pemulihan setelah {config.resetTimeout / 1000} detik. 
+                      Circuit breaker akan otomatis mencoba uji pemulihan setelah {config.resetTimeout / 1000} detik.
                       Jika sistem sudah pulih, akan kembali ke status CLOSED secara otomatis.
                     </p>
                   </div>
@@ -1522,7 +1525,7 @@ export default function CircuitBreakerStatus() {
                 <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
                   <h4 className="font-semibold text-sm mb-2 text-purple-800 dark:text-purple-200">Apa itu Adaptive Rate Limiter?</h4>
                   <p className="text-sm text-muted-foreground mb-3">
-                    <strong>Adaptive Rate Limiter</strong> adalah sistem pembatas kecepatan yang secara otomatis menyesuaikan limit berdasarkan kondisi sistem database. 
+                    <strong>Adaptive Rate Limiter</strong> adalah sistem pembatas kecepatan yang secara otomatis menyesuaikan limit berdasarkan kondisi sistem database.
                     Berbeda dengan rate limiter statis yang memiliki limit tetap, adaptive rate limiter akan:
                   </p>
                   <ul className="text-sm list-disc list-inside space-y-1 text-muted-foreground">
@@ -1539,7 +1542,7 @@ export default function CircuitBreakerStatus() {
                     <div>
                       <strong className="text-green-700 dark:text-green-300">1. Deteksi Traffic Spike</strong>
                       <p className="text-muted-foreground mt-1">
-                        Saat traffic spike terjadi, database mulai lambat (response time meningkat) atau terjadi error rate tinggi. 
+                        Saat traffic spike terjadi, database mulai lambat (response time meningkat) atau terjadi error rate tinggi.
                         Adaptive rate limiter memantau metrik ini setiap {adaptiveConfig.adjustmentInterval / 1000} detik dari tabel <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">circuit_breaker_metrics</code> di Supabase.
                       </p>
                     </div>
@@ -1574,7 +1577,7 @@ export default function CircuitBreakerStatus() {
                           <div>
                             <strong>Spike Normal (Dapat Dihandle):</strong>
                             <p className="text-muted-foreground mt-1">
-                              Request melonjak → Rate limiter dengan limit adaptif menangani sebagian request → 
+                              Request melonjak → Rate limiter dengan limit adaptif menangani sebagian request →
                               Jika masih dalam batas, semua diizinkan → Jika melebihi, request diblokir dengan HTTP 429
                             </p>
                           </div>
@@ -1584,8 +1587,8 @@ export default function CircuitBreakerStatus() {
                           <div>
                             <strong>Spike Besar (Database Mulai Lambat):</strong>
                             <p className="text-muted-foreground mt-1">
-                              Response time naik di atas {adaptiveConfig.stressLatencyThreshold}ms → 
-                              Adaptive limiter turunkan limit secara bertahap → 
+                              Response time naik di atas {adaptiveConfig.stressLatencyThreshold}ms →
+                              Adaptive limiter turunkan limit secara bertahap →
                               Memberi waktu database pulih → Mencegah circuit breaker langsung OPEN
                             </p>
                           </div>
@@ -1595,7 +1598,7 @@ export default function CircuitBreakerStatus() {
                           <div>
                             <strong>DDoS/Attack:</strong>
                             <p className="text-muted-foreground mt-1">
-                              Ribuan request masuk → Adaptive limiter turunkan limit drastis (hingga {(adaptiveConfig.minMultiplier * 100).toFixed(0)}%) → 
+                              Ribuan request masuk → Adaptive limiter turunkan limit drastis (hingga {(adaptiveConfig.minMultiplier * 100).toFixed(0)}%) →
                               Sebagian besar request diblokir → Database terlindungi → Circuit breaker OPEN sebagai last resort jika masih gagal
                             </p>
                           </div>
@@ -1617,7 +1620,7 @@ export default function CircuitBreakerStatus() {
                           <p className="text-xs mt-1">
                             • <strong>Input ini:</strong> Min Multiplier = {(adaptiveConfig.minMultiplier * 100).toFixed(0)}% (range: 0.1 - 1.0)
                             <br />• <strong>Fungsi:</strong> Menentukan seberapa rendah limit dapat turun saat sistem diserang
-                            <br />• <strong>Untuk DDoS:</strong> 
+                            <br />• <strong>Untuk DDoS:</strong>
                             <br />&nbsp;&nbsp;- Nilai rendah (0.1-0.3) = Limit turun drastis → 90-70% request diblokir → <strong>SANGAT EFEKTIF</strong>
                             <br />&nbsp;&nbsp;- Nilai sedang (0.4-0.6) = Limit turun sedang → 60-40% request diblokir → <strong>EFEKTIF</strong>
                             <br />&nbsp;&nbsp;- Nilai tinggi (0.7-1.0) = Limit turun sedikit → 30-0% request diblokir → <strong>KURANG EFEKTIF</strong>
@@ -1646,7 +1649,7 @@ export default function CircuitBreakerStatus() {
                             <br />• <strong>Untuk DDoS:</strong>
                             <br />&nbsp;&nbsp;- Base limit rendah = Kurang request yang diizinkan → Lebih aman tapi bisa blokir user normal
                             <br />&nbsp;&nbsp;- Base limit tinggi = Lebih banyak request diizinkan → Lebih toleran tapi kurang proteksi
-                            <br />• <strong>Rekomendasi DDoS:</strong> 
+                            <br />• <strong>Rekomendasi DDoS:</strong>
                             <br />&nbsp;&nbsp;- Reads: 50-100/min (default: {adaptiveConfig.baseConfig.read.limit}/min)
                             <br />&nbsp;&nbsp;- Writes: 20-30/min (default: {adaptiveConfig.baseConfig.write.limit}/min)
                             <br />&nbsp;&nbsp;- RPC: 10-20/min (default: {adaptiveConfig.baseConfig.rpc.limit}/min)
@@ -1732,7 +1735,7 @@ export default function CircuitBreakerStatus() {
                       <div>
                         <strong>Circuit Breaker (Lapisan Ketiga):</strong>
                         <p className="text-muted-foreground mt-1">
-                          Jika tetap terjadi {config.failureThreshold} kegagalan dalam {(config.monitoringPeriod / 1000).toFixed(0)} detik, 
+                          Jika tetap terjadi {config.failureThreshold} kegagalan dalam {(config.monitoringPeriod / 1000).toFixed(0)} detik,
                           circuit breaker akan OPEN dan memblokir semua request untuk melindungi database sepenuhnya.
                         </p>
                       </div>
@@ -1851,7 +1854,7 @@ export default function CircuitBreakerStatus() {
                         </div>
                         <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded p-2 mt-2">
                           <p className="text-xs text-yellow-700 dark:text-yellow-300">
-                            <strong>💡 Catatan:</strong> Jika response time di antara {adaptiveConfig.healthyLatencyThreshold}ms dan {adaptiveConfig.stressLatencyThreshold}ms, 
+                            <strong>💡 Catatan:</strong> Jika response time di antara {adaptiveConfig.healthyLatencyThreshold}ms dan {adaptiveConfig.stressLatencyThreshold}ms,
                             sistem akan perlahan mengembalikan multiplier ke 1.0 (100% dari base limit).
                           </p>
                         </div>
@@ -1874,10 +1877,10 @@ export default function CircuitBreakerStatus() {
                             <br />&nbsp;&nbsp;3. Bandingkan dengan threshold (healthy/stress)
                             <br />&nbsp;&nbsp;4. Sesuaikan multiplier untuk setiap operasi (read/write/rpc/auth)
                             <br />&nbsp;&nbsp;5. Simpan multiplier baru ke localStorage dan update limit efektif
-                            <br />• <strong>Mengapa penting?</strong> 
+                            <br />• <strong>Mengapa penting?</strong>
                             <br />&nbsp;&nbsp;- Interval terlalu pendek: Sistem terlalu reaktif, limit berubah-ubah terlalu sering (tidak stabil)
                             <br />&nbsp;&nbsp;- Interval terlalu panjang: Sistem lambat merespons perubahan kondisi (tidak efektif)
-                            <br />• <strong>Tips:</strong> 
+                            <br />• <strong>Tips:</strong>
                             <br />&nbsp;&nbsp;- Untuk aplikasi dengan traffic stabil: Gunakan 60-120 detik
                             <br />&nbsp;&nbsp;- Untuk aplikasi dengan traffic volatile: Gunakan 30-60 detik
                             <br />&nbsp;&nbsp;- Jangan kurang dari 10 detik (terlalu agresif)
@@ -1923,8 +1926,8 @@ export default function CircuitBreakerStatus() {
                     </div>
 
                     <p className="text-xs mt-3 pt-2 border-t">
-                      💡 <strong>Tip Penting:</strong> Limit efektif saat ini dapat dilihat di bagian "Adaptive Rate Limiter Configuration" di atas. 
-                      Limit akan berubah secara real-time berdasarkan kondisi sistem. Perhatikan perubahan multiplier - jika terus turun, 
+                      💡 <strong>Tip Penting:</strong> Limit efektif saat ini dapat dilihat di bagian "Adaptive Rate Limiter Configuration" di atas.
+                      Limit akan berubah secara real-time berdasarkan kondisi sistem. Perhatikan perubahan multiplier - jika terus turun,
                       itu berarti sistem sedang stres dan perlu perhatian.
                     </p>
                   </div>
@@ -2089,7 +2092,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="right" align="start" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="right" align="start" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi read (min: 10, max: 1000)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2152,7 +2155,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi write (min: 5, max: 500)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2215,7 +2218,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="right" align="start" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="right" align="start" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi RPC (min: 5, max: 200)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2278,7 +2281,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Limit dasar untuk operasi autentikasi (min: 2, max: 100)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2347,7 +2350,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Multiplier minimum (misal: 0.5 = 50%). Digunakan saat sistem stres (min: 0.1, max: 1.0)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2414,7 +2417,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="left" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="left" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Multiplier maksimum (misal: 2.0 = 200%). Digunakan saat sistem sehat (min: 1.0, max: 5.0)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2481,7 +2484,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Response time di bawah ini dianggap sehat. Sistem akan meningkatkan limit (min: 50ms, max: 1000ms)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2532,7 +2535,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="left" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="left" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Response time di atas ini dianggap stres. Sistem akan menurunkan limit (min: 500ms, max: 10000ms)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2583,7 +2586,7 @@ export default function CircuitBreakerStatus() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                    <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
+                      <TooltipContent side="right" align="center" sideOffset={12} className="max-w-xs whitespace-normal break-words">
                         <p>Frekuensi pengecekan dan penyesuaian limit (min: 10000ms, max: 600000ms)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -2800,10 +2803,10 @@ export default function CircuitBreakerStatus() {
                 {(!Number.isFinite(editConfig.successThreshold) ||
                   editConfig.successThreshold < 1 ||
                   editConfig.successThreshold > 10) && (
-                  <p className="text-xs text-red-500">
-                    Success threshold must be a number between 1 and 10.
-                  </p>
-                )}
+                    <p className="text-xs text-red-500">
+                      Success threshold must be a number between 1 and 10.
+                    </p>
+                  )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="monitoringPeriod">
@@ -2977,6 +2980,78 @@ export default function CircuitBreakerStatus() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Failure Log */}
+      <Card>
+        <CardHeader className="cursor-pointer" onClick={() => setShowFailureLog(!showFailureLog)}>
+          <CardTitle className="text-sm font-medium flex items-center justify-between">
+            <LabelWithHelp
+              label={`Failure Log (${failureLog.length})`}
+              description="Log detail dari setiap kegagalan request yang tercatat oleh circuit breaker. Menampilkan endpoint, operasi, error, status code, dan apakah kegagalan memicu perubahan state circuit breaker."
+            />
+            <span className="text-xs text-muted-foreground">{showFailureLog ? '▲ Hide' : '▼ Show'}</span>
+          </CardTitle>
+        </CardHeader>
+        {showFailureLog && (
+          <CardContent>
+            {failureLog.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-6">
+                No failures recorded yet.
+              </div>
+            ) : (
+              <div className="max-h-[400px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-card">
+                    <tr className="border-b text-left">
+                      <th className="py-2 px-2 font-medium">Time</th>
+                      <th className="py-2 px-2 font-medium">Endpoint</th>
+                      <th className="py-2 px-2 font-medium">Op</th>
+                      <th className="py-2 px-2 font-medium">Error</th>
+                      <th className="py-2 px-2 font-medium">Code</th>
+                      <th className="py-2 px-2 font-medium">Tripped</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...failureLog].reverse().map((entry, i) => (
+                      <tr
+                        key={`${entry.timestamp}-${i}`}
+                        className={`border-b ${entry.trippedCircuit ? 'bg-red-50 dark:bg-red-950/30' : ''}`}
+                      >
+                        <td className="py-1.5 px-2 whitespace-nowrap text-muted-foreground">
+                          {new Date(entry.timestamp).toLocaleTimeString()}
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <code className="bg-muted px-1 rounded text-[11px]">{entry.endpoint || '—'}</code>
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <Badge variant="outline" className="h-5 text-[10px]">{entry.operation || '—'}</Badge>
+                        </td>
+                        <td className="py-1.5 px-2 max-w-[200px] truncate" title={entry.error}>
+                          {entry.error}
+                        </td>
+                        <td className="py-1.5 px-2">
+                          {entry.statusCode ? (
+                            <Badge variant={entry.statusCode >= 500 ? 'destructive' : 'secondary'} className="h-5 text-[10px]">
+                              {entry.statusCode}
+                            </Badge>
+                          ) : '—'}
+                        </td>
+                        <td className="py-1.5 px-2">
+                          {entry.trippedCircuit ? (
+                            <Badge className="bg-red-100 text-red-700 border-0 h-5 text-[10px]">⚡ YES</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">No</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
     </div>
   );
 }

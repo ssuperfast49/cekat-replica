@@ -1,5 +1,47 @@
 # Change Log
 
+# [0.1.122] FE WEB CEKAT 2026-03-14
+
+### Backend & Performance
+- **Threads Table Timeout**: Fixed a critical 500 Server Timeout error causing the inbox to sporadically fail to load. PostgREST was hitting an 8-second execution timeout due to recursive SECURITY DEFINER RLS policies on the `threads` and `messages` tables. The policies were optimized into fast native `EXISTS` SQL statements directly querying `channels` and `channel_agents`, dropping execution time from >10,000ms down to <100ms.
+  - Added Migration: `20260314065600_optimize_threads_rls.sql`
+
+### Notifications
+- **Global Preferences Sync**: Converted Chat Audio and Toast Notifications into a true global account setting that syncs across devices rather than relying strictly on LocalStorage.
+  - Linked the "Notifications" toggle switch inside the *Profile Settings* dialog directly to the Supabase Auth `user_metadata.notifications_enabled` property.
+  - Updated both `GlobalMessageListener.tsx` push toasts and system audio ringtones to obey this metadata setting.
+  - Existing legacy users were retroactively defaulted to `notifications_enabled: true` to prevent missed live chats.
+  - Added Migration: `20260314070000_enable_notifications_by_default.sql`
+  - Updated: `src/contexts/AuthContext.tsx`
+  - Updated: `src/components/auth/ProfileDialog.tsx`
+  - Updated: `src/components/layout/GlobalMessageListener.tsx`
+
+# [0.1.121] FE WEB CEKAT 2026-03-13
+
+### Circuit Breaker Improvements
+
+- **Success Rate Fix**: Fixed the success rate always showing 100% after circuit recovery. The formula was using time-windowed failure count (pruned after 10s) instead of a persistent total. Added `totalFailures` and `totalSuccesses` counters that accurately track all-time failure/success counts.
+  - Updated: `src/lib/circuitBreaker.ts`
+  - Updated: `src/components/admin/CircuitBreakerStatus.tsx`
+- **Failure Log**: Added a detailed failure log that captures what triggered each circuit breaker failure — including endpoint, operation type (read/write/rpc/auth), error message, status code, timestamp, and whether it tripped the circuit. Displayed as a collapsible table in the Circuit Breaker dashboard. Log is capped at 50 entries and persisted to localStorage.
+  - Updated: `src/lib/circuitBreaker.ts`
+  - Updated: `src/lib/supabaseProtected.ts`
+  - Updated: `src/components/admin/CircuitBreakerStatus.tsx`
+
+### Conversation List
+
+- **Done Tab Pagination**: Added pagination for the "Done" (resolved) tab, displaying 10 threads per page with Previous/Next controls. Tab badge still shows the total count. Real-time data streaming is unaffected since pagination is applied at render time only.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
+### Data Retention Policy
+
+- **Run Cleanup Now Fix**: Fixed the "Run Cleanup Now" button in Admin Panel. The RPC call was passing `p_days` instead of `p_org_id`, causing the function to fail. Now correctly resolves the user's org and passes it to the database function.
+  - Updated: `src/components/admin/AdminPanel.tsx`
+- **Cleanup Confirmation Popup**: Added a preview step before running cleanup. Clicking "Run Cleanup Now" now first shows a confirmation popup with exact counts of threads, messages, and chat attachment storage files to be deleted. AI Agent file uploads are explicitly excluded from cleanup.
+  - Updated: `src/components/admin/AdminPanel.tsx`
+- **Cleanup Scope Fix**: Updated the `cleanup_old_chat_data` database function to only delete old **messages**, **threads**, and **storage files** (from `chat-attachments` bucket only). Contacts and AI Agent file uploads are no longer affected.
+  - Added migration: `supabase/migrations/20260312165235_cleanup_func_update.sql`
+
 # [0.1.120] FE WEB CEKAT 2026-03-12
 
 ### Platform Management
@@ -1800,7 +1842,15 @@
 
 # [0.0.44] FE WEB CEKAT 2025-11-19
 
-### Changelog Experience Revamp
+### Changelog
+
+## [0.1.122] - 2026-03-14
+### Fixed
+- Fixed a 500 Server Timeout error caused by the Supabase RLS policies on the `threads` and `messages` tables. Recoded the black-box Postgres security-definer helper functions into fast native `EXISTS` SQL statements, drastically dropping the execution time from `>10,000ms` down to `<100ms`. (Migration `20260314065600_optimize_threads_rls.sql`)
+### Changed
+- Converted Chat Audio and Toast Notifications into a global account setting that syncs across devices. 
+- Wired the "Notifications" toggle inside the Profile Settings dialog directly to the Supabase Auth `user_metadata.notifications_enabled` flag.
+- Defaulted all existing Legacy users to have `notifications_enabled: true` to prevent missed chats. (Migration `20260314070000_enable_notifications_by_default.sql`) Experience Revamp
 
 - **Interactive Release Browser**: Introduced a dynamic changelog page with searchable release list, color-coded highlights, and accordion sections for each area of work.
 - **Dual View Modes**: Added interactive and classic tabs so readers can switch between the immersive UI and the original Markdown in one place.

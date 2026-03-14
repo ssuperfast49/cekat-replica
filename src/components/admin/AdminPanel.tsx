@@ -33,6 +33,10 @@ export default function AdminPanel() {
   const [cleanupResult, setCleanupResult] = useState<any>(null);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [gdprLoading, setGdprLoading] = useState(false);
+  // Cleanup confirmation modal
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [cleanupPreview, setCleanupPreview] = useState<any>(null);
+  const [cleanupPreviewLoading, setCleanupPreviewLoading] = useState(false);
   // AI Auto Response Pause state
   const [aiPaused, setAiPaused] = useState<boolean | null>(null);
   const [aiPausedReason, setAiPausedReason] = useState<string | null>(null);
@@ -169,7 +173,7 @@ export default function AdminPanel() {
       setAiPausedByUserId(null);
       setAiPausedByName(null);
       toast.success('AI auto responses resumed');
-      try { await logAction({ action: 'ai.resume', resource: 'org_settings' }); } catch {}
+      try { await logAction({ action: 'ai.resume', resource: 'org_settings' }); } catch { }
     } catch (error: any) {
       toast.error(error?.message || 'Failed to resume AI responses');
     } finally {
@@ -201,7 +205,7 @@ export default function AdminPanel() {
       setAiPausedByName(null);
       setShowAiPauseModal(false);
       toast.success('AI auto responses paused');
-      try { await logAction({ action: 'ai.pause', resource: 'org_settings', context: { reason: aiPauseReasonInput?.trim() || null } }); } catch {}
+      try { await logAction({ action: 'ai.pause', resource: 'org_settings', context: { reason: aiPauseReasonInput?.trim() || null } }); } catch { }
       // Refresh pauser display name
       void fetchAiPauseStatus();
     } catch (error: any) {
@@ -228,7 +232,7 @@ export default function AdminPanel() {
       setRetentionDays(editRetentionDays);
       setShowRetentionModal(false);
       toast.success(`Retention period updated to ${editRetentionDays} days`);
-      try { await logAction({ action: 'retention.update', resource: 'org_settings', context: { retention_days: editRetentionDays } }); } catch {}
+      try { await logAction({ action: 'retention.update', resource: 'org_settings', context: { retention_days: editRetentionDays } }); } catch { }
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update retention settings');
     } finally {
@@ -236,17 +240,43 @@ export default function AdminPanel() {
     }
   };
 
-  // Manual cleanup trigger
-  const triggerCleanup = async () => {
+  // Preview what will be cleaned up (show confirmation popup)
+  const previewCleanup = async () => {
     try {
-      setCleanupLoading(true);
-      const { data, error } = await protectedSupabase.rpc('cleanup_old_chat_data', {
-        p_days: retentionDays ?? 90,
+      setCleanupPreviewLoading(true);
+      const orgId = await resolveCurrentOrgId();
+      if (!orgId) throw new Error('Unable to resolve organization');
+
+      const { data, error } = await protectedSupabase.rpc('preview_cleanup_old_chat_data', {
+        p_org_id: orgId,
       });
       if (error) throw error;
+
+      setCleanupPreview(data);
+      setShowCleanupConfirm(true);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to preview cleanup');
+    } finally {
+      setCleanupPreviewLoading(false);
+    }
+  };
+
+  // Actually run the cleanup after user confirms
+  const executeCleanup = async () => {
+    try {
+      setCleanupLoading(true);
+      setShowCleanupConfirm(false);
+      const orgId = await resolveCurrentOrgId();
+      if (!orgId) throw new Error('Unable to resolve organization');
+
+      const { data, error } = await protectedSupabase.rpc('cleanup_old_chat_data', {
+        p_org_id: orgId,
+      });
+      if (error) throw error;
+
       setCleanupResult(data);
-      toast.success(`Cleanup completed: ${data?.threads_deleted || 0} threads, ${data?.messages_deleted || 0} messages deleted`);
-      try { await logAction({ action: 'retention.cleanup', resource: 'chat_data', context: data }); } catch {}
+      toast.success(`Cleanup completed: ${data?.threads_deleted || 0} threads, ${data?.messages_deleted || 0} messages, ${data?.storage_files_deleted || 0} storage files deleted`);
+      try { await logAction({ action: 'retention.cleanup', resource: 'chat_data', context: data }); } catch { }
     } catch (error: any) {
       toast.error(error?.message || 'Failed to run cleanup');
     } finally {
@@ -269,7 +299,7 @@ export default function AdminPanel() {
       toast.success(`GDPR deletion completed: ${data?.threads_deleted || 0} threads, ${data?.messages_deleted || 0} messages, ${data?.contact_deleted || 0} contacts deleted`);
       setShowGdprModal(false);
       setGdprContactId("");
-      try { await logAction({ action: 'gdpr.delete_request', resource: 'contact', resourceId: gdprContactId, context: data }); } catch {}
+      try { await logAction({ action: 'gdpr.delete_request', resource: 'contact', resourceId: gdprContactId, context: data }); } catch { }
     } catch (error: any) {
       toast.error(error?.message || 'Failed to execute GDPR deletion');
     } finally {
@@ -314,26 +344,26 @@ export default function AdminPanel() {
         {/* Quick Links */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Shield className="h-4 w-4"/> Access & Management</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Shield className="h-4 w-4" /> Access & Management</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Button variant="outline" className="justify-start" onClick={()=>goTo('permissions')}>
-              <ShieldCheck className="h-4 w-4 mr-2"/> Manage Roles & Permissions
+            <Button variant="outline" className="justify-start" onClick={() => goTo('permissions')}>
+              <ShieldCheck className="h-4 w-4 mr-2" /> Manage Roles & Permissions
             </Button>
-            <Button variant="outline" className="justify-start" onClick={()=>goTo('humanagents')}>
-              <Users className="h-4 w-4 mr-2"/> Human Agents
+            <Button variant="outline" className="justify-start" onClick={() => goTo('humanagents')}>
+              <Users className="h-4 w-4 mr-2" /> Human Agents
             </Button>
-            <Button variant="outline" className="justify-start" onClick={()=>goTo('platforms')}>
-              <PlugZap className="h-4 w-4 mr-2"/> Platforms & Integrations
+            <Button variant="outline" className="justify-start" onClick={() => goTo('platforms')}>
+              <PlugZap className="h-4 w-4 mr-2" /> Platforms & Integrations
             </Button>
-            <Button variant="outline" className="justify-start" onClick={()=>goTo('analytics')}>
-              <BarChart2 className="h-4 w-4 mr-2"/> Analytics
+            <Button variant="outline" className="justify-start" onClick={() => goTo('analytics')}>
+              <BarChart2 className="h-4 w-4 mr-2" /> Analytics
             </Button>
-            <Button variant="outline" className="justify-start" onClick={()=>goTo('logs')}>
-              <ClipboardList className="h-4 w-4 mr-2"/> Audit Logs
+            <Button variant="outline" className="justify-start" onClick={() => goTo('logs')}>
+              <ClipboardList className="h-4 w-4 mr-2" /> Audit Logs
             </Button>
-            <Button variant="outline" className="justify-start" onClick={()=>goTo('contacts')}>
-              <Key className="h-4 w-4 mr-2"/> Contacts
+            <Button variant="outline" className="justify-start" onClick={() => goTo('contacts')}>
+              <Key className="h-4 w-4 mr-2" /> Contacts
             </Button>
           </CardContent>
         </Card>
@@ -341,7 +371,7 @@ export default function AdminPanel() {
         {/* Reliability */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Settings className="h-4 w-4"/> Reliability & Circuit Breaker</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Settings className="h-4 w-4" /> Reliability & Circuit Breaker</CardTitle>
           </CardHeader>
           <CardContent>
             <CircuitBreakerStatus />
@@ -351,7 +381,7 @@ export default function AdminPanel() {
         {/* AI Auto Responses */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Settings className="h-4 w-4"/> AI Auto Responses</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Settings className="h-4 w-4" /> AI Auto Responses</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
@@ -396,10 +426,10 @@ export default function AdminPanel() {
         {/* Utilities */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Eraser className="h-4 w-4"/> Utilities</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Eraser className="h-4 w-4" /> Utilities</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={clearCaches}><Eraser className="h-4 w-4 mr-2"/> Clear Local Cache</Button>
+            <Button variant="outline" onClick={clearCaches}><Eraser className="h-4 w-4 mr-2" /> Clear Local Cache</Button>
           </CardContent>
         </Card>
 
@@ -432,12 +462,12 @@ export default function AdminPanel() {
               <div className="text-xs text-muted-foreground">
                 Current: {retentionDays ?? 90} days. Chats older than this will be automatically deleted.
               </div>
-              <Button onClick={triggerCleanup} disabled={cleanupLoading} className="w-full">
-                {cleanupLoading ? 'Running Cleanup...' : 'Run Cleanup Now'}
+              <Button onClick={previewCleanup} disabled={cleanupLoading || cleanupPreviewLoading} className="w-full">
+                {cleanupPreviewLoading ? 'Checking...' : cleanupLoading ? 'Running Cleanup...' : 'Run Cleanup Now'}
               </Button>
               {cleanupResult && (
                 <div className="text-xs text-muted-foreground">
-                  Last cleanup: {cleanupResult.threads_deleted} threads, {cleanupResult.messages_deleted} messages, {cleanupResult.contacts_deleted} contacts
+                  Last cleanup: {cleanupResult.threads_deleted} threads, {cleanupResult.messages_deleted} messages, {cleanupResult.storage_files_deleted || 0} storage files deleted
                 </div>
               )}
             </CardContent>
@@ -546,20 +576,75 @@ export default function AdminPanel() {
           </DialogContent>
         </Dialog>
 
+        {/* Cleanup Confirmation Modal */}
+        <Dialog open={showCleanupConfirm} onOpenChange={setShowCleanupConfirm}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Confirm Data Cleanup
+              </DialogTitle>
+              <DialogDescription>
+                The following data older than <strong>{cleanupPreview?.retention_days || retentionDays || 90} days</strong> will be permanently deleted. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-3">
+              <div className="rounded-lg border p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Threads to delete:</span>
+                  <span className="font-semibold">{cleanupPreview?.threads_to_delete ?? 0}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Messages to delete:</span>
+                  <span className="font-semibold">{cleanupPreview?.messages_to_delete ?? 0}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Chat attachment files to delete:</span>
+                  <span className="font-semibold">{cleanupPreview?.storage_files_to_delete ?? 0}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Cutoff date:</span>
+                  <span className="font-medium text-xs">{cleanupPreview?.cutoff_date ? new Date(cleanupPreview.cutoff_date).toLocaleString() : '-'}</span>
+                </div>
+              </div>
+              <div className="text-xs text-emerald-600 flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                AI Agent file uploads will NOT be affected.
+              </div>
+              {(cleanupPreview?.threads_to_delete === 0 && cleanupPreview?.messages_to_delete === 0 && cleanupPreview?.storage_files_to_delete === 0) && (
+                <div className="text-xs text-amber-600">
+                  No data qualifies for deletion. All data is within the {cleanupPreview?.retention_days || retentionDays || 90}-day retention period.
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCleanupConfirm(false)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={executeCleanup}
+                disabled={cleanupLoading || (cleanupPreview?.threads_to_delete === 0 && cleanupPreview?.messages_to_delete === 0 && cleanupPreview?.storage_files_to_delete === 0)}
+              >
+                {cleanupLoading ? 'Deleting...' : 'Confirm Cleanup'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Danger Zone */}
         <Card className="border-red-200">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-700"><AlertTriangle className="h-4 w-4"/> Danger Zone</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-red-700"><AlertTriangle className="h-4 w-4" /> Danger Zone</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
               <p className="text-sm text-muted-foreground mb-2">Paste contact UUIDs (comma/newline separated) to delete permanently.</p>
-              <Textarea value={deleteIds} onChange={(e)=>setDeleteIds(e.target.value)} placeholder="uuid-1, uuid-2, uuid-3" className="min-h-[120px]"/>
+              <Textarea value={deleteIds} onChange={(e) => setDeleteIds(e.target.value)} placeholder="uuid-1, uuid-2, uuid-3" className="min-h-[120px]" />
               <div className="mt-2 flex items-center justify-between">
                 <div className="text-xs text-muted-foreground">Parsed: {idsParsed.length}</div>
                 <PermissionGate permission={'contacts.delete'}>
-                  <Button variant="destructive" onClick={confirmBulkDelete} disabled={deleting || idsParsed.length===0}>
-                    <Trash2 className="h-4 w-4 mr-2"/> Delete {idsParsed.length || ''} Contact{idsParsed.length>1?'s':''}
+                  <Button variant="destructive" onClick={confirmBulkDelete} disabled={deleting || idsParsed.length === 0}>
+                    <Trash2 className="h-4 w-4 mr-2" /> Delete {idsParsed.length || ''} Contact{idsParsed.length > 1 ? 's' : ''}
                   </Button>
                 </PermissionGate>
               </div>
