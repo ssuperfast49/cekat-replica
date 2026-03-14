@@ -1,6 +1,6 @@
 # Change Log
 
-# [0.1.122] FE WEB CEKAT 2026-03-14
+# [0.2.0] FE WEB CEKAT 2026-03-14
 
 ### Backend & Performance
 - **Threads Table Timeout**: Fixed a critical 500 Server Timeout error causing the inbox to sporadically fail to load. PostgREST was hitting an 8-second execution timeout due to recursive SECURITY DEFINER RLS policies on the `threads` and `messages` tables. The policies were optimized into fast native `EXISTS` SQL statements directly querying `channels` and `channel_agents`, dropping execution time from >10,000ms down to <100ms.
