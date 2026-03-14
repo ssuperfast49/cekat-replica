@@ -360,6 +360,8 @@ export default function ConversationPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FlowTab>("assigned");
   const [tabLocked, setTabLocked] = useState(false); // lock smart auto-switch once user manually selects a tab
+  const [donePage, setDonePage] = useState(0); // pagination for the Done tab (0-indexed)
+  const DONE_PAGE_SIZE = 10;
   const [showParticipants, setShowParticipants] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
@@ -1657,7 +1659,42 @@ export default function ConversationPage() {
             if (activeTab === 'unassigned') {
               return unassignedList.length === 0 ? renderEmpty('unassigned') : renderList(unassignedList);
             }
-            return doneList.length === 0 ? renderEmpty('done') : renderList(doneList);
+            // Done tab with pagination
+            if (doneList.length === 0) return renderEmpty('done');
+            const totalDonePages = Math.ceil(doneList.length / DONE_PAGE_SIZE);
+            // Clamp page to valid range (in case threads get resolved/un-resolved while on a later page)
+            const safePage = Math.min(donePage, totalDonePages - 1);
+            const paginatedDone = doneList.slice(safePage * DONE_PAGE_SIZE, (safePage + 1) * DONE_PAGE_SIZE);
+            return (
+              <>
+                {renderList(paginatedDone)}
+                {totalDonePages > 1 && (
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={safePage <= 0}
+                      onClick={() => setDonePage(p => Math.max(0, p - 1))}
+                      className="h-7 text-xs"
+                    >
+                      ← Previous
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {safePage + 1} / {totalDonePages}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={safePage >= totalDonePages - 1}
+                      onClick={() => setDonePage(p => Math.min(totalDonePages - 1, p + 1))}
+                      className="h-7 text-xs"
+                    >
+                      Next →
+                    </Button>
+                  </div>
+                )}
+              </>
+            );
           };
 
           return (
@@ -1668,7 +1705,7 @@ export default function ConversationPage() {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => { setTabLocked(true); setActiveTab(tab.key); }}
+                        onClick={() => { setTabLocked(true); setActiveTab(tab.key); if (tab.key === 'done') setDonePage(0); }}
                         className={`text-xs h-8 border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${activeTab === tab.key
                           ? `${tab.className}`
                           : 'text-muted-foreground border-transparent hover:bg-muted'

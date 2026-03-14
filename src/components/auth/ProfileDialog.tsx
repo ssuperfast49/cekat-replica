@@ -13,11 +13,25 @@ interface ProfilePopoverProps {
 }
 
 const ProfilePopover = ({ children }: ProfilePopoverProps) => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateNotificationPreference } = useAuth();
   const [activeTab, setActiveTab] = useState("profile");
   const [onlineStatus, setOnlineStatus] = useState(true);
-  const [notifications, setNotifications] = useState(false);
+  const [isUpdatingNotifications, setIsUpdatingNotifications] = useState(false);
   const navigate = useNavigate();
+
+  // Get notifications status (default to true if undefined)
+  const notificationsEnabled = user?.user_metadata?.notifications_enabled !== false;
+
+  const handleNotificationsChange = async (checked: boolean) => {
+    try {
+      setIsUpdatingNotifications(true);
+      await updateNotificationPreference(checked);
+    } catch (error) {
+      console.error('Failed to update notifications:', error);
+    } finally {
+      setIsUpdatingNotifications(false);
+    }
+  };
 
   const getUserInitials = (name: string | null, email: string) => {
     if (name) {
@@ -51,30 +65,6 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
       </PopoverTrigger>
       <PopoverContent className="w-[300px] h-[320px] p-0 overflow-hidden" side="left" align="start">
         <div className="flex h-full">
-          {/* Sidebar */}
-          {/* <div className="w-36 bg-muted/20 border-r border-border p-3">
-            <nav className="space-y-1">
-              {sidebarItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className={cn(
-                      "flex items-center gap-2 w-full px-2 py-2 text-xs rounded-md transition-colors",
-                      activeTab === item.id
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
-                    )}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div> */}
-
           {/* Main Content */}
           <div className="flex-1 p-4">
             <div className="space-y-4">
@@ -111,11 +101,12 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs text-muted-foreground">Notifications</span>
-                    <div className="text-xs font-medium">Disabled</div>
+                    <div className="text-xs font-medium">{notificationsEnabled ? "Enabled" : "Disabled"}</div>
                   </div>
                   <Switch
-                    checked={notifications}
-                    onCheckedChange={setNotifications}
+                    checked={notificationsEnabled}
+                    onCheckedChange={handleNotificationsChange}
+                    disabled={isUpdatingNotifications}
                     className="scale-75"
                   />
                 </div>

@@ -25,8 +25,10 @@ export interface CircuitBreakerConfig {
 }
 
 export interface CircuitBreakerStats {
-  failures: number;
-  successes: number;
+  failures: number; // time-windowed failures (for circuit tripping)
+  successes: number; // consecutive successes in HALF_OPEN state
+  totalFailures: number; // persistent total failure count
+  totalSuccesses: number; // persistent total success count
   state: CircuitState;
   lastFailureTime: number | null;
   lastSuccessTime: number | null;
@@ -34,11 +36,31 @@ export interface CircuitBreakerStats {
   totalRequests: number;
 }
 
-export type CircuitBreakerEvent = 
+export type CircuitBreakerEvent =
   | { type: 'stateChange', from: CircuitState, to: CircuitState }
   | { type: 'failure', error: Error }
   | { type: 'success' }
   | { type: 'timeout' };
+
+/** Context passed from the call site to identify what triggered a failure */
+export interface FailureContext {
+  endpoint?: string;       // table name or RPC function name
+  operation?: string;      // 'read' | 'write' | 'rpc' | 'auth'
+  statusCode?: number;     // HTTP status code if available
+}
+
+/** A single entry in the failure log */
+export interface FailureLogEntry {
+  timestamp: number;
+  error: string;
+  endpoint?: string;
+  operation?: string;
+  statusCode?: number;
+  circuitStateAfter: CircuitState;
+  trippedCircuit: boolean; // did this failure cause a state change?
+}
+
+const MAX_FAILURE_LOG = 50; // keep last 50 failures
 
 type EventListener = (event: CircuitBreakerEvent) => void;
 
@@ -61,6 +83,9 @@ export class CircuitBreaker {
   private lastFailureTime: number | null = null;
   private lastSuccessTime: number | null = null;
   private totalRequests: number = 0;
+  private totalFailures: number = 0; // persistent failure counter
+  private totalSuccesses: number = 0; // persistent success counter
+  private failureLog: FailureLogEntry[] = []; // detailed failure log
   private listeners: EventListener[] = [];
   private storageKey: string;
 
@@ -81,10 +106,11 @@ export class CircuitBreaker {
    */
   async execute<T>(
     fn: () => Promise<T>,
-    timeoutMs?: number
+    timeoutMs?: number,
+    context?: FailureContext
   ): Promise<T> {
     this.totalRequests++;
-    
+
     // Check if we should allow the request
     if (!this.canExecute()) {
       const error = new Error(`Circuit breaker is ${this.state}. Request rejected.`);
@@ -105,19 +131,19 @@ export class CircuitBreaker {
 
       // Race between the function and timeout
       const result = await Promise.race([fn(), timeoutPromise]);
-      
+
       // Request succeeded
       this.recordSuccess();
       return result;
     } catch (error) {
       // Request failed
       const isTimeout = error instanceof Error && error.message.includes('timeout');
-      
+
       if (isTimeout) {
         this.emitEvent({ type: 'timeout' });
       }
-      
-      this.recordFailure(error as Error);
+
+      this.recordFailure(error as Error, context);
       throw error;
     }
   }
@@ -155,12 +181,13 @@ export class CircuitBreaker {
    */
   private recordSuccess(): void {
     this.lastSuccessTime = Date.now();
+    this.totalSuccesses++;
     this.emitEvent({ type: 'success' });
 
     // In HALF_OPEN state, count successes to potentially close circuit
     if (this.state === CircuitState.HALF_OPEN) {
       this.successes++;
-      
+
       if (this.successes >= this.config.successThreshold) {
         // Service has recovered, close the circuit
         this.transitionTo(CircuitState.CLOSED);
@@ -175,9 +202,10 @@ export class CircuitBreaker {
   /**
    * Record a failed request
    */
-  private recordFailure(error: Error): void {
+  private recordFailure(error: Error, context?: FailureContext): void {
     const now = Date.now();
     this.lastFailureTime = now;
+    this.totalFailures++;
     this.emitEvent({ type: 'failure', error });
 
     // Add failure to time-windowed list
@@ -187,12 +215,13 @@ export class CircuitBreaker {
     const cutoff = now - this.config.monitoringPeriod;
     this.failures = this.failures.filter(f => f.time > cutoff);
 
+    const prevState = this.state;
+
     // Check if we should open the circuit
     if (this.state === CircuitState.CLOSED || this.state === CircuitState.HALF_OPEN) {
       if (this.failures.length >= this.config.failureThreshold) {
-        // Too many failures, open the circuit
         this.transitionTo(CircuitState.OPEN);
-        this.successes = 0; // Reset success counter
+        this.successes = 0;
       }
     }
 
@@ -200,6 +229,28 @@ export class CircuitBreaker {
     if (this.state === CircuitState.HALF_OPEN) {
       this.transitionTo(CircuitState.OPEN);
       this.successes = 0;
+    }
+
+    // Extract status code from error if available
+    const statusCode = context?.statusCode
+      || (error as any)?.status
+      || (error as any)?.statusCode;
+    const numCode = typeof statusCode === 'number' ? statusCode : undefined;
+
+    // Add to failure log
+    this.failureLog.push({
+      timestamp: now,
+      error: error.message || String(error),
+      endpoint: context?.endpoint,
+      operation: context?.operation,
+      statusCode: numCode,
+      circuitStateAfter: this.state,
+      trippedCircuit: prevState !== this.state,
+    });
+
+    // Cap the log size
+    if (this.failureLog.length > MAX_FAILURE_LOG) {
+      this.failureLog = this.failureLog.slice(-MAX_FAILURE_LOG);
     }
 
     this.saveToStorage();
@@ -231,12 +282,21 @@ export class CircuitBreaker {
     return {
       failures: this.failures.length,
       successes: this.successes,
+      totalFailures: this.totalFailures,
+      totalSuccesses: this.totalSuccesses,
       state: this.state,
       lastFailureTime: this.lastFailureTime,
       lastSuccessTime: this.lastSuccessTime,
       stateChangedAt: this.stateChangedAt,
       totalRequests: this.totalRequests,
     };
+  }
+
+  /**
+   * Get the failure log (most recent failures with context)
+   */
+  getFailureLog(): FailureLogEntry[] {
+    return [...this.failureLog];
   }
 
   /**
@@ -281,6 +341,9 @@ export class CircuitBreaker {
     this.lastFailureTime = null;
     this.lastSuccessTime = null;
     this.totalRequests = 0;
+    this.totalFailures = 0;
+    this.totalSuccesses = 0;
+    this.failureLog = [];
     this.saveToStorage();
   }
 
@@ -333,6 +396,9 @@ export class CircuitBreaker {
           lastFailureTime: this.lastFailureTime,
           lastSuccessTime: this.lastSuccessTime,
           totalRequests: this.totalRequests,
+          totalFailures: this.totalFailures,
+          totalSuccesses: this.totalSuccesses,
+          failureLog: this.failureLog,
         };
         localStorage.setItem(this.storageKey, JSON.stringify(data));
       }
@@ -368,12 +434,12 @@ export class CircuitBreaker {
         const data = localStorage.getItem(this.storageKey);
         if (data) {
           const parsed = JSON.parse(data);
-          
+
           // Load config if it exists in storage, otherwise use current config
           if (parsed.config) {
             this.config = { ...this.config, ...parsed.config };
           }
-          
+
           this.state = parsed.state || CircuitState.CLOSED;
           this.stateChangedAt = parsed.stateChangedAt || Date.now();
           this.failures = (parsed.failures || []).filter((f: any) => {
@@ -385,6 +451,9 @@ export class CircuitBreaker {
           this.lastFailureTime = parsed.lastFailureTime || null;
           this.lastSuccessTime = parsed.lastSuccessTime || null;
           this.totalRequests = parsed.totalRequests || 0;
+          this.totalFailures = parsed.totalFailures || 0;
+          this.totalSuccesses = parsed.totalSuccesses || 0;
+          this.failureLog = Array.isArray(parsed.failureLog) ? parsed.failureLog.slice(-MAX_FAILURE_LOG) : [];
 
           // Check if we should transition from OPEN to HALF_OPEN based on elapsed time
           if (this.state === CircuitState.OPEN) {
