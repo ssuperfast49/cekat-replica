@@ -1142,22 +1142,28 @@ export default function ConversationPage() {
   };
 
   // Auto-scroll to bottom only when the user is already near the bottom (not scrolled up).
-  // Also force-scroll when the selected thread changes (fresh thread load).
-  const prevThreadRef = useRef<string | null>(null);
+  // Also force-scroll when the selected thread changes AND the new messages have finished loading
+  const lastScrolledThreadRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
 
-    const isNewThread = prevThreadRef.current !== selectedThreadId;
-    prevThreadRef.current = selectedThreadId;
+    const isThreadSwitch = lastScrolledThreadRef.current !== selectedThreadId;
 
-    // If switching threads, always scroll to bottom
-    if (isNewThread) {
-      try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+    if (isThreadSwitch) {
+      // Guarantee that the messages array has successfully swapped over to the new thread's payload 
+      // before attempting the force-scroll. If it's still holding the old thread data, skip and wait for the next render.
+      const hasCorrectMessages = messages.length === 0 || messages[0].thread_id === selectedThreadId;
+
+      if (hasCorrectMessages) {
+        try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+        lastScrolledThreadRef.current = selectedThreadId; // Mark that we've successfully dropped the anchor for this thread
+      }
       return;
     }
 
-    // Only auto-scroll if user is near the bottom (within 150px)
+    // Normal streaming auto-scroll for incoming messages on the SAME active thread
+    // Only auto-scroll if user is already near the bottom reading the live chat (within 150px)
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
     if (distanceFromBottom < 150) {
       try { viewport.scrollTop = viewport.scrollHeight; } catch { }

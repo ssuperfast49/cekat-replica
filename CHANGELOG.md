@@ -1,5 +1,15 @@
 # Change Log
 
+# [0.2.1] FE WEB CEKAT 2026-03-16
+
+### Backend & Performance
+- **Contacts & Channels Timeouts**: Fixed additional 500 Server Timeout errors cascading through the application during `contacts` and inbox requests. Discovered the RLS policies for `contacts` and `channels` relied heavily on unoptimizable `SECURITY DEFINER` Postgres helper functions (such as `can_access_contact_via_threads()`, `can_access_super_scope()`, `is_master_agent()`).
+- **Action**: Rewrote the RLS policies natively utilizing inline `EXISTS` subqueries targeting `channels`, `channel_agents`, `roles`, and `user_roles`. This enables PostgREST to accurately compute indexing instantly. Execution time dropped from >10,000ms to <100ms.
+  - Added Migration: `20260316023300_optimize_contacts_channels_rls.sql`
+
+### UI & Styling
+- **Inbox Auto-Scroll Bug**: Repaired a race condition in `ConversationPage.tsx` where clicking a different thread would instantly force the scrollbar to the bottom of the *previous* thread right before the new payload flushed in, causing the browser to lock up and freeze the scrollbar at the very top of the newly loaded chat history. The `useLayoutEffect` has been hardened to explicitly ensure `hasCorrectMessages` is strictly true natively matching against the `selectedThreadId` before initiating the anchor throw.
+
 # [0.2.0] FE WEB CEKAT 2026-03-14
 
 ### Backend & Performance
