@@ -30,6 +30,7 @@ import { useNavigation } from "@/hooks/useNavigation";
 import { useRBAC } from "@/contexts/RBACContext";
 import { NAVIGATION_ORDER, NavKey } from "@/config/navigation";
 import { TokenLimitIndicator } from "@/components/layout/TokenLimitIndicator";
+import { LowBatteryAlert } from "@/components/layout/LowBatteryAlert";
 import { cn } from "@/lib/utils";
 import { ROLES } from "@/types/rbac";
 
@@ -268,11 +269,11 @@ const Index = () => {
           onMouseEnter={() => setSidebarExpanded(true)}
           onMouseLeave={() => setSidebarExpanded(false)}
         >
-          <div className="flex items-center justify-center px-2 py-3 transition-all duration-200">
+          <div className="flex items-center justify-center px-2 py-4 transition-all duration-200 min-h-[4rem]">
             {sidebarExpanded ? (
-              <img src="/synka.png" alt="Synka" className="h-10 w-auto object-contain transition-all duration-300 scale-125" />
+              <img src="/CSSuper.png" alt="CS Super" className="h-8 w-auto object-contain transition-all duration-300" />
             ) : (
-              <img src="/synka_logo.png" alt="Synka Logo" className="h-10 w-auto object-contain transition-all duration-300 scale-110" />
+              <img src="/CSicon.png" alt="CS Super Icon" className="h-8 w-auto object-contain transition-all duration-300" />
             )}
           </div>
 
@@ -495,6 +496,9 @@ const Index = () => {
         pausedAt={orgAiPausedAt}
         onOpenAdminPanel={hasRole(ROLES.MASTER_AGENT) ? openAdminPanelFromModal : undefined}
       />
+
+      {/* Low Battery Alert Modal */}
+      <LowBatteryAlert />
     </div>
   );
 };
