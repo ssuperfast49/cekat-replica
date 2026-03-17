@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.2.6] FE WEB CEKAT 2026-03-18
+
+### Backend & Performance
+- **PostgREST Query Timeout Fix**: Resolved severe database timeouts occurring on large datasets during pagination polling.
+  - **Issue**: The newly implemented server-side pagination was natively applying `{ count: 'exact' }` onto a heavy joined query (threads + channels + contacts + messages), forcing PostgreSQL to do a full-table seq scan and evaluate RLS for every matching row before returning paginated chunks.
+  - **Resolution**: Replaced `{ count: 'exact' }` with `{ count: 'estimated' }` within `useConversations.ts` for both the main inbox query and the 3 tab-count queries. Supabase now utilizes the PostgreSQL query planner to return instantaneous row estimates, completely eliminating the ~8s timeout crashes.
 ## [0.2.5] FE WEB CEKAT 2026-03-18
 
 ### Unread Message Badge Fix

@@ -266,11 +266,11 @@ export const useConversations = (options?: {
       const assignedSet = new Set(
         threadsToFilter.filter((c) => c.assigned).map((c) => c.id)
       );
-      
+
       // We only fetch unread counts for threads considered "assigned" in the UI logic
       // to reduce RPC load, but we ensure we are using the most current list available.
       const scopedIds = threadIds.filter((id) => threadsOverride ? true : assignedSet.has(id));
-      
+
       if (scopedIds.length === 0) return;
       const { data, error } = await protectedSupabase.rpc('get_unread_counts', { p_thread_ids: scopedIds });
       if (error) throw error;
@@ -352,9 +352,9 @@ export const useConversations = (options?: {
   const fetchTabCounts = useCallback(async () => {
     try {
       const [assignedRes, unassignedRes, doneRes] = await Promise.all([
-        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'closed'),
+        protectedSupabase.from('threads').select('id', { count: 'estimated', head: true }).eq('status', 'pending'),
+        protectedSupabase.from('threads').select('id', { count: 'estimated', head: true }).eq('status', 'open'),
+        protectedSupabase.from('threads').select('id', { count: 'estimated', head: true }).eq('status', 'closed'),
       ]);
 
       const nextCounts = {
@@ -410,7 +410,7 @@ export const useConversations = (options?: {
           contacts(name, phone, email),
           channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url, super_agent_id),
           messages(id, body, role, direction, created_at, seq)
-        `, { count: 'exact' })
+        `, { count: 'estimated' })
         .order('last_msg_at', { ascending: false })
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
