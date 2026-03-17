@@ -187,7 +187,11 @@ export const useConversations = (options?: {
       statusScopeRef.current = nextScope;
       paginationRef.current.page = 1;
       setPagination((prev) => ({ ...prev, page: 1 }));
-      scheduleConversationsRefresh(10);
+      setConversations([]);
+      setLoading(true);
+      if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); }
+      fetchConversations(undefined, { silent: false });
+      fetchTabCounts();
     } else {
       statusScopeRef.current = nextScope;
     }
