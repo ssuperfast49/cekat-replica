@@ -363,7 +363,7 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
       }
 
       const timeoutPromise = new Promise<never>((_, reject) => {
-        const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 8000);
+        const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 30000);
       });
 
       const { data, error } = await Promise.race([

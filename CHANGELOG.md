@@ -1,5 +1,10 @@
 # Change Log
 
+# [0.2.3] FE WEB CEKAT 2026-03-18
+
+### Timeout Fallback
+- **Threads fetch fallback**: Changed from 8 seconds to 30 seconds
+
 # [0.2.2] FE WEB CEKAT 2026-03-17
 
 ### AI Wallet & Battery Tracker
