@@ -1,5 +1,46 @@
 # Change Log
 
+# [0.2.2] FE WEB CEKAT 2026-03-17
+
+### AI Wallet & Battery Tracker
+- **AI Usage Wallet System**: Introduced a USD-based wallet that tracks AI token consumption costs in real-time. Each AI response automatically calculates the USD cost based on model-specific input/output pricing and deducts it from the organization wallet.
+  - New table: `ai_wallets` — stores `balance_usd` and `battery_100_usd` per org.
+  - New table: `ai_wallet_topups` — audit log of every top-up transaction (who, when, amount).
+  - New trigger: `tr_apply_wallet_cost` — `BEFORE INSERT` on `token_usage_logs`, auto-calculates `cost_usd` and deducts from the wallet.
+  - New RPC: `topup_ai_wallet` — Master Agent–only function to add funds and reset the battery to 100%.
+  - Added `input_cost_per_1m` and `output_cost_per_1m` columns to `ai_models` for split pricing.
+  - Added `cost_usd` column to `token_usage_logs`.
+  - Seeded pricing for 11 models including GPT-5.2, GPT-5-mini, GPT-4.1-mini, GPT-4o, Gemini-2.5-Flash, etc.
+  - Added Migration: `20260316210125_ai_wallet_battery_system.sql`
+
+- **Battery UI**: Revamped `TokenLimitIndicator.tsx` from text-based pills into a color-coded battery icon with percentage display and animated progress bar inside a dropdown. Colors shift from green → yellow → orange → red as the battery drains.
+  - New Hook: `src/hooks/useAIWallet.ts` — fetches wallet balance, calculates battery %, provides `topUp()`, realtime subscription + 30s polling.
+  - Updated: `src/components/layout/TokenLimitIndicator.tsx`
+
+- **Inline Top-Up (Master Agent Only)**: Master Agents see a "Top Up Wallet" button inside the battery dropdown that expands into a dollar amount input field and submit button. No separate modal needed.
+
+- **Low Battery Alert Modal**: When battery drops below 20%, a popup modal appears for all agents every 10 minutes in Indonesian language:
+  - Master Agents: _"Silakan segera lakukan top up saldo AI wallet..."_
+  - Other Agents: _"Silakan hubungi Master Agent untuk melakukan top up..."_
+  - New Component: `src/components/layout/LowBatteryAlert.tsx`
+  - Updated: `src/pages/Index.tsx`
+
+### Profile Permissions
+- **Basic Agent Name Lock**: Basic agents can no longer edit their display name in the Profile dialog. Only Master Agents and Super Agents retain edit access.
+  - Updated: `src/components/auth/ProfileDialog.tsx`
+
+### Documentation 
+- **Comprehensive App Documentation**: Authored a complete, 1,000+ line, 20-section user manual covering every aspect of the application in Indonesian. 
+  - Thoroughly documented all 150 source files, including the massive 2,600+ line AI Agent Settings page, the Circuit Breaker Admin status dashboard, Contact Thread Picker dialog, File Upload format constraints, link previews, and the real-time Presence (online/offline) system.
+  - Added new file: `DOCUMENTATION.md`
+
+### Branding & UI
+- **App Rebranding**: Updated the application branding from "Synka" to "CS Super".
+  - Replaced all Synka logos with dynamically cropped, optimized CS Super logos for both the expanded sidebar (`CSSuper.png`) and the collapsed sidebar (`CSicon.png`).
+  - Updated HTML meta tags, title, and favicons to reflect the new brand name and icon.
+  - Updated: `src/pages/Index.tsx`
+  - Updated: `index.html`
+
 # [0.2.1] FE WEB CEKAT 2026-03-16
 
 ### Backend & Performance

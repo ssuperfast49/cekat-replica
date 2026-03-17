@@ -34,7 +34,7 @@ const HumanAgents = () => {
   const [isUsageOpen, setIsUsageOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentWithDetails | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
-  const [tokenLimitForm, setTokenLimitForm] = useState<{ enabled: boolean; perDay: number; perMonth: number; twoFA: boolean }>({ enabled: false, perDay: 0, perMonth: 0, twoFA: false });
+  const [tokenLimitForm, setTokenLimitForm] = useState<{ enabled: boolean; perDay: number; perMonth: number; twoFA: boolean; name: string }>({ enabled: false, perDay: 0, perMonth: 0, twoFA: false, name: '' });
   const [usageRange, setUsageRange] = useState<"7d" | "30d" | "this_month" | "all">("7d");
   const [dialogRange, setDialogRange] = useState<"7d" | "30d" | "this_month">("7d");
   const [usageTotal, setUsageTotal] = useState<number | null>(null);
@@ -1138,6 +1138,7 @@ const HumanAgents = () => {
         perDay: Number(data?.max_tokens_per_day ?? 0),
         perMonth: Number(data?.max_tokens_per_month ?? 0),
         twoFA: !!(data as any)?.is_2fa_email_enabled,
+        name: agent.display_name || '',
       });
       setIsEditLimitOpen(true);
     } catch (e: any) {
@@ -1152,6 +1153,7 @@ const HumanAgents = () => {
       const { error } = await supabase
         .from('users_profile')
         .update({
+          display_name: tokenLimitForm.name,
           token_limit_enabled: tokenLimitForm.enabled,
           max_tokens_per_day: Math.max(0, Math.floor(tokenLimitForm.perDay || 0)),
           max_tokens_per_month: Math.max(0, Math.floor(tokenLimitForm.perMonth || 0)),
@@ -1159,8 +1161,15 @@ const HumanAgents = () => {
         })
         .eq('user_id', selectedAgent.user_id);
       if (error) throw error;
-      toast({ title: 'Saved', description: 'Token limits updated.' });
+      toast({ title: 'Saved', description: 'Agent profile and token limits updated.' });
       setIsEditLimitOpen(false);
+
+      // Refresh current tab data so UI reflects update
+      if (tabValue === 'pending') {
+        fetchHumanAgentsPage({ invited: true, page: pendingPage, pageSize: pendingPageSize, search: debouncedSearch, role: roleFilter, pendingStatus: pendingStatusFilter });
+      } else {
+        fetchHumanAgentsPage({ invited: false, page: activePage, pageSize: activePageSize, search: debouncedSearch, role: roleFilter, activeStatus: activeStatusFilter });
+      }
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Failed to save token limits', variant: 'destructive' });
     } finally {
@@ -1747,9 +1756,20 @@ const HumanAgents = () => {
       <Dialog open={isEditLimitOpen} onOpenChange={setIsEditLimitOpen}>
         <DialogContent className="sm:max-w-md bg-background border">
           <DialogHeader>
-            <DialogTitle>Token Limits{selectedAgent ? ` — ${selectedAgent.display_name || selectedAgent.email}` : ''}</DialogTitle>
+            <DialogTitle>Edit Agent Profile & Limits{selectedAgent ? ` — ${selectedAgent.email}` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {(hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT)) && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-agent-name">Agent Name</Label>
+                <Input
+                  id="edit-agent-name"
+                  value={tokenLimitForm.name}
+                  onChange={(e) => setTokenLimitForm({ ...tokenLimitForm, name: e.target.value })}
+                  placeholder="Agent Name"
+                />
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-sm font-medium">Enable Limits</Label>

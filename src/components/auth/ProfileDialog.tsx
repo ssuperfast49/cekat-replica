@@ -7,6 +7,9 @@ import { Settings, CreditCard, User, Lock, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useRBAC } from "@/contexts/RBACContext";
+import { ROLES } from "@/types/rbac";
 
 interface ProfilePopoverProps {
   children: React.ReactNode;
@@ -17,7 +20,12 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
   const [activeTab, setActiveTab] = useState("profile");
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [isUpdatingNotifications, setIsUpdatingNotifications] = useState(false);
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.user_metadata?.full_name || "");
   const navigate = useNavigate();
+  const { hasRole } = useRBAC();
+
+  const canEditName = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT);
 
   // Get notifications status (default to true if undefined)
   const notificationsEnabled = user?.user_metadata?.notifications_enabled !== false;
@@ -30,6 +38,24 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
       console.error('Failed to update notifications:', error);
     } finally {
       setIsUpdatingNotifications(false);
+    }
+  };
+
+  const handleNameChange = async (e: React.FocusEvent<HTMLInputElement>) => {
+    const newName = e.target.value.trim();
+    if (newName && newName !== user?.user_metadata?.full_name) {
+      try {
+        setIsUpdatingName(true);
+        const { error } = await supabase.auth.updateUser({
+          data: { full_name: newName }
+        });
+        if (error) throw error;
+      } catch (error) {
+        console.error('Failed to update name:', error);
+        setDisplayName(user?.user_metadata?.full_name || ""); // Revert on failure
+      } finally {
+        setIsUpdatingName(false);
+      }
     }
   };
 
@@ -63,7 +89,7 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
       <PopoverTrigger asChild>
         {children}
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] h-[320px] p-0 overflow-hidden" side="left" align="start">
+      <PopoverContent className="w-[300px] h-[360px] p-0 overflow-hidden" side="left" align="start">
         <div className="flex h-full">
           {/* Main Content */}
           <div className="flex-1 p-4">
@@ -83,7 +109,27 @@ const ProfilePopover = ({ children }: ProfilePopoverProps) => {
               </div>
 
               {/* Settings */}
-              <div className="space-y-3">
+              <div className="space-y-4 pt-1">
+                {/* Display Name Edit */}
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Display Name</span>
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    onBlur={handleNameChange}
+                    disabled={!canEditName || isUpdatingName}
+                    readOnly={!canEditName}
+                    className={cn(
+                      "w-full text-sm font-medium bg-transparent border-b px-1 py-0.5 -ml-1 rounded-sm transition-colors",
+                      canEditName
+                        ? "border-transparent hover:border-border focus:border-border focus:outline-none"
+                        : "border-transparent outline-none cursor-default opacity-80"
+                    )}
+                    placeholder="Enter your name"
+                  />
+                </div>
+
                 {/* Online Status */}
                 <div className="flex items-center justify-between">
                   <div>
