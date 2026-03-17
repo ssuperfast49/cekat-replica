@@ -109,14 +109,35 @@ export interface ThreadFilters {
   channelType?: string;
 }
 
-export const useConversations = (options?: { unreadEnabled?: boolean }) => {
+export type ConversationStatusScope = 'assigned' | 'unassigned' | 'done' | 'all';
+
+export const useConversations = (options?: {
+  unreadEnabled?: boolean;
+  statusScope?: ConversationStatusScope;
+  pageSize?: number;
+}) => {
   const unreadEnabled = options?.unreadEnabled ?? true;
+  const defaultPageSize = Math.max(1, Math.min(200, options?.pageSize ?? 10));
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [messages, setMessages] = useState<MessageWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const filtersRef = useRef<ThreadFilters>({});
+  const statusScopeRef = useRef<ConversationStatusScope>(options?.statusScope ?? 'all');
+  const statusScopePrevRef = useRef<ConversationStatusScope>(statusScopeRef.current);
+  const paginationRef = useRef({ page: 1, pageSize: defaultPageSize });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: defaultPageSize,
+    total: 0,
+    totalPages: 1,
+  });
+  const [tabCounts, setTabCounts] = useState({
+    assigned: 0,
+    unassigned: 0,
+    done: 0,
+  });
 
   // Refs for accessing latest state in realtime callbacks
   const conversationsRef = useRef<ConversationWithDetails[]>([]);
@@ -155,8 +176,22 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
     try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     conversationsRefreshTimer.current = window.setTimeout(() => {
       fetchConversations(undefined, { silent: true });
+      fetchTabCounts();
     }, delayMs) as unknown as number;
   };
+
+  useEffect(() => {
+    const nextScope = options?.statusScope ?? 'all';
+    if (statusScopePrevRef.current !== nextScope) {
+      statusScopePrevRef.current = nextScope;
+      statusScopeRef.current = nextScope;
+      paginationRef.current.page = 1;
+      setPagination((prev) => ({ ...prev, page: 1 }));
+      scheduleConversationsRefresh(10);
+    } else {
+      statusScopeRef.current = nextScope;
+    }
+  }, [options?.statusScope]);
 
   const computeAssignmentState = (source: {
     ai_access_enabled?: boolean | null;
@@ -209,26 +244,33 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
   const incrementThreadUnread = useCallback((threadId: string, delta: number = 1) => {
     if (!threadId) return;
     if (!unreadEnabledRef.current) return;
-    const conv = conversationsRef.current.find((c) => c.id === threadId);
-    if (!conv?.assigned) return;
+    // Update the ref immediately so subsequent renders/fetches can use it
     const nextValue = Math.max(0, (unreadCountsRef.current[threadId] ?? 0) + delta);
     unreadCountsRef.current[threadId] = nextValue;
+
+    // Update state for UI re-render (only if the thread is currently in view)
     setConversations((prev) => prev.map((conv) => (
       conv.id === threadId
-        ? { ...conv, unread_count: Math.max(0, (conv.unread_count ?? 0) + delta) }
+        ? { ...conv, unread_count: nextValue }
         : conv
     )));
   }, []);
 
-  const fetchUnreadCounts = useCallback(async (threadIds: string[]) => {
+  const fetchUnreadCounts = useCallback(async (threadIds: string[], threadsOverride?: ConversationWithDetails[]) => {
     if (!threadIds || threadIds.length === 0) return;
     if (!unreadEnabledRef.current) return;
     if (isDocumentHidden()) return;
     try {
+      // Use provided threads or ref as fallback for filtering
+      const threadsToFilter = threadsOverride || conversationsRef.current || [];
       const assignedSet = new Set(
-        (conversationsRef.current || []).filter((c) => c.assigned).map((c) => c.id)
+        threadsToFilter.filter((c) => c.assigned).map((c) => c.id)
       );
-      const scopedIds = threadIds.filter((id) => assignedSet.has(id));
+      
+      // We only fetch unread counts for threads considered "assigned" in the UI logic
+      // to reduce RPC load, but we ensure we are using the most current list available.
+      const scopedIds = threadIds.filter((id) => threadsOverride ? true : assignedSet.has(id));
+      
       if (scopedIds.length === 0) return;
       const { data, error } = await protectedSupabase.rpc('get_unread_counts', { p_thread_ids: scopedIds });
       if (error) throw error;
@@ -301,8 +343,39 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
     });
   };
 
+  /**
+   * Fetch lightweight counts for all 3 tabs in parallel.
+   *assigned -> pending
+   *unassigned -> open
+   *done -> closed
+   */
+  const fetchTabCounts = useCallback(async () => {
+    try {
+      const [assignedRes, unassignedRes, doneRes] = await Promise.all([
+        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'closed'),
+      ]);
+
+      const nextCounts = {
+        assigned: assignedRes.count ?? 0,
+        unassigned: unassignedRes.count ?? 0,
+        done: doneRes.count ?? 0,
+      };
+
+      setTabCounts(nextCounts);
+      return nextCounts;
+    } catch (err) {
+      console.warn('[useConversations] Failed to fetch tab counts', err);
+      return tabCounts;
+    }
+  }, []);
+
   // Fetch conversations with contact and channel details
-  const fetchConversations = async (overrideFilters?: ThreadFilters, options: { silent?: boolean } = {}) => {
+  const fetchConversations = async (
+    overrideFilters?: ThreadFilters,
+    options: { silent?: boolean; page?: number; pageSize?: number } = {}
+  ) => {
     try {
       if (!options.silent) {
         setLoading(true);
@@ -315,6 +388,19 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
       if (overrideFilters) {
         filtersRef.current = overrideFilters;
         setActiveFilters(overrideFilters);
+        paginationRef.current.page = 1;
+        setPagination((prev) => ({ ...prev, page: 1 }));
+      }
+      if (options.pageSize != null && Number.isFinite(options.pageSize)) {
+        const nextSize = Math.max(1, Math.min(200, Number(options.pageSize)));
+        paginationRef.current.pageSize = nextSize;
+        paginationRef.current.page = 1;
+        setPagination((prev) => ({ ...prev, page: 1, pageSize: nextSize }));
+      }
+      if (options.page != null && Number.isFinite(options.page)) {
+        const nextPage = Math.max(1, Math.floor(Number(options.page)));
+        paginationRef.current.page = nextPage;
+        setPagination((prev) => ({ ...prev, page: nextPage }));
       }
 
       let query = protectedSupabase
@@ -324,14 +410,13 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
           contacts(name, phone, email),
           channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url, super_agent_id),
           messages(id, body, role, direction, created_at, seq)
-        `)
+        `, { count: 'exact' })
         .order('last_msg_at', { ascending: false })
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
 
       const { dateRange, status, agent, resolvedBy, inbox, channelType, platformId } = filtersToUse;
 
-      /* Client-side filtering implemented below for consistency
       if (dateRange?.from) {
         const fromIso = startOfDay(dateRange.from).toISOString();
         query = query.gte('last_msg_at', fromIso);
@@ -340,9 +425,17 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
         const toIso = endOfDay(dateRange.to).toISOString();
         query = query.lte('last_msg_at', toIso);
       }
-      */
       if (status && status !== 'all' && status !== '') {
         query = query.eq('status', status);
+      } else {
+        const scope = statusScopeRef.current;
+        if (scope === 'assigned') {
+          query = query.eq('status', 'pending');
+        } else if (scope === 'unassigned') {
+          query = query.eq('status', 'open');
+        } else if (scope === 'done') {
+          query = query.eq('status', 'closed');
+        }
       }
       if (agent && agent !== 'all' && agent !== '') {
         query = query.eq('assignee_user_id', agent);
@@ -362,14 +455,38 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
         query = query.eq('channel_id', platformId);
       }
 
+      const page = paginationRef.current.page;
+      const pageSize = paginationRef.current.pageSize;
+      const from = Math.max(0, (page - 1) * pageSize);
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+
       const timeoutPromise = new Promise<never>((_, reject) => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 30000);
       });
 
-      const { data, error } = await Promise.race([
+      const { data, error, count } = await Promise.race([
         query as any,
         timeoutPromise,
       ]) as any;
+
+      if (error) throw error;
+
+      const totalCount = typeof count === 'number' ? count : 0;
+      const totalPages = Math.max(1, Math.ceil(totalCount / Math.max(1, pageSize)));
+      if (page > totalPages && totalCount > 0) {
+        const safePage = totalPages;
+        paginationRef.current.page = safePage;
+        setPagination((prev) => ({ ...prev, page: safePage, total: totalCount, totalPages }));
+        return fetchConversations(undefined, { silent: true });
+      }
+      setPagination((prev) => ({
+        ...prev,
+        total: totalCount,
+        totalPages,
+        page: Math.min(prev.page, totalPages),
+        pageSize,
+      }));
 
       if (error) throw error;
 
@@ -512,7 +629,7 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
 
 
       setConversations(sortedData);
-      void fetchUnreadCounts(sortedData.map((t) => t.id));
+      void fetchUnreadCounts(sortedData.map((t) => t.id), sortedData);
 
       // IMPORTANT: Do not auto-sync/overwrite status from the frontend.
       // Status transitions are server-owned (RPCs / backend workflows).
@@ -908,8 +1025,7 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
 
       if (shouldSetAssignee) {
         // Try RPC first (preferred path)
-        const { error: rpcError } = await supabase
-          .rpc('takeover_thread', { p_thread_id: threadId });
+        const { error: rpcError } = await (supabase.rpc as any)('takeover_thread', { p_thread_id: threadId });
 
         if (rpcError) {
           console.warn('takeover_thread RPC failed; will attempt direct update', rpcError);
@@ -1390,6 +1506,7 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchConversations(undefined, { silent: true });
+        fetchTabCounts();
       }
     }, 5000);
 
@@ -1663,5 +1780,10 @@ export const useConversations = (options?: { unreadEnabled?: boolean }) => {
     // Auto-resolve functionality
     checkAutoResolve,
     activeFilters,
+    pagination,
+    tabCounts,
+    fetchTabCounts,
+    setConversationPage: (page: number) => fetchConversations(undefined, { page }),
+    setConversationPageSize: (pageSize: number) => fetchConversations(undefined, { pageSize }),
   };
 };
