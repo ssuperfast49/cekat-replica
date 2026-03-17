@@ -360,8 +360,6 @@ export default function ConversationPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FlowTab>("assigned");
   const [tabLocked, setTabLocked] = useState(false); // lock smart auto-switch once user manually selects a tab
-  const [donePage, setDonePage] = useState(0); // pagination for the Done tab (0-indexed)
-  const DONE_PAGE_SIZE = 10;
   const [showParticipants, setShowParticipants] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
@@ -395,7 +393,16 @@ export default function ConversationPage() {
     clearCollaborator,
     deleteThread,
     setThreadCollaborator,
-  } = useConversations({ unreadEnabled: activeTab === 'assigned' });
+    pagination,
+    tabCounts,
+    fetchTabCounts,
+    setConversationPage,
+    setConversationPageSize,
+  } = useConversations({
+    unreadEnabled: activeTab === 'assigned',
+    statusScope: activeTab as any,
+    pageSize: 10
+  });
 
   // Use the contacts and human agents hooks
   const { createContact } = useContacts();
@@ -419,7 +426,7 @@ export default function ConversationPage() {
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const isPushingFiltersRef = useRef(false);
   const filtersInitRef = useRef(false);
-  const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'} `, [user?.id]);
+  const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'}`, [user?.id]);
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
   const rateLimitHook = useRateLimit();
@@ -435,8 +442,6 @@ export default function ConversationPage() {
   const handleRemoveFile = () => {
     setStagedFile(null);
   };
-
-
 
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
 
@@ -787,6 +792,10 @@ export default function ConversationPage() {
     let active = true;
     const run = async () => {
       try {
+        await Promise.all([
+          fetchConversations(undefined, { silent: true }),
+          fetchTabCounts(),
+        ]);
         const { data, error } = await protectedSupabase
           .from('channels')
           .select('id, display_name, provider')
@@ -1065,7 +1074,10 @@ export default function ConversationPage() {
       setCollaboratorOverride({ threadId: selectedConversation.id, userId: user.id });
       toast.success('You are now assigned to this chat');
       setActiveTab('assigned');
-      await fetchConversations(undefined, { silent: true });
+      await Promise.all([
+        fetchConversations(undefined, { silent: true }),
+        fetchTabCounts(),
+      ]);
     } catch (e) {
       toast.error('Failed to take over chat');
     }
@@ -1084,7 +1096,10 @@ export default function ConversationPage() {
       setCollaboratorOverride({ threadId: selectedConversation.id, userId: null });
       toast.success('Conversation moved to Unassigned');
       setActiveTab('unassigned');
-      await fetchConversations(undefined, { silent: true });
+      await Promise.all([
+        fetchConversations(undefined, { silent: true }),
+        fetchTabCounts(),
+      ]);
       await fetchMessages(selectedConversation.id);
     } catch (error) {
       toast.error('Failed to move conversation to Unassigned');
@@ -1132,7 +1147,10 @@ export default function ConversationPage() {
 
       toast.success('Conversation resolved');
       setActiveTab('done');
-      await fetchConversations(undefined, { silent: true });
+      await Promise.all([
+        fetchConversations(undefined, { silent: true }),
+        fetchTabCounts(),
+      ]);
       await fetchMessages(selectedConversation.id);
     } catch (error) {
       toast.error('Failed to resolve');
@@ -1452,6 +1470,10 @@ export default function ConversationPage() {
       setDeleteLoading(true);
       await deleteThread(deleteTarget.id);
       toast.success('Conversation deleted');
+      await Promise.all([
+        fetchConversations(undefined, { silent: true }),
+        fetchTabCounts(),
+      ]);
       if (selectedThreadId === deleteTarget.id) {
         setSelectedThreadId(null);
       }
@@ -1551,13 +1573,10 @@ export default function ConversationPage() {
           <Input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
         </div>
         {(() => {
-          const assignedList = filteredConversations.filter(conv => isFlowAssigned(conv));
-          const unassignedList = filteredConversations.filter(conv => isFlowUnassigned(conv));
-          const doneList = filteredConversations.filter(conv => isFlowDone(conv));
           const tabs: Array<{ key: FlowTab; label: string; count: number; className: string; tooltip: string }> = [
-            { key: 'assigned', label: 'Assigned', count: assignedList.length, className: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border-blue-500', tooltip: 'Lihat percakapan yang ditugaskan ke agen' },
-            { key: 'unassigned', label: 'Unassigned', count: unassignedList.length, className: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 border-red-500', tooltip: 'Lihat percakapan yang menunggu penugasan' },
-            { key: 'done', label: 'Done', count: doneList.length, className: 'bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400 border-green-500', tooltip: 'Lihat percakapan yang selesai' },
+            { key: 'assigned', label: 'Assigned', count: tabCounts.assigned, className: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border-blue-500', tooltip: 'Lihat percakapan yang ditugaskan ke agen' },
+            { key: 'unassigned', label: 'Unassigned', count: tabCounts.unassigned, className: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 border-red-500', tooltip: 'Lihat percakapan yang menunggu penugasan' },
+            { key: 'done', label: 'Done', count: tabCounts.done, className: 'bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400 border-green-500', tooltip: 'Lihat percakapan yang selesai' },
           ];
           const renderEmpty = (label: string) => (
             <div className="h-[calc(100vh-280px)] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground bg-muted/40">
@@ -1659,41 +1678,36 @@ export default function ConversationPage() {
             </div>
           );
           const renderContent = () => {
-            if (activeTab === 'assigned') {
-              return assignedList.length === 0 ? renderEmpty('assigned') : renderList(assignedList);
-            }
-            if (activeTab === 'unassigned') {
-              return unassignedList.length === 0 ? renderEmpty('unassigned') : renderList(unassignedList);
-            }
-            // Done tab with pagination
-            if (doneList.length === 0) return renderEmpty('done');
-            const totalDonePages = Math.ceil(doneList.length / DONE_PAGE_SIZE);
-            // Clamp page to valid range (in case threads get resolved/un-resolved while on a later page)
-            const safePage = Math.min(donePage, totalDonePages - 1);
-            const paginatedDone = doneList.slice(safePage * DONE_PAGE_SIZE, (safePage + 1) * DONE_PAGE_SIZE);
+            if (filteredConversations.length === 0) return renderEmpty(activeTab);
+
             return (
               <>
-                {renderList(paginatedDone)}
-                {totalDonePages > 1 && (
-                  <div className="flex items-center justify-between mt-2 px-1">
+                {renderList(filteredConversations)}
+                {pagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4 px-2 py-2 border-t bg-card/50 sticky bottom-0 z-20">
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      disabled={safePage <= 0}
-                      onClick={() => setDonePage(p => Math.max(0, p - 1))}
-                      className="h-7 text-xs"
+                      disabled={pagination.page <= 1}
+                      onClick={() => setConversationPage(pagination.page - 1)}
+                      className="h-8 text-xs font-medium"
                     >
                       ← Previous
                     </Button>
-                    <span className="text-xs text-muted-foreground">
-                      {safePage + 1} / {totalDonePages}
-                    </span>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">
+                        Page
+                      </span>
+                      <span className="text-sm font-bold text-foreground">
+                        {pagination.page} <span className="text-muted-foreground font-normal mx-0.5">/</span> {pagination.totalPages}
+                      </span>
+                    </div>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      disabled={safePage >= totalDonePages - 1}
-                      onClick={() => setDonePage(p => Math.min(totalDonePages - 1, p + 1))}
-                      className="h-7 text-xs"
+                      disabled={pagination.page >= pagination.totalPages}
+                      onClick={() => setConversationPage(pagination.page + 1)}
+                      className="h-8 text-xs font-medium"
                     >
                       Next →
                     </Button>
@@ -1711,7 +1725,7 @@ export default function ConversationPage() {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => { setTabLocked(true); setActiveTab(tab.key); if (tab.key === 'done') setDonePage(0); }}
+                        onClick={() => { setTabLocked(true); setActiveTab(tab.key); }}
                         className={`text-xs h-8 border-b-2 transition-colors flex items-center justify-center gap-2 px-2 ${activeTab === tab.key
                           ? `${tab.className}`
                           : 'text-muted-foreground border-transparent hover:bg-muted'

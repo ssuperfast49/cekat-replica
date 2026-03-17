@@ -1,5 +1,23 @@
 # Change Log
 
+# [0.2.4] FE WEB CEKAT 2026-03-18
+
+### Conversation Page: Pagination & Performance
+- **Server-Side Pagination**: Replaced client-side rendering with robust server-side pagination across all tabs (Assigned, Unassigned, Done).
+  - Threads are now fetched in batches of 10 using Supabase `.range()` queries, preventing performance degradation with large datasets.
+  - Added "Previous" and "Next" controls at the bottom of the conversation list.
+  - Pagination state (page, total, totalPages) is managed centrally in the `useConversations` hook.
+  - Automatically resets to Page 1 when changing filters or switching tabs.
+- **Optimized Data Fetching**:
+  - **Lightweight Tab Counts**: Refactored tab badges to fetch counts via parallel, count-only Supabase queries using `head: true`. This ensures the UI remains responsive even with thousands of conversations.
+  - **Scoped List Queries**: Thread list fetching is now strictly scoped to the active tab's status (`pending`, `open`, or `closed`), eliminating redundant data transfer.
+  - **Coordinated Refresh**: Assignment, Resolution, and Deletion actions now trigger a synchronized parallel refresh of both the global tab counts and the active thread list.
+- **Bug Fixes & Stability**:
+  - **Status Enum Mapping**: Fixed a database error by correctly mapping the "Assigned" tab to the `pending` thread status.
+  - **RPC Lint Fix**: Resolved TypeScript linting errors for the `takeover_thread` RPC by implementing safe type casting.
+  - **Hook Destructuring**: Fixed a syntax regression in the `useConversations` hook call that was causing application initialization failures.
+
+
 # [0.2.3] FE WEB CEKAT 2026-03-18
 
 ### Timeout Fallback
