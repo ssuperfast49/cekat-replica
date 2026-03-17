@@ -1588,7 +1588,7 @@ export default function ConversationPage() {
               {list.map(conv => {
                 const isMe = (conv.assignee_user_id === currentUserId || conv.collaborator_user_id === currentUserId);
                 const unreadCount = conv.unread_count ?? 0;
-                const hasUnread = activeTab === 'assigned' && unreadCount > 0;
+                const hasUnread = unreadCount > 0;
                 // Use yellow tint for my threads, unless selected (blue)
                 const baseClass = isMe
                   ? 'bg-yellow-50/60 dark:bg-yellow-900/20 hover:bg-yellow-100/80 dark:hover:bg-yellow-900/30'

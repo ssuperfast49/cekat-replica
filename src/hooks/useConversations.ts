@@ -176,6 +176,7 @@ export const useConversations = (options?: {
     try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     conversationsRefreshTimer.current = window.setTimeout(() => {
       fetchConversations(undefined, { silent: true });
+      fetchTabCounts();
     }, delayMs) as unknown as number;
   };
 
@@ -243,26 +244,33 @@ export const useConversations = (options?: {
   const incrementThreadUnread = useCallback((threadId: string, delta: number = 1) => {
     if (!threadId) return;
     if (!unreadEnabledRef.current) return;
-    const conv = conversationsRef.current.find((c) => c.id === threadId);
-    if (!conv?.assigned) return;
+    // Update the ref immediately so subsequent renders/fetches can use it
     const nextValue = Math.max(0, (unreadCountsRef.current[threadId] ?? 0) + delta);
     unreadCountsRef.current[threadId] = nextValue;
+
+    // Update state for UI re-render (only if the thread is currently in view)
     setConversations((prev) => prev.map((conv) => (
       conv.id === threadId
-        ? { ...conv, unread_count: Math.max(0, (conv.unread_count ?? 0) + delta) }
+        ? { ...conv, unread_count: nextValue }
         : conv
     )));
   }, []);
 
-  const fetchUnreadCounts = useCallback(async (threadIds: string[]) => {
+  const fetchUnreadCounts = useCallback(async (threadIds: string[], threadsOverride?: ConversationWithDetails[]) => {
     if (!threadIds || threadIds.length === 0) return;
     if (!unreadEnabledRef.current) return;
     if (isDocumentHidden()) return;
     try {
+      // Use provided threads or ref as fallback for filtering
+      const threadsToFilter = threadsOverride || conversationsRef.current || [];
       const assignedSet = new Set(
-        (conversationsRef.current || []).filter((c) => c.assigned).map((c) => c.id)
+        threadsToFilter.filter((c) => c.assigned).map((c) => c.id)
       );
-      const scopedIds = threadIds.filter((id) => assignedSet.has(id));
+      
+      // We only fetch unread counts for threads considered "assigned" in the UI logic
+      // to reduce RPC load, but we ensure we are using the most current list available.
+      const scopedIds = threadIds.filter((id) => threadsOverride ? true : assignedSet.has(id));
+      
       if (scopedIds.length === 0) return;
       const { data, error } = await protectedSupabase.rpc('get_unread_counts', { p_thread_ids: scopedIds });
       if (error) throw error;
@@ -621,7 +629,7 @@ export const useConversations = (options?: {
 
 
       setConversations(sortedData);
-      void fetchUnreadCounts(sortedData.map((t) => t.id));
+      void fetchUnreadCounts(sortedData.map((t) => t.id), sortedData);
 
       // IMPORTANT: Do not auto-sync/overwrite status from the frontend.
       // Status transitions are server-owned (RPCs / backend workflows).
@@ -1498,6 +1506,7 @@ export const useConversations = (options?: {
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchConversations(undefined, { silent: true });
+        fetchTabCounts();
       }
     }, 5000);
 

@@ -1,6 +1,15 @@
 # Change Log
 
-# [0.2.4] FE WEB CEKAT 2026-03-18
+## [0.2.5] FE WEB CEKAT 2026-03-18
+
+### Unread Message Badge Fix
+- **Stale State Resolution**: Fixed unread counts showing incorrect or missing values by resolving stale state references in the `fetchUnreadCounts` logic. It now correctly identifies visible threads from the current paginated view.
+- **Real-time Synchronization**: 
+  - Improved `incrementThreadUnread` to immediately update local state and refs upon receiving new messages.
+  - Linked `fetchTabCounts` to the periodic refresh cycle, ensuring Assigned/Unassigned/Done totals stay synced automatically.
+- **UI Visibility**: Enabled unread red badges for conversation items across all tabs (not just Assigned) to provide better situational awareness.
+
+## [0.2.4] FE WEB CEKAT 2026-03-18
 
 ### Conversation Page: Pagination & Performance
 - **Server-Side Pagination**: Replaced client-side rendering with robust server-side pagination across all tabs (Assigned, Unassigned, Done).
