@@ -1,11 +1,19 @@
 # Change Log
 
+## [0.2.7] FE WEB CEKAT 2026-03-18
+
+### Frontend Performance Optimizations
+- **React Render Cycle Enhancements**: Significantly improved the responsiveness of the `ConversationPage` by memoizing heavy React components.
+  - **`MessageBubble` Memoization**: Added `React.memo` to the `MessageBubble` component with strict props equality checking, preventing redundant markdown parsing and DOM thrashing when unrelated chat elements update.
+  - **`ConversationListRow` Extraction**: Extracted the inbox chat rows into a separate `ConversationListRow` component and wrapped it in `React.memo`. This guarantees that an incoming message or assignment change only re-renders the specific modified thread, rather than re-rendering the entire list of ~50 visible items.
+
 ## [0.2.6] FE WEB CEKAT 2026-03-18
 
 ### Backend & Performance
 - **PostgREST Query Timeout Fix**: Resolved severe database timeouts occurring on large datasets during pagination polling.
   - **Issue**: The newly implemented server-side pagination was natively applying `{ count: 'exact' }` onto a heavy joined query (threads + channels + contacts + messages), forcing PostgreSQL to do a full-table seq scan and evaluate RLS for every matching row before returning paginated chunks.
-  - **Resolution**: Replaced `{ count: 'exact' }` with `{ count: 'estimated' }` within `useConversations.ts` for both the main inbox query and the 3 tab-count queries. Supabase now utilizes the PostgreSQL query planner to return instantaneous row estimates, completely eliminating the ~8s timeout crashes.
+  - **Resolution**: Replaced `{ count: 'exact' }` with `{ count: 'estimated' }` within `useConversations.ts` for the main inbox query. Supabase now utilizes the PostgreSQL query planner to return instantaneous row estimates, completely eliminating the ~8s timeout crashes.
+- **UI Tab Count Mismatch Fix**: Fixed a visual bug where the "Done" tab count maxed out exactly at `1001`. This was caused by PostgREST capping `estimated` counts to the `max-rows` configuration (1000 + 1). The tab badge queries now explicitly use `exact` counts (which are safe without limits now that DB indexes were added) to ensure accurate totals display up to infinity.
 ## [0.2.5] FE WEB CEKAT 2026-03-18
 
 ### Unread Message Badge Fix
