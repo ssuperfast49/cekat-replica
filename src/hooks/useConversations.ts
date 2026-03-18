@@ -421,7 +421,7 @@ export const useConversations = (options?: {
           contacts(name, phone, email),
           channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url, super_agent_id),
           messages(id, body, role, direction, created_at, seq)
-        `, { count: 'estimated' })
+        `, { count: 'exact' })
         .order('last_msg_at', { ascending: false })
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
@@ -1486,10 +1486,11 @@ export const useConversations = (options?: {
     }
   };
 
-  // Initial fetch on mount - guard against duplicate calls
+  // Initial fetch on mount - disabled to prevent duplicate calls
   useEffect(() => {
-    // Avoid overlapping with other triggers by scheduling slightly
-    scheduleConversationsRefresh(10);
+    // We no longer trigger an initial fetch here because ConversationPage's 
+    // URL hydration effect now centrally handles the first load to prevent StrictMode duplication.
+    // scheduleConversationsRefresh(10);
   }, []);
 
   // Authorization changes: clear any in-memory UI state and refetch.
@@ -1538,7 +1539,7 @@ export const useConversations = (options?: {
       if (document.visibilityState === 'visible') {
         checkAutoResolve();
       }
-    }, 5000); // Check every 5 seconds
+    }, 30000); // Check every 30 seconds (relaxed; visibilitychange handler covers alt-tab catch-up)
 
     return () => clearInterval(interval);
   }, []);
@@ -1697,8 +1698,12 @@ export const useConversations = (options?: {
   useEffect(() => {
     if (!selectedThreadId) return;
 
-    // Set up a periodic refresh as a fallback (every 5 seconds)
-    const refreshInterval = setInterval(() => { fetchMessages(selectedThreadId); }, 5000);
+    // Set up a periodic refresh as a fallback (visibility-guarded, relaxed interval)
+    const refreshInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchMessages(selectedThreadId);
+      }
+    }, 30000);
 
     const channel = supabase
       .channel(`messages-${selectedThreadId}`)

@@ -949,10 +949,7 @@ export default function ConversationPage() {
     let active = true;
     const run = async () => {
       try {
-        await Promise.all([
-          fetchConversations(undefined, { silent: true }),
-          fetchTabCounts(),
-        ]);
+        await fetchTabCounts();
         const { data, error } = await protectedSupabase
           .from('channels')
           .select('id, display_name, provider')
@@ -982,9 +979,14 @@ export default function ConversationPage() {
     if (isPushingFiltersRef.current) return;
     const fromUrl = parseFiltersFromSearchParams(searchParams);
 
+    let needsFetch = false;
+    let finalFilters = fromUrl;
+
     // First load: if URL has no filter params, fallback to localStorage once.
     if (!filtersInitRef.current) {
       filtersInitRef.current = true;
+      needsFetch = true; // Always guarantee at least one fetch on first load
+
       if (!hasAnyActiveFilters(fromUrl)) {
         try {
           const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
@@ -999,24 +1001,28 @@ export default function ConversationPage() {
                 }
                 : undefined,
             };
+            finalFilters = revived;
             setActiveFilters(revived);
             const next = new URLSearchParams(window.location.search);
             writeFiltersToSearchParams(next, revived);
             isPushingFiltersRef.current = true;
             setSearchParams(next, { replace: true });
             setTimeout(() => { isPushingFiltersRef.current = false; }, 0);
-            void fetchConversations(revived);
-            return;
           }
         } catch { /* ignore */ }
       }
+    } else {
+      // Subsequent runs (URL changed via browser back/forward)
+      const urlSig = serializeFiltersSignature(fromUrl);
+      const localSig = serializeFiltersSignature(activeFilters);
+      if (urlSig !== localSig) {
+        setActiveFilters(fromUrl);
+        needsFetch = true;
+      }
     }
 
-    const urlSig = serializeFiltersSignature(fromUrl);
-    const localSig = serializeFiltersSignature(activeFilters);
-    if (urlSig !== localSig) {
-      setActiveFilters(fromUrl);
-      void fetchConversations(fromUrl);
+    if (needsFetch) {
+      void fetchConversations(finalFilters, { silent: !filtersInitRef.current });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.toString(), FILTERS_STORAGE_KEY]);
