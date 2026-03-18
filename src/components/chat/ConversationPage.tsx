@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useMemo, memo, useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -149,7 +149,7 @@ type MessageRenderItem =
   | { type: "date"; key: string; label: string }
   | { type: "message"; key: string; message: MessageWithDetails };
 
-const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = [], activeMatchOrder = -1 }: MessageBubbleProps) => {
+const MessageBubble = memo(({ message, isLastMessage, highlighted = false, matches = [], activeMatchOrder = -1 }: MessageBubbleProps) => {
   const isAgent = message.role === 'assistant' || message.role === 'agent' || message.direction === 'out';
   const isSystem = message.role === 'system' || message.type === 'event' || message.type === 'note';
   const isHumanAgent = message.role === 'assistant';
@@ -351,7 +351,164 @@ const MessageBubble = ({ message, isLastMessage, highlighted = false, matches = 
       </div>
     </div>
   );
+});
+
+MessageBubble.displayName = 'MessageBubble';
+
+// Helpers for thread list UI
+const formatListTime = (iso: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+
+  if (diffHours < 24 && diffHours >= 0) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  if (diffHours >= 24 && diffHours < 48) {
+    return 'Yesterday';
+  }
+
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${mm}/${dd}/${yyyy}`;
 };
+
+const renderStatus = (conv: ConversationWithDetails, opts?: { compact?: boolean }) => {
+  const compact = opts?.compact;
+  const compactClass = compact ? 'h-4 px-1.5 text-[10px] font-normal' : '';
+  const category = getFlowTabForThread(conv);
+  if (category === 'done') {
+    return <Badge className={`${compactClass} bg-green-100 text-green-700 border-0`}>Done</Badge>;
+  }
+  if (category === 'assigned') {
+    return <Badge className={`${compactClass} bg-blue-100 text-blue-700 border-0`}>Assigned</Badge>;
+  }
+  return <Badge className={`${compactClass} bg-secondary text-secondary-foreground`}>Unassigned</Badge>;
+};
+
+const getListTimestamp = (conv: any) => {
+  const ts = (conv as any).last_msg_at || (conv as any).updated_at || (conv as any).created_at || '';
+  return formatListTime(ts);
+};
+
+interface ConversationListRowProps {
+  conv: ConversationWithDetails;
+  currentUserId: string | null;
+  selectedThreadId: string | null;
+  canDeleteConversation: boolean;
+  onSelect: (id: string) => void;
+  onOpenDelete: (conv: ConversationWithDetails) => void;
+}
+
+const ConversationListRow = memo(({
+  conv,
+  currentUserId,
+  selectedThreadId,
+  canDeleteConversation,
+  onSelect,
+  onOpenDelete
+}: ConversationListRowProps) => {
+  const isMe = (conv.assignee_user_id === currentUserId || (conv as any).collaborator_user_id === currentUserId);
+  const unreadCount = conv.unread_count ?? 0;
+  const hasUnread = unreadCount > 0;
+  const baseClass = isMe
+    ? 'bg-yellow-50/60 dark:bg-yellow-900/20 hover:bg-yellow-100/80 dark:hover:bg-yellow-900/30'
+    : 'hover:bg-muted';
+  const unreadClass = hasUnread
+    ? 'bg-red-50/50 dark:bg-red-950/10 ring-1 ring-red-200/70 dark:ring-red-900/40 hover:bg-red-50/80 dark:hover:bg-red-950/20'
+    : baseClass;
+  const activeClass = selectedThreadId === conv.id
+    ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800'
+    : unreadClass;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => onSelect(conv.id)}
+        className={`w-full p-3 text-left transition-colors rounded-lg ${activeClass}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <Avatar className="h-6 w-6">
+              <AvatarImage src={conv.channel_logo_url || ''} />
+              <AvatarFallback className="text-[10px]">💬</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
+                <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-muted-foreground">
+                  <span className="whitespace-nowrap">{getListTimestamp(conv)}</span>
+                  <span className="text-muted-foreground/60">•</span>
+                  {renderStatus(conv, { compact: true })}
+                </div>
+              </div>
+              <div className="mt-0.5 flex items-center justify-between gap-2 min-w-0">
+                <p className="text-xs text-muted-foreground/90 truncate min-w-0 flex-1">
+                  {stripMarkdown(conv.last_message_preview) || '—'}
+                </p>
+                {hasUnread ? (
+                  <Badge
+                    variant="secondary"
+                    className="h-4 px-1.5 text-[10px] leading-none bg-red-500 text-white border-0 shrink-0"
+                    aria-label={`${unreadCount} unread messages`}
+                  >
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Badge>
+                ) : null}
+              </div>
+              <div className="mt-1 flex items-end justify-between gap-2 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                  <span className="text-xs text-muted-foreground truncate">
+                    {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
+                  </span>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {(conv.channel_provider || conv.channel?.provider) ? (
+                    <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
+                      {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </button>
+      {!conv.contact_id && canDeleteConversation && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+              onClick={(event) => { event.stopPropagation(); onOpenDelete(conv); }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Delete conversation</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.conv === nextProps.conv &&
+    prevProps.currentUserId === nextProps.currentUserId &&
+    prevProps.selectedThreadId === nextProps.selectedThreadId &&
+    prevProps.canDeleteConversation === nextProps.canDeleteConversation
+  );
+});
+
+ConversationListRow.displayName = 'ConversationListRow';
 
 export default function ConversationPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -832,7 +989,7 @@ export default function ConversationPage() {
         try {
           const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
           if (raw) {
-            const parsed = JSON.parse(raw || '{}') as any;
+            const parsed = JSON.parse(raw || '{ }') as any;
             const revived: ThreadFilters = {
               ...parsed,
               dateRange: parsed?.dateRange
@@ -1169,7 +1326,7 @@ export default function ConversationPage() {
     const isThreadSwitch = lastScrolledThreadRef.current !== selectedThreadId;
 
     if (isThreadSwitch) {
-      // Guarantee that the messages array has successfully swapped over to the new thread's payload 
+      // Guarantee that the messages array has successfully swapped over to the new thread's payload
       // before attempting the force-scroll. If it's still holding the old thread data, skip and wait for the next render.
       const hasCorrectMessages = messages.length === 0 || messages[0].thread_id === selectedThreadId;
 
@@ -1585,96 +1742,17 @@ export default function ConversationPage() {
           );
           const renderList = (list: typeof filteredConversations) => (
             <div className="space-y-1">
-              {list.map(conv => {
-                const isMe = (conv.assignee_user_id === currentUserId || conv.collaborator_user_id === currentUserId);
-                const unreadCount = conv.unread_count ?? 0;
-                const hasUnread = unreadCount > 0;
-                // Use yellow tint for my threads, unless selected (blue)
-                const baseClass = isMe
-                  ? 'bg-yellow-50/60 dark:bg-yellow-900/20 hover:bg-yellow-100/80 dark:hover:bg-yellow-900/30'
-                  : 'hover:bg-muted';
-                const unreadClass = hasUnread
-                  ? 'bg-red-50/50 dark:bg-red-950/10 ring-1 ring-red-200/70 dark:ring-red-900/40 hover:bg-red-50/80 dark:hover:bg-red-950/20'
-                  : baseClass;
-                const activeClass = selectedThreadId === conv.id
-                  ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800'
-                  : unreadClass;
-
-                return (
-                  <div key={conv.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleConversationSelect(conv.id)}
-                      className={`w-full p-3 text-left transition-colors rounded-lg ${activeClass}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={conv.channel_logo_url || ''} />
-                            <AvatarFallback className="text-[10px]">💬</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <h3 className="text-sm font-medium truncate">{conv.contact_name}</h3>
-                              <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-muted-foreground">
-                                <span className="whitespace-nowrap">{getListTimestamp(conv)}</span>
-                                <span className="text-muted-foreground/60">•</span>
-                                {renderStatus(conv, { compact: true })}
-                              </div>
-                            </div>
-                            <div className="mt-0.5 flex items-center justify-between gap-2 min-w-0">
-                              <p className="text-xs text-muted-foreground/90 truncate min-w-0 flex-1">
-                                {stripMarkdown(conv.last_message_preview) || '—'}
-                              </p>
-                              {hasUnread ? (
-                                <Badge
-                                  variant="secondary"
-                                  className="h-4 px-1.5 text-[10px] leading-none bg-red-500 text-white border-0 shrink-0"
-                                  aria-label={`${unreadCount} unread messages`}
-                                >
-                                  {unreadCount > 99 ? '99+' : unreadCount}
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <div className="mt-1 flex items-end justify-between gap-2 min-w-0">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                <span className="text-xs text-muted-foreground truncate">
-                                  {conv.channel?.display_name || conv.channel?.provider || 'Unknown'}
-                                </span>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 shrink-0">
-                                {(conv.channel_provider || conv.channel?.provider) ? (
-                                  <Badge variant="outline" className="h-5 px-2 text-[10px] shrink-0">
-                                    {formatPlatformLabel(String(conv.channel_provider || conv.channel?.provider))}
-                                  </Badge>
-                                ) : null}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                    {!conv.contact_id && canDeleteConversation && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                            onClick={(event) => { event.stopPropagation(); handleOpenDelete(conv); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Delete conversation</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                );
-              })}
+              {list.map(conv => (
+                <ConversationListRow
+                  key={conv.id}
+                  conv={conv}
+                  currentUserId={currentUserId}
+                  selectedThreadId={selectedThreadId}
+                  canDeleteConversation={canDeleteConversation}
+                  onSelect={handleConversationSelect}
+                  onOpenDelete={handleOpenDelete}
+                />
+              ))}
             </div>
           );
           const renderContent = () => {
