@@ -1,5 +1,19 @@
 # Change Log
 
+## [0.2.11] FE/BE CEKAT 2026-03-18
+
+### Post-Migration Bug Fixes
+- **Unassigned Tab Visibility**: Fixed an issue where the Unassigned tab crashed or showed no threads because the fetching logic was mistakenly filtering by the invalid enum value `assigned`. It now correctly filters by `pending`.
+  - Updated: `src/hooks/useConversations.ts`
+- **Livechat Reopen Thread Error**: Resolved a 500 Internal Server error that occurred when a user sent a message to a resolved thread via the LiveChat widget. 
+  - **Cause**: The `maintain_channel_status_counts` trigger was failing to compare the `NEW.status` enum against the `text` column `status` without an explicit cast.
+  - **Fix**: Added explicit `::text` casting inside the trigger function.
+  - Updated Migration: `20260318155500_channel_counters.sql`
+- **Agent Chat Auto-Scroll Bug**: Fixed a UI issue where the Conversation Page would lose its scroll position and leave the agent stranded at the top of a new message after hitting "Send".
+  - **SWR Flicker Override**: Bypassed a race condition where the background SWR cache fetch would temporarily delete the optimistic message payload, confusing the scroll anchors.
+  - **Forced Bottom Snapping**: Hardcoded a 500ms force-scroll window inside `handleSendMessage` that completely ignores generic distance checks, guaranteeing the viewport snaps cleanly to the newest message regardless of textarea shrinkage.
+  - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+
 ## [0.2.10] FE WEB CEKAT 2026-03-18
 
 ### Architecture: Realtime Broadcast Migration (Zero Polling)

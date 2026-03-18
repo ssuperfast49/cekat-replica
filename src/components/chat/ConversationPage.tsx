@@ -1325,29 +1325,45 @@ export default function ConversationPage() {
   // Auto-scroll to bottom only when the user is already near the bottom (not scrolled up).
   // Also force-scroll when the selected thread changes AND the new messages have finished loading
   const lastScrolledThreadRef = useRef<string | null>(null);
+  const forceScrollUntilRef = useRef<number>(0); // timestamp: force-scroll until this time
   useLayoutEffect(() => {
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
 
     const isThreadSwitch = lastScrolledThreadRef.current !== selectedThreadId;
+    const now = Date.now();
 
     if (isThreadSwitch) {
       // Guarantee that the messages array has successfully swapped over to the new thread's payload
-      // before attempting the force-scroll. If it's still holding the old thread data, skip and wait for the next render.
       const hasCorrectMessages = messages.length === 0 || messages[0].thread_id === selectedThreadId;
 
       if (hasCorrectMessages) {
-        try { viewport.scrollTop = viewport.scrollHeight; } catch { }
-        lastScrolledThreadRef.current = selectedThreadId; // Mark that we've successfully dropped the anchor for this thread
+        // Use requestAnimationFrame to ensure DOM has rendered before scrolling
+        requestAnimationFrame(() => {
+          try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+        });
+        lastScrolledThreadRef.current = selectedThreadId;
+        // Open a 2-second force-scroll window to catch the SWR background revalidation
+        forceScrollUntilRef.current = now + 2000;
       }
       return;
     }
 
+    // During the force-scroll window (e.g. SWR revalidation or manual send), always scroll to bottom
+    if (now < forceScrollUntilRef.current) {
+      requestAnimationFrame(() => {
+        try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+      });
+      return;
+    }
+
     // Normal streaming auto-scroll for incoming messages on the SAME active thread
-    // Only auto-scroll if user is already near the bottom reading the live chat (within 150px)
+    // Only auto-scroll if user is already near the bottom reading the live chat (within 300px)
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    if (distanceFromBottom < 150) {
-      try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+    if (distanceFromBottom < 300) {
+      requestAnimationFrame(() => {
+        try { viewport.scrollTop = viewport.scrollHeight; } catch { }
+      });
     }
   }, [messages, selectedThreadId]);
 
@@ -1561,6 +1577,9 @@ export default function ConversationPage() {
       // Clear input immediately and fire send without blocking UI
       setDraft("");
       setStagedFile(null);
+      // Force auto-scroll to bottom for the next 500ms to guarantee the new message comes into view
+      // even if the shrinking textarea messes up the distanceFromBottom calculation
+      forceScrollUntilRef.current = Date.now() + 500;
       void sendMessage(selectedThreadId, text, 'assistant', attachment);
     } catch (error) {
       toast.error("Failed to send message");
@@ -1656,28 +1675,6 @@ export default function ConversationPage() {
     setDeleteTarget(conversation);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <span className="ml-2">Loading conversations...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <p className="text-red-600 mb-2">Error: {error}</p>
-          <Button onClick={() => { void fetchConversations(undefined, { silent: true }); }} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="grid w-full grid-cols-[360px_1fr_320px] h-[calc(100vh-120px)] gap-4">
@@ -1762,6 +1759,25 @@ export default function ConversationPage() {
             </div>
           );
           const renderContent = () => {
+            if (loading) {
+              return (
+                <div className="h-[calc(100vh-280px)] flex flex-col items-center justify-center text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                  <span className="text-sm">Loading conversations...</span>
+                </div>
+              );
+            }
+            if (error) {
+              return (
+                <div className="h-[calc(100vh-280px)] flex flex-col items-center justify-center text-red-600 px-4 text-center">
+                  <p className="mb-2 text-sm">Error: {error}</p>
+                  <Button onClick={() => { void fetchConversations(undefined, { silent: true }); }} variant="outline" size="sm">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Retry
+                  </Button>
+                </div>
+              );
+            }
             if (filteredConversations.length === 0) return renderEmpty(activeTab);
 
             return (
@@ -1783,7 +1799,7 @@ export default function ConversationPage() {
                         Page
                       </span>
                       <span className="text-sm font-bold text-foreground">
-                        {pagination.page} <span className="text-muted-foreground font-normal mx-0.5">/</span> {pagination.totalPages}
+                        {pagination.page}
                       </span>
                     </div>
                     <Button

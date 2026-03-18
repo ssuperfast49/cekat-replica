@@ -198,7 +198,7 @@ export const useConversations = (options?: {
       setLoading(true);
       if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); }
       fetchConversations(undefined, { silent: false });
-      fetchTabCounts();
+      // Removed redundant fetchTabCounts() on tab switch to prevent fetch loops
     } else {
       statusScopeRef.current = nextScope;
     }
@@ -362,16 +362,26 @@ export const useConversations = (options?: {
    */
   const fetchTabCounts = useCallback(async () => {
     try {
-      const [assignedRes, unassignedRes, doneRes] = await Promise.all([
-        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-        protectedSupabase.from('threads').select('id', { count: 'exact', head: true }).eq('status', 'closed'),
-      ]);
+      const { data, error } = await protectedSupabase
+        .from('channel_status_counts' as any)
+        .select('status, count');
+
+      if (error) throw error;
+
+      let assignedCount = 0;
+      let unassignedCount = 0;
+      let doneCount = 0;
+
+      (data || []).forEach((row: any) => {
+        if (row.status === 'pending') assignedCount += Number(row.count || 0);
+        if (row.status === 'open') unassignedCount += Number(row.count || 0);
+        if (row.status === 'closed') doneCount += Number(row.count || 0);
+      });
 
       const nextCounts = {
-        assigned: assignedRes.count ?? 0,
-        unassigned: unassignedRes.count ?? 0,
-        done: doneRes.count ?? 0,
+        assigned: assignedCount,
+        unassigned: unassignedCount,
+        done: doneCount,
       };
 
       setTabCounts(nextCounts);
@@ -421,10 +431,20 @@ export const useConversations = (options?: {
           contacts(name, phone, email),
           channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url, super_agent_id),
           messages(id, body, role, direction, created_at, seq)
-        `, { count: 'exact' })
+        `)
         .order('last_msg_at', { ascending: false })
         .order('created_at', { foreignTable: 'messages', ascending: false })
         .limit(1, { foreignTable: 'messages' });
+
+      // Apply Base Filters
+      const statusScope = statusScopeRef.current;
+      if (statusScope === 'assigned') {
+        query = query.eq('status', 'pending');
+      } else if (statusScope === 'unassigned') {
+        query = query.eq('status', 'open');
+      } else if (statusScope === 'done') {
+        query = query.eq('status', 'closed');
+      }
 
       const { dateRange, status, agent, resolvedBy, inbox, channelType, platformId } = filtersToUse;
 
@@ -438,15 +458,6 @@ export const useConversations = (options?: {
       }
       if (status && status !== 'all' && status !== '') {
         query = query.eq('status', status);
-      } else {
-        const scope = statusScopeRef.current;
-        if (scope === 'assigned') {
-          query = query.eq('status', 'pending');
-        } else if (scope === 'unassigned') {
-          query = query.eq('status', 'open');
-        } else if (scope === 'done') {
-          query = query.eq('status', 'closed');
-        }
       }
       if (agent && agent !== 'all' && agent !== '') {
         query = query.eq('assignee_user_id', agent);
@@ -458,48 +469,41 @@ export const useConversations = (options?: {
         query = query.eq('channels.provider', inbox);
       }
       if (channelType && channelType !== 'all' && channelType !== '') {
-        // In this schema, channels.provider is the transport (telegram/web/whatsapp).
-        // channels.type is typically 'bot' / 'inbox' etc.
         query = query.eq('channels.provider', channelType);
       }
       if (platformId && platformId !== 'all' && platformId !== '') {
         query = query.eq('channel_id', platformId);
       }
 
-      const page = paginationRef.current.page;
-      const pageSize = paginationRef.current.pageSize;
+      // Determine Pagination Target
+      const page = options.page ?? paginationRef.current.page;
+      const pageSize = options.pageSize ?? paginationRef.current.pageSize;
       const from = Math.max(0, (page - 1) * pageSize);
       const to = from + pageSize - 1;
+
       query = query.range(from, to);
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 30000);
       });
 
-      const { data, error, count } = await Promise.race([
+      // Execute Query -- O(1) count performance by omitting the `count: estimated` header
+      const { data, error } = await Promise.race([
         query as any,
         timeoutPromise,
       ]) as any;
 
       if (error) throw error;
 
-      const totalCount = typeof count === 'number' ? count : 0;
-      const totalPages = Math.max(1, Math.ceil(totalCount / Math.max(1, pageSize)));
-      if (page > totalPages && totalCount > 0) {
-        const safePage = totalPages;
-        paginationRef.current.page = safePage;
-        setPagination((prev) => ({ ...prev, page: safePage, total: totalCount, totalPages }));
-        return fetchConversations(undefined, { silent: true });
-      }
-      setPagination((prev) => ({
-        ...prev,
-        total: totalCount,
-        totalPages,
-        page: Math.min(prev.page, totalPages),
-        pageSize,
-      }));
+      const hasMore = (data && data.length === pageSize) ? true : false;
+      const totalPages = Math.max(1, page + (hasMore ? 1 : 0));
 
-      if (error) throw error;
+      setPagination({
+        page,
+        pageSize,
+        total: 0,
+        totalPages,
+      });
 
       // Build user map for display names
       const userIds: string[] = Array.from(new Set(
@@ -713,13 +717,12 @@ export const useConversations = (options?: {
       const skipCache = options?.skipCache ?? false;
       const loadMore = options?.loadMore ?? false;
 
-      // Fast-path SWR Cache
-      if (!skipCache && !loadMore && messagesCacheRef.current[threadId]) {
+      // Fast-path SWR Cache — show cached data immediately, then revalidate
+      const hasCachedData = !skipCache && !loadMore && messagesCacheRef.current[threadId];
+      if (hasCachedData) {
         setMessages(messagesCacheRef.current[threadId]);
         setSelectedThreadId(threadId);
-        // We can do a silent background fetch for updates if needed, 
-        // but sticking to "pure realtime mutations" means we trust the cache + sockets.
-        return;
+        // Don't return — fall through to do a silent background refresh
       }
 
       setError(null);
@@ -978,7 +981,8 @@ export const useConversations = (options?: {
         );
       } else {
         // Replace optimistic pending with fresh list including the inserted message
-        await fetchMessages(threadId);
+        // skipCache: true ensures we don't flash the old cached payload over the optimistic messages
+        await fetchMessages(threadId, { skipCache: true });
       }
 
       // Update conversation preview locally to avoid unnecessary refresh
@@ -1687,7 +1691,7 @@ export const useConversations = (options?: {
       .on('broadcast', { event: 'INSERT' }, (payload) => {
         const message = payload.payload?.record || payload.payload?.new;
         if (!message) return;
-        // Apply broadcast payload to state — pure mutation, no refetch
+        // Apply broadcast payload to state AND cache — pure mutation, no refetch
         setMessages(prev => {
           const exists = prev.some(m => m.id === message?.id);
           if (exists) return prev;
@@ -1700,6 +1704,10 @@ export const useConversations = (options?: {
           };
           const merged = [...prev, next];
           merged.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+          // Sync cache ref so switching threads and back preserves realtime messages
+          if (message.thread_id) {
+            messagesCacheRef.current[message.thread_id] = merged;
+          }
           return merged;
         });
       })
