@@ -39,17 +39,16 @@ export function GlobalMessageListener() {
         };
 
         const channel = supabase
-            .channel('global-messages-listener')
+            .channel('notifications:messages', { config: { private: true } })
             .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'messages',
-                    filter: 'direction=eq.in', // Only incoming messages
-                },
+                'broadcast',
+                { event: 'INSERT' },
                 async (payload) => {
-                    const newMessage = payload.new as any;
+                    const newMessage = (payload.payload?.record || payload.payload?.new) as any;
+                    if (!newMessage) return;
+
+                    // Only incoming user messages (filter client-side)
+                    if (newMessage.direction !== 'in') return;
 
                     // Verify it's a user message 
                     if (newMessage.role !== 'user') return;

@@ -1612,21 +1612,24 @@ export const useConversations = (options?: {
     };
   }, [fetchUnreadCounts, markThreadRead, setThreadUnread, messages]);
 
-  // Realtime: keep conversations list in sync with DB
+  // Realtime Broadcast: keep conversations list in sync with DB (zero refetch)
+  // Uses Broadcast from Database triggers instead of postgres_changes
   useEffect(() => {
+    void supabase.realtime.setAuth(); // Required for Broadcast authorization
     const channel = supabase
-      .channel('threads-realtime')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'threads' }, (payload) => {
-        applyThreadRealtimePatch(payload.new);
-        // Removed full refresh `scheduleConversationsRefresh(400);` to enforce zero-latency architecture
+      .channel('threads:all', { config: { private: true } })
+      .on('broadcast', { event: 'UPDATE' }, (payload) => {
+        const record = payload.payload?.record || payload.payload?.new;
+        if (record) applyThreadRealtimePatch(record);
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads' }, (payload) => {
-        // Inserts surface mostly from n8n or widget. We can do a light fetch specifically 
-        // to grab nested relationships, or just wait for the subsequent `messages` INSERT.
+      .on('broadcast', { event: 'INSERT' }, (_payload) => {
+        // Thread inserts come from n8n/widget — the subsequent messages:all INSERT
+        // will trigger updateConversationPreview which handles new threads.
       })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'threads' }, (payload) => {
-        if (payload.old?.id) {
-          setConversations(prev => prev.filter(c => c.id !== payload.old.id));
+      .on('broadcast', { event: 'DELETE' }, (payload) => {
+        const old = payload.payload?.old_record || payload.payload?.old;
+        if (old?.id) {
+          setConversations(prev => prev.filter(c => c.id !== old.id));
         }
       })
       .subscribe();
@@ -1636,18 +1639,14 @@ export const useConversations = (options?: {
     };
   }, [applyThreadRealtimePatch]);
 
-  // Realtime: refresh conversation list when any message changes (affects ordering/preview)
+  // Realtime Broadcast: update conversation list when any message is inserted
   useEffect(() => {
     const channel = supabase
-      .channel('messages-realtime-for-convlist')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages'
-      }, (payload) => {
-        const message = payload.new;
-        if (message && message.direction === 'in') {
-          // Immediately update the conversation preview and re-sort
+      .channel('messages:all', { config: { private: true } })
+      .on('broadcast', { event: 'INSERT' }, (payload) => {
+        const message = payload.payload?.record || payload.payload?.new;
+        if (!message) return;
+        if (message.direction === 'in') {
           updateConversationPreview(message.thread_id, message);
           checkAutoResolve();
 
@@ -1660,31 +1659,16 @@ export const useConversations = (options?: {
           } else {
             incrementThreadUnread(message.thread_id, 1);
           }
-        } else if (message && (message.role === 'system' || message.type === 'event')) {
+        } else if (message.role === 'system' || message.type === 'event') {
           updateConversationPreview(message.thread_id, message);
         } else if (
-          message &&
           message.direction === 'out' &&
           (message.role === 'agent' || message.role === 'assistant')
         ) {
           updateConversationPreview(message.thread_id, message);
-        } else if (message && message.role === 'agent' && message.direction === 'out') {
+        } else if (message.role === 'agent' && message.direction === 'out') {
           checkAutoResolve();
         }
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'messages'
-      }, () => {
-        // Ignored for zero-latency 
-      })
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'messages'
-      }, () => {
-        // Ignored for zero-latency
       })
       .subscribe();
 
@@ -1694,30 +1678,16 @@ export const useConversations = (options?: {
     };
   }, []);
 
-  // Realtime: keep messages in sync for the selected thread
+  // Realtime Broadcast: keep messages in sync for the selected thread (zero polling)
   useEffect(() => {
     if (!selectedThreadId) return;
 
-    // Set up a periodic refresh as a fallback (visibility-guarded, relaxed interval)
-    const refreshInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchMessages(selectedThreadId);
-      }
-    }, 30000);
-
     const channel = supabase
-      .channel(`messages-${selectedThreadId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `thread_id=eq.${selectedThreadId}`
-      }, (payload) => {
-        const message = payload.new as any;
-        if (message && message.direction === 'in') {
-          // Audio handled by GlobalMessageListener
-        }
-        // Apply realtime payload to state to avoid full refresh jumps
+      .channel(`messages:${selectedThreadId}`, { config: { private: true } })
+      .on('broadcast', { event: 'INSERT' }, (payload) => {
+        const message = payload.payload?.record || payload.payload?.new;
+        if (!message) return;
+        // Apply broadcast payload to state — pure mutation, no refetch
         setMessages(prev => {
           const exists = prev.some(m => m.id === message?.id);
           if (exists) return prev;
@@ -1733,67 +1703,28 @@ export const useConversations = (options?: {
           return merged;
         });
       })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'messages',
-        filter: `thread_id=eq.${selectedThreadId}`
-      }, (payload) => {
-        const message = payload.new as any;
-        setMessages(prev => {
-          const idx = prev.findIndex(m => m.id === message?.id);
-          if (idx < 0) return prev;
-          const updated: MessageWithDetails = { ...prev[idx], ...(message || {}) };
-          const next = [...prev];
-          next[idx] = updated;
-          next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-          return next;
-        });
-      })
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'messages',
-        filter: `thread_id=eq.${selectedThreadId}`
-      }, (payload) => {
-        const message = (payload.old || payload.new) as any;
-        const id = message?.id;
-        if (!id) return;
-        setMessages(prev => prev.filter(m => m.id !== id));
-      })
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.error('Error subscribing to messages for thread:', selectedThreadId);
-          setTimeout(() => { fetchMessages(selectedThreadId); }, 1000);
-        }
-      });
+      .subscribe();
 
     return () => {
-      clearInterval(refreshInterval);
       try { supabase.removeChannel(channel); } catch { }
     };
   }, [selectedThreadId]);
 
+  // Realtime Broadcast: thread detail changes (status, assignment, etc.) — pure state mutation
   useEffect(() => {
     if (!selectedThreadId) return;
     const channel = supabase
-      .channel(`thread-detail-${selectedThreadId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'threads',
-        filter: `id=eq.${selectedThreadId}`
-      }, () => {
-        if (document.visibilityState !== 'visible') return;
-        scheduleConversationsRefresh(150);
-        fetchMessages(selectedThreadId);
+      .channel(`threads:${selectedThreadId}`, { config: { private: true } })
+      .on('broadcast', { event: 'UPDATE' }, (payload) => {
+        const record = payload.payload?.record || payload.payload?.new;
+        if (record) applyThreadRealtimePatch(record);
       })
       .subscribe();
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
     };
-  }, [selectedThreadId, fetchMessages]);
+  }, [selectedThreadId, applyThreadRealtimePatch]);
 
   return {
     conversations,
