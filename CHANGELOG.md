@@ -1,5 +1,20 @@
 # Change Log
 
+## [0.2.10] FE WEB CEKAT 2026-03-18
+
+### Architecture: Realtime Broadcast Migration (Zero Polling)
+- **Switched all 5 realtime subscriptions from `postgres_changes` to Supabase Broadcast from Database**:
+  - `threads:all` — conversation list thread status/assignment changes (INSERT/UPDATE/DELETE)
+  - `messages:all` — conversation list message preview/unread updates (INSERT)
+  - `messages:<threadId>` — per-thread chat messages (INSERT)
+  - `threads:<threadId>` — thread detail status changes (UPDATE)
+  - `notifications:messages` — audio/toast notification for incoming messages (INSERT)
+- **Created DB triggers**: `broadcast_message_changes()` on `messages` (INSERT), `broadcast_thread_changes()` on `threads` (INSERT/UPDATE/DELETE). Both broadcast to per-record and global topics via `realtime.broadcast_changes()`.
+- **Added RLS policy** on `realtime.messages` for authenticated users.
+- **Removed 5s `fetchMessages` polling** — no longer needed with reliable Broadcast delivery.
+- **Removed all `scheduleConversationsRefresh` calls** from realtime handlers — pure state mutations only.
+- **Why**: `postgres_changes` processes WAL events on a single thread with per-subscriber RLS authorization, causing delays and dropped events. Broadcast from Database skips this bottleneck entirely.
+
 ## [0.2.9] FE WEB CEKAT 2026-03-18
 
 ### Performance: Strict Mode De-duplication & Dead Weight Removal
