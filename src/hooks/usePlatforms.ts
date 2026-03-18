@@ -44,8 +44,12 @@ export const usePlatforms = () => {
   const [platforms, setPlatforms] = useState<PlatformWithAgents[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const inFlightRef = useState<{ current: boolean }>({ current: false })[0];
 
   const fetchPlatforms = async () => {
+    // De-duplicate concurrent calls (e.g. React Strict Mode double-mount)
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       setLoading(true);
       setError(null);
@@ -143,65 +147,68 @@ export const usePlatforms = () => {
         return allowedChannelIds.has(ch.id);
       });
 
-      // Map channels and attach human agents based on channel_agents
-      const platformsWithAgents = await Promise.all(filteredChannels.map(async (ch: any) => {
-        try {
-          const { data: ca } = await supabase
-            .from('channel_agents')
-            .select('user_id')
-            .eq('channel_id', ch.id);
-          const ids = (ca || []).map((r: any) => r.user_id);
-          let profiles: any[] = [];
-          if (ids.length > 0) {
-            // Prefer users_profile.display_name; fall back to v_users
-            const [profRes, vuserRes] = await Promise.all([
-              supabase
-                .from('users_profile')
-                .select('user_id, display_name')
-                .in('user_id', ids),
-              supabase
-                .from('v_users')
-                .select('id, display_name, email')
-                .in('id', ids)
-            ]);
-            const profs = profRes.data || [];
-            const vus = vuserRes.data || [];
-            const byId: Record<string, { display_name?: string | null; email?: string | null }> = {};
-            vus.forEach((v: any) => { byId[v.id] = { display_name: v.display_name, email: v.email }; });
-            profs.forEach((p: any) => { byId[p.user_id] = { display_name: p.display_name ?? byId[p.user_id]?.display_name, email: byId[p.user_id]?.email }; });
-            profiles = Object.entries(byId).map(([user_id, val]) => ({ user_id, ...val }));
-          }
-          const humanAgents = ids.map((uid: string) => {
-            const prof = profiles.find((x: any) => x.user_id === uid || x.id === uid) || {} as any;
-            return { user_id: uid, display_name: prof.display_name || prof?.display_name, email: prof.email };
-          });
-          return {
-            ...ch,
-            provider: ch.provider,
-            status: ch.is_active ? 'active' : 'inactive',
-            human_agents: humanAgents,
-            super_agent_id: ch.super_agent_id ?? null,
-            credentials: ch?.credentials ?? null,
-            website_id: ch.website_id ?? null,
-          } as PlatformWithAgents;
-        } catch {
-          return {
-            ...ch,
-            provider: ch.provider,
-            status: ch.is_active ? 'active' : 'inactive',
-            human_agents: [],
-            super_agent_id: ch.super_agent_id ?? null,
-            credentials: ch?.credentials ?? null,
-            website_id: ch.website_id ?? null,
-          } as PlatformWithAgents;
-        }
-      }));
+      // --- Batched queries: fetch ALL channel_agents + profiles in 3 calls total ---
+      const allChannelIds = filteredChannels.map((ch: any) => ch.id);
+
+      // 1. Batch-fetch all channel_agents at once
+      const { data: allChannelAgents } = allChannelIds.length > 0
+        ? await supabase
+          .from('channel_agents')
+          .select('channel_id, user_id')
+          .in('channel_id', allChannelIds)
+        : { data: [] as any[] };
+
+      // Group by channel_id client-side
+      const agentsByChannel: Record<string, string[]> = {};
+      for (const ca of allChannelAgents || []) {
+        if (!agentsByChannel[ca.channel_id]) agentsByChannel[ca.channel_id] = [];
+        agentsByChannel[ca.channel_id].push(ca.user_id);
+      }
+
+      // 2. Collect all unique user_ids, then batch-fetch profiles
+      const allAgentUserIds = Array.from(new Set((allChannelAgents || []).map((ca: any) => ca.user_id)));
+      let profilesById: Record<string, { display_name?: string | null; email?: string | null }> = {};
+
+      if (allAgentUserIds.length > 0) {
+        const [profRes, vuserRes] = await Promise.all([
+          supabase.from('users_profile').select('user_id, display_name').in('user_id', allAgentUserIds),
+          supabase.from('v_users').select('id, display_name, email').in('id', allAgentUserIds),
+        ]);
+        const vus = vuserRes.data || [];
+        const profs = profRes.data || [];
+        vus.forEach((v: any) => { profilesById[v.id] = { display_name: v.display_name, email: v.email }; });
+        profs.forEach((p: any) => {
+          profilesById[p.user_id] = {
+            display_name: p.display_name ?? profilesById[p.user_id]?.display_name,
+            email: profilesById[p.user_id]?.email,
+          };
+        });
+      }
+
+      // 3. Assemble platforms with agents (pure client-side mapping, zero API calls)
+      const platformsWithAgents: PlatformWithAgents[] = filteredChannels.map((ch: any) => {
+        const agentIds = agentsByChannel[ch.id] || [];
+        const humanAgents = agentIds.map((uid: string) => {
+          const prof = profilesById[uid] || {};
+          return { user_id: uid, display_name: prof.display_name || undefined, email: prof.email || undefined };
+        });
+        return {
+          ...ch,
+          provider: ch.provider,
+          status: ch.is_active ? 'active' : 'inactive',
+          human_agents: humanAgents,
+          super_agent_id: ch.super_agent_id ?? null,
+          credentials: ch?.credentials ?? null,
+          website_id: ch.website_id ?? null,
+        } as PlatformWithAgents;
+      });
 
       setPlatforms(platformsWithAgents);
     } catch (error) {
       console.error('Error fetching platforms:', error);
       setError('Failed to fetch platforms');
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -547,8 +554,9 @@ export const usePlatforms = () => {
   };
 
   useEffect(() => {
-    const run = () => fetchPlatforms();
-    run();
+    // Slight debounce to coalesce StrictMode double-invocation
+    const t = setTimeout(() => fetchPlatforms(), 50);
+    return () => clearTimeout(t);
   }, []);
 
   return {

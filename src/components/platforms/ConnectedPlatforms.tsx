@@ -32,7 +32,6 @@ const ConnectedPlatforms = () => {
   const { platforms, loading: platformsLoading, error: platformsError, createPlatform, fetchPlatforms, updatePlatform, uploadChannelAvatar, deleteChannelAvatar } = usePlatforms();
   const { aiAgents, loading: aiAgentsLoading } = useAIAgents();
   const { agents: humanAgents, loading: humanAgentsLoading } = useHumanAgents();
-  const { fetchByOrgId: fetchChannelsByOrg, channelsByOrg } = useChannels();
   const { hasRole } = useRBAC();
 
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
@@ -123,15 +122,7 @@ const ConnectedPlatforms = () => {
       setSelectedAgent("");
     }
   }, [selectedPlatformData?.id, (selectedPlatformData as any)?.ai_profile_id]);
-  useEffect(() => {
-    // Preload channels for each org once per change-set
-    const uniqueOrgIds = Array.from(new Set(platforms.map(p => p.org_id)));
-    if (uniqueOrgIds.length === 0) return;
-    // Fire-and-forget but avoid tight loops by batching with a microtask
-    Promise.resolve().then(() => {
-      uniqueOrgIds.forEach(orgId => { fetchChannelsByOrg(orgId); });
-    });
-  }, [platforms]);
+
 
   // Listen for refresh-platforms event to refetch channels/platforms
   useEffect(() => {

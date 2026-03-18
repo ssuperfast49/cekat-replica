@@ -123,7 +123,11 @@ export const useAIWallet = () => {
             })
             .subscribe();
 
-        const interval = setInterval(fetchWallet, 30000);
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                fetchWallet();
+            }
+        }, 30000);
 
         return () => {
             clearInterval(interval);

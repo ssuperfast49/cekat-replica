@@ -119,17 +119,19 @@ export const useTokenLimit = () => {
       })
       .subscribe();
 
-    // Fallback polling every 10 seconds
+    // Fallback polling every 60 seconds (visibility-guarded; realtime handles live updates)
     fallbackInterval = setInterval(() => {
-      fetchTokenLimits();
-    }, 10000);
+      if (document.visibilityState === 'visible') {
+        fetchTokenLimits();
+      }
+    }, 60000);
 
     return () => {
       isMounted = false;
       clearInterval(fallbackInterval);
       try {
         supabase.removeChannel(channel);
-      } catch {}
+      } catch { }
     };
   }, [user, isMasterAgent, isSuperAgent, rbacLoading]);
 

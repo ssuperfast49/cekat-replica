@@ -1,5 +1,28 @@
 # Change Log
 
+## [0.2.9] FE WEB CEKAT 2026-03-18
+
+### Performance: Strict Mode De-duplication & Dead Weight Removal
+- **`usePlatforms` In-Flight Guard**: Added `inFlightRef` de-duplication + 50ms debounce to `fetchPlatforms()`, preventing React Strict Mode from double-firing the entire 8-query chain (`user` → `org_members` → `user_roles` → `roles` → `channels` → `org_members` → `channel_agents` → `users_profile` → `v_users`).
+- **Removed Dead `useChannels` Fetch**: Removed an unused `useEffect` in `ConnectedPlatforms.tsx` that was calling `fetchChannelsByOrg()` per org on every `platforms` state change — the result (`channelsByOrg`) was never consumed anywhere in the component, making it pure wasted network calls.
+
+### Performance: Connected Platforms N+1 Query Fix
+- **Batched Agent Queries**: Eliminated a severe N+1 query pattern in `usePlatforms.ts` where `channel_agents`, `users_profile`, and `v_users` were queried **individually per channel** (3×N API calls). Now uses 3 total batched queries regardless of channel count, with client-side grouping.
+  - Before: 10 channels × 3 queries = **30 API calls** (60 with Strict Mode)
+  - After: **3 API calls** total (6 with Strict Mode)
+
+## [0.2.8] FE WEB CEKAT 2026-03-18
+
+### Performance: Network & Polling Optimizations
+- **Duplicate Fetch Consolidation**: Eliminated 6+ redundant API calls that fired simultaneously on page load. The initial `fetchConversations` and `fetchTabCounts` are now triggered exactly once from the URL filter hydration effect, preventing React Strict Mode from cascading into duplicate network payloads.
+- **Pagination Count Fix**: Switched the main inbox query from `count: 'estimated'` to `count: 'exact'`, fixing a mismatch where the tab badge showed 2721 threads but pagination only showed 101 pages due to stale PostgreSQL statistics.
+- **Background Polling Guards**: Added `document.visibilityState` guards and relaxed intervals across all background pollers to prevent wasted API calls when the tab is hidden:
+  - `check_and_auto_resolve_threads`: 5s → 30s
+  - `fetchMessages` fallback: 5s → 30s + visibility guard
+  - `useTokenLimit` fallback: 10s → 60s + visibility guard
+  - `useAIWallet` fallback: 30s + visibility guard
+- All pollers rely on the existing `visibilitychange` listener for immediate catch-up when alt-tabbing back.
+
 ## [0.2.7] FE WEB CEKAT 2026-03-18
 
 ### Frontend Performance Optimizations
