@@ -1,5 +1,23 @@
 # Change Log
 
+## [0.3.0] FE/BE CEKAT 2026-03-20
+
+### High-Performance Search & Dynamic Counts
+- **Server-Side Search Engine**: Implemented a new search infrastructure using PostgreSQL GIN Trigram indexes on `threads.last_message_body` and `contacts.name`. This enables near-instantaneous partial matching across thousands of conversations.
+- **Dynamic Tab Counts (RPC v3)**: Created `get_tab_counts_v3`, a centralized database procedure that calculates Assigned/Unassigned/Done totals dynamically based on active filters (Search, Date Range, Agent, Inbox, Platform).
+- **Agent-Specific Visibility**: Tab counts now strictly respect agent permissions and RLS policies. Agents only see counts for threads/channels they are specifically assigned to, while Master Agents/Auditors retain full organization-wide visibility.
+- **Optimized Fast-Path**: Implemented a bypass for Master Agents that uses pre-computed summary tables when no filters are active, delivering sub-10ms response times.
+
+### Filtering & UX Enhancements
+- **Debounced Server Search**: Added a 400ms debounced search input with a built-in loading spinner (`Loader2`). 
+- **Sticky Filter Persistence**: Refactored `useConversations.ts` to ensure that clearing filters correctly triggers a refresh of BOTH the conversation list and the tab counts, preventing UI/Data desynchronization.
+- **Precise Date Range Filtering**: Fixed `startOfDay`/`endOfDay` logic to ensure that "Today" or specific date picks accurately capture every message within the selected window, regardless of timezone offsets.
+
+### Bug Fixes & Stability
+- **Database Type Safety**: Resolved multiple `22P02` (Enum Mismatch) and `42883` (Operator Mismatch) errors by implementing explicit `::text` casting in database queries, preventing crashes when filtering by status (`pending`/`open`/`closed`) or channel provider.
+- **Hook Reliability**: Fixed variable shadowing and mismatched function references in `useConversations.ts`.
+- **Loading State Consistency**: Synchronized `silent` fetch options to prevent "phantom loading" spinners during background refreshes.
+
 ## [0.2.11] FE/BE CEKAT 2026-03-18
 
 ### Post-Migration Bug Fixes
@@ -13,6 +31,13 @@
   - **SWR Flicker Override**: Bypassed a race condition where the background SWR cache fetch would temporarily delete the optimistic message payload, confusing the scroll anchors.
   - **Forced Bottom Snapping**: Hardcoded a 500ms force-scroll window inside `handleSendMessage` that completely ignores generic distance checks, guaranteeing the viewport snaps cleanly to the newest message regardless of textarea shrinkage.
   - Updated: `src/hooks/useConversations.ts`, `src/components/chat/ConversationPage.tsx`
+- **AI Model & Pricing Update**: Integrated `gpt-5.4-mini` across the platform.
+  - **Pricing**: Added $0.75/$4.50 rates to the `ai_models` table.
+  - **N8N**: Updated `livechat.json` and `livechat_simplified.json` to use the new model.
+- **Auto-Resolve Restoration & Safety**: Restored and improved the auto-resolve feature on both Development and Main branches.
+  - **Execution Worker**: Added missing `auto_close_due_threads` function and `pg_cron` schedule (Dev).
+  - **Trigger Logic**: Disables buggy schema triggers and restores the stable `set_auto_resolve_timestamp` logic.
+  - **Safety Casting**: Added `::text` casting to all message role comparisons to prevent "invalid input value for enum" errors if Enum drift occurs.
 
 ## [0.2.10] FE WEB CEKAT 2026-03-18
 

@@ -107,6 +107,7 @@ export interface ThreadFilters {
   resolvedBy?: string;
   platformId?: string;
   channelType?: string;
+  search?: string;
 }
 
 export type ConversationStatusScope = 'assigned' | 'unassigned' | 'done' | 'all';
@@ -158,6 +159,15 @@ export const useConversations = (options?: {
     conversationsRef.current = conversations;
   }, [conversations]);
 
+  // Sync options to refs (Initial/Tab changes only)
+  useEffect(() => {
+    // We update the "Base" part of filtersRef.current with new options (like statusScope)
+    filtersRef.current = {
+      ...filtersRef.current,
+      ...options
+    };
+  }, [options]);
+
   useEffect(() => {
     selectedThreadIdRef.current = selectedThreadId;
   }, [selectedThreadId]);
@@ -183,7 +193,7 @@ export const useConversations = (options?: {
     try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     conversationsRefreshTimer.current = window.setTimeout(() => {
       fetchConversations(undefined, { silent: true });
-      fetchTabCounts();
+      fetchTabCountsV2();
     }, delayMs) as unknown as number;
   };
 
@@ -360,11 +370,37 @@ export const useConversations = (options?: {
    *unassigned -> open
    *done -> closed
    */
-  const fetchTabCounts = useCallback(async () => {
+  const fetchTabCountsV2 = useCallback(async (overrideFilters?: ThreadFilters) => {
     try {
-      const { data, error } = await protectedSupabase
-        .from('channel_status_counts' as any)
-        .select('status, count');
+      if (overrideFilters) {
+        // We REPLACE the current filters with the overrides (plus current base options)
+        filtersRef.current = {
+          ...overrideFilters
+        };
+        setActiveFilters(filtersRef.current);
+      }
+      const filters = filtersRef.current;
+      
+      // Clean filters for RPC (Ensure Dates are ISO strings and empty keys are REMOVED)
+      const pFilters: any = {};
+      
+      if (filters.search?.trim()) pFilters.search = filters.search.trim();
+      if (filters.agent) pFilters.agent = filters.agent;
+      if (filters.resolvedBy) pFilters.resolvedBy = filters.resolvedBy;
+      if (filters.platformId) pFilters.platformId = filters.platformId;
+      if (filters.inbox && filters.inbox !== 'all') pFilters.inbox = filters.inbox;
+      
+      if (filters.dateRange?.from || filters.dateRange?.to) {
+        pFilters.dateRange = {
+          from: filters.dateRange.from ? startOfDay(new Date(filters.dateRange.from)).toISOString() : null,
+          to: filters.dateRange.to ? endOfDay(new Date(filters.dateRange.to)).toISOString() : null
+        };
+      }
+
+      console.log('Fetching filtered tab counts with filters:', pFilters);
+      const { data, error } = await protectedSupabase.rpc('get_tab_counts_v3', {
+        p_filters: pFilters
+      });
 
       if (error) throw error;
 
@@ -373,9 +409,9 @@ export const useConversations = (options?: {
       let doneCount = 0;
 
       (data || []).forEach((row: any) => {
-        if (row.status === 'pending') assignedCount += Number(row.count || 0);
-        if (row.status === 'open') unassignedCount += Number(row.count || 0);
-        if (row.status === 'closed') doneCount += Number(row.count || 0);
+        if (row.status_category === 'assigned') assignedCount = Number(row.total_count || 0);
+        if (row.status_category === 'unassigned') unassignedCount = Number(row.total_count || 0);
+        if (row.status_category === 'done') doneCount = Number(row.total_count || 0);
       });
 
       const nextCounts = {
@@ -395,31 +431,37 @@ export const useConversations = (options?: {
   // Fetch conversations with contact and channel details
   const fetchConversations = async (
     overrideFilters?: ThreadFilters,
-    options: { silent?: boolean; page?: number; pageSize?: number } = {}
+    fetchOptions: { silent?: boolean; page?: number; pageSize?: number } = {}
   ) => {
     try {
-      if (!options.silent) {
+      if (!fetchOptions.silent) {
         setLoading(true);
       }
       setError(null);
       // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
-
-      const filtersToUse = overrideFilters ?? filtersRef.current;
+      
+      // Update counts whenever we fetch conversations (unless silent)
+      if (!fetchOptions.silent) {
+        void fetchTabCountsV2(overrideFilters);
+      }
+      
       if (overrideFilters) {
-        filtersRef.current = overrideFilters;
-        setActiveFilters(overrideFilters);
+        filtersRef.current = { 
+          ...overrideFilters 
+        };
+        setActiveFilters(filtersRef.current);
         paginationRef.current.page = 1;
         setPagination((prev) => ({ ...prev, page: 1 }));
       }
-      if (options.pageSize != null && Number.isFinite(options.pageSize)) {
-        const nextSize = Math.max(1, Math.min(200, Number(options.pageSize)));
+      if (fetchOptions.pageSize != null && Number.isFinite(fetchOptions.pageSize)) {
+        const nextSize = Math.max(1, Math.min(200, Number(fetchOptions.pageSize)));
         paginationRef.current.pageSize = nextSize;
         paginationRef.current.page = 1;
         setPagination((prev) => ({ ...prev, page: 1, pageSize: nextSize }));
       }
-      if (options.page != null && Number.isFinite(options.page)) {
-        const nextPage = Math.max(1, Math.floor(Number(options.page)));
+      if (fetchOptions.page != null && Number.isFinite(fetchOptions.page)) {
+        const nextPage = Math.max(1, Math.floor(Number(fetchOptions.page)));
         paginationRef.current.page = nextPage;
         setPagination((prev) => ({ ...prev, page: nextPage }));
       }
@@ -446,6 +488,7 @@ export const useConversations = (options?: {
         query = query.eq('status', 'closed');
       }
 
+      const filtersToUse = overrideFilters ?? filtersRef.current;
       const { dateRange, status, agent, resolvedBy, inbox, channelType, platformId } = filtersToUse;
 
       if (dateRange?.from) {
@@ -474,10 +517,14 @@ export const useConversations = (options?: {
       if (platformId && platformId !== 'all' && platformId !== '') {
         query = query.eq('channel_id', platformId);
       }
+      if (filtersToUse.search && filtersToUse.search.trim() !== '') {
+        const s = filtersToUse.search.trim();
+        query = query.or(`last_message_body.ilike.%${s}%,contact_name.ilike.%${s}%`);
+      }
 
       // Determine Pagination Target
-      const page = options.page ?? paginationRef.current.page;
-      const pageSize = options.pageSize ?? paginationRef.current.pageSize;
+      const page = fetchOptions.page ?? paginationRef.current.page;
+      const pageSize = fetchOptions.pageSize ?? paginationRef.current.pageSize;
       const from = Math.max(0, (page - 1) * pageSize);
       const to = from + pageSize - 1;
 
@@ -1555,7 +1602,7 @@ export const useConversations = (options?: {
       if (document.visibilityState === 'visible') {
         // The user just alt-tabbed back. Sync immediately.
         fetchConversations(undefined, { silent: true });
-        fetchTabCounts();
+        fetchTabCountsV2();
         if (selectedThreadIdRef.current) {
           fetchMessages(selectedThreadIdRef.current, { skipCache: true }); // force refresh
         }
@@ -1763,7 +1810,7 @@ export const useConversations = (options?: {
     activeFilters,
     pagination,
     tabCounts,
-    fetchTabCounts,
+    fetchTabCounts: fetchTabCountsV2,
     setConversationPage: (page: number) => fetchConversations(undefined, { page }),
     setConversationPageSize: (pageSize: number) => fetchConversations(undefined, { pageSize }),
   };
