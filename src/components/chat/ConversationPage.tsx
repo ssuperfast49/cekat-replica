@@ -1023,15 +1023,30 @@ export default function ConversationPage() {
 
     if (needsFetch) {
       void fetchConversations(finalFilters, { silent: !filtersInitRef.current });
+      void fetchTabCounts(finalFilters);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.toString(), FILTERS_STORAGE_KEY]);
 
+  // Debounce search input to avoid excessive server requests
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const currentSearch = activeFilters.search || "";
+      if (query !== currentSearch) {
+        const nextFilters = { ...activeFilters, search: query };
+        setActiveFilters(nextFilters);
+        void fetchConversations(nextFilters, { silent: false });
+        void fetchTabCounts(nextFilters);
+      }
+    }, 400);
+
+    return () => clearTimeout(handler);
+  }, [query, activeFilters, fetchConversations, fetchTabCounts]);
+
   const filteredConversations = useMemo(() => {
-    const list = conversations.filter((conv) =>
-      `${conv.contact_name} ${conv.last_message_preview} `.toLowerCase().includes(query.toLowerCase())
-    );
-    return [...list].sort((a, b) => {
+    // Search is now handled server-side in fetchConversations.
+    // We only perform the same secondary sort here.
+    return [...conversations].sort((a, b) => {
       // Sort by "Assigned to Me" first
       const aIsMe = (a.assignee_user_id === currentUserId || a.collaborator_user_id === currentUserId) ? 1 : 0;
       const bIsMe = (b.assignee_user_id === currentUserId || b.collaborator_user_id === currentUserId) ? 1 : 0;
@@ -1041,7 +1056,7 @@ export default function ConversationPage() {
       const bTs = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
       return bTs - aTs;
     });
-  }, [conversations, query, currentUserId]);
+  }, [conversations, currentUserId]);
 
   // Smart Tab Switching: If the current tab is empty but another tab has data (based on RLS results), switch to it.
   useEffect(() => {
@@ -1730,7 +1745,15 @@ export default function ConversationPage() {
         )}
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-8 text-sm" />
+          <Input 
+            placeholder="Search..." 
+            value={query} 
+            onChange={(e) => setQuery(e.target.value)} 
+            className="pl-10 pr-10 h-8 text-sm" 
+          />
+          {(loading || (query !== "" && query !== (activeFilters.search || ""))) && (
+            <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+          )}
         </div>
         {(() => {
           const tabs: Array<{ key: FlowTab; label: string; count: number; className: string; tooltip: string }> = [
