@@ -8,6 +8,11 @@
 - **Agent-Specific Visibility**: Tab counts now strictly respect agent permissions and RLS policies. Agents only see counts for threads/channels they are specifically assigned to, while Master Agents/Auditors retain full organization-wide visibility.
 - **Optimized Fast-Path**: Implemented a bypass for Master Agents that uses pre-computed summary tables when no filters are active, delivering sub-10ms response times.
 
+### Realtime Streaming Improvements
+- **Auto-Sync Tab Counts**: Every Realtime broadcast (new message or status change) now automatically triggers a background refresh of the tab counts, ensuring indicators always match the database.
+- **New Thread Detection**: Refactored `useConversations.ts` to proactively fetch and display new threads as soon as they are broadcasted on the `threads:all` or `messages:all` channels, or if a message arrives for a thread not currently in view.
+- **Smart Status Synchronization**: Threads that move between tabs (e.g., Unassigned -> Assigned) are now automatically removed from the local list in the previous tab and synced in real-time.
+
 ### Filtering & UX Enhancements
 - **Debounced Server Search**: Added a 400ms debounced search input with a built-in loading spinner (`Loader2`). 
 - **Sticky Filter Persistence**: Refactored `useConversations.ts` to ensure that clearing filters correctly triggers a refresh of BOTH the conversation list and the tab counts, preventing UI/Data desynchronization.
