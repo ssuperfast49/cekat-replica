@@ -318,9 +318,11 @@ export const useConversations = (options?: {
 
   // More targeted refresh for specific thread updates
   const updateConversationPreview = (threadId: string, lastMessage: any) => {
+    let found = false;
     setConversations(prev => {
       const updated = prev.map(conv => {
         if (conv.id === threadId) {
+          found = true;
           const channelSuperAgentId = conv.channel?.super_agent_id ?? conv.super_agent_id ?? null;
           const assignment = computeAssignmentState({
             ai_access_enabled: conv.ai_access_enabled,
@@ -352,16 +354,23 @@ export const useConversations = (options?: {
         return conv;
       });
 
+      if (!found) {
+        // If the thread isn't in our current list segment but received a message,
+        // we should refresh to see if it now belongs at the top of the current tab.
+        scheduleConversationsRefresh(100);
+        return prev;
+      }
+
       // Re-sort conversations after update so newest activity is always first
-      const sorted = updated.sort((a, b) => {
+      return updated.sort((a, b) => {
         const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
         const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
       });
-
-      console.log('Re-sorted conversations after message update');
-      return sorted;
     });
+
+    // Always refresh counts when messages arrive to keep indicators fresh
+    void fetchTabCountsV2();
   };
 
   /**
@@ -707,18 +716,34 @@ export const useConversations = (options?: {
   // Light-weight realtime patch when a thread updates (e.g., status/assignee changes)
   const applyThreadRealtimePatch = useCallback((row: any) => {
     if (!row?.id) return;
+    
+    // Always refresh tab counts when a thread's properties change (status/assignment)
+    void fetchTabCountsV2();
+
     setConversations((prev) => {
       const idx = prev.findIndex((c) => c.id === row.id);
 
       if (idx === -1) {
-        // If it's a completely new thread INSERT to the top
-        // But we only have partial row data, so we may need to merge it carefully or 
-        // ignore it if it doesn't belong to the current open tab.
-        // For pure realtime, we just append it if we have enough info.
+        // If it's a completely new thread or one that just entered our visibility,
+        // trigger a background refresh of the list.
+        scheduleConversationsRefresh(100);
         return prev;
       }
 
       const current = prev[idx];
+      
+      // If status changed, check if it still belongs in the current tab/scope
+      const statusScope = statusScopeRef.current;
+      const nextStatus = row.status ?? current.status;
+      let shouldRemove = false;
+      if (statusScope === 'assigned' && nextStatus !== 'pending') shouldRemove = true;
+      else if (statusScope === 'unassigned' && nextStatus !== 'open') shouldRemove = true;
+      else if (statusScope === 'done' && nextStatus !== 'closed') shouldRemove = true;
+
+      if (shouldRemove) {
+        return prev.filter(c => c.id !== row.id);
+      }
+
       const assignment = computeAssignmentState({
         ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
         assigned_at: row.assigned_at ?? current.assigned_at,
@@ -756,7 +781,7 @@ export const useConversations = (options?: {
         return next;
       }
     });
-  }, []);
+  }, [fetchTabCountsV2]);
 
   // Fetch messages for a specific thread
   const fetchMessages = useCallback(async (threadId: string, options?: { loadMore?: boolean; skipCache?: boolean }) => {
@@ -1681,6 +1706,7 @@ export const useConversations = (options?: {
         const old = payload.payload?.old_record || payload.payload?.old;
         if (old?.id) {
           setConversations(prev => prev.filter(c => c.id !== old.id));
+          void fetchTabCountsV2();
         }
       })
       .subscribe();
