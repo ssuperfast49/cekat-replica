@@ -373,6 +373,10 @@ export const useConversations = (options?: {
     void fetchTabCountsV2();
   };
 
+  // --- Throttling Refs ---
+  const tabCountsTimeoutRef = useRef<number | null>(null);
+  const tabCountsPendingRef = useRef<boolean>(false);
+
   /**
    * Fetch lightweight counts for all 3 tabs in parallel.
    *assigned -> pending
@@ -380,61 +384,81 @@ export const useConversations = (options?: {
    *done -> closed
    */
   const fetchTabCountsV2 = useCallback(async (overrideFilters?: ThreadFilters) => {
-    try {
-      if (overrideFilters) {
-        // We REPLACE the current filters with the overrides (plus current base options)
-        filtersRef.current = {
-          ...overrideFilters
-        };
-        setActiveFilters(filtersRef.current);
-      }
-      const filters = filtersRef.current;
-      
-      // Clean filters for RPC (Ensure Dates are ISO strings and empty keys are REMOVED)
-      const pFilters: any = {};
-      
-      if (filters.search?.trim()) pFilters.search = filters.search.trim();
-      if (filters.agent) pFilters.agent = filters.agent;
-      if (filters.resolvedBy) pFilters.resolvedBy = filters.resolvedBy;
-      if (filters.platformId) pFilters.platformId = filters.platformId;
-      if (filters.inbox && filters.inbox !== 'all') pFilters.inbox = filters.inbox;
-      
-      if (filters.dateRange?.from || filters.dateRange?.to) {
-        pFilters.dateRange = {
-          from: filters.dateRange.from ? startOfDay(new Date(filters.dateRange.from)).toISOString() : null,
-          to: filters.dateRange.to ? endOfDay(new Date(filters.dateRange.to)).toISOString() : null
-        };
-      }
-
-      console.log('Fetching filtered tab counts with filters:', pFilters);
-      const { data, error } = await protectedSupabase.rpc('get_tab_counts_v3', {
-        p_filters: pFilters
-      });
-
-      if (error) throw error;
-
-      let assignedCount = 0;
-      let unassignedCount = 0;
-      let doneCount = 0;
-
-      (data || []).forEach((row: any) => {
-        if (row.status_category === 'assigned') assignedCount = Number(row.total_count || 0);
-        if (row.status_category === 'unassigned') unassignedCount = Number(row.total_count || 0);
-        if (row.status_category === 'done') doneCount = Number(row.total_count || 0);
-      });
-
-      const nextCounts = {
-        assigned: assignedCount,
-        unassigned: unassignedCount,
-        done: doneCount,
+    if (overrideFilters) {
+      // We REPLACE the current filters with the overrides (plus current base options)
+      filtersRef.current = {
+        ...overrideFilters
       };
-
-      setTabCounts(nextCounts);
-      return nextCounts;
-    } catch (err) {
-      console.warn('[useConversations] Failed to fetch tab counts', err);
-      return tabCounts;
+      setActiveFilters(filtersRef.current);
     }
+
+    if (tabCountsTimeoutRef.current) {
+      tabCountsPendingRef.current = true;
+      return null as any; 
+    }
+
+    const executeFetch = async () => {
+      try {
+        const filters = filtersRef.current;
+        
+        // Clean filters for RPC (Ensure Dates are ISO strings and empty keys are REMOVED)
+        const pFilters: any = {};
+        
+        if (filters.search?.trim()) pFilters.search = filters.search.trim();
+        if (filters.agent) pFilters.agent = filters.agent;
+        if (filters.resolvedBy) pFilters.resolvedBy = filters.resolvedBy;
+        if (filters.platformId) pFilters.platformId = filters.platformId;
+        if (filters.inbox && filters.inbox !== 'all') pFilters.inbox = filters.inbox;
+        
+        if (filters.dateRange?.from || filters.dateRange?.to) {
+          pFilters.dateRange = {
+            from: filters.dateRange.from ? startOfDay(new Date(filters.dateRange.from)).toISOString() : null,
+            to: filters.dateRange.to ? endOfDay(new Date(filters.dateRange.to)).toISOString() : null
+          };
+        }
+
+        console.log('Fetching throttled, filtered tab counts with filters:', pFilters);
+        const { data, error } = await protectedSupabase.rpc('get_tab_counts_v3', {
+          p_filters: pFilters
+        });
+
+        if (error) throw error;
+
+        let assignedCount = 0;
+        let unassignedCount = 0;
+        let doneCount = 0;
+
+        (data || []).forEach((row: any) => {
+          if (row.status_category === 'assigned') assignedCount = Number(row.total_count || 0);
+          if (row.status_category === 'unassigned') unassignedCount = Number(row.total_count || 0);
+          if (row.status_category === 'done') doneCount = Number(row.total_count || 0);
+        });
+
+        const nextCounts = {
+          assigned: assignedCount,
+          unassigned: unassignedCount,
+          done: doneCount,
+        };
+
+        setTabCounts(nextCounts);
+        return nextCounts;
+      } catch (err) {
+        console.warn('[useConversations] Failed to fetch tab counts', err);
+        return null;
+      }
+    };
+
+    const result = await executeFetch();
+
+    tabCountsTimeoutRef.current = window.setTimeout(() => {
+      tabCountsTimeoutRef.current = null;
+      if (tabCountsPendingRef.current) {
+        tabCountsPendingRef.current = false;
+        void fetchTabCountsV2(); // Fire logic for pending calls
+      }
+    }, 1000) as unknown as number;
+
+    return result;
   }, []);
 
   // Fetch conversations with contact and channel details
@@ -1591,34 +1615,10 @@ export const useConversations = (options?: {
     };
   }, []);
 
-  // Auto-resolve check function
-  const checkAutoResolve = useCallback(async () => {
-    try {
-      const { data, error } = await protectedSupabase.rpc('check_and_auto_resolve_threads');
-      if (error) {
-        console.error('Auto-resolve check failed:', error);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        // Only refresh conversations if threads were actually auto-resolved
-        fetchConversations(undefined, { silent: true });
-      }
-    } catch (error) {
-      console.error('Auto-resolve check error:', error);
-    }
-  }, [fetchConversations]);
-
-  // Set up periodic auto-resolve check (every 30 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        checkAutoResolve();
-      }
-    }, 30000); // Check every 30 seconds (relaxed; visibilitychange handler covers alt-tab catch-up)
-
-    return () => clearInterval(interval);
-  }, []);
+  // Auto-resolve is handled by a server-side pg_cron job (auto_close_due_threads) 
+  // running every minute. We no longer trigger check_and_auto_resolve_threads 
+  // from the frontend to prevent rate limit storms.
+  const checkAutoResolve = useCallback(async () => {}, []);
 
   // Visibility Sync (Alt-Tab Fallback)
   // Ensures any messages or state changes that occurred while the browser tab was asleep get synced
@@ -1725,7 +1725,6 @@ export const useConversations = (options?: {
         if (!message) return;
         if (message.direction === 'in') {
           updateConversationPreview(message.thread_id, message);
-          checkAutoResolve();
 
           const currentSelected = selectedThreadIdRef.current;
           if (currentSelected && message.thread_id === currentSelected) {
@@ -1743,8 +1742,6 @@ export const useConversations = (options?: {
           (message.role === 'agent' || message.role === 'assistant')
         ) {
           updateConversationPreview(message.thread_id, message);
-        } else if (message.role === 'agent' && message.direction === 'out') {
-          checkAutoResolve();
         }
       })
       .subscribe();

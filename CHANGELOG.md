@@ -1,5 +1,12 @@
 # Change Log
 
+## [0.3.1] FE CEKAT 2026-03-21
+
+### Circuit Breaker & Rate Limit Optimization
+- **API Throttling**: Implemented a 1000ms debounce/throttle in `useConversations.ts` for the `fetchTabCountsV2` RPC. This coalesces multiple incoming realtime events into a single database call per second, preventing "API storms" during high-speed chats that were causing 10+ second timeouts and rate-limit HTTP 429 errors.
+- **Removed Redundant Polling**: Deleted the frontend's `checkAutoResolve` function and interval timers, as this logic is already formally handled by a server-side `pg_cron` job every minute, drastically reducing redundant API load.
+- **In-Memory Caching (10s)**: Added a brief 10-second lookup cache in `GlobalMessageListener.tsx` to prevent duplicate `threads` DB queries when a rapid burst of messages arrives for the same thread.
+
 ## [0.3.0] FE/BE CEKAT 2026-03-20
 
 ### High-Performance Search & Dynamic Counts
