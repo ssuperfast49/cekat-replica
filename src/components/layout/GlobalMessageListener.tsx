@@ -14,6 +14,7 @@ export function GlobalMessageListener() {
     const navigate = useNavigate();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const lastNotificationTime = useRef<number>(0);
+    const threadCacheRef = useRef<Map<string, { data: any; expiresAt: number }>>(new Map());
     const NOTIFICATION_DEBOUNCE_MS = 1000;
 
     // Sound file URL
@@ -57,21 +58,33 @@ export function GlobalMessageListener() {
                         // Check authorization
                         const isSuperAdmin = hasRole('superadmin');
 
+                        const cacheKey = newMessage.thread_id;
+                        let thread = null;
+                        const cached = threadCacheRef.current.get(cacheKey);
 
-                        // Fetch thread details including contact name and assignment
-                        const { data: thread, error } = await supabase
-                            .from('threads')
-                            .select(`
-                                assignee_user_id,
-                                collaborator_user_id,
-                                contacts (
-                                    name
-                                )
-                            `)
-                            .eq('id', newMessage.thread_id)
-                            .single();
+                        if (cached && cached.expiresAt > Date.now()) {
+                            thread = cached.data;
+                        } else {
+                            // Fetch thread details including contact name and assignment
+                            const { data, error } = await supabase
+                                .from('threads')
+                                .select(`
+                                    assignee_user_id,
+                                    collaborator_user_id,
+                                    contacts (
+                                        name
+                                    )
+                                `)
+                                .eq('id', newMessage.thread_id)
+                                .single();
 
-                        if (error || !thread) return;
+                            if (error || !data) return;
+                            thread = data;
+                            // Cache for 10 seconds to avoid burst lookups
+                            threadCacheRef.current.set(cacheKey, { data: thread, expiresAt: Date.now() + 10000 });
+                        }
+
+                        if (!thread) return;
 
                         const isAssigned = thread.assignee_user_id === user.id;
                         const isCollaborator = thread.collaborator_user_id === user.id;
