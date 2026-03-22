@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.3.2] - Realtime Thundering Herd Zero-Lag Fixes
+### Fixed
+- **Agent Dashboard Thundering Herd**: Fixed a critical issue where a single message sent to an unseen thread caused all 100+ connected agents to simultaneously refresh their entire conversation list by querying the Database, causing 10s Timeouts. Realtime listeners now check a global cache and silently bypass list refreshes if the thread doesn't belong in the agent's current tab.
+- **Agent Dashboard Jitter**: Added 3000ms of randomized Jitter to `scheduleConversationsRefresh` and `fetchTabCountsV2`. When list refreshes *are* necessary across all users, the requests are spread smoothly over 3 seconds instead of hitting PgBouncer synchronously at the exact same millisecond.
+- **LiveChat Widget Thundering Herd**: Fixed an oversight where a newly created chat triggered a `threads:INSERT` broadcast that forced *every single visitor on the website* to query the database. The widget now uses strict Session and Account matching to silently drop 99.9% of irrelevant broadcasts without making an API call.
+
 ## [0.3.1] FE CEKAT 2026-03-21
 
 ### Circuit Breaker & Rate Limit Optimization

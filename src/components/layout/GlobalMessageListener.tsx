@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRBAC } from '@/contexts/RBACContext';
 import { supabase } from '@/integrations/supabase/client';
+import { getCachedThread, setCachedThread } from '@/lib/threadCache';
 import { toast } from 'sonner';
 
 export function GlobalMessageListener() {
@@ -14,7 +15,6 @@ export function GlobalMessageListener() {
     const navigate = useNavigate();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const lastNotificationTime = useRef<number>(0);
-    const threadCacheRef = useRef<Map<string, { data: any; expiresAt: number }>>(new Map());
     const NOTIFICATION_DEBOUNCE_MS = 1000;
 
     // Sound file URL
@@ -59,16 +59,14 @@ export function GlobalMessageListener() {
                         const isSuperAdmin = hasRole('superadmin');
 
                         const cacheKey = newMessage.thread_id;
-                        let thread = null;
-                        const cached = threadCacheRef.current.get(cacheKey);
+                        let thread = getCachedThread(cacheKey);
 
-                        if (cached && cached.expiresAt > Date.now()) {
-                            thread = cached.data;
-                        } else {
-                            // Fetch thread details including contact name and assignment
+                        if (!thread) {
+                            // Fetch thread details including contact name, assignment, and status
                             const { data, error } = await supabase
                                 .from('threads')
                                 .select(`
+                                    status,
                                     assignee_user_id,
                                     collaborator_user_id,
                                     contacts (
@@ -80,8 +78,8 @@ export function GlobalMessageListener() {
 
                             if (error || !data) return;
                             thread = data;
-                            // Cache for 10 seconds to avoid burst lookups
-                            threadCacheRef.current.set(cacheKey, { data: thread, expiresAt: Date.now() + 10000 });
+                            // Cache for 10 seconds to avoid burst lookups across all components
+                            setCachedThread(cacheKey, thread, 10000);
                         }
 
                         if (!thread) return;
