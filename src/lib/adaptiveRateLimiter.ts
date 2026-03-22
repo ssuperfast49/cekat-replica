@@ -22,16 +22,16 @@ export interface AdaptiveConfig {
 
 const DEFAULT_CONFIG: AdaptiveConfig = {
   baseConfig: {
-    read: { limit: 100, window: 60000 },
-    write: { limit: 30, window: 60000 },
-    rpc: { limit: 20, window: 60000 },
-    auth: { limit: 10, window: 60000 },
+    read: { limit: 2000, window: 60000 },
+    write: { limit: 500, window: 60000 },
+    rpc: { limit: 2000, window: 60000 },
+    auth: { limit: 100, window: 60000 },
   },
   minMultiplier: 0.5,        // Can reduce to 50%
   maxMultiplier: 2.0,         // Can increase to 200%
   adjustmentInterval: 60000,  // Check every minute
-  healthyLatencyThreshold: 200,  // < 200ms is healthy
-  stressLatencyThreshold: 1000,  // > 1000ms is stressed
+  healthyLatencyThreshold: 1000,  // < 1000ms is healthy
+  stressLatencyThreshold: 5000,  // > 5000ms is stressed
 };
 
 export class AdaptiveRateLimiter {
