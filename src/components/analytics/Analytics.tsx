@@ -215,39 +215,46 @@ export default function Analytics() {
     const { data: hs } = await protectedSupabase.rpc('get_handover_stats', { p_from: start, p_to: end });
     setHandoverStats(((hs as any) || []).map((r: any) => ({ reason: formatHandoverLabel(r.reason) || '(unspecified)', count: Number(r.count||0), total: Number(r.total||0), rate: Number(r.rate||0) })));
 
-    // Token usage (client-side aggregation from token_usage_logs)
+    // Token usage (server-side aggregation)
     try {
-      const { data: logs } = await supabase
-        .from('token_usage_logs')
-        .select('made_at, prompt_tokens, completion_tokens, total_tokens, model, channel_id')
-        .gte('made_at', start)
-        .lt('made_at', end)
-        .order('made_at', { ascending: true });
+      const { data: stats, error: statsError } = await protectedSupabase.rpc('get_token_usage_stats', { p_from: start, p_to: end });
+      if (statsError && statsError.code === '42883') {
+        // Fallback or handle missing RPC gracefully just in case
+        console.warn('Analytics RPC not available yet:', statsError);
+      }
+      
       const byDay: Record<string, { input: number; output: number; total: number }> = {};
       const byModel: Record<string, number> = {};
       let sumIn = 0, sumOut = 0, sumTotal = 0;
-      for (const row of (logs as any[]) || []) {
-        const day = new Date(row.made_at).toISOString().slice(0,10);
+      
+      for (const row of (stats as any[]) || []) {
+        const day = row.day;
+        const model = String(row.model || 'unknown');
         const input = Number(row.prompt_tokens || 0);
         const output = Number(row.completion_tokens || 0);
-        const total = Number(row.total_tokens || (input + output));
+        const total = Number(row.total_tokens || 0);
+        
         if (!byDay[day]) byDay[day] = { input: 0, output: 0, total: 0 };
         byDay[day].input += input;
         byDay[day].output += output;
         byDay[day].total += total;
-        const model = String(row.model || 'unknown');
+        
         byModel[model] = (byModel[model] || 0) + total;
         sumIn += input; sumOut += output; sumTotal += total;
       }
+      
       const series = Object.keys(byDay).sort().map(d => ({ day: d, ...byDay[d] }));
       const models = Object.entries(byModel)
         .sort((a,b)=>b[1]-a[1])
         .slice(0, 8)
         .map(([model, tokens]) => ({ model, tokens }));
+        
       setTokenSeries(series);
       setModelUsage(models);
       setTokenTotals({ input: sumIn, output: sumOut, total: sumTotal });
-    } catch {}
+    } catch (e) {
+      console.error('Failed to fetch token usage:', e);
+    }
 
     // Human Agent analytics
     try {

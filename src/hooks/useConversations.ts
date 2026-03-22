@@ -591,8 +591,14 @@ export const useConversations = (options?: {
       }
 
       // Determine Pagination Target
-      const page = fetchOptions.page ?? paginationRef.current.page;
-      const pageSize = fetchOptions.pageSize ?? paginationRef.current.pageSize;
+      let page = fetchOptions.page ?? paginationRef.current.page;
+      let pageSize = fetchOptions.pageSize ?? paginationRef.current.pageSize;
+
+      if (statusScope === 'assigned' || statusScope === 'unassigned') {
+        page = 1;
+        pageSize = 10000;
+      }
+
       const from = Math.max(0, (page - 1) * pageSize);
       const to = from + pageSize - 1;
 
