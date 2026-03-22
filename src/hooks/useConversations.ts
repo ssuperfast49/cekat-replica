@@ -9,6 +9,7 @@ import { isDocumentHidden } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
 import { AUTHZ_CHANGED_EVENT } from '@/lib/authz';
 import { SUPABASE_URL } from '@/config/supabase';
+import { getCachedThread } from '@/lib/threadCache';
 
 // Audio notification system moved to GlobalMessageListener
 
@@ -189,12 +190,13 @@ export const useConversations = (options?: {
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
 
-  const scheduleConversationsRefresh = (delayMs: number = 400) => {
+  const scheduleConversationsRefresh = (delayMs: number = 400, jitter: boolean = false) => {
     try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
+    const finalDelay = delayMs + (jitter ? Math.floor(Math.random() * 3000) : 0);
     conversationsRefreshTimer.current = window.setTimeout(() => {
       fetchConversations(undefined, { silent: true });
       fetchTabCountsV2();
-    }, delayMs) as unknown as number;
+    }, finalDelay) as unknown as number;
   };
 
   useEffect(() => {
@@ -317,12 +319,51 @@ export const useConversations = (options?: {
   }, []);
 
   // More targeted refresh for specific thread updates
-  const updateConversationPreview = (threadId: string, lastMessage: any) => {
-    let found = false;
+  const updateConversationPreview = async (threadId: string, lastMessage: any) => {
+    // 1. Check if the thread is currently visible in our loaded segment
+    const isCurrentlyVisible = conversationsRef.current.some(c => c.id === threadId);
+
+    if (!isCurrentlyVisible) {
+      // Relevance Check: If it's not visible, evaluate if it BELONGS in the current tab.
+      // E.g., if a customer messages an "Unassigned" thread, but agent is looking at "Assigned",
+      // we DO NOT need to refresh the list, only the tab counts.
+      let cached = getCachedThread(threadId);
+      
+      // Give GlobalMessageListener 150ms to fetch and cache the thread if it's missing (it usually does instantly)
+      if (!cached) {
+        await new Promise(r => setTimeout(r, 150));
+        cached = getCachedThread(threadId);
+      }
+
+      if (cached) {
+        const isClosed = cached.status === 'closed' || cached.status === 'done' || cached.status === 'resolved' || cached.status === 'spam';
+        const assignedFromSignals = cached.status === 'pending' || cached.status === 'assigned';
+        const isAssigned = !isClosed && assignedFromSignals;
+        
+        const activeScope = statusScopeRef.current;
+        
+        let shouldRefreshList = true;
+        if (activeScope === 'assigned' && !isAssigned) shouldRefreshList = false;
+        if (activeScope === 'unassigned' && (isAssigned || isClosed)) shouldRefreshList = false;
+        if (activeScope === 'done' && !isClosed) shouldRefreshList = false;
+
+        if (!shouldRefreshList) {
+          // Silently bump tab counts only - completely avoids Thundering Herd
+          void fetchTabCountsV2();
+          return;
+        }
+      }
+
+      // If it belongs in the active tab (or we don't know), schedule a refresh with Jitter
+      // Jitter (true) distributes N agents across 3000ms instead of firing simultaneously
+      scheduleConversationsRefresh(100, true);
+      return;
+    }
+
+    // 2. The thread IS visible. Perform a fast synchronous state mutation.
     setConversations(prev => {
       const updated = prev.map(conv => {
         if (conv.id === threadId) {
-          found = true;
           const channelSuperAgentId = conv.channel?.super_agent_id ?? conv.super_agent_id ?? null;
           const assignment = computeAssignmentState({
             ai_access_enabled: conv.ai_access_enabled,
@@ -353,13 +394,6 @@ export const useConversations = (options?: {
         }
         return conv;
       });
-
-      if (!found) {
-        // If the thread isn't in our current list segment but received a message,
-        // we should refresh to see if it now belongs at the top of the current tab.
-        scheduleConversationsRefresh(100);
-        return prev;
-      }
 
       // Re-sort conversations after update so newest activity is always first
       return updated.sort((a, b) => {
@@ -450,13 +484,14 @@ export const useConversations = (options?: {
 
     const result = await executeFetch();
 
+    const jitter = Math.floor(Math.random() * 2000); // Spread tab counts across 2 seconds
     tabCountsTimeoutRef.current = window.setTimeout(() => {
       tabCountsTimeoutRef.current = null;
       if (tabCountsPendingRef.current) {
         tabCountsPendingRef.current = false;
         void fetchTabCountsV2(); // Fire logic for pending calls
       }
-    }, 1000) as unknown as number;
+    }, 1000 + jitter) as unknown as number;
 
     return result;
   }, []);

@@ -753,8 +753,23 @@ export function useLiveChat() {
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, async (payload: any) => {
                 const tid = payload?.new?.id;
                 if (!tid || tid === threadIdRef.current) return;
-                const sessionFromAdditional = payload?.new?.additional_data?.session_id;
-                const matchesSession = sessionFromAdditional && sessionFromAdditional === sessionId;
+                
+                // --- THUNDERING HERD FIX ---
+                // Only process this new thread if there's a strong identifier match.
+                // Otherwise, 1000s of connected clients will instantly hammer the backend.
+                const newThread = payload?.new;
+                const sessionFromAdditional = newThread?.additional_data?.session_id;
+                const accountIdFromThread = newThread?.account_id || newThread?.additional_data?.account_id;
+                
+                const matchesSession = Boolean(sessionFromAdditional && sessionFromAdditional === sessionId);
+                const matchesAccount = Boolean(accountId && accountIdFromThread === accountId);
+                
+                // If neither account nor session matches, this thread cannot possibly belong to this active client.
+                // Immediately ignore the broadcast instead of querying `findThreadForCurrentSession`.
+                if (!matchesSession && !matchesAccount) {
+                    return; 
+                }
+
                 if (!matchesSession) {
                     try {
                         const found = await findThreadForCurrentSession();
@@ -766,7 +781,7 @@ export function useLiveChat() {
                     return;
                 }
                 try {
-                    const reopenedId = await reopenThreadIfResolved(payload?.new);
+                    const reopenedId = await reopenThreadIfResolved(newThread);
                     await attachToThread(reopenedId || tid);
                 } catch (err) { }
             })
