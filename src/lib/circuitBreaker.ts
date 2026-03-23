@@ -72,7 +72,7 @@ const DEFAULT_CONFIG: CircuitBreakerConfig = {
   timeout: 10000,           // 10 second request timeout
 };
 
-const STORAGE_PREFIX = 'circuit_breaker_';
+const STORAGE_PREFIX = 'circuit_breaker_v2_';
 
 export class CircuitBreaker {
   private config: CircuitBreakerConfig;
@@ -478,6 +478,6 @@ export const databaseCircuitBreaker = new CircuitBreaker('database', {
   resetTimeout: 30000,
   successThreshold: 2,
   monitoringPeriod: 10000,
-  timeout: 10000,
+  timeout: 15000,
 });
 

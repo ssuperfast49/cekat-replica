@@ -249,14 +249,14 @@ export default function CircuitBreakerStatus() {
   const stressLatencyThreshold = editAdaptiveConfig.stressLatencyThreshold;
   const adjustmentInterval = editAdaptiveConfig.adjustmentInterval;
 
-  const isReadLimitValid = Number.isFinite(readLimit) && readLimit >= 10 && readLimit <= 1000;
-  const isWriteLimitValid = Number.isFinite(writeLimit) && writeLimit >= 5 && writeLimit <= 500;
-  const isRpcLimitValid = Number.isFinite(rpcLimit) && rpcLimit >= 5 && rpcLimit <= 200;
-  const isAuthLimitValid = Number.isFinite(authLimit) && authLimit >= 2 && authLimit <= 100;
+  const isReadLimitValid = Number.isFinite(readLimit) && readLimit >= 10 && readLimit <= 10000;
+  const isWriteLimitValid = Number.isFinite(writeLimit) && writeLimit >= 5 && writeLimit <= 5000;
+  const isRpcLimitValid = Number.isFinite(rpcLimit) && rpcLimit >= 5 && rpcLimit <= 10000;
+  const isAuthLimitValid = Number.isFinite(authLimit) && authLimit >= 2 && authLimit <= 1000;
   const isMinMultiplierValid = Number.isFinite(minMultiplier) && minMultiplier >= 0.1 && minMultiplier <= 1.0;
   const isMaxMultiplierValid = Number.isFinite(maxMultiplier) && maxMultiplier >= 1.0 && maxMultiplier <= 5.0;
-  const isHealthyLatencyValid = Number.isFinite(healthyLatencyThreshold) && healthyLatencyThreshold >= 50 && healthyLatencyThreshold <= 1000;
-  const isStressLatencyValid = Number.isFinite(stressLatencyThreshold) && stressLatencyThreshold >= 500 && stressLatencyThreshold <= 10000;
+  const isHealthyLatencyValid = Number.isFinite(healthyLatencyThreshold) && healthyLatencyThreshold >= 50 && healthyLatencyThreshold <= 5000;
+  const isStressLatencyValid = Number.isFinite(stressLatencyThreshold) && stressLatencyThreshold >= 500 && stressLatencyThreshold <= 30000;
   const isAdjustmentIntervalValid = Number.isFinite(adjustmentInterval) && adjustmentInterval >= 10000 && adjustmentInterval <= 600000;
 
   // Sample metrics data for charts (last 10 minutes)
@@ -2131,7 +2131,7 @@ export default function CircuitBreakerStatus() {
                             },
                           };
                         }
-                        const next = Math.min(1000, parsed);
+                        const next = Math.min(10000, parsed);
                         return {
                           ...prev,
                           baseConfig: {
@@ -2144,7 +2144,7 @@ export default function CircuitBreakerStatus() {
                   />
                   {!isReadLimitValid && (
                     <p className="text-xs text-red-500">
-                      Reads base limit must be between 10 and 1000 requests per minute.
+                      Reads base limit must be between 10 and 10000 requests per minute.
                     </p>
                   )}
                 </div>
@@ -2156,7 +2156,7 @@ export default function CircuitBreakerStatus() {
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
-                        <p>Limit dasar untuk operasi write (min: 5, max: 500)</p>
+                        <p>Limit dasar untuk operasi write (min: 5, max: 5000)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
@@ -2165,7 +2165,7 @@ export default function CircuitBreakerStatus() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     min={5}
-                    max={500}
+                    max={5000}
                     onKeyDown={(e) => {
                       if (['e', 'E', '+', '-', '.'].includes(e.key)) {
                         e.preventDefault();
@@ -2194,7 +2194,7 @@ export default function CircuitBreakerStatus() {
                             },
                           };
                         }
-                        const next = Math.min(500, parsed);
+                        const next = Math.min(5000, parsed);
                         return {
                           ...prev,
                           baseConfig: {
@@ -2207,7 +2207,7 @@ export default function CircuitBreakerStatus() {
                   />
                   {!isWriteLimitValid && (
                     <p className="text-xs text-red-500">
-                      Writes base limit must be between 5 and 500 requests per minute.
+                      Writes base limit must be between 5 and 5000 requests per minute.
                     </p>
                   )}
                 </div>
@@ -2219,7 +2219,7 @@ export default function CircuitBreakerStatus() {
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent side="right" align="start" sideOffset={12} className="max-w-xs whitespace-normal break-words">
-                        <p>Limit dasar untuk operasi RPC (min: 5, max: 200)</p>
+                        <p>Limit dasar untuk operasi RPC (min: 5, max: 10000)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
@@ -2228,7 +2228,7 @@ export default function CircuitBreakerStatus() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     min={5}
-                    max={200}
+                    max={10000}
                     onKeyDown={(e) => {
                       if (['e', 'E', '+', '-', '.'].includes(e.key)) {
                         e.preventDefault();
@@ -2257,7 +2257,7 @@ export default function CircuitBreakerStatus() {
                             },
                           };
                         }
-                        const next = Math.min(200, parsed);
+                        const next = Math.min(10000, parsed);
                         return {
                           ...prev,
                           baseConfig: {
@@ -2270,7 +2270,7 @@ export default function CircuitBreakerStatus() {
                   />
                   {!isRpcLimitValid && (
                     <p className="text-xs text-red-500">
-                      RPC base limit must be between 5 and 200 requests per minute.
+                      RPC base limit must be between 5 and 10000 requests per minute.
                     </p>
                   )}
                 </div>
@@ -2282,7 +2282,7 @@ export default function CircuitBreakerStatus() {
                         <HelpCircle className="h-3 w-3 inline ml-1 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent side="left" align="end" sideOffset={12} className="max-w-xs whitespace-normal break-words">
-                        <p>Limit dasar untuk operasi autentikasi (min: 2, max: 100)</p>
+                        <p>Limit dasar untuk operasi autentikasi (min: 2, max: 1000)</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
@@ -2291,7 +2291,7 @@ export default function CircuitBreakerStatus() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     min={2}
-                    max={100}
+                    max={1000}
                     onKeyDown={(e) => {
                       if (['e', 'E', '+', '-', '.'].includes(e.key)) {
                         e.preventDefault();
@@ -2320,7 +2320,7 @@ export default function CircuitBreakerStatus() {
                             },
                           };
                         }
-                        const next = Math.min(100, parsed);
+                        const next = Math.min(1000, parsed);
                         return {
                           ...prev,
                           baseConfig: {
