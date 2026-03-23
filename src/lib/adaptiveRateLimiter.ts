@@ -39,7 +39,7 @@ export class AdaptiveRateLimiter {
   private currentMultipliers: Map<OperationType, number> = new Map();
   private lastAdjustment: number = Date.now();
   private rateLimiters: Map<OperationType, RateLimiter> = new Map();
-  private storageKey: string = 'adaptive_rate_limiter';
+  private storageKey: string = 'adaptive_rate_limiter_v2';
   private adjustmentIntervalId: NodeJS.Timeout | null = null;
 
   constructor(config: Partial<AdaptiveConfig> = {}) {

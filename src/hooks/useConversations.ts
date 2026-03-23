@@ -941,7 +941,7 @@ export const useConversations = (options?: {
       // First, get the thread details to extract channel_id, contact_id, and provider
       const { data: threadData, error: threadError } = await supabase
         .from('threads')
-        .select('channel_id, contact_id, channels(provider)')
+        .select('channel_id, contact_id, ai_access_enabled, channels(provider)')
         .eq('id', threadId)
         .single();
 
@@ -1087,7 +1087,8 @@ export const useConversations = (options?: {
             type: attachment ? attachment.type : 'text',
             direction: 'out',
             role: role,
-            file_url: attachment?.url || null
+            file_url: attachment?.url || null,
+            is_assigned: threadData.ai_access_enabled === false
           };
 
           const webhookResponse = await callWebhook(endpoint, {

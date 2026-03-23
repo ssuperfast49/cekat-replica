@@ -1,6 +1,19 @@
 # Change Log
 
 ## [0.3.5] - Adaptive Rate Limit & Stability Fixes
+### Changed
+- **Adaptive Rate Limiter**: Significantly increased base limits (RPC/Read to 2,000/min) and relaxed latency thresholds (1,000ms healthy / 5,000ms stress) to prevent circuit breaker spikes.
+- **AI Wallet**: Manually reset AI battery to $160.00 (100%) in Supabase main branch.
+
+### Fixed
+- **Rate Limit Caching**: Bumped `localStorage` keys for the adaptive rate limiter and database circuit breaker to `v2`. This forces all client browsers to discard their cached, restrictive rate limit configs (20/min) and immediately adopt the new, highly-permissive defaults (2000/min).
+- **Database Query Timeouts**: Increased the default database circuit breaker timeout from 10,000ms to 15,000ms to prevent `TIMEOUT` errors on complex `threads` fetches during high load.
+- **AI Handover (Phase 15)**: Hardened `is_assigned` logic in `useLiveChat.ts` and `useConversations.ts`.
+  - Using `refs` in `useLiveChat` to bypass React render lag for immediate handover reporting.
+  - Standardized n8n payloads to include `is_assigned` from the Agent Dashboard.
+- **RLS Permissions (Phase 17)**: Resolved `42501` permission denied errors for anonymous users.
+  - Re-scoped internal agent policies (joining `channel_agents`) from `public` to `authenticated`.
+
 ### Fixed
 - **Adaptive Rate Limiter Optimization**: Standardized higher base limits for RPC (2,000/min) and Reads (2,000/min) to eliminate 429 Rate Limit errors and 10s Timeouts during high-concurrency dashboard spikes.
 - **Latency Threshold Calibration**: Relaxed healthy latency thresholds to 1,000ms and stress thresholds to 5,000ms, preventing premature throttling during normal database performance variance.

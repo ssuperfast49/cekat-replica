@@ -841,7 +841,7 @@ export function useLiveChat() {
         }
 
         // Chat is handed over to human when ai_access_enabled is false
-        const isAssigned = aiAccessEnabledRef.current === false;
+        const isAssigned = !aiAccessEnabledRef.current; // Use ref for absolute latest state (bypasses React render lag)
         if (!isAssigned) {
             setLoading(true);
         }
