@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { databaseCircuitBreaker, CircuitState, CircuitBreakerConfig, FailureLogEntry } from '@/lib/circuitBreaker';
-import { defaultMetricsCollector, getMetricsStats } from '@/lib/metrics';
+
 import { defaultRateLimiter } from '@/lib/rateLimiter';
 import { defaultAdaptiveRateLimiter, AdaptiveConfig } from '@/lib/adaptiveRateLimiter';
 import type { OperationType } from '@/lib/rateLimiter';
@@ -45,7 +45,7 @@ const LabelWithHelp = ({ label, description }: { label: string; description: str
 
 export default function CircuitBreakerStatus() {
   const [stats, setStats] = useState(databaseCircuitBreaker.getStats());
-  const [metrics, setMetrics] = useState<any>(null);
+
   const [queueStats, setQueueStats] = useState(defaultRequestQueue.getStats());
   const [cacheStats, setCacheStats] = useState(defaultFallbackHandler.getStats());
   const [failureLog, setFailureLog] = useState<FailureLogEntry[]>(databaseCircuitBreaker.getFailureLog());
@@ -56,7 +56,6 @@ export default function CircuitBreakerStatus() {
   // Modal states
   const [showResetModal, setShowResetModal] = useState(false);
   const [showOpenModal, setShowOpenModal] = useState(false);
-  const [showFlushModal, setShowFlushModal] = useState(false);
   const [showEditConfigModal, setShowEditConfigModal] = useState(false);
   const [showEditAdaptiveConfigModal, setShowEditAdaptiveConfigModal] = useState(false);
   const [showDocumentationModal, setShowDocumentationModal] = useState(false);
@@ -113,8 +112,6 @@ export default function CircuitBreakerStatus() {
     databaseCircuitBreaker.on('failure', listener);
     databaseCircuitBreaker.on('success', listener);
 
-    // Load metrics
-    loadMetrics();
 
     return () => {
       clearInterval(interval);
@@ -122,14 +119,7 @@ export default function CircuitBreakerStatus() {
     };
   }, []);
 
-  const loadMetrics = async () => {
-    try {
-      const stats = await getMetricsStats();
-      setMetrics(stats);
-    } catch (error) {
-      console.error('Failed to load metrics:', error);
-    }
-  };
+
 
   const getStateColor = (state: CircuitState) => {
     switch (state) {
@@ -183,22 +173,7 @@ export default function CircuitBreakerStatus() {
     setShowSuccessModal(true);
   };
 
-  const handleFlushMetrics = () => {
-    setShowFlushModal(true);
-  };
 
-  const confirmFlush = async () => {
-    try {
-      await defaultMetricsCollector.forceFlush();
-      setShowFlushModal(false);
-      setModalMessage('✅ Metrik berhasil dikirim ke database!');
-      setShowSuccessModal(true);
-    } catch (error) {
-      setShowFlushModal(false);
-      setModalMessage('❌ Gagal mengirim metrik: ' + (error instanceof Error ? error.message : 'Unknown error'));
-      setShowErrorModal(true);
-    }
-  };
 
   const handleEditConfig = () => {
     setEditConfig(databaseCircuitBreaker.getConfig());
@@ -276,10 +251,6 @@ export default function CircuitBreakerStatus() {
           <h2 className="text-2xl font-semibold">Circuit Breaker Status</h2>
           <p className="text-sm text-muted-foreground">Monitor database protection and performance</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadMetrics}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
       </div>
 
       {/* Circuit Breaker Status Cards */}
@@ -577,54 +548,7 @@ export default function CircuitBreakerStatus() {
         </Card>
       </div>
 
-      {/* Metrics Charts */}
-      {metrics && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">
-                <LabelWithHelp
-                  label="Operations by Type"
-                  description="Distribusi operasi database berdasarkan jenis (read, write, RPC, auth). Membantu memahami pola penggunaan database dan mengidentifikasi jenis operasi yang paling banyak digunakan"
-                />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={Object.entries(metrics.operationsByType || {}).map(([type, count]) => ({ type, count }))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="type" />
-                  <YAxis />
-                  <RechartsTooltip />
-                  <Bar dataKey="count" fill={COLORS[1]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">
-                <LabelWithHelp
-                  label="Circuit Breaker States"
-                  description="Distribusi status circuit breaker saat operasi database dilakukan. Menunjukkan berapa banyak operasi yang terjadi pada setiap state (CLOSED, OPEN, HALF_OPEN)"
-                />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={Object.entries(metrics.circuitBreakerStates || {}).map(([state, count]) => ({ state, count }))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="state" />
-                  <YAxis />
-                  <RechartsTooltip />
-                  <Bar dataKey="count" fill={COLORS[3]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
-      )}
 
       {/* Admin Controls */}
       <PermissionGate permission="admin_panel.update">
@@ -1035,16 +959,7 @@ export default function CircuitBreakerStatus() {
                   <p>Paksa buka circuit breaker secara manual. Akan MEMBLOKIR SEMUA REQUEST DATABASE dan menyebabkan aplikasi berhenti berfungsi. Gunakan hanya dalam keadaan darurat!</p>
                 </TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" onClick={handleFlushMetrics}>
-                    Flush Metrics
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Kirim semua metrik yang tertunda ke database secara paksa. Tidak berbahaya, hanya memperbarui data metrik di Supabase</p>
-                </TooltipContent>
-              </Tooltip>
+
             </div>
             <div className="mt-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
               <p className="text-xs text-red-700 dark:text-red-300 font-semibold">
@@ -1132,38 +1047,6 @@ export default function CircuitBreakerStatus() {
         </DialogContent>
       </Dialog>
 
-      {/* Flush Metrics Confirmation Modal */}
-      <Dialog open={showFlushModal} onOpenChange={setShowFlushModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-blue-500" />
-              Kirim Metrik ke Database
-            </DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin mengirim semua metrik yang tertunda?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-2">
-              <p className="font-semibold text-sm text-blue-800 dark:text-blue-200">Tindakan ini akan:</p>
-              <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1 list-disc list-inside">
-                <li>Mengirim semua metrik yang tersimpan di memori ke Supabase</li>
-                <li>Memperbarui tabel circuit_breaker_metrics</li>
-                <li>Menghapus metrik dari antrian lokal</li>
-              </ul>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFlushModal(false)}>
-              Batal
-            </Button>
-            <Button variant="default" onClick={confirmFlush}>
-              Kirim Metrik
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Success Modal */}
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
