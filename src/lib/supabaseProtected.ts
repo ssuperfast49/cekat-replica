@@ -11,7 +11,7 @@ import { classifyError, isRetryableError, getRetryDelay, getUserFriendlyMessage,
 import { defaultRateLimiter, OperationType, RateLimitResult } from './rateLimiter';
 import { defaultAdaptiveRateLimiter } from './adaptiveRateLimiter';
 import { defaultRequestQueue } from './requestQueue';
-import { defaultMetricsCollector } from './metrics';
+
 
 /**
  * Exponential backoff retry logic
@@ -282,45 +282,11 @@ function wrapQueryBuilder(
           // Cache successful read responses
           // NOTE: We intentionally do not cache read results here for correctness/security.
 
-          // Record metrics (non-blocking)
-          const responseTime = Date.now() - startTime;
-          const errorCategory = result?.error ? classifyError(result.error).category : undefined;
-          const userId = await userIdPromise.catch(() => null);
 
-          // Record metrics asynchronously to avoid blocking
-          Promise.resolve().then(() => {
-            try {
-              defaultMetricsCollector.record({
-                operationType: currentOperation,
-                endpoint,
-                userId: userId || undefined,
-                circuitBreakerState: circuitState,
-                success: !result?.error,
-                errorCategory,
-                responseTimeMs: responseTime,
-                metadata: result?.error ? { error: result.error.message } : {},
-              });
-            } catch {
-              // Ignore metric recording errors
-            }
-          });
 
           return result;
         })().catch((error) => {
-          // Record error metrics
-          const responseTime = Date.now() - startTime;
           const classified = classifyError(error);
-
-          defaultMetricsCollector.record({
-            operationType: currentOperation,
-            endpoint,
-            userId: userId || undefined,
-            circuitBreakerState: circuitState,
-            success: false,
-            errorCategory: classified.category,
-            responseTimeMs: responseTime,
-            metadata: { error: error instanceof Error ? error.message : String(error) },
-          });
 
           // Classify and enhance error for Supabase's error format
 
@@ -366,9 +332,16 @@ function wrapQueryBuilder(
           };
         });
 
-        return (onFulfilled?: any, onRejected?: any) => {
-          return protectedPromise[prop](onFulfilled, onRejected);
-        };
+        if (prop === 'then') {
+          return (onFulfilled?: any, onRejected?: any) => protectedPromise.then(onFulfilled, onRejected);
+        }
+        if (prop === 'catch') {
+          return (onRejected?: any) => protectedPromise.catch(onRejected);
+        }
+        if (prop === 'finally') {
+          return (onFinally?: any) => protectedPromise.finally(onFinally);
+        }
+        return (...args: any[]) => (protectedPromise as any)[prop](...args);
       }
 
       // For query builder methods (select, where, etc.), chain them normally
@@ -454,51 +427,11 @@ export function createProtectedSupabaseClient(supabaseInstance: SupabaseClient) 
 
         // NOTE: We intentionally do not cache RPC results here for correctness/security.
 
-        // Record metrics asynchronously
-        const responseTime = Date.now() - startTime;
-        const errorCategory = result?.error ? classifyError(result.error).category : undefined;
-        const userId = await userIdPromise.catch(() => null);
 
-        Promise.resolve().then(() => {
-          try {
-            defaultMetricsCollector.record({
-              operationType: 'rpc',
-              endpoint: functionName,
-              userId: userId || undefined,
-              circuitBreakerState: circuitState,
-              success: !result?.error,
-              errorCategory,
-              responseTimeMs: responseTime,
-              metadata: result?.error ? { error: result.error.message } : {},
-            });
-          } catch {
-            // Ignore metric errors
-          }
-        });
 
         return result;
       } catch (error) {
         const classified = classifyError(error);
-        const responseTime = Date.now() - startTime;
-        const userId = await userIdPromise.catch(() => null);
-
-        // Record error metric asynchronously
-        Promise.resolve().then(() => {
-          try {
-            defaultMetricsCollector.record({
-              operationType: 'rpc',
-              endpoint: functionName,
-              userId: userId || undefined,
-              circuitBreakerState: circuitState,
-              success: false,
-              errorCategory: classified.category,
-              responseTimeMs: responseTime,
-              metadata: { error: error instanceof Error ? error.message : String(error) },
-            });
-          } catch {
-            // Ignore
-          }
-        });
 
         return {
           data: null,
