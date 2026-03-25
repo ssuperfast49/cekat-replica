@@ -62,7 +62,7 @@ import { FileUploadButton, StagedFilePreview, uploadFileToStorage, type Uploaded
 import { usePresence } from "@/contexts/PresenceContext";
 import { formatDistanceToNow } from "date-fns";
 import { id } from "date-fns/locale";
-import { useRateLimit } from "@/hooks/useRateLimit";
+
 
 interface MatchPosition {
   start: number;
@@ -577,7 +577,10 @@ export default function ConversationPage() {
   const [collaboratorOverride, setCollaboratorOverride] = useState<{ threadId: string; userId: string | null } | null>(null);
   const [moveToUnassignedLoading, setMoveToUnassignedLoading] = useState(false);
   const [resolveLoading, setResolveLoading] = useState(false);
+  const [suspendLoading, setSuspendLoading] = useState(false);
+  const [suspendConfirmOpen, setSuspendConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationWithDetails | null>(null);
+
   const [deleteLoading, setDeleteLoading] = useState(false);
   const canDeleteConversation = hasPermission('contacts.delete');
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
@@ -586,7 +589,7 @@ export default function ConversationPage() {
   const FILTERS_STORAGE_KEY = useMemo(() => `chat.threadFilters.v1:${user?.id || 'anon'}`, [user?.id]);
   const [channelIdToName, setChannelIdToName] = useState<Record<string, string>>({});
   const [channelIdToProvider, setChannelIdToProvider] = useState<Record<string, string>>({});
-  const rateLimitHook = useRateLimit();
+
 
   // Optimistic "handled by" value while an assignment request is in-flight.
   // IMPORTANT: scope it to a specific thread so it doesn't leak to other threads when navigating.
@@ -1337,6 +1340,105 @@ export default function ConversationPage() {
     }
   };
 
+  const handleSuspendMember = () => {
+    if (!selectedConversation) return;
+    setSuspendConfirmOpen(true);
+  };
+
+  const handleConfirmSuspend = async () => {
+    if (!selectedConversation) return;
+
+    setSuspendLoading(true);
+    setSuspendConfirmOpen(false);
+    try {
+      const blockedUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const { error } = await protectedSupabase
+        .from('threads')
+        .update({ 
+          blocked_until: blockedUntil,
+          is_blocked: true 
+        })
+        .eq('id', selectedConversation.id);
+
+      if (error) throw error;
+
+      // Log system event for suspension
+      try {
+        const { data: profile } = await supabase
+          .from('users_profile')
+          .select('display_name')
+          .eq('user_id', user?.id ?? '')
+          .single();
+
+        await protectedSupabase.from('messages').insert([{
+          thread_id: selectedConversation.id,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Member suspended for 10 minutes by ${profile?.display_name || user?.email || 'agent'}.`,
+          payload: { event: 'suspend', duration: '10m', user_id: user?.id ?? null, blocked_until: blockedUntil },
+        }]);
+      } catch (eventErr) {
+        console.warn('Failed to insert suspend event message', eventErr);
+      }
+
+      toast.success('Member suspended for 10 minutes');
+      await fetchConversations(undefined, { silent: true });
+      if (selectedThreadId) await fetchMessages(selectedThreadId);
+    } catch (error) {
+      console.error('Error suspending member:', error);
+      toast.error('Failed to suspend member');
+    } finally {
+      setSuspendLoading(false);
+    }
+  };
+
+  const handleUnsuspendMember = async () => {
+    if (!selectedConversation) return;
+    setSuspendLoading(true);
+    try {
+      const { error } = await protectedSupabase
+        .from('threads')
+        .update({ 
+          blocked_until: null,
+          is_blocked: false 
+        })
+        .eq('id', selectedConversation.id);
+
+      if (error) throw error;
+
+      // Log system event for lifting suspension
+      try {
+        const { data: profile } = await supabase
+          .from('users_profile')
+          .select('display_name')
+          .eq('user_id', user?.id ?? '')
+          .single();
+
+        await protectedSupabase.from('messages').insert([{
+          thread_id: selectedConversation.id,
+          direction: null,
+          role: 'system',
+          type: 'event',
+          body: `Member suspension lifted by ${profile?.display_name || user?.email || 'agent'}.`,
+          payload: { event: 'unsuspend', user_id: user?.id ?? null },
+        }]);
+      } catch (eventErr) {
+        console.warn('Failed to insert unsuspend event message', eventErr);
+      }
+
+      toast.success('Member suspension lifted');
+      await fetchConversations(undefined, { silent: true });
+      if (selectedThreadId) await fetchMessages(selectedThreadId);
+    } catch (error) {
+      console.error('Error lifting suspension:', error);
+      toast.error('Failed to lift suspension');
+    } finally {
+      setSuspendLoading(false);
+    }
+  };
+
+
   // Auto-scroll to bottom only when the user is already near the bottom (not scrolled up).
   // Also force-scroll when the selected thread changes AND the new messages have finished loading
   const lastScrolledThreadRef = useRef<string | null>(null);
@@ -1447,59 +1549,7 @@ export default function ConversationPage() {
     const text = draft.trim();
     if ((!text && !stagedFile) || !selectedThreadId) return;
 
-    // ── Rate-limit guard ──
-    if (rateLimitHook.recordSend()) {
-      const banMsg = rateLimitHook.getBanMessage();
-      if (banMsg) {
-        const provider = (selectedConversation?.channel?.provider || '').toLowerCase();
-        const isExternal = ['telegram', 'whatsapp'].includes(provider);
 
-        if (isExternal && selectedConversation) {
-          // Send ban message to the customer via proxy-n8n SEND_MESSAGE
-          try {
-            const endpoint = resolveSendMessageEndpoint(provider);
-            const { data: contactData } = await supabase
-              .from('contacts')
-              .select('phone, external_id')
-              .eq('id', selectedConversation.contact_id)
-              .single();
-            await callWebhook(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                thread_id: selectedThreadId,
-                channel_id: selectedConversation.channel_id,
-                actor_id: user?.id || null,
-                contact_phone: contactData?.phone || null,
-                external_id: contactData?.external_id || null,
-                text: `⛔ ${banMsg}`,
-                type: 'text',
-                direction: 'out',
-                role: 'assistant',
-              }),
-            });
-          } catch (e) {
-            console.warn('[RateLimit] Failed to send ban message via webhook', e);
-          }
-        } else {
-          // Web channel: insert ban message directly as system event
-          try {
-            await protectedSupabase.from('messages').insert([{
-              thread_id: selectedThreadId,
-              direction: null,
-              role: 'system',
-              type: 'event',
-              body: `⛔ ${banMsg}`,
-              payload: { event: 'rate_limit' },
-            }]);
-          } catch (e) {
-            console.warn('[RateLimit] Failed to insert ban message', e);
-          }
-        }
-        toast.error(banMsg);
-      }
-      return;
-    }
 
     try {
       let attachment = undefined;
@@ -1643,10 +1693,10 @@ export default function ConversationPage() {
     const compactClass = compact ? 'h-4 px-1.5 text-[10px] font-normal' : '';
     const category = getFlowTabForThread(conv);
     if (category === 'done') {
-      return <Badge className={`${compactClass} bg-green-100 text-green-700 border-0`}>Done</Badge>;
+      return <Badge className={`${compactClass} bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0`}>Done</Badge>;
     }
     if (category === 'assigned') {
-      return <Badge className={`${compactClass} bg-blue-100 text-blue-700 border-0`}>Assigned</Badge>;
+      return <Badge className={`${compactClass} bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0`}>Assigned</Badge>;
     }
     return <Badge className={`${compactClass} bg-secondary text-secondary-foreground`}>Unassigned</Badge>;
   };
@@ -1894,6 +1944,26 @@ export default function ConversationPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AlertDialog open={suspendConfirmOpen} onOpenChange={setSuspendConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Suspend member?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to suspend this member for 10 minutes? They will not be able to send messages during this time.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={handleConfirmSuspend}
+              >
+                Suspend
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </aside>
 
       {/* Main Content styled like ChatMock */}
@@ -1963,31 +2033,56 @@ export default function ConversationPage() {
                   )}
                 </div >
                 <div className="flex items-center gap-2">
-                  {selectedConversationFlow === 'assigned' && canMoveToUnassigned && (
-                    <Button
-                      size="sm"
-                      className="h-8 bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-60"
-                      onClick={handleMoveToUnassigned}
-                      disabled={moveToUnassignedLoading}
-                    >
-                      {moveToUnassignedLoading ? 'Moving…' : 'Move to Unassigned'}
-                    </Button>
-                  )}
-                  {selectedConversation.status !== 'closed' && !isAudit && (
-                    <Button
-                      size="sm"
-                      className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
-                      onClick={handleResolveConversation}
-                      disabled={resolveLoading}
-                    >
-                      {resolveLoading ? 'Resolving…' : 'Resolve'}
-                    </Button>
-                  )}
+                      {selectedConversationFlow === 'assigned' && canMoveToUnassigned && (
+                        <Button
+                          size="sm"
+                          className="h-8 bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/40 disabled:opacity-60"
+                          onClick={handleMoveToUnassigned}
+                          disabled={moveToUnassignedLoading}
+                        >
+                          {moveToUnassignedLoading ? 'Moving…' : 'Move to Unassigned'}
+                        </Button>
+                      )}
+                      {selectedConversation.status !== 'closed' && !isAudit && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+                            onClick={() => {
+                              const isBlocked = !!selectedConversation.blocked_until && new Date(selectedConversation.blocked_until).getTime() > Date.now();
+                              if (isBlocked) {
+                                void handleUnsuspendMember();
+                              } else {
+                                handleSuspendMember();
+                              }
+                            }}
+                            disabled={suspendLoading}
+                          >
+                            {suspendLoading 
+                              ? 'Working…' 
+                              : (!!selectedConversation.blocked_until && new Date(selectedConversation.blocked_until).getTime() > Date.now() 
+                                ? 'Unsuspend' 
+                                : 'Suspend (10m)'
+                              )
+                            }
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-8 bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
+                            onClick={handleResolveConversation}
+                            disabled={resolveLoading}
+                          >
+                            {resolveLoading ? 'Resolving…' : 'Resolve'}
+                          </Button>
+                        </div>
+                      )}
+
                 </div>
                 <Badge
                   className={
                     selectedConversationFlow === 'done'
-                      ? "bg-green-100 text-green-700 border-0"
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"
                       : selectedConversationFlow === 'assigned'
                         ? "bg-success text-success-foreground hover:bg-success"
                         : "bg-secondary text-secondary-foreground hover:bg-secondary"
@@ -2052,36 +2147,31 @@ export default function ConversationPage() {
               {/* Show message input only when: assigned flow + user is the collaborator + not done */}
               {!isSelectedConversationDone && selectedConversationFlow === 'assigned' && collaboratorId === user?.id && (
                 <div>
-                  {rateLimitHook.isBanned && rateLimitHook.banCountdown && (
-                    <div className="mb-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-medium flex items-center gap-2">
-                      <span className="text-base">⛔</span>
-                      <span>Terlalu banyak aksi, mohon tunggu <strong>{rateLimitHook.banCountdown}</strong></span>
-                    </div>
-                  )}
                   <div className="flex items-end gap-2">
                     <FileUploadButton
                       onFileStaged={handleFileStaged}
-                      disabled={isUploadingFile || !canCurrentUserSend || rateLimitHook.isBanned}
+                      disabled={isUploadingFile || !canCurrentUserSend}
                     />
                     <Textarea
-                      placeholder={rateLimitHook.isBanned ? "Anda diblokir sementara..." : `Message ${selectedConversation.contact_name}...`}
+                      placeholder={`Message ${selectedConversation.contact_name}...`}
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={onKeyPress}
                       className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2.5"
-                      disabled={(!canCurrentUserSend) || isUploadingFile || rateLimitHook.isBanned}
+                      disabled={(!canCurrentUserSend) || isUploadingFile}
                       title={sendDisabledReason}
                     />
                     <Button
                       type="button"
                       onClick={handleSendMessage}
-                      disabled={(!draft.trim() && !stagedFile) || !canCurrentUserSend || isUploadingFile || rateLimitHook.isBanned}
+                      disabled={(!draft.trim() && !stagedFile) || !canCurrentUserSend || isUploadingFile}
                       title={sendDisabledReason || 'Send message'}
                     >
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
+
               )}
               {/* Show takeover button when: unassigned OR (assigned but not the collaborator) and not done */}
               {

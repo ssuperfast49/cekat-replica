@@ -1,5 +1,33 @@
 # Change Log
 
+## [0.3.7] - Member Suspension & Dark Mode Refinements - 26-03-2026
+
+### New Features
+- **Member Suspension (10m)**: Agents can now suspend a member for 10 minutes, preventing them from sending messages in the LiveChat widget. A confirmation modal is shown before applying the suspension.
+  - A suspension banner with a real-time countdown timer is displayed to the suspended member.
+  - The message input and send button are disabled during the suspension period.
+  - A system event message is logged in the chat timeline.
+  - Database Migration: Added `blocked_until` (TIMESTAMPTZ) and `is_blocked` (BOOLEAN) columns to the `threads` table.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useLiveChat.ts`, `src/components/livechat/MessageInput.tsx`
+
+- **Unsuspend Member**: Agents can now manually lift a suspension early by clicking the "Unsuspend" button (the Suspend button automatically toggles when a member is actively suspended).
+  - Clearing `blocked_until` instantly re-enables the member's input field via real-time message event handling.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useLiveChat.ts`
+
+### Fixed
+- **Live Suspension Updates**: Fixed an issue where the member-side chat required a page refresh to reflect suspension status changes. Suspension and unsuspension events are now propagated in real-time via system message payloads (`suspend` / `unsuspend` events).
+  - Updated: `src/hooks/useLiveChat.ts`
+- **Agent Rate Limiting Removed**: Agents are no longer affected by the member-side rate limiter. The `useRateLimit` hook is now namespaced to `cekat_member_rate_limit_ban` and removed from the agent dashboard entirely.
+  - Updated: `src/hooks/useRateLimit.ts`, `src/hooks/useLiveChat.ts`, `src/components/chat/ConversationPage.tsx`
+
+### UI & Dark Mode
+- **Dark Mode Text Contrast**: Softened all hardcoded `text-white` instances across the application to reduce eye strain in dark mode. Global dark foreground lightness reduced to 90% HSL.
+  - Updated: `src/index.css`, `src/pages/Changelog.tsx`, `src/components/livechat/LiveChatHeader.tsx`, `src/components/livechat/MessageList.tsx`, `src/components/livechat/MessageInput.tsx`
+- **Dark Mode Button Styling**: Softened button borders and backgrounds for action buttons (Suspend, Move to Unassigned) in the agent dashboard to reduce contrast in dark mode.
+  - Updated: `src/components/chat/ConversationPage.tsx`
+- **Custom Confirmation Modals**: Replaced browser-native `window.confirm` dialogs with custom `AlertDialog` components for all destructive agent-side actions (Resolve, Suspend).
+  - Updated: `src/components/chat/ConversationPage.tsx`
+
 ## [0.3.6] - 24-03-2026
 
 ### Added

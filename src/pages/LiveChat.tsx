@@ -50,7 +50,9 @@ export default function LiveChat() {
     isAssignedToHuman,
     isBanned,
     banCountdown,
+    blockedUntil,
   } = useLiveChat();
+
 
   const fmt = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -83,7 +85,9 @@ export default function LiveChat() {
               isAssignedToHuman={isAssignedToHuman}
               isBanned={isBanned}
               banCountdown={banCountdown}
+              blockedUntil={blockedUntil}
             />
+
           </CardContent>
         </Card>
       </div>

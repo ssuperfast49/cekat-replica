@@ -245,7 +245,7 @@ export default function Changelog() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-foreground">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <div className="flex flex-col gap-2 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl text-glow-sm">
             Release Notes & Progress Journal
           </h1>
           <p className="mx-auto max-w-2xl text-sm text-slate-300 md:text-base">
@@ -279,7 +279,7 @@ export default function Changelog() {
             <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
               <Card className="border border-white/10 bg-slate-950/60 shadow-[0_12px_40px_-24px_rgba(56,189,248,0.65)] backdrop-blur">
                 <CardHeader className="space-y-4">
-                  <CardTitle className="flex items-center gap-2 text-lg text-white">
+                  <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                     <Sparkles className="h-4 w-4 text-sky-300" />
                     Releases
                   </CardTitle>
@@ -327,7 +327,7 @@ export default function Changelog() {
                               />
                               <div className="flex flex-1 flex-col gap-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="text-sm font-semibold text-slate-100">
+                                  <span className="text-sm font-semibold text-foreground/90">
                                     v{entry.version}
                                   </span>
                                   {entry.label && (
@@ -380,7 +380,7 @@ export default function Changelog() {
                           Version {activeEntry.version}
                         </Badge>
                         {activeEntry.label && (
-                          <h2 className="text-xl font-semibold text-white md:text-2xl">
+                          <h2 className="text-xl font-semibold text-foreground md:text-2xl">
                             {activeEntry.label}
                           </h2>
                         )}
@@ -440,7 +440,7 @@ export default function Changelog() {
                                           palette
                                         )}
                                       />
-                                      <span className="text-base font-semibold text-white md:text-lg">
+                                      <span className="text-base font-semibold text-foreground md:text-lg">
                                         {section.heading}
                                       </span>
                                     </div>
@@ -489,7 +489,7 @@ export default function Changelog() {
                   </div>
                 ) : (
                   <Card className="border border-white/10 bg-slate-950/60 p-12 text-center text-slate-300">
-                    <CardTitle className="text-xl text-white">
+                    <CardTitle className="text-xl text-foreground">
                       No entries available
                     </CardTitle>
                     <CardDescription className="mt-2 text-sm text-slate-300">
@@ -504,7 +504,7 @@ export default function Changelog() {
           <TabsContent value="markdown" className="mt-6">
             <Card className="border border-white/10 bg-slate-950/70 shadow-[0_30px_80px_-60px_rgba(15,23,42,0.95)]">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                   <ListChecks className="h-5 w-5 text-sky-300" />
                   Full Markdown
                 </CardTitle>
@@ -514,7 +514,7 @@ export default function Changelog() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <article className="prose prose-sm max-w-none text-slate-200 dark:prose-invert prose-headings:text-white prose-a:text-sky-300 prose-strong:text-sky-200">
+                <article className="prose prose-sm max-w-none text-slate-200 dark:prose-invert prose-headings:text-foreground prose-a:text-sky-300 prose-strong:text-sky-200">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {changelogContent}
                   </ReactMarkdown>

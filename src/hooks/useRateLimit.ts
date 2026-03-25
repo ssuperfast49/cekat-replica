@@ -3,7 +3,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 const RATE_LIMIT_WINDOW_MS = 5_000;   // 5 seconds
 const RATE_LIMIT_MAX_MESSAGES = 5;     // max messages in window
 const BAN_DURATION_MS = 5 * 60 * 1000; // 5 minutes
-const STORAGE_KEY = 'cekat_rate_limit_ban';
+const DEFAULT_STORAGE_KEY = 'cekat_rate_limit_ban';
 
 function formatCountdown(ms: number): string {
     if (ms <= 0) return '';
@@ -16,7 +16,9 @@ function formatCountdown(ms: number): string {
     return `${sec} detik`;
 }
 
-export function useRateLimit() {
+export function useRateLimit(customKey: string = DEFAULT_STORAGE_KEY) {
+    const STORAGE_KEY = customKey;
+
     const tsLogRef = useRef<number[]>([]);
     const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
