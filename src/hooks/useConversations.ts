@@ -217,30 +217,7 @@ export const useConversations = (options?: {
     }
   }, [options?.statusScope]);
 
-  const computeAssignmentState = (source: {
-    ai_access_enabled?: boolean | null;
-    assigned_at?: string | null;
-    status?: string | null;
-    ai_handoff_at?: string | null;
-    assignee_user_id?: string | null;
-    channel_super_agent_id?: string | null;
-  }) => {
-    const status = (source?.status || '').toLowerCase();
-    const isClosed = status === 'closed';
 
-    // IMPORTANT: Trust DB status. We do NOT infer "assigned" from ai_handoff_at/ai_access_enabled/etc.
-    // This avoids front-end "status correction" overriding the RPC result (e.g. unassign -> open).
-    const assignedFromSignals = status === 'pending' || status === 'assigned';
-
-    const assigned = !isClosed && assignedFromSignals;
-
-    return {
-      assigned,
-      // Always surface the stored assignee for display (even if the thread is closed or considered unassigned)
-      assignee_user_id: source?.assignee_user_id ?? null,
-      handled_by_super_agent: false,
-    };
-  };
 
   const applyUnreadCounts = useCallback((
     counts: Array<{ thread_id: string; unread_count: number }>
@@ -366,17 +343,13 @@ export const useConversations = (options?: {
       const updated = prev.map(conv => {
         if (conv.id === threadId) {
           const channelSuperAgentId = conv.channel?.super_agent_id ?? conv.super_agent_id ?? null;
-          const assignment = computeAssignmentState({
-            ai_access_enabled: conv.ai_access_enabled,
-            assigned_at: conv.assigned_at,
-            assignee_user_id: conv.assignee_user_id,
-            channel_super_agent_id: channelSuperAgentId,
-            status: conv.status,
-            ai_handoff_at: (conv as any).ai_handoff_at ?? null,
-          });
+          const isClosed = conv.status === 'closed';
+          const assignedFromSignals = conv.status === 'pending' || conv.status === 'assigned';
+          const isAssigned = !isClosed && assignedFromSignals;
+
           const assigneeName =
-            assignment.assignee_user_id
-              ? assignment.assignee_user_id === channelSuperAgentId
+            conv.assignee_user_id
+              ? conv.assignee_user_id === channelSuperAgentId
                 ? conv.super_agent_name || conv.assignee_name || '—'
                 : conv.assignee_name || '—'
               : '—';
@@ -387,8 +360,8 @@ export const useConversations = (options?: {
             last_message_role: lastMessage?.role ?? null,
             last_msg_at: lastMessage?.created_at || conv.last_msg_at,
             unreplied: lastMessage?.direction === 'in' || lastMessage?.role === 'user',
-            assigned: assignment.assigned,
-            assignee_user_id: assignment.assignee_user_id,
+            assigned: isAssigned,
+            assignee_user_id: conv.assignee_user_id,
             assignee_name: assigneeName,
             status: conv.status,
           };
@@ -412,113 +385,111 @@ export const useConversations = (options?: {
   const tabCountsTimeoutRef = useRef<number | null>(null);
   const tabCountsPendingRef = useRef<boolean>(false);
 
-  /**
-   * Fetch lightweight counts for all 3 tabs in parallel.
-   *assigned -> pending
-   *unassigned -> open
-   *done -> closed
-   */
   const fetchTabCountsV2 = useCallback(async (overrideFilters?: ThreadFilters) => {
     if (overrideFilters) {
-      // We REPLACE the current filters with the overrides (plus current base options)
-      filtersRef.current = {
-        ...overrideFilters
-      };
+      filtersRef.current = { ...overrideFilters };
       setActiveFilters(filtersRef.current);
     }
 
+    // Execution lock: don't start a new request if one is currently in-flight
+    if (tabCountsPendingRef.current) {
+      return null as any;
+    }
+
+    // Throttle lock: don't start a new request if we recently finished one (unless forced)
     if (tabCountsTimeoutRef.current) {
-      tabCountsPendingRef.current = true;
       return null as any; 
     }
 
-    const executeFetch = async () => {
-      try {
-        const filters = filtersRef.current;
-        
-        // Clean filters for RPC (Ensure Dates are ISO strings and empty keys are REMOVED)
-        const pFilters: any = {};
-        
-        if (filters.search?.trim()) pFilters.search = filters.search.trim();
-        if (filters.agent) pFilters.agent = filters.agent;
-        if (filters.resolvedBy) pFilters.resolvedBy = filters.resolvedBy;
-        if (filters.platformId) pFilters.platformId = filters.platformId;
-        if (filters.inbox && filters.inbox !== 'all') pFilters.inbox = filters.inbox;
-        
-        if (filters.dateRange?.from || filters.dateRange?.to) {
-          pFilters.dateRange = {
-            from: filters.dateRange.from ? startOfDay(new Date(filters.dateRange.from)).toISOString() : null,
-            to: filters.dateRange.to ? endOfDay(new Date(filters.dateRange.to)).toISOString() : null
-          };
-        }
+    tabCountsPendingRef.current = true;
 
-        console.log('Fetching throttled, filtered tab counts with filters:', pFilters);
-        const { data, error } = await protectedSupabase.rpc('get_tab_counts_v3', {
-          p_filters: pFilters
-        });
-
-        if (error) throw error;
-
-        let assignedCount = 0;
-        let unassignedCount = 0;
-        let doneCount = 0;
-
-        (data || []).forEach((row: any) => {
-          if (row.status_category === 'assigned') assignedCount = Number(row.total_count || 0);
-          if (row.status_category === 'unassigned') unassignedCount = Number(row.total_count || 0);
-          if (row.status_category === 'done') doneCount = Number(row.total_count || 0);
-        });
-
-        const nextCounts = {
-          assigned: assignedCount,
-          unassigned: unassignedCount,
-          done: doneCount,
+    try {
+      const filters = filtersRef.current;
+      const pFilters: any = {};
+      
+      if (filters.search?.trim()) pFilters.search = filters.search.trim();
+      if (filters.agent) pFilters.agent = filters.agent;
+      if (filters.resolvedBy) pFilters.resolvedBy = filters.resolvedBy;
+      if (filters.platformId) pFilters.platformId = filters.platformId;
+      if (filters.inbox && filters.inbox !== 'all') pFilters.inbox = filters.inbox;
+      
+      if (filters.dateRange?.from || filters.dateRange?.to) {
+        pFilters.dateRange = {
+          from: filters.dateRange.from ? startOfDay(new Date(filters.dateRange.from)).toISOString() : null,
+          to: filters.dateRange.to ? endOfDay(new Date(filters.dateRange.to)).toISOString() : null
         };
-
-        setTabCounts(nextCounts);
-        return nextCounts;
-      } catch (err) {
-        console.warn('[useConversations] Failed to fetch tab counts', err);
-        return null;
       }
-    };
 
-    const result = await executeFetch();
+      const { data, error } = await protectedSupabase.rpc('get_tab_counts_v3', {
+        p_filters: pFilters
+      });
 
-    const jitter = Math.floor(Math.random() * 2000); // Spread tab counts across 2 seconds
-    tabCountsTimeoutRef.current = window.setTimeout(() => {
-      tabCountsTimeoutRef.current = null;
-      if (tabCountsPendingRef.current) {
-        tabCountsPendingRef.current = false;
-        void fetchTabCountsV2(); // Fire logic for pending calls
-      }
-    }, 1000 + jitter) as unknown as number;
+      if (error) throw error;
 
-    return result;
+      let assignedCount = 0;
+      let unassignedCount = 0;
+      let doneCount = 0;
+
+      (data || []).forEach((row: any) => {
+        if (row.status_category === 'assigned') assignedCount = Number(row.total_count || 0);
+        if (row.status_category === 'unassigned') unassignedCount = Number(row.total_count || 0);
+        if (row.status_category === 'done') doneCount = Number(row.total_count || 0);
+      });
+
+      const nextCounts = {
+        assigned: assignedCount,
+        unassigned: unassignedCount,
+        done: doneCount,
+      };
+
+      setTabCounts(nextCounts);
+    } catch (err) {
+      console.warn('[useConversations] Failed to fetch tab counts', err);
+    } finally {
+      tabCountsPendingRef.current = false;
+      const jitter = Math.floor(Math.random() * 2000); // 1-3s minimum between requests
+      tabCountsTimeoutRef.current = window.setTimeout(() => {
+        tabCountsTimeoutRef.current = null;
+      }, 1000 + jitter) as unknown as number;
+    }
+
+    return null;
   }, []);
 
-  // Fetch conversations with contact and channel details
+  const fetchConversationsPendingRef = useRef<boolean>(false);
+  const currentFetchIdRef = useRef<number>(0);
+
+  // Fetch conversations with batching/debouncing to prevent rapid duplicate multi-requests
   const fetchConversations = async (
     overrideFilters?: ThreadFilters,
     fetchOptions: { silent?: boolean; page?: number; pageSize?: number } = {}
   ) => {
+    // Drop execution completely if we are already in-flight doing an exact match request,
+    // but the 15+ concurrent requests on mount issue is best solved by a slight debouncing.
+    // However, since `useEffect` chains can happen, we use a fetchId check instead to drop stale results,
+    // and an execution lock for duplicate parameters.
+
+    const fetchId = ++currentFetchIdRef.current;
+    
+    // We queue the actual execution 25ms later to catch synchronous cascading effects
+    await new Promise(r => setTimeout(r, 25));
+    if (fetchId !== currentFetchIdRef.current) return; // Superceded by a newer request
+
     try {
       if (!fetchOptions.silent) {
         setLoading(true);
       }
       setError(null);
-      // Ensure auth restoration completed on hard refresh before querying
       await waitForAuthReady();
       
-      // Update counts whenever we fetch conversations (unless silent)
+      if (fetchId !== currentFetchIdRef.current) return; // Re-check after auth wait
+      
       if (!fetchOptions.silent) {
         void fetchTabCountsV2(overrideFilters);
       }
       
       if (overrideFilters) {
-        filtersRef.current = { 
-          ...overrideFilters 
-        };
+        filtersRef.current = { ...overrideFilters };
         setActiveFilters(filtersRef.current);
         paginationRef.current.page = 1;
         setPagination((prev) => ({ ...prev, page: 1 }));
@@ -535,128 +506,66 @@ export const useConversations = (options?: {
         setPagination((prev) => ({ ...prev, page: nextPage }));
       }
 
-      let query = protectedSupabase
-        .from('threads')
-        .select(`
-          *,
-          contacts(name, phone, email),
-          channels!inner(display_name, type, provider, external_id, logo_url, profile_photo_url, super_agent_id),
-          messages(id, body, role, direction, created_at, seq)
-        `)
-        .order('last_msg_at', { ascending: false })
-        .order('created_at', { foreignTable: 'messages', ascending: false })
-        .limit(1, { foreignTable: 'messages' });
-
-      // Apply Base Filters
-      const statusScope = statusScopeRef.current;
-      if (statusScope === 'assigned') {
-        query = query.eq('status', 'pending');
-      } else if (statusScope === 'unassigned') {
-        query = query.eq('status', 'open');
-      } else if (statusScope === 'done') {
-        query = query.eq('status', 'closed');
-      }
-
       const filtersToUse = overrideFilters ?? filtersRef.current;
-      const { dateRange, status, agent, resolvedBy, inbox, channelType, platformId } = filtersToUse;
-
-      if (dateRange?.from) {
-        const fromIso = startOfDay(dateRange.from).toISOString();
-        query = query.gte('last_msg_at', fromIso);
-      }
-      if (dateRange?.to) {
-        const toIso = endOfDay(dateRange.to).toISOString();
-        query = query.lte('last_msg_at', toIso);
-      }
-      if (status && status !== 'all' && status !== '') {
-        query = query.eq('status', status);
-      }
-      if (agent && agent !== 'all' && agent !== '') {
-        query = query.eq('assignee_user_id', agent);
-      }
-      if (resolvedBy && resolvedBy !== 'all' && resolvedBy !== '') {
-        query = query.eq('resolved_by_user_id', resolvedBy);
-      }
-      if (inbox && inbox !== 'all' && inbox !== '') {
-        query = query.eq('channels.provider', inbox);
-      }
-      if (channelType && channelType !== 'all' && channelType !== '') {
-        query = query.eq('channels.provider', channelType);
-      }
-      if (platformId && platformId !== 'all' && platformId !== '') {
-        query = query.eq('channel_id', platformId);
-      }
-      if (filtersToUse.search && filtersToUse.search.trim() !== '') {
-        const s = filtersToUse.search.trim();
-        query = query.or(`last_message_body.ilike.%${s}%,contact_name.ilike.%${s}%`);
+      
+      const pFilters: any = {};
+      if (filtersToUse.search?.trim()) pFilters.search = filtersToUse.search.trim();
+      if (filtersToUse.agent && filtersToUse.agent !== 'all') pFilters.agent = filtersToUse.agent;
+      if (filtersToUse.resolvedBy && filtersToUse.resolvedBy !== 'all') pFilters.resolvedBy = filtersToUse.resolvedBy;
+      if (filtersToUse.platformId && filtersToUse.platformId !== 'all') pFilters.platformId = filtersToUse.platformId;
+      if (filtersToUse.inbox && filtersToUse.inbox !== 'all') pFilters.inbox = filtersToUse.inbox;
+      if (filtersToUse.channelType && filtersToUse.channelType !== 'all') pFilters.channelType = filtersToUse.channelType;
+      if (filtersToUse.status && filtersToUse.status !== 'all') pFilters.status = filtersToUse.status;
+      
+      if (filtersToUse.dateRange?.from || filtersToUse.dateRange?.to) {
+        pFilters.dateRange = {
+          from: filtersToUse.dateRange.from ? startOfDay(new Date(filtersToUse.dateRange.from)).toISOString() : null,
+          to: filtersToUse.dateRange.to ? endOfDay(new Date(filtersToUse.dateRange.to)).toISOString() : null
+        };
       }
 
-      // Determine Pagination Target
       let page = fetchOptions.page ?? paginationRef.current.page;
       let pageSize = fetchOptions.pageSize ?? paginationRef.current.pageSize;
+      const statusScope = statusScopeRef.current;
 
       if (statusScope === 'assigned' || statusScope === 'unassigned') {
         page = 1;
         pageSize = 10000;
+        if (statusScope === 'assigned') pFilters.status = 'pending';
+        if (statusScope === 'unassigned') pFilters.status = 'open';
+      } else if (statusScope === 'done') {
+        if (!pFilters.status) pFilters.status = 'closed';
       }
 
-      const from = Math.max(0, (page - 1) * pageSize);
-      const to = from + pageSize - 1;
-
-      query = query.range(from, to);
+      const offset = Math.max(0, (page - 1) * pageSize);
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         const id = setTimeout(() => { clearTimeout(id); reject(new Error('timeout')); }, 30000);
       });
 
-      // Execute Query -- O(1) count performance by omitting the `count: estimated` header
       const { data, error } = await Promise.race([
-        query as any,
+        protectedSupabase.rpc('get_threads_with_details', {
+          p_filters: pFilters,
+          p_limit: pageSize,
+          p_offset: offset
+        }),
         timeoutPromise,
       ]) as any;
+
+      if (fetchId !== currentFetchIdRef.current) return; // Superceded during network flight
 
       if (error) throw error;
 
       const hasMore = (data && data.length === pageSize) ? true : false;
       const totalPages = Math.max(1, page + (hasMore ? 1 : 0));
 
-      setPagination({
-        page,
-        pageSize,
-        total: 0,
-        totalPages,
-      });
-
-      // Build user map for display names
-      const userIds: string[] = Array.from(new Set(
-        (data || []).flatMap((t: any) => [
-          t.assigned_by_user_id,
-          t.assignee_user_id,
-          t.resolved_by_user_id,
-          t.channels?.super_agent_id,
-        ]).filter(Boolean)
-      ));
-
-      let userIdToName: Record<string, string> = {};
-      let userIdToLastSeen: Record<string, string | null> = {};
-      if (userIds.length > 0) {
-        const { data: profiles, error: profileErr } = await protectedSupabase
-          .from('users_profile')
-          .select('user_id, display_name, last_seen_at')
-          .in('user_id', userIds);
-        if (profileErr) throw profileErr;
-        userIdToName = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.display_name || '—']));
-        userIdToLastSeen = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p.last_seen_at || null]));
-      }
+      setPagination({ page, pageSize, total: 0, totalPages });
 
       const prevUnreadMap = new Map(Object.entries(unreadCountsRef.current || {}));
-      const prevById = new Map(
-        (conversationsRef.current || []).map((c) => [c.id, c])
-      );
+      const prevById = new Map((conversationsRef.current || []).map((c) => [c.id, c]));
 
-      // Transform data to match the expected format
       const transformedData: ConversationWithDetails[] = (data || []).map((thread: any) => {
-        const last = Array.isArray(thread.messages) && thread.messages.length > 0 ? thread.messages[0] : null;
+        const last = thread.last_message;
         let lastPreview = (last?.body || '').toString().replace(/\s+/g, ' ').trim();
         let lastDir = last?.direction ?? null;
         let lastRole = last?.role ?? null;
@@ -676,106 +585,62 @@ export const useConversations = (options?: {
           }
         }
 
-        // Log to verify we're getting the latest message timestamp
-
-        const channelSuperAgentId = thread.channels?.super_agent_id || null;
-        const assignment = computeAssignmentState({
-          ai_access_enabled: thread.ai_access_enabled,
-          assigned_at: thread.assigned_at,
-          assignee_user_id: thread.assignee_user_id,
-          channel_super_agent_id: channelSuperAgentId,
-          status: thread.status,
-          ai_handoff_at: thread.ai_handoff_at,
-        });
-        const channelSuperAgentName = channelSuperAgentId ? (userIdToName[channelSuperAgentId] || '—') : '—';
-        const assigneeName = assignment.assignee_user_id
-          ? assignment.assignee_user_id === channelSuperAgentId
-            ? channelSuperAgentName
-            : (userIdToName[assignment.assignee_user_id] || '—')
-          : '—';
-
-        const currentStatus = (thread.status || 'open') as Thread['status'];
-
         return {
           ...thread,
-          contact_name: thread.contacts?.name || 'Unknown Contact',
-          contact_phone: thread.contacts?.phone || '',
-          contact_email: thread.contacts?.email || '',
-          channel_name: thread.channels?.display_name || 'Unknown Channel',
-          channel_type: thread.channels?.type || 'web',
-          channel_provider: thread.channels?.provider || undefined,
+          contact_name: thread.contact_name || 'Unknown Contact',
+          contact_phone: thread.contact_phone || '',
+          contact_email: thread.contact_email || '',
+          channel_name: thread.channel_display_name || 'Unknown Channel',
+          channel_type: thread.channel_type || 'web',
+          channel_provider: thread.channel_provider || undefined,
           channel: {
-            provider: thread.channels?.provider,
-            type: thread.channels?.type,
-            display_name: thread.channels?.display_name,
-            external_id: thread.channels?.external_id,
-            logo_url: thread.channels?.logo_url || null,
-            profile_photo_url: thread.channels?.profile_photo_url || null,
-            super_agent_id: channelSuperAgentId,
+            provider: thread.channel_provider,
+            type: thread.channel_type,
+            display_name: thread.channel_display_name,
+            external_id: thread.channel_external_id,
+            logo_url: thread.channel_logo_url || null,
+            profile_photo_url: thread.channel_profile_photo_url || null,
+            super_agent_id: thread.channel_super_agent_id,
           },
-          channel_logo_url: thread.channels?.logo_url || thread.channels?.profile_photo_url || null,
+          channel_logo_url: thread.channel_logo_url || thread.channel_profile_photo_url || null,
           last_message_preview: lastPreview || '—',
           last_message_direction: lastDir,
           last_message_role: lastRole as any,
-          // Use the newest available timestamp (preserve local realtime updates if newer)
           last_msg_at: lastMsgAt,
           message_count: 0,
-          assigned: assignment.assigned,
-          assigned_by_name: thread.assigned_by_user_id ? (userIdToName[thread.assigned_by_user_id] || '—') : '—',
-          assignee_name: assigneeName,
-          assignee_user_id: assignment.assignee_user_id,
-          resolved_by_name: thread.resolved_by_user_id ? (userIdToName[thread.resolved_by_user_id] || '—') : '—',
+          assigned: thread.is_assigned,
+          assigned_by_name: thread.assigned_by_name || '—',
+          assignee_name: thread.assignee_name || '—',
+          assignee_user_id: thread.assignee_user_id,
+          resolved_by_name: thread.resolved_by_name || '—',
           ai_access_enabled: thread.ai_access_enabled ?? false,
-          super_agent_id: channelSuperAgentId,
-          super_agent_name: channelSuperAgentName,
-          assignee_last_seen_at: assignment.assignee_user_id ? (userIdToLastSeen[assignment.assignee_user_id] || null) : null,
-          super_agent_last_seen_at: channelSuperAgentId ? (userIdToLastSeen[channelSuperAgentId] || null) : null,
-          status: currentStatus,
+          super_agent_id: thread.channel_super_agent_id,
+          super_agent_name: thread.super_agent_name || '—',
+          assignee_last_seen_at: thread.assignee_last_seen_at || null,
+          super_agent_last_seen_at: thread.super_agent_last_seen_at || null,
+          status: thread.status || 'open',
           unreplied,
           unread_count: prevUnreadMap.get(thread.id),
         } as ConversationWithDetails;
       });
 
-      // Filter data client-side for consistent date handling
-      let filteredData = transformedData;
-      if (dateRange?.from) {
-        const fromTime = startOfDay(dateRange.from).getTime();
-        filteredData = filteredData.filter(t => new Date(t.last_msg_at).getTime() >= fromTime);
-      }
-      if (dateRange?.to) {
-        const toTime = endOfDay(dateRange.to).getTime();
-        filteredData = filteredData.filter(t => new Date(t.last_msg_at).getTime() <= toTime);
-      }
-      // Defensive client-side filters (in case PostgREST join filters are bypassed)
-      if (inbox && inbox !== 'all' && inbox !== '') {
-        filteredData = filteredData.filter(t => String(t.channel_provider || t.channel?.provider || '').toLowerCase() === String(inbox).toLowerCase());
-      }
-      if (channelType && channelType !== 'all' && channelType !== '') {
-        filteredData = filteredData.filter(t => String(t.channel_provider || t.channel?.provider || '').toLowerCase() === String(channelType).toLowerCase());
-      }
-      if (platformId && platformId !== 'all' && platformId !== '') {
-        filteredData = filteredData.filter(t => String((t as any).channel_id || '') === String(platformId));
-      }
-
-      // Sort conversations by most recent activity so outbound replies bubble to the top
-      const sortedData = filteredData.sort((a, b) => {
+      const sortedData = transformedData.sort((a, b) => {
         const aTime = new Date(a.last_msg_at ?? a.created_at ?? 0).getTime();
         const bTime = new Date(b.last_msg_at ?? b.created_at ?? 0).getTime();
         return bTime - aTime;
       });
 
-
       setConversations(sortedData);
       void fetchUnreadCounts(sortedData.map((t) => t.id), sortedData);
 
-      // IMPORTANT: Do not auto-sync/overwrite status from the frontend.
-      // Status transitions are server-owned (RPCs / backend workflows).
-
     } catch (error) {
+      if (fetchId !== currentFetchIdRef.current) return;
       console.error('Error fetching conversations:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch conversations');
     } finally {
-      setLoading(false);
+      if (fetchId === currentFetchIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -810,12 +675,9 @@ export const useConversations = (options?: {
         return prev.filter(c => c.id !== row.id);
       }
 
-      const assignment = computeAssignmentState({
-        ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
-        assigned_at: row.assigned_at ?? current.assigned_at,
-        status: row.status ?? current.status,
-        ai_handoff_at: row.ai_handoff_at ?? (current as any).ai_handoff_at ?? null,
-      });
+      const isClosed = nextStatus === 'closed';
+      const assignedFromSignals = nextStatus === 'pending' || nextStatus === 'assigned';
+      const isAssigned = !isClosed && assignedFromSignals;
 
       const patched = {
         ...current,
@@ -827,7 +689,7 @@ export const useConversations = (options?: {
         resolved_by_user_id: row.resolved_by_user_id ?? current.resolved_by_user_id,
         ai_access_enabled: row.ai_access_enabled ?? current.ai_access_enabled,
         last_msg_at: row.last_msg_at ?? current.last_msg_at,
-        assigned: assignment.assigned,
+        assigned: isAssigned,
         account_id: row.account_id ?? current.account_id ?? null,
       };
 

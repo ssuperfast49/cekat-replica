@@ -6,7 +6,6 @@
  */
 
 import { RateLimiter, RateLimitConfig, RateLimitResult, OperationType } from './rateLimiter';
-import { getMetricsStats } from './metrics';
 
 // Re-export types for convenience
 export type { OperationType, RateLimitResult, RateLimitConfig };
@@ -106,29 +105,18 @@ export class AdaptiveRateLimiter {
   }
 
   /**
-   * Get recent statistics
+   * Get recent statistics (fallback values since telemetry is removed)
    */
   private async getRecentStats(from: Date, to: Date): Promise<{
     avgResponseTime: number;
     errorRate: number;
     requestVolume: number;
   }> {
-    // Query metrics from database or use metrics collector
-    try {
-      const stats = await getMetricsStats(from, to);
-      return {
-        avgResponseTime: stats.avgResponseTime,
-        errorRate: stats.failureRate,
-        requestVolume: stats.totalOperations,
-      };
-    } catch {
-      // Fallback to neutral values if metrics unavailable
-      return {
-        avgResponseTime: 300,
-        errorRate: 0.01,
-        requestVolume: 100,
-      };
-    }
+    return {
+      avgResponseTime: 300,
+      errorRate: 0.01,
+      requestVolume: 100,
+    };
   }
 
   /**
