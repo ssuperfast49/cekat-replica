@@ -137,7 +137,7 @@ export function MessageList({
                                         return <img src={url} alt="User content" className="rounded-lg max-w-full h-auto my-2 shadow-sm" loading="lazy" />;
                                     }
                                     return (
-                                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-300 font-medium underline hover:text-white">
+                                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-300 font-medium underline hover:text-blue-50">
                                             {children}
                                         </a>
                                     );
@@ -160,11 +160,11 @@ export function MessageList({
                                             {hasRealBody && (
                                                 <div
                                                     className={`px-4 py-2 text-sm rounded-2xl shadow-sm transition-colors ${m.role === "user"
-                                                        ? "bg-blue-600 text-white rounded-br-md"
+                                                        ? "bg-blue-600 text-blue-50 rounded-br-md"
                                                         : "bg-white text-slate-900 border border-blue-100 rounded-bl-md"
                                                         }`}
                                                 >
-                                                    <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${m.role === "user" ? "text-white [&_*]:text-inherit [&_li]:marker:text-white [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""}`}>
+                                                    <div className={`prose prose-sm leading-normal max-w-none [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${m.role === "user" ? "text-blue-50 [&_*]:text-inherit [&_li]:marker:text-blue-50 [&_code]:text-blue-100 [&_code]:bg-blue-700" : ""}`}>
                                                         <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={finalComponents}>
                                                             {m.body}
                                                         </ReactMarkdown>

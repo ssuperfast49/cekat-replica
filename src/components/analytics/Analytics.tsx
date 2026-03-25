@@ -552,7 +552,7 @@ export default function Analytics() {
         <TabsList className="grid w-full max-w-2xl grid-cols-5 bg-muted/50 p-1">
           <TabsTrigger 
             value="conversation"
-            className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
+            className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
           >
             <Tooltip>
               <TooltipTrigger asChild>
@@ -565,7 +565,7 @@ export default function Analytics() {
           </TabsTrigger>
           <TabsTrigger 
             value="ai-agent"
-            className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
+            className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
           >
             <Tooltip>
               <TooltipTrigger asChild>
@@ -578,7 +578,7 @@ export default function Analytics() {
           </TabsTrigger>
           <TabsTrigger 
             value="human-agent"
-            className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
+            className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
           >
             <Tooltip>
               <TooltipTrigger asChild>
@@ -591,7 +591,7 @@ export default function Analytics() {
           </TabsTrigger>
           <TabsTrigger 
             value="database"
-            className="data-[state=active]:bg-white data-[state=active]:text-black data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
+            className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-muted/30"
           >
             <Tooltip>
               <TooltipTrigger asChild>

@@ -35,6 +35,7 @@ export interface Thread {
   last_msg_at: string;
   created_at: string;
   handover_reason?: string | null;
+  blocked_until?: string | null;
 }
 
 export interface Message {

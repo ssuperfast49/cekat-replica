@@ -50,8 +50,11 @@ export function useLiveChat() {
     const [username, setUsername] = useState<string>("");
     const [aiProfileId, setAiProfileId] = useState<string | null>(null);
     const [threadStatus, setThreadStatus] = useState<string | null>(null);
+    const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
     const [isAssignedToHuman, setIsAssignedToHuman] = useState<boolean>(false);
-    const rateLimitHook = useRateLimit();
+
+
+    const rateLimitHook = useRateLimit('cekat_member_rate_limit_ban');
 
     // Refs
     const viewportRef = useRef<HTMLDivElement>(null);
@@ -364,6 +367,18 @@ export function useLiveChat() {
                 let role: "user" | "assistant" | "system" = "user";
                 if (r.role === 'system') {
                     role = 'system';
+                    // React to suspension/resolve events in system message payloads
+                    if (r.payload?.event === 'suspend' && r.payload.blocked_until) {
+                        const blockedUntil = r.payload.blocked_until;
+                        // Only update if the suspension is still active (future date)
+                        if (new Date(blockedUntil).getTime() > Date.now()) {
+                            setBlockedUntil(blockedUntil);
+                        }
+                    } else if (r.payload?.event === 'unsuspend') {
+                        setBlockedUntil(null);
+                    } else if (r.payload?.event === 'resolve') {
+                        setThreadStatus('resolved');
+                    }
                 } else if (r.role === 'agent' || r.role === 'assistant') {
                     role = 'assistant';
                 } else {
@@ -447,7 +462,7 @@ export function useLiveChat() {
             }
             return arr;
         });
-    }, [rateLimitHook.clearBan]);
+    }, [rateLimitHook.clearBan, setBlockedUntil, setThreadStatus]);
 
     // Initialization & Realtime
     const clearCatchUpTimers = () => {
@@ -461,7 +476,7 @@ export function useLiveChat() {
         if (!threadId) return;
         const { data } = await supabase
             .from('messages')
-            .select('id, role, body, created_at, type')
+            .select('id, role, body, created_at, type, payload')
             .eq('thread_id', threadId)
             .order('created_at', { ascending: true });
         if (Array.isArray(data)) hydrate(data);
@@ -488,7 +503,7 @@ export function useLiveChat() {
         try {
             const { data } = await supabase
                 .from('threads')
-                .select('id, contact_id, created_at, additional_data, assignee_user_id, status, account_id, resolved_at, resolved_by_user_id, ai_access_enabled, contacts(name)')
+                .select('id, contact_id, created_at, additional_data, assignee_user_id, status, account_id, resolved_at, resolved_by_user_id, ai_access_enabled, is_blocked, blocked_until, contacts(name)')
                 .eq('channel_id', pid)
                 .order('last_msg_at', { ascending: false })
                 .order('created_at', { ascending: false })
@@ -655,19 +670,22 @@ export function useLiveChat() {
                 // Fetch current thread status and contact
                 const { data: threadRow } = await supabase
                     .from('threads')
-                    .select('status, contact_id, ai_access_enabled')
+                    .select('status, contact_id, ai_access_enabled, blocked_until, is_blocked')
                     .eq('id', tid)
+
                     .maybeSingle();
                 threadStatusRef.current = threadRow?.status || null;
                 aiAccessEnabledRef.current = threadRow?.ai_access_enabled ?? true;
                 if (threadRow?.contact_id) contactIdRef.current = threadRow.contact_id;
                 // Update reactive state so UI re-renders on thread attach
                 setThreadStatus(threadRow?.status || null);
+                setBlockedUntil(threadRow?.blocked_until || null);
                 setIsAssignedToHuman(threadRow?.ai_access_enabled === false);
+
 
                 const { data } = await supabase
                     .from('messages')
-                    .select('id, role, body, created_at, type')
+                    .select('id, role, body, created_at, type, payload')
                     .eq('thread_id', tid)
                     .order('created_at', { ascending: true });
                 if (Array.isArray(data)) upsertFromRows(data);
@@ -680,6 +698,20 @@ export function useLiveChat() {
                             if (row?.role === 'system') { upsertFromRows([row]); return; }
                             if (payload.eventType === 'DELETE') return;
                             if (row?.role === 'user' || row?.role === 'agent' || row?.role === 'assistant') upsertFromRows([row]);
+                        })
+                        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'threads', filter: `id=eq.${thread}` }, (payload: any) => {
+                            const row = payload?.new;
+                            if (!row) return;
+                            const newStatus = row.status || null;
+                            threadStatusRef.current = newStatus;
+                            setThreadStatus(newStatus);
+                            if (row.blocked_until !== undefined) setBlockedUntil(row.blocked_until);
+                            if (row.ai_access_enabled !== undefined) {
+                                aiAccessEnabledRef.current = row.ai_access_enabled;
+                                const assigned = row.ai_access_enabled === false;
+                                setIsAssignedToHuman(assigned);
+                                if (assigned) setLoading(false);
+                            }
                         })
                         .subscribe((status) => {
                             if (status === 'SUBSCRIBED') notificationsReadyRef.current = true;
@@ -785,21 +817,6 @@ export function useLiveChat() {
                     await attachToThread(reopenedId || tid);
                 } catch (err) { }
             })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, (payload: any) => {
-                const row = payload?.new;
-                if (!row?.id || row.id !== threadIdRef.current) return;
-                const newStatus = row.status || null;
-                threadStatusRef.current = newStatus;
-                // Update reactive state so UI re-renders on status changes (resolved, assigned, unassigned)
-                setThreadStatus(newStatus);
-                if (row.ai_access_enabled !== undefined) {
-                    aiAccessEnabledRef.current = row.ai_access_enabled;
-                    const assigned = row.ai_access_enabled === false;
-                    setIsAssignedToHuman(assigned);
-                    // If AI access is disabled (assigned to human), stop loading/typing animation
-                    if (assigned) setLoading(false);
-                }
-            })
             .subscribe(() => setBooting(false));
 
         return () => {
@@ -830,6 +847,12 @@ export function useLiveChat() {
                 }]);
                 setTimeout(() => scrollToBottom(), 50);
             }
+            return;
+        }
+
+        // ── Suspension guard (secondary safety) ──
+        if (blockedUntil && new Date(blockedUntil).getTime() > Date.now()) {
+            console.warn('[LiveChat] Send blocked due to active suspension');
             return;
         }
         const createdAt = new Date().toISOString();
@@ -1182,7 +1205,9 @@ export function useLiveChat() {
         userScrolledUp,
         threadStatus,
         isAssignedToHuman,
+        blockedUntil,
         isBanned: rateLimitHook.isBanned,
         banCountdown: rateLimitHook.banCountdown,
     };
+
 }
