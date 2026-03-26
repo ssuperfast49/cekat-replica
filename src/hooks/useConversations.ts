@@ -1275,7 +1275,7 @@ export const useConversations = (options?: {
       await fetchConversations(undefined, { silent: true });
       await fetchMessages(threadId);
 
-      // Audit log
+      // Audit Log
       try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: assigneeUserId } }); } catch { }
     } catch (error) {
       console.error('Error assigning thread to user:', error);
