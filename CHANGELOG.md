@@ -1,5 +1,12 @@
 # Change Log
 
+## [0.3.9] - Vercel Deployment Fix
+
+### Fixed
+
+- **LiveChat 404 on Vercel**: Fixed a `404 NOT_FOUND` error when accessing `/livechat/*` routes on Vercel. Added `vercel.json` with a catch-all rewrite rule to serve `index.html` for all client-side routes, enabling proper SPA routing.
+  - Added: `vercel.json`
+
 ## [0.3.8] - Performance Optimization & Pagination Restoration - 27-03-2026
 
 ### Performance
