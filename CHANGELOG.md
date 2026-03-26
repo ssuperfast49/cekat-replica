@@ -1,8 +1,17 @@
 # Change Log
 
+## [0.3.8] - Performance Optimization & Pagination Restoration - 27-03-2026
+
+### Performance
+
+- **Optimized Threads RPC**: Re-implemented `get_threads_with_details` using a `MATERIALIZED` CTE and forced custom query plans (`plan_cache_mode = force_custom_plan`). This ensures sub-100ms response times and prevents Postgres statement timeouts on complex filter combinations.
+- **Index Efficiency**: Refactored UUID and Status casting to ensure Postgres utilizes compound indexes on the `threads` table.
+- **Restored Server-Side Pagination**: Reverted the boundless `LIMIT 10000` fetch back to standard 10-item pagination for the Assigned and Unassigned tabs, significantly reducing memory pressure and network latency.
+
 ## [0.3.7] - Member Suspension & Dark Mode Refinements - 26-03-2026
 
 ### New Features
+
 - **Member Suspension (10m)**: Agents can now suspend a member for 10 minutes, preventing them from sending messages in the LiveChat widget. A confirmation modal is shown before applying the suspension.
   - A suspension banner with a real-time countdown timer is displayed to the suspended member.
   - The message input and send button are disabled during the suspension period.
@@ -15,12 +24,14 @@
   - Updated: `src/components/chat/ConversationPage.tsx`, `src/hooks/useLiveChat.ts`
 
 ### Fixed
+
 - **Live Suspension Updates**: Fixed an issue where the member-side chat required a page refresh to reflect suspension status changes. Suspension and unsuspension events are now propagated in real-time via system message payloads (`suspend` / `unsuspend` events).
   - Updated: `src/hooks/useLiveChat.ts`
 - **Agent Rate Limiting Removed**: Agents are no longer affected by the member-side rate limiter. The `useRateLimit` hook is now namespaced to `cekat_member_rate_limit_ban` and removed from the agent dashboard entirely.
   - Updated: `src/hooks/useRateLimit.ts`, `src/hooks/useLiveChat.ts`, `src/components/chat/ConversationPage.tsx`
 
 ### UI & Dark Mode
+
 - **Dark Mode Text Contrast**: Softened all hardcoded `text-white` instances across the application to reduce eye strain in dark mode. Global dark foreground lightness reduced to 90% HSL.
   - Updated: `src/index.css`, `src/pages/Changelog.tsx`, `src/components/livechat/LiveChatHeader.tsx`, `src/components/livechat/MessageList.tsx`, `src/components/livechat/MessageInput.tsx`
 - **Dark Mode Button Styling**: Softened button borders and backgrounds for action buttons (Suspend, Move to Unassigned) in the agent dashboard to reduce contrast in dark mode.

@@ -306,7 +306,7 @@ export const useConversations = (options?: {
       // E.g., if a customer messages an "Unassigned" thread, but agent is looking at "Assigned",
       // we DO NOT need to refresh the list, only the tab counts.
       let cached = getCachedThread(threadId);
-      
+
       // Give GlobalMessageListener 150ms to fetch and cache the thread if it's missing (it usually does instantly)
       if (!cached) {
         await new Promise(r => setTimeout(r, 150));
@@ -317,9 +317,9 @@ export const useConversations = (options?: {
         const isClosed = cached.status === 'closed' || cached.status === 'done' || cached.status === 'resolved' || cached.status === 'spam';
         const assignedFromSignals = cached.status === 'pending' || cached.status === 'assigned';
         const isAssigned = !isClosed && assignedFromSignals;
-        
+
         const activeScope = statusScopeRef.current;
-        
+
         let shouldRefreshList = true;
         if (activeScope === 'assigned' && !isAssigned) shouldRefreshList = false;
         if (activeScope === 'unassigned' && (isAssigned || isClosed)) shouldRefreshList = false;
@@ -398,7 +398,7 @@ export const useConversations = (options?: {
 
     // Throttle lock: don't start a new request if we recently finished one (unless forced)
     if (tabCountsTimeoutRef.current) {
-      return null as any; 
+      return null as any;
     }
 
     tabCountsPendingRef.current = true;
@@ -406,13 +406,13 @@ export const useConversations = (options?: {
     try {
       const filters = filtersRef.current;
       const pFilters: any = {};
-      
+
       if (filters.search?.trim()) pFilters.search = filters.search.trim();
       if (filters.agent) pFilters.agent = filters.agent;
       if (filters.resolvedBy) pFilters.resolvedBy = filters.resolvedBy;
       if (filters.platformId) pFilters.platformId = filters.platformId;
       if (filters.inbox && filters.inbox !== 'all') pFilters.inbox = filters.inbox;
-      
+
       if (filters.dateRange?.from || filters.dateRange?.to) {
         pFilters.dateRange = {
           from: filters.dateRange.from ? startOfDay(new Date(filters.dateRange.from)).toISOString() : null,
@@ -470,7 +470,7 @@ export const useConversations = (options?: {
     // and an execution lock for duplicate parameters.
 
     const fetchId = ++currentFetchIdRef.current;
-    
+
     // We queue the actual execution 25ms later to catch synchronous cascading effects
     await new Promise(r => setTimeout(r, 25));
     if (fetchId !== currentFetchIdRef.current) return; // Superceded by a newer request
@@ -481,13 +481,13 @@ export const useConversations = (options?: {
       }
       setError(null);
       await waitForAuthReady();
-      
+
       if (fetchId !== currentFetchIdRef.current) return; // Re-check after auth wait
-      
+
       if (!fetchOptions.silent) {
         void fetchTabCountsV2(overrideFilters);
       }
-      
+
       if (overrideFilters) {
         filtersRef.current = { ...overrideFilters };
         setActiveFilters(filtersRef.current);
@@ -507,7 +507,7 @@ export const useConversations = (options?: {
       }
 
       const filtersToUse = overrideFilters ?? filtersRef.current;
-      
+
       const pFilters: any = {};
       if (filtersToUse.search?.trim()) pFilters.search = filtersToUse.search.trim();
       if (filtersToUse.agent && filtersToUse.agent !== 'all') pFilters.agent = filtersToUse.agent;
@@ -516,7 +516,7 @@ export const useConversations = (options?: {
       if (filtersToUse.inbox && filtersToUse.inbox !== 'all') pFilters.inbox = filtersToUse.inbox;
       if (filtersToUse.channelType && filtersToUse.channelType !== 'all') pFilters.channelType = filtersToUse.channelType;
       if (filtersToUse.status && filtersToUse.status !== 'all') pFilters.status = filtersToUse.status;
-      
+
       if (filtersToUse.dateRange?.from || filtersToUse.dateRange?.to) {
         pFilters.dateRange = {
           from: filtersToUse.dateRange.from ? startOfDay(new Date(filtersToUse.dateRange.from)).toISOString() : null,
@@ -529,8 +529,8 @@ export const useConversations = (options?: {
       const statusScope = statusScopeRef.current;
 
       if (statusScope === 'assigned' || statusScope === 'unassigned') {
-        page = 1;
-        pageSize = 10000;
+        page = fetchOptions.page ?? paginationRef.current.page;
+        pageSize = fetchOptions.pageSize ?? 10;
         if (statusScope === 'assigned') pFilters.status = 'pending';
         if (statusScope === 'unassigned') pFilters.status = 'open';
       } else if (statusScope === 'done') {
@@ -647,7 +647,7 @@ export const useConversations = (options?: {
   // Light-weight realtime patch when a thread updates (e.g., status/assignee changes)
   const applyThreadRealtimePatch = useCallback((row: any) => {
     if (!row?.id) return;
-    
+
     // Always refresh tab counts when a thread's properties change (status/assignment)
     void fetchTabCountsV2();
 
@@ -662,7 +662,7 @@ export const useConversations = (options?: {
       }
 
       const current = prev[idx];
-      
+
       // If status changed, check if it still belongs in the current tab/scope
       const statusScope = statusScopeRef.current;
       const nextStatus = row.status ?? current.status;
@@ -1523,7 +1523,7 @@ export const useConversations = (options?: {
   // Auto-resolve is handled by a server-side pg_cron job (auto_close_due_threads) 
   // running every minute. We no longer trigger check_and_auto_resolve_threads 
   // from the frontend to prevent rate limit storms.
-  const checkAutoResolve = useCallback(async () => {}, []);
+  const checkAutoResolve = useCallback(async () => { }, []);
 
   // Visibility Sync (Alt-Tab Fallback)
   // Ensures any messages or state changes that occurred while the browser tab was asleep get synced
