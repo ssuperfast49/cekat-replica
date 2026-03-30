@@ -25,6 +25,7 @@ async function callOrchestrator(action: string, params: Record<string, any>): Pr
         headers: {
             'Content-Type': 'application/json',
             'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({ action, ...params }),
     });
@@ -785,21 +786,21 @@ export function useLiveChat() {
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, async (payload: any) => {
                 const tid = payload?.new?.id;
                 if (!tid || tid === threadIdRef.current) return;
-                
+
                 // --- THUNDERING HERD FIX ---
                 // Only process this new thread if there's a strong identifier match.
                 // Otherwise, 1000s of connected clients will instantly hammer the backend.
                 const newThread = payload?.new;
                 const sessionFromAdditional = newThread?.additional_data?.session_id;
                 const accountIdFromThread = newThread?.account_id || newThread?.additional_data?.account_id;
-                
+
                 const matchesSession = Boolean(sessionFromAdditional && sessionFromAdditional === sessionId);
                 const matchesAccount = Boolean(accountId && accountIdFromThread === accountId);
-                
+
                 // If neither account nor session matches, this thread cannot possibly belong to this active client.
                 // Immediately ignore the broadcast instead of querying `findThreadForCurrentSession`.
                 if (!matchesSession && !matchesAccount) {
-                    return; 
+                    return;
                 }
 
                 if (!matchesSession) {
