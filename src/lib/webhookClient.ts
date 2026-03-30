@@ -25,19 +25,26 @@ export async function callWebhook(endpoint: string, init: RequestInit = {}, opti
     isSupabaseFunctionUrl ||
     usingProxyBase;
 
+  const anonKey = getAnonKey();
+
   if (requiresAuth && !skipAuth && !headers.has("Authorization")) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
+      } else if (anonKey) {
+        // Fallback to anon proxy identity if unauthenticated
+        headers.set("Authorization", `Bearer ${anonKey}`);
       }
     } catch {
-      // ignore session lookup errors; we'll attempt the call without Authorization
+      // ignore session lookup errors; attempt fallback
+      if (anonKey) {
+          headers.set("Authorization", `Bearer ${anonKey}`);
+      }
     }
   }
 
-  const anonKey = getAnonKey();
   if (anonKey && (requiresAuth || usingProxyBase || isSupabaseFunctionUrl || url.startsWith(SUPABASE_URL)) && !headers.has("apikey")) {
     headers.set("apikey", anonKey);
   }
