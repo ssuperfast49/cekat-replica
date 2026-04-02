@@ -1,6 +1,6 @@
 # Change Log
 
-## [0.3.10] - LiveChat Widget Lazy Loading
+## [0.3.11] - LiveChat Widget Lazy Loading
 
 ### Performance
 
@@ -8,6 +8,20 @@
   - With 10K embedded page users at 20% open rate: reduced cold connections from 10K → 2K.
   - Updated: `public/widget.js`
 - **Spam-click protection**: Once the widget is opened, the iframe stays mounted and all fetched data (messages, thread state, realtime subscription) is preserved in memory. Subsequent open/close toggles are CSS-only — no re-fetching, no additional Supabase hits regardless of how many times the bubble is clicked.
+
+## [0.3.10] - Ctrl+V Image Paste - 31-03-2026
+
+### New Features
+
+- **Clipboard Image Paste (Ctrl+V)**: Users and agents can now paste images directly from the clipboard (e.g., screenshots) into the message input area to stage them as attachments. Plain text paste continues to work normally.
+  - Pasting is blocked if a file is already staged or the input is disabled.
+  - The pasted image appears as the same staged preview as the paperclip file picker.
+  - Updated: `src/components/chat/ConversationPage.tsx`, `src/components/livechat/MessageInput.tsx`
+
+### Refactored
+
+- **Shared File Staging Utility**: Extracted file validation and preview creation logic from `FileUploadButton` into a reusable `stageFile()` helper function, eliminating code duplication between the file picker and the new paste handler.
+  - Exported `ALLOWED_TYPES`, `MAX_FILE_SIZE`, and `stageFile` from `src/components/chat/FileUploadButton.tsx`
 
 ## [0.3.9] - Vercel Deployment Fix
 
