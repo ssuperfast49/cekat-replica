@@ -1,5 +1,14 @@
 # Change Log
 
+## [0.3.10] - LiveChat Widget Lazy Loading
+
+### Performance
+
+- **Deferred iframe initialization**: The LiveChat embed widget (`widget.js`) no longer loads the iframe on page load. The iframe `src` is now set only when the user first clicks the chat bubble, eliminating all Supabase DB queries and WebSocket connections for users who never open the widget.
+  - With 10K embedded page users at 20% open rate: reduced cold connections from 10K → 2K.
+  - Updated: `public/widget.js`
+- **Spam-click protection**: Once the widget is opened, the iframe stays mounted and all fetched data (messages, thread state, realtime subscription) is preserved in memory. Subsequent open/close toggles are CSS-only — no re-fetching, no additional Supabase hits regardless of how many times the bubble is clicked.
+
 ## [0.3.9] - Vercel Deployment Fix
 
 ### Fixed
