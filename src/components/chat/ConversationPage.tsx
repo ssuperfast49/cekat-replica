@@ -58,7 +58,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { LinkPreview } from "@/components/chat/LinkPreview";
-import { FileUploadButton, StagedFilePreview, uploadFileToStorage, type UploadedFile, type StagedFile, AttachmentRenderer } from "@/components/chat/FileUploadButton";
+import { FileUploadButton, StagedFilePreview, uploadFileToStorage, stageFile, type UploadedFile, type StagedFile, AttachmentRenderer } from "@/components/chat/FileUploadButton";
 import { usePresence } from "@/contexts/PresenceContext";
 import { formatDistanceToNow } from "date-fns";
 import { id } from "date-fns/locale";
@@ -601,6 +601,22 @@ export default function ConversationPage() {
 
   const handleRemoveFile = () => {
     setStagedFile(null);
+  };
+
+  const handlePasteImage = (e: React.ClipboardEvent) => {
+    if (stagedFile || isUploadingFile) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          stageFile(file, setStagedFile);
+          return;
+        }
+      }
+    }
   };
 
   const [userIdToLabel, setUserIdToLabel] = useState<Record<string, string>>({});
@@ -2157,6 +2173,7 @@ export default function ConversationPage() {
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={onKeyPress}
+                      onPaste={handlePasteImage}
                       className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2.5"
                       disabled={(!canCurrentUserSend) || isUploadingFile}
                       title={sendDisabledReason}

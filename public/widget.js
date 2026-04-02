@@ -17,8 +17,12 @@
     if (cfg.username) qs.push('username=' + encodeURIComponent(cfg.username));
     if (cfg.web) qs.push('web=' + encodeURIComponent(cfg.web));
     if (qs.length) iframeSrc += '?' + qs.join('&');
-    var iframe = d.createElement('iframe'); iframe.src = iframeSrc; iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = '0'; panel.appendChild(iframe);
-    bubble.addEventListener('click', function () { panel.classList.toggle('open'); });
+    var iframe = d.createElement('iframe'); iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = '0'; panel.appendChild(iframe);
+    var iframeLoaded = false;
+    bubble.addEventListener('click', function () {
+        if (!iframeLoaded) { iframe.src = iframeSrc; iframeLoaded = true; }
+        panel.classList.toggle('open');
+    });
     w.addEventListener('message', function (e) { if (e.data && e.data.type === 'CEKAT_CHAT_MINIMIZE') { panel.classList.remove('open'); } });
     d.body.appendChild(bubble); d.body.appendChild(panel);
 })();

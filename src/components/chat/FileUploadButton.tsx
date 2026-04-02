@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/sonner";
 import { MediaViewerModal, type MediaType } from "./MediaViewerModal";
 
-const ALLOWED_TYPES = [
+export const ALLOWED_TYPES = [
     "image/jpeg",
     "image/png",
     "image/gif",
@@ -16,7 +16,7 @@ const ALLOWED_TYPES = [
     "audio/ogg",
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export interface UploadedFile {
     url: string;
@@ -43,6 +43,47 @@ function getFileType(mimeType: string): "image" | "video" | "file" | "voice" {
     if (mimeType.startsWith("video/")) return "video";
     if (mimeType.startsWith("audio/")) return "voice";
     return "file";
+}
+
+/**
+ * Shared helper: validates a file and stages it with a preview.
+ * Returns true if the file was accepted, false if rejected.
+ */
+export function stageFile(file: File, onFileStaged: (f: StagedFile) => void): boolean {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+        toast.error(`File type not allowed. Allowed: images, PDF, audio, video`);
+        return false;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+        toast.error(`File too large. Max size: 10MB`);
+        return false;
+    }
+
+    if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            onFileStaged({
+                file,
+                preview: e.target?.result as string,
+                type: getFileType(file.type),
+            });
+        };
+        reader.readAsDataURL(file);
+    } else if (file.type === "application/pdf" || file.type.startsWith("video/") || file.type.startsWith("audio/")) {
+        const objectUrl = URL.createObjectURL(file);
+        onFileStaged({
+            file,
+            preview: objectUrl,
+            type: getFileType(file.type),
+        });
+    } else {
+        onFileStaged({
+            file,
+            preview: null,
+            type: getFileType(file.type),
+        });
+    }
+    return true;
 }
 
 export function getFileIcon(mimeType: string) {
@@ -109,45 +150,7 @@ export function FileUploadButton({
         // Reset input so same file can be selected again
         e.target.value = "";
 
-        // Validate file type
-        if (!ALLOWED_TYPES.includes(file.type)) {
-            toast.error(`File type not allowed. Allowed: images, PDF, audio, video`);
-            return;
-        }
-
-        // Validate file size
-        if (file.size > MAX_FILE_SIZE) {
-            toast.error(`File too large. Max size: 10MB`);
-            return;
-        }
-
-        // Create preview for images (data URL)
-        if (file.type.startsWith("image/")) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                onFileStaged({
-                    file,
-                    preview: e.target?.result as string,
-                    type: getFileType(file.type),
-                });
-            };
-            reader.readAsDataURL(file);
-        } else if (file.type === "application/pdf" || file.type.startsWith("video/") || file.type.startsWith("audio/")) {
-            // Create preview for PDFs, videos, and audio (object URL)
-            const objectUrl = URL.createObjectURL(file);
-            onFileStaged({
-                file,
-                preview: objectUrl,
-                type: getFileType(file.type),
-            });
-        } else {
-            // Other files: no preview
-            onFileStaged({
-                file,
-                preview: null,
-                type: getFileType(file.type),
-            });
-        }
+        stageFile(file, onFileStaged);
     };
 
     return (

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Clock } from "lucide-react";
-import { FileUploadButton, StagedFilePreview, StagedFile } from "@/components/chat/FileUploadButton";
+import { FileUploadButton, StagedFilePreview, StagedFile, stageFile } from "@/components/chat/FileUploadButton";
 
 interface MessageInputProps {
     draft: string;
@@ -78,6 +78,24 @@ export function MessageInput({
 
     const inputDisabled = isUploadingFile || isBanned || isSuspended;
 
+    const onPaste = useCallback((e: React.ClipboardEvent) => {
+        if (inputDisabled || stagedFile) return;
+
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of Array.from(items)) {
+            if (item.kind === "file" && item.type.startsWith("image/")) {
+                const file = item.getAsFile();
+                if (file) {
+                    e.preventDefault();
+                    stageFile(file, setStagedFile);
+                    return;
+                }
+            }
+        }
+    }, [inputDisabled, stagedFile, setStagedFile]);
+
     return (
         <div className="p-3 border-t border-blue-100 sm:rounded-b-2xl rounded-none bg-blue-50/40">
             {isSuspended && (
@@ -124,6 +142,7 @@ export function MessageInput({
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={onKeyPress}
+                    onPaste={onPaste}
                     disabled={inputDisabled}
                     className="rounded-xl min-h-[40px] max-h-[120px] resize-none px-4 py-2 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
