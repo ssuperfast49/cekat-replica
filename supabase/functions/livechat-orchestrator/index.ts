@@ -38,7 +38,13 @@ async function ensureThread(p: {
     channel_id: string;
     session_id: string;
     username: string;
+    web?: string;
+    provider?: string;
 }) {
+    let resolvedChannelId = p.channel_id;
+
+    // 0. Fallback check: if channel_id is potentially invalid, check by website_id (web)
+    // We do this first if channel_id is not found in the initial threads query
     // 1. Look for existing thread (replicate n8n's LEFT JOIN query)
     const { data: threads, error: threadErr } = await sb
         .from("threads")
@@ -60,9 +66,36 @@ async function ensureThread(p: {
             .from("threads")
             .select("*")
             .eq("account_id", p.account_id)
-            .eq("channel_id", p.channel_id)
+            .eq("channel_id", resolvedChannelId)
             .limit(1);
         if (byAccount && byAccount.length > 0) thread = byAccount[0];
+    }
+
+    // 1b. If NO THREAD FOUND, verify if the channel_id itself is valid.
+    // If we have a 'web' identifier, try to reconcile the correct channel ID.
+    if (!thread && p.web) {
+        const { data: reconciledChannel } = await sb
+            .from("channels")
+            .select("id")
+            .eq("website_id", p.web)
+            .eq("provider", p.provider || "web")
+            .maybeSingle();
+
+        if (reconciledChannel && reconciledChannel.id !== resolvedChannelId) {
+            console.log(`[Orchestrator] Reconciled channel_id from ${resolvedChannelId} to ${reconciledChannel.id} via web=${p.web}`);
+            resolvedChannelId = reconciledChannel.id;
+
+            // Re-run thread check with the NEW channel ID
+            const { data: recheckedThreads } = await sb
+                .from("threads")
+                .select("*")
+                .eq("account_id", p.account_id)
+                .eq("channel_id", resolvedChannelId)
+                .limit(1);
+            if (recheckedThreads && recheckedThreads.length > 0) {
+                thread = recheckedThreads[0];
+            }
+        }
     }
 
     if (thread) {
@@ -71,14 +104,14 @@ async function ensureThread(p: {
         const { data: channel } = await sb
             .from("channels")
             .select("id, org_id, super_agent_id, ai_profile_id")
-            .eq("id", p.channel_id)
+            .eq("id", resolvedChannelId)
             .single();
 
         return {
             thread_id: thread.id,
             contact_id: thread.contact_id,
             is_new: false,
-            channel_id: p.channel_id,
+            channel_id: resolvedChannelId,
             super_agent_id: channel?.super_agent_id ?? null,
             ai_profile_id: channel?.ai_profile_id ?? null,
             thread_status: thread.status,
@@ -89,10 +122,10 @@ async function ensureThread(p: {
     const { data: channel, error: chErr } = await sb
         .from("channels")
         .select("id, org_id, super_agent_id, ai_profile_id")
-        .eq("id", p.channel_id)
+        .eq("id", resolvedChannelId)
         .single();
 
-    if (chErr || !channel) throw new Error("Channel not found: " + p.channel_id);
+    if (chErr || !channel) throw new Error("Channel not found: " + resolvedChannelId);
 
     // 3. Find or create contact
     const { data: existingContact } = await sb
