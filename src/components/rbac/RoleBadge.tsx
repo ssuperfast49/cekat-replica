@@ -24,6 +24,7 @@ export default function RoleBadge({ className, showAll = false }: RoleBadgeProps
   // Role hierarchy for determining "highest" role
   const roleHierarchy = {
     [ROLES.MASTER_AGENT]: 3,
+    [ROLES.BILLING_ADMIN]: 2,
     [ROLES.SUPER_AGENT]: 2,
     [ROLES.AGENT]: 1,
   };
@@ -61,6 +62,8 @@ function getRoleVariant(roleName: string) {
       return 'default'; // Primary color
     case ROLES.SUPER_AGENT:
       return 'secondary'; // Secondary color
+    case ROLES.BILLING_ADMIN:
+      return 'secondary'; // Secondary color
     case ROLES.AGENT:
       return 'outline'; // Outline style
     default:
@@ -77,6 +80,8 @@ function formatRoleName(roleName: string) {
       return 'Master Agent';
     case ROLES.SUPER_AGENT:
       return 'Super Agent';
+    case ROLES.BILLING_ADMIN:
+      return 'Billing Admin';
     case ROLES.AGENT:
       return 'Agent';
     default:

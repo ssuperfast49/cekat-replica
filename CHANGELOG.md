@@ -1,5 +1,21 @@
 # Change Log
 
+## [0.3.13] - Billing Admin Role + Provider Wallets - 07-04-2026
+
+### Added
+
+- **Billing Admin Role**: Introduced `billing_admin` with read-only access across the app and wallet top-up privileges.
+- **Provider Wallets**: Split AI wallets and top-ups by provider (`openai`, `gemini`) with per-provider balances and deductions.
+- **Dual Battery Widgets**: Top bar now shows separate OpenAI and Gemini battery widgets with per-provider top-up actions.
+
+### Changed
+
+- **Wallet Cost Deductions**: Token usage now deducts from the matching provider wallet.
+- **RBAC Read Scope**: `billing_admin` is treated as master-like for read scope only, while write actions remain restricted.
+- **Provider Pricing Simplification**: Wallet cost deductions now use fixed per-provider rates.
+- **Gemini 3.1 Flash Lite Preview**: Added pricing entry and default Gemini rate for wallet deductions.
+- **OpenAI Default Rate**: Uses fixed OpenAI default pricing for wallet deductions.
+
 ## [0.3.11] - LiveChat Widget Lazy Loading
 
 ### Performance

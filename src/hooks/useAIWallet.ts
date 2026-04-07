@@ -1,31 +1,41 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase, protectedSupabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRBAC } from '@/contexts/RBACContext';
 import { ROLES } from '@/types/rbac';
 import { useToast } from '@/hooks/use-toast';
 
+export type AIWalletProvider = 'openai' | 'gemini' | string;
+
 export interface AIWalletData {
     org_id: string;
     balance_usd: number;
     battery_100_usd: number;
     battery_percent: number;
+    provider: AIWalletProvider;
 }
 
 export const LOW_BATTERY_THRESHOLD = 20;
 
-export const useAIWallet = () => {
+export const useAIWallets = () => {
     const { user } = useAuth();
     const { hasRole, loading: rbacLoading } = useRBAC();
     const { toast } = useToast();
-    const [wallet, setWallet] = useState<AIWalletData | null>(null);
+    const [wallets, setWallets] = useState<Record<string, AIWalletData>>({});
     const [loading, setLoading] = useState(true);
-    const [toppingUp, setToppingUp] = useState(false);
+    const [toppingUp, setToppingUp] = useState<Record<string, boolean>>({});
 
-    const isMasterAgent = hasRole(ROLES.MASTER_AGENT);
-    const isLowBattery = wallet !== null && wallet.battery_percent < LOW_BATTERY_THRESHOLD;
+    const isWalletAdmin = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.BILLING_ADMIN);
 
-    const fetchWallet = useCallback(async () => {
+    const lowBatteryProviders = useMemo(
+        () => Object.values(wallets)
+            .filter(w => w.battery_percent < LOW_BATTERY_THRESHOLD)
+            .map(w => w.provider),
+        [wallets],
+    );
+    const isLowBattery = lowBatteryProviders.length > 0;
+
+    const fetchWallets = useCallback(async () => {
         if (!user) return;
 
         try {
@@ -37,42 +47,43 @@ export const useAIWallet = () => {
 
             const orgId = orgMember?.org_id;
             if (!orgId) {
-                setWallet(null);
+                setWallets({});
                 return;
             }
 
             const { data, error } = await protectedSupabase
                 .from('ai_wallets')
-                .select('org_id, balance_usd, battery_100_usd')
-                .eq('org_id', orgId)
-                .maybeSingle();
+                .select('org_id, balance_usd, battery_100_usd, provider')
+                .eq('org_id', orgId);
 
             if (error) throw error;
 
-            if (data) {
-                const percent = data.battery_100_usd > 0
-                    ? Math.max(0, Math.min(100, (data.balance_usd / data.battery_100_usd) * 100))
+            const next: Record<string, AIWalletData> = {};
+            for (const row of data || []) {
+                const provider = (row as any).provider || 'openai';
+                const percent = row.battery_100_usd > 0
+                    ? Math.max(0, Math.min(100, (row.balance_usd / row.battery_100_usd) * 100))
                     : 0;
-                setWallet({
-                    org_id: data.org_id,
-                    balance_usd: data.balance_usd,
-                    battery_100_usd: data.battery_100_usd,
+                next[provider] = {
+                    org_id: row.org_id,
+                    balance_usd: row.balance_usd,
+                    battery_100_usd: row.battery_100_usd,
                     battery_percent: Math.round(percent),
-                });
-            } else {
-                setWallet(null);
+                    provider,
+                };
             }
+            setWallets(next);
         } catch (error) {
-            console.error('Error fetching AI wallet:', error);
+            console.error('Error fetching AI wallets:', error);
         } finally {
             setLoading(false);
         }
     }, [user]);
 
-    const topUp = useCallback(async (amountUsd: number) => {
-        if (!user || !isMasterAgent) return;
+    const topUp = useCallback(async (provider: AIWalletProvider, amountUsd: number) => {
+        if (!user || !isWalletAdmin) return;
 
-        setToppingUp(true);
+        setToppingUp(prev => ({ ...prev, [provider]: true }));
         try {
             const { data: orgMember } = await protectedSupabase
                 .from('org_members')
@@ -83,19 +94,20 @@ export const useAIWallet = () => {
             const orgId = orgMember?.org_id;
             if (!orgId) throw new Error('Organization not found');
 
-            const { data, error } = await supabase.rpc('topup_ai_wallet' as any, {
+            const { error } = await supabase.rpc('topup_ai_wallet' as any, {
                 p_org_id: orgId,
                 p_amount_usd: amountUsd,
+                p_provider: provider,
             });
 
             if (error) throw error;
 
             toast({
                 title: 'Wallet Topped Up',
-                description: `Successfully added $${amountUsd.toFixed(2)} to the AI wallet.`,
+                description: `Successfully added $${amountUsd.toFixed(2)} to the ${String(provider).toUpperCase()} wallet.`,
             });
 
-            await fetchWallet();
+            await fetchWallets();
         } catch (error: any) {
             console.error('Error topping up wallet:', error);
             toast({
@@ -104,14 +116,14 @@ export const useAIWallet = () => {
                 variant: 'destructive',
             });
         } finally {
-            setToppingUp(false);
+            setToppingUp(prev => ({ ...prev, [provider]: false }));
         }
-    }, [user, isMasterAgent, fetchWallet, toast]);
+    }, [user, isWalletAdmin, fetchWallets, toast]);
 
     useEffect(() => {
         if (!user || rbacLoading) return;
 
-        fetchWallet();
+        fetchWallets();
 
         const channel = supabase.channel('ai_wallet_changes')
             .on('postgres_changes', {
@@ -119,13 +131,13 @@ export const useAIWallet = () => {
                 schema: 'public',
                 table: 'ai_wallets',
             }, () => {
-                fetchWallet();
+                fetchWallets();
             })
             .subscribe();
 
         const interval = setInterval(() => {
             if (document.visibilityState === 'visible') {
-                fetchWallet();
+                fetchWallets();
             }
         }, 30000);
 
@@ -135,7 +147,7 @@ export const useAIWallet = () => {
                 supabase.removeChannel(channel);
             } catch { }
         };
-    }, [user, rbacLoading, fetchWallet]);
+    }, [user, rbacLoading, fetchWallets]);
 
-    return { wallet, loading, isMasterAgent, isLowBattery, topUp, toppingUp, refetch: fetchWallet };
+    return { wallets, loading, isWalletAdmin, isLowBattery, lowBatteryProviders, topUp, toppingUp, refetch: fetchWallets };
 };

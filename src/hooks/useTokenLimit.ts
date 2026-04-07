@@ -21,7 +21,7 @@ export const useTokenLimit = () => {
   const [limits, setLimits] = useState<TokenLimitData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const isMasterAgent = hasRole(ROLES.MASTER_AGENT);
+  const isMasterAgent = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.BILLING_ADMIN);
   const isSuperAgent = hasRole(ROLES.SUPER_AGENT);
 
   useEffect(() => {

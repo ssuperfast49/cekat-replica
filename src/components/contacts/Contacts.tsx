@@ -35,7 +35,7 @@ import { protectedSupabase } from "@/lib/supabase";
 
 export default function Contacts() {
   const { hasRole } = useRBAC();
-  const isMasterAgent = hasRole('master_agent');
+  const isMasterAgent = hasRole('master_agent') || hasRole('billing_admin');
   const isSuperAgent = hasRole('super_agent');
   
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
