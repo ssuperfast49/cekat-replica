@@ -81,6 +81,7 @@ export function useLiveChat() {
     const notificationsReadyRef = useRef(false);
     const systemNotificationIdsRef = useRef<Set<string>>(new Set());
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+    const resolvedPidRef = useRef<string | null>(null);
 
     // Session & Account
     const [accountId, setAccountId] = useState<string | null>(() => {
@@ -933,10 +934,13 @@ export function useLiveChat() {
                     channel_id: pid,
                     session_id: sessionId,
                     username: username || '',
+                    web: webId || '',
+                    provider: 'web',
                 });
                 if (result.thread_id) {
                     isNewThreadRef.current = result.is_new;
                     contactIdRef.current = result.contact_id;
+                    if (result.channel_id) resolvedPidRef.current = result.channel_id;
                     await attachToThreadRef.current?.(result.thread_id);
                     if (result.ai_profile_id && !aiProfileId) setAiProfileId(result.ai_profile_id);
                     threadStatusRef.current = result.thread_status ?? 'open';
@@ -1077,7 +1081,7 @@ export function useLiveChat() {
                 message: text || '',
                 file_link: uploadedFile?.url || undefined,
                 account_id: accountId || undefined,
-                channel_id: pid,
+                channel_id: resolvedPidRef.current || pid,
                 session_id: sessionId,
                 username: username || undefined,
                 web: webId,

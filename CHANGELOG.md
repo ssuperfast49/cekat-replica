@@ -15,6 +15,24 @@
 - **Provider Pricing Simplification**: Wallet cost deductions now use fixed per-provider rates.
 - **Gemini 3.1 Flash Lite Preview**: Added pricing entry and default Gemini rate for wallet deductions.
 - **OpenAI Default Rate**: Uses fixed OpenAI default pricing for wallet deductions.
+## [0.3.12] - Smart Channel Resolution & Platform Parity - 07-04-2026
+
+### New Features
+
+- **Smart Reconciliation**: The `livechat-orchestrator` Supabase Edge Function now handles invalid or stale `channel_id` parameters sent from the frontend by automatically resolving the correct UUID via a `(website_id, provider)` database lookup.
+- **Platform Awareness**: The resolution logic now supports distinct platforms (`web`, `whatsapp`, `telegram`), ensuring that the same "slug" (e.g., `okgas21`) can be correctly mapped to the right channel type without ambiguity.
+- **Updated: `supabase/functions/livechat-orchestrator/index.ts`**, **`src/hooks/useLiveChat.ts`**
+
+### Performance
+
+- **Composite Indexing**: Added a high-performance **Unique Composite Index** on `channels(website_id, provider)` to ensure that fallback channel lookups are instantaneous (~10ms) and that database integrity is maintained for slug-based routing.
+- **Migration: `supabase/migrations/20260407000000_add_website_id_index.sql`**
+
+### Stability
+
+- **Environment Synchronization**: Verified and deployed identical Edge Function logic and database migrations across both **Development** (`bkynymyhbfrhvwxqqttk`) and **Production** (`tgrmxlbnutxpewfmofdx`) Supabase environments.
+- **Frontend Hook Resiliency**: Added a new `resolvedPidRef` to the `useLiveChat` hook, ensuring that the backend (N8N/Supabase) always receives a database-verified UUID, even if the user opens the chat using an old or incorrect URL parameter.
+- **Updated: `src/hooks/useLiveChat.ts`**
 
 ## [0.3.11] - LiveChat Widget Lazy Loading
 
