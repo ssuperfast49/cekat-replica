@@ -194,6 +194,7 @@ export type Database = {
           created_by: string | null
           id: string
           org_id: string
+          provider: string
         }
         Insert: {
           amount_usd: number
@@ -201,6 +202,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           org_id: string
+          provider?: string
         }
         Update: {
           amount_usd?: number
@@ -208,6 +210,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           org_id?: string
+          provider?: string
         }
         Relationships: [
           {
@@ -233,6 +236,7 @@ export type Database = {
           created_at: string
           id: string
           org_id: string
+          provider: string
           updated_at: string
         }
         Insert: {
@@ -241,6 +245,7 @@ export type Database = {
           created_at?: string
           id?: string
           org_id: string
+          provider?: string
           updated_at?: string
         }
         Update: {
@@ -249,13 +254,14 @@ export type Database = {
           created_at?: string
           id?: string
           org_id?: string
+          provider?: string
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "ai_wallets_org_id_fkey"
             columns: ["org_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
@@ -2844,7 +2850,7 @@ export type Database = {
         }
       }
       topup_ai_wallet: {
-        Args: { p_amount_usd: number; p_org_id: string }
+        Args: { p_amount_usd: number; p_org_id: string; p_provider: string }
         Returns: Json
       }
       unassign_thread: {

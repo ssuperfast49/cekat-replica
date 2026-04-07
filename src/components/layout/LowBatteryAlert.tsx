@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useAIWallet } from "@/hooks/useAIWallet";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useAIWallets } from "@/hooks/useAIWallet";
 import {
     AlertDialog,
     AlertDialogContent,
@@ -14,9 +14,23 @@ import { BatteryWarning } from "lucide-react";
 const ALERT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 export const LowBatteryAlert = () => {
-    const { wallet, isLowBattery, isMasterAgent } = useAIWallet();
+    const { wallets, isLowBattery, isWalletAdmin, lowBatteryProviders } = useAIWallets();
     const [open, setOpen] = useState(false);
     const lastDismissedRef = useRef<number>(0);
+    const providerLabels: Record<string, string> = { openai: "OpenAI", gemini: "Gemini" };
+
+    const lowWallets = useMemo(
+        () => lowBatteryProviders
+            .map(p => wallets[p])
+            .filter((w): w is NonNullable<typeof w> => !!w),
+        [lowBatteryProviders, wallets],
+    );
+    const lowestWallet = useMemo(() => {
+        if (lowWallets.length === 0) return null;
+        return lowWallets.reduce((lowest, current) =>
+            current.battery_percent < lowest.battery_percent ? current : lowest
+        );
+    }, [lowWallets]);
 
     useEffect(() => {
         if (!isLowBattery) {
@@ -45,7 +59,10 @@ export const LowBatteryAlert = () => {
         setOpen(false);
     };
 
-    if (!wallet) return null;
+    if (!isLowBattery || !lowestWallet) return null;
+
+    const providerNames = lowWallets.map(w => providerLabels[w.provider] || String(w.provider)).join(', ');
+    const providerLabel = providerNames || (providerLabels[lowestWallet.provider] || String(lowestWallet.provider));
 
     return (
         <AlertDialog open={open} onOpenChange={setOpen}>
@@ -61,12 +78,12 @@ export const LowBatteryAlert = () => {
                     </div>
                     <AlertDialogDescription className="text-sm leading-relaxed space-y-2">
                         <p>
-                            Baterai AI saat ini berada di <span className="font-bold text-red-600 dark:text-red-400">{wallet.battery_percent}%</span>.
+                            Baterai AI ({providerLabel}) saat ini berada di <span className="font-bold text-red-600 dark:text-red-400">{lowestWallet.battery_percent}%</span>.
                         </p>
                         <p>
-                            {isMasterAgent
+                            {isWalletAdmin
                                 ? "Silakan segera lakukan top up saldo AI wallet agar layanan tetap berjalan tanpa gangguan."
-                                : "Silakan hubungi Master Agent untuk melakukan top up saldo AI wallet agar layanan tetap berjalan."
+                                : "Silakan hubungi Master Agent atau Billing Admin untuk melakukan top up saldo AI wallet agar layanan tetap berjalan."
                             }
                         </p>
                     </AlertDialogDescription>

@@ -86,7 +86,7 @@ export const usePlatforms = () => {
           .select('id, name')
           .in('id', roleIds);
         const names = (roleDefs || []).map(r => (r.name || '').toLowerCase());
-        isMaster = names.includes('master_agent');
+        isMaster = names.includes('master_agent') || names.includes('billing_admin');
         isSuper = names.includes('super_agent');
         isAgentOnly = names.includes('agent') && !isMaster && !isSuper;
       }

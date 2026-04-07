@@ -171,7 +171,7 @@ export const NAVIGATION_ORDER: NavKey[] = [
   "platforms",
   "aiagents",
   "humanagents",
-  "permissions",
+  // "permissions", // Temporarily hidden
   // "settings" // Temporarily hidden
 ];
 

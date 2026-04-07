@@ -43,7 +43,7 @@ const HumanAgents = () => {
   const [usageBySuper, setUsageBySuper] = useState<Record<string, number>>({});
   const [loadingSuperUsage, setLoadingSuperUsage] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "super_agent" | "agent" | "audit"; phone?: string }>({
+  const [newAgent, setNewAgent] = useState<{ name: string; email: string; role: "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit"; phone?: string }>({
     name: "",
     email: "",
     role: "agent"
@@ -69,6 +69,7 @@ const HumanAgents = () => {
   const lastErrorRef = useRef<string | null>(null);
   const { hasPermission, hasRole } = useRBAC();
   const isMasterAgent = hasRole(ROLES.MASTER_AGENT);
+  const canReadAllAgents = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.BILLING_ADMIN);
   const isSuperAgent = hasRole(ROLES.SUPER_AGENT);
   const manageRoleBypass: RoleName[] = [ROLES.MASTER_AGENT, ROLES.SUPER_AGENT];
   // Pagination and Pending tab state backed by v_human_agents
@@ -87,10 +88,10 @@ const HumanAgents = () => {
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "super_agent" | "agent" | "audit">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit">("all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [pendingStatusFilter, setPendingStatusFilter] = useState<"all" | "invited" | "expired">("all");
-  const viewerIsSuperOnly = hasRole(ROLES.SUPER_AGENT) && !hasRole(ROLES.MASTER_AGENT);
+  const viewerIsSuperOnly = hasRole(ROLES.SUPER_AGENT) && !hasRole(ROLES.MASTER_AGENT) && !hasRole(ROLES.BILLING_ADMIN);
 
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
@@ -162,10 +163,11 @@ const HumanAgents = () => {
     }
   }, [error, toast]);
 
-  const normalizeRoleName = (name: string | null | undefined): "master_agent" | "super_agent" | "agent" | "audit" | null => {
+  const normalizeRoleName = (name: string | null | undefined): "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit" | null => {
     if (!name) return null;
     const n = String(name).toLowerCase();
     if (n.includes('master')) return 'master_agent';
+    if (n.includes('billing')) return 'billing_admin';
     if (n.includes('super')) return 'super_agent';
     if (n.includes('audit')) return 'audit';
     if (n.includes('agent')) return 'agent';
@@ -186,7 +188,7 @@ const HumanAgents = () => {
     page: number;
     pageSize: number;
     search?: string;
-    role?: "master_agent" | "super_agent" | "agent" | "audit" | "all";
+    role?: "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit" | "all";
     activeStatus?: "all" | "active" | "inactive";
     pendingStatus?: "all" | "invited" | "expired";
   }) => {
@@ -208,13 +210,17 @@ const HumanAgents = () => {
 
       if (role && role !== "all") {
         const rolePattern =
-          role === "master_agent" ? "%master%" : role === "super_agent" ? "%super%" : role === "audit" ? "%audit%" : "%agent%";
+          role === "master_agent" ? "%master%"
+            : role === "billing_admin" ? "%billing%"
+              : role === "super_agent" ? "%super%"
+                : role === "audit" ? "%audit%"
+                  : "%agent%";
         query = query.ilike('role_name', rolePattern);
       }
 
       // Restrict visibility based on viewer's role
       // Restrict visibility based on viewer's role
-      const isMaster = hasRole(ROLES.MASTER_AGENT);
+      const isMaster = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.BILLING_ADMIN);
       const isSuper = hasRole(ROLES.SUPER_AGENT);
       const isAudit = hasRole(ROLES.AUDIT);
       if (isSuper && !isMaster && !isAudit) {
@@ -772,7 +778,15 @@ const HumanAgents = () => {
                       <div className="text-sm text-muted-foreground">{stub.email || '—'}</div>
                       <div className="flex items-center h-8">
                         <Badge className={`text-xs ${roleBadgeClass(stub.primaryRole)} leading-none h-6 px-2 inline-flex items-center`}>
-                          {stub.primaryRole === 'master_agent' ? 'Master Agent' : stub.primaryRole === 'super_agent' ? 'Super Agent' : stub.primaryRole === 'audit' ? 'Audit' : 'Agent'}
+                          {stub.primaryRole === 'master_agent'
+                            ? 'Master Agent'
+                            : stub.primaryRole === 'billing_admin'
+                              ? 'Billing Admin'
+                              : stub.primaryRole === 'super_agent'
+                                ? 'Super Agent'
+                                : stub.primaryRole === 'audit'
+                                  ? 'Audit'
+                                  : 'Agent'}
                         </Badge>
                       </div>
                       {!isPending && (
@@ -1289,7 +1303,7 @@ const HumanAgents = () => {
 
   // Compute which agents are visible to the current viewer
   const getVisibleAgents = () => {
-    if (hasRole(ROLES.MASTER_AGENT)) return agents;
+    if (canReadAllAgents) return agents;
     if (hasRole(ROLES.SUPER_AGENT)) {
       if (!currentUserId) return [];
       return agents.filter(a =>
@@ -1392,7 +1406,7 @@ const HumanAgents = () => {
     }
   };
 
-  const handleRoleChange = async (agentId: string, role: "master_agent" | "super_agent" | "agent" | "audit") => {
+  const handleRoleChange = async (agentId: string, role: "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit") => {
     try {
       await updateAgentRole(agentId, role);
       toast({
@@ -1416,8 +1430,9 @@ const HumanAgents = () => {
     return status === "Active" ? "bg-green-500" : "bg-gray-400";
   };
 
-  const roleBadgeClass = (role: "master_agent" | "super_agent" | "agent" | "audit" | null) => {
+  const roleBadgeClass = (role: "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit" | null) => {
     if (role === "master_agent") return "bg-blue-100 text-blue-700";
+    if (role === "billing_admin") return "bg-emerald-100 text-emerald-700";
     if (role === "super_agent") return "bg-green-100 text-green-700";
     if (role === "audit") return "bg-purple-100 text-purple-700";
     if (role === "agent") return "bg-gray-100 text-gray-700";
@@ -1536,11 +1551,12 @@ const HumanAgents = () => {
                           </Tooltip>
                         )}
                       </div>
-                      <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "super_agent" | "agent" | "audit" })}>
+                      <Select value={newAgent.role} onValueChange={(value) => setNewAgent({ ...newAgent, role: value as "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit" })}>
                         <SelectTrigger className="bg-background border">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-background border z-50">
+                          {hasRole(ROLES.MASTER_AGENT) && <SelectItem value="billing_admin">Billing Admin</SelectItem>}
                           {hasRole(ROLES.MASTER_AGENT) && <SelectItem value="super_agent">Super Agent</SelectItem>}
                           {hasRole(ROLES.MASTER_AGENT) && <SelectItem value="audit">Audit</SelectItem>}
                           <SelectItem value="agent">Agent</SelectItem>
@@ -1610,13 +1626,14 @@ const HumanAgents = () => {
         </div>
         {!isSuperAgent && (
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as "all" | "master_agent" | "super_agent" | "agent" | "audit")}>
+            <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as "all" | "master_agent" | "billing_admin" | "super_agent" | "agent" | "audit")}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All Roles" />
               </SelectTrigger>
               <SelectContent className="bg-background border z-50">
                 <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="master_agent">Master Agent</SelectItem>
+                <SelectItem value="billing_admin">Billing Admin</SelectItem>
                 <SelectItem value="super_agent">Super Agent</SelectItem>
                 <SelectItem value="audit">Audit</SelectItem>
                 <SelectItem value="agent">Agent</SelectItem>

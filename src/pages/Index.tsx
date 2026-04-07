@@ -19,7 +19,7 @@ import Analytics from "@/components/analytics/Analytics";
 import AIAgents from "@/components/aiagents/AIAgents";
 import Settings from "@/components/settings/Settings";
 import HumanAgents from "@/components/humanagents/HumanAgents";
-import PermissionsPage from "@/components/permissions/PermissionsPage";
+// import PermissionsPage from "@/components/permissions/PermissionsPage";
 import AdminPanel from "@/components/admin/AdminPanel";
 import Logs from "./Logs";
 import ProfilePopover from "@/components/auth/ProfileDialog";
@@ -459,11 +459,11 @@ const Index = () => {
                   </PermissionGate>
                 )}
               </>
-            ) : active === "permissions" ? (
+            ) : /* permissions hidden for now */ false ? (
               <RoleGate role={ROLES.MASTER_AGENT} fallback={<div className="text-sm text-muted-foreground">You do not have access to Permissions.</div>}>
                 <PermissionGate permission={'roles.read'}>
                   <h1 className="sr-only">Permissions</h1>
-                  <PermissionsPage />
+                  {/* <PermissionsPage /> */}
                 </PermissionGate>
               </RoleGate>
             ) : active === "logs" ? (
