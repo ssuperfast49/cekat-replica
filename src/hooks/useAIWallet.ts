@@ -25,7 +25,8 @@ export const useAIWallets = () => {
     const [loading, setLoading] = useState(true);
     const [toppingUp, setToppingUp] = useState<Record<string, boolean>>({});
 
-    const isWalletAdmin = hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.BILLING_ADMIN);
+    const isWalletAdmin = hasRole(ROLES.BILLING_ADMIN);
+    const canViewBattery = isWalletAdmin || hasRole(ROLES.MASTER_AGENT) || hasRole(ROLES.SUPER_AGENT) || hasRole(ROLES.AGENT);
 
     const lowBatteryProviders = useMemo(
         () => Object.values(wallets)
@@ -36,7 +37,11 @@ export const useAIWallets = () => {
     const isLowBattery = lowBatteryProviders.length > 0;
 
     const fetchWallets = useCallback(async () => {
-        if (!user) return;
+        if (!user || !canViewBattery) {
+            setWallets({});
+            setLoading(false);
+            return;
+        }
 
         try {
             const { data: orgMember } = await protectedSupabase
@@ -78,7 +83,7 @@ export const useAIWallets = () => {
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, isWalletAdmin]);
 
     const topUp = useCallback(async (provider: AIWalletProvider, amountUsd: number) => {
         if (!user || !isWalletAdmin) return;
@@ -123,6 +128,12 @@ export const useAIWallets = () => {
     useEffect(() => {
         if (!user || rbacLoading) return;
 
+        if (!canViewBattery) {
+            setWallets({});
+            setLoading(false);
+            return;
+        }
+
         fetchWallets();
 
         const channel = supabase.channel('ai_wallet_changes')
@@ -147,7 +158,7 @@ export const useAIWallets = () => {
                 supabase.removeChannel(channel);
             } catch { }
         };
-    }, [user, rbacLoading, fetchWallets]);
+    }, [user, rbacLoading, isWalletAdmin, fetchWallets]);
 
-    return { wallets, loading, isWalletAdmin, isLowBattery, lowBatteryProviders, topUp, toppingUp, refetch: fetchWallets };
+    return { wallets, loading, isWalletAdmin, canViewBattery, isLowBattery, lowBatteryProviders, topUp, toppingUp, refetch: fetchWallets };
 };

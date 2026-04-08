@@ -12,6 +12,13 @@ import {
 import { BatteryWarning } from "lucide-react";
 
 const ALERT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const formatUsd = (value: number) =>
+    new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(value);
 
 export const LowBatteryAlert = () => {
     const { wallets, isLowBattery, isWalletAdmin, lowBatteryProviders } = useAIWallets();
@@ -81,9 +88,12 @@ export const LowBatteryAlert = () => {
                             Baterai AI ({providerLabel}) saat ini berada di <span className="font-bold text-red-600 dark:text-red-400">{lowestWallet.battery_percent}%</span>.
                         </p>
                         <p>
+                            Saldo saat ini: <span className="font-semibold">{formatUsd(lowestWallet.balance_usd)}</span>.
+                        </p>
+                        <p>
                             {isWalletAdmin
                                 ? "Silakan segera lakukan top up saldo AI wallet agar layanan tetap berjalan tanpa gangguan."
-                                : "Silakan hubungi Master Agent atau Billing Admin untuk melakukan top up saldo AI wallet agar layanan tetap berjalan."
+                                : "Silakan hubungi Billing Admin untuk melakukan top up saldo AI wallet agar layanan tetap berjalan."
                             }
                         </p>
                     </AlertDialogDescription>
