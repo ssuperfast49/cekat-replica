@@ -6,12 +6,20 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuTrigger,
-    DropdownMenuSeparator
+    DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, AlertCircle, BatteryLow, BatteryMedium, BatteryFull, BatteryCharging, DollarSign, Zap } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+const formatUsd = (value: number) =>
+    new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(value);
 
 const getBatteryIcon = (percent: number) => {
     if (percent <= 15) return <BatteryLow className="w-4 h-4" />;
@@ -34,7 +42,7 @@ const getBatteryBarBg = (percent: number) => {
     return "bg-emerald-500";
 };
 
-const LimitPill = ({ used, max, label }: { used: number, max: number, label: string }) => {
+const LimitPill = ({ used, max, label }: { used: number; max: number; label: string }) => {
     const ratio = max > 0 ? used / max : 0;
     const isExceeded = ratio >= 0.95;
 
@@ -43,10 +51,11 @@ const LimitPill = ({ used, max, label }: { used: number, max: number, label: str
             <TooltipTrigger asChild>
                 <Badge
                     variant="outline"
-                    className={`font-mono text-xs px-2 py-0.5 whitespace-nowrap cursor-help transition-colors ${isExceeded
-                        ? "border-red-500 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800"
-                        : "border-border bg-muted/30 text-muted-foreground"
-                        }`}
+                    className={`font-mono text-xs px-2 py-0.5 whitespace-nowrap cursor-help transition-colors ${
+                        isExceeded
+                            ? "border-red-500 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800"
+                            : "border-border bg-muted/30 text-muted-foreground"
+                    }`}
                 >
                     {label}: {used.toLocaleString()}/{max.toLocaleString()}
                     {isExceeded && <AlertCircle className="w-3 h-3 ml-1 inline-block" />}
@@ -60,35 +69,39 @@ const LimitPill = ({ used, max, label }: { used: number, max: number, label: str
 };
 
 export const TokenLimitIndicator = () => {
-    const { wallets, loading: walletLoading, isWalletAdmin, topUp, toppingUp } = useAIWallets();
+    const { wallets, loading: walletLoading, isWalletAdmin, canViewBattery, topUp, toppingUp } = useAIWallets();
     const { limits, loading: limitsLoading, isMasterAgent: isMasterLimits } = useTokenLimit();
     const [topUpAmount, setTopUpAmount] = useState<Record<string, string>>({});
     const [showTopUp, setShowTopUp] = useState<Record<string, boolean>>({});
 
     const loading = walletLoading || limitsLoading;
-
     if (loading) return null;
+    if (!canViewBattery) return null;
 
     const providers = [
         { key: "openai", label: "OpenAI" },
         { key: "gemini", label: "Gemini" },
     ];
 
-    const hasAnyWallet = providers.some(p => wallets[p.key]);
-    if (!hasAnyWallet && !isWalletAdmin && limits.length === 0) return null;
+    const hasAnyWallet = providers.some((p) => wallets[p.key]);
+    if (!hasAnyWallet && limits.length === 0) return null;
 
-    const exceededCount = limits.filter(l =>
-        (l.max_tokens_per_day > 0 && l.daily_used_tokens / l.max_tokens_per_day >= 0.95) ||
-        (l.max_tokens_per_month > 0 && l.monthly_used_tokens / l.max_tokens_per_month >= 0.95)
+    const exceededCount = limits.filter(
+        (l) =>
+            (l.max_tokens_per_day > 0 && l.daily_used_tokens / l.max_tokens_per_day >= 0.95) ||
+            (l.max_tokens_per_month > 0 && l.monthly_used_tokens / l.max_tokens_per_month >= 0.95),
     ).length;
 
     const renderWalletDropdown = (providerKey: string, providerLabel: string) => {
         const wallet = wallets[providerKey];
-        const shouldShow = !!wallet || isWalletAdmin || (limits.length > 0 && providerKey === 'openai');
+        const shouldShow = !!wallet || isWalletAdmin;
         if (!shouldShow) return null;
+
 
         const hasWallet = !!wallet;
         const batteryPercent = wallet?.battery_percent ?? 0;
+        const balanceUsd = wallet?.balance_usd ?? 0;
+        const battery100Usd = wallet?.battery_100_usd ?? 0;
         const batteryColor = hasWallet ? getBatteryColor(batteryPercent) : "text-muted-foreground";
         const batteryBarBg = hasWallet ? getBatteryBarBg(batteryPercent) : "bg-muted-foreground/40";
         const isTopUpOpen = !!showTopUp[providerKey];
@@ -97,24 +110,24 @@ export const TokenLimitIndicator = () => {
 
         const handleTopUp = async () => {
             const amount = parseFloat(amountValue);
-            if (isNaN(amount) || amount <= 0) return;
+            if (Number.isNaN(amount) || amount <= 0) return;
             await topUp(providerKey, amount);
-            setTopUpAmount(prev => ({ ...prev, [providerKey]: "" }));
-            setShowTopUp(prev => ({ ...prev, [providerKey]: false }));
+            setTopUpAmount((prev) => ({ ...prev, [providerKey]: "" }));
+            setShowTopUp((prev) => ({ ...prev, [providerKey]: false }));
         };
 
         return (
             <DropdownMenu key={providerKey}>
                 <DropdownMenuTrigger asChild>
-                    <button className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-border/50 cursor-pointer transition-all duration-200 hover:bg-accent/50 hover:border-border ${hasWallet && batteryPercent <= 15 ? 'animate-pulse' : ''}`}>
-                        <span className={batteryColor}>
-                            {getBatteryIcon(batteryPercent)}
-                        </span>
-                        <span className="text-[10px] font-medium text-muted-foreground">
-                            {providerLabel}
-                        </span>
+                    <button
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-border/50 cursor-pointer transition-all duration-200 hover:bg-accent/50 hover:border-border ${
+                            hasWallet && batteryPercent <= 15 ? "animate-pulse" : ""
+                        }`}
+                    >
+                        <span className={batteryColor}>{getBatteryIcon(batteryPercent)}</span>
+                        <span className="text-[10px] font-medium text-muted-foreground">{providerLabel}</span>
                         <span className={`text-xs font-semibold tabular-nums ${batteryColor}`}>
-                            {wallet ? `${batteryPercent}%` : 'N/A'}
+                            {wallet ? `${batteryPercent}%` : "N/A"}
                         </span>
                         {(exceededCount > 0 || (hasWallet && batteryPercent <= 15)) && (
                             <AlertCircle className="w-3 h-3 text-red-500" />
@@ -122,52 +135,61 @@ export const TokenLimitIndicator = () => {
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
                     </button>
                 </DropdownMenuTrigger>
+
                 <DropdownMenuContent align="end" className="w-[320px] sm:w-[360px] p-0">
-                    {/* Battery Section */}
                     <div className="p-4">
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <Zap className={`w-4 h-4 ${batteryColor}`} />
-                                <span className="text-sm font-medium">AI Usage — {providerLabel}</span>
+                                <span className="text-sm font-medium">AI Usage - {providerLabel}</span>
                             </div>
                             <span className={`text-lg font-bold tabular-nums ${batteryColor}`}>
-                                {wallet ? `${batteryPercent}%` : '—'}
+                                {wallet ? `${batteryPercent}%` : "-"}
                             </span>
                         </div>
 
-                        {/* Battery Bar */}
                         <div className="w-full h-4 rounded-full bg-muted/50 border border-border/30 overflow-hidden">
                             <div
                                 className={`h-full rounded-full transition-all duration-700 ease-out ${batteryBarBg}`}
-                            style={{ width: `${wallet ? batteryPercent : 0}%` }}
-                        />
-                    </div>
+                                style={{ width: `${wallet ? batteryPercent : 0}%` }}
+                            />
+                        </div>
 
-                    <p className="text-xs text-muted-foreground mt-2">
+                        {isWalletAdmin && (
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                                <div className="rounded-md border border-border/40 bg-muted/20 px-2 py-1.5">
+                                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Balance (USD)</div>
+                                    <div className="font-semibold tabular-nums">{hasWallet ? formatUsd(balanceUsd) : "-"}</div>
+                                </div>
+                                <div className="rounded-md border border-border/40 bg-muted/20 px-2 py-1.5">
+                                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Battery 100% (USD)</div>
+                                    <div className="font-semibold tabular-nums">{hasWallet ? formatUsd(battery100Usd) : "-"}</div>
+                                </div>
+                            </div>
+                        )}
+
+                        <p className="text-xs text-muted-foreground mt-2">
                             {!wallet
                                 ? "Wallet belum tersedia untuk provider ini."
                                 : batteryPercent <= 15
-                                    ? "⚠️ Battery critically low. Consider topping up."
-                                    : batteryPercent <= 30
-                                        ? "Battery running low."
-                                        : batteryPercent <= 50
-                                            ? "Battery at moderate level."
-                                            : "Battery level is healthy."}
-                    </p>
+                                  ? "Battery critically low. Consider topping up."
+                                  : batteryPercent <= 30
+                                    ? "Battery running low."
+                                    : batteryPercent <= 50
+                                      ? "Battery at moderate level."
+                                      : "Battery level is healthy."}
+                        </p>
                     </div>
 
-                    {/* Token Limits Section (for Master/Super agents) */}
                     {limits.length > 0 && (
                         <>
                             <DropdownMenuSeparator />
                             <div className="px-4 py-2">
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                    Token Limits
-                                </span>
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Token Limits</span>
                             </div>
                             <div className="px-3 pb-2 space-y-1 max-h-[200px] overflow-y-auto">
                                 {isMasterLimits ? (
-                                    limits.map(agent => (
+                                    limits.map((agent) => (
                                         <div key={agent.user_id} className="flex flex-col gap-1 p-2 rounded-md hover:bg-accent/50 transition-colors">
                                             <span className="text-xs font-medium truncate" title={agent.email}>
                                                 {agent.display_name || agent.email}
@@ -188,7 +210,6 @@ export const TokenLimitIndicator = () => {
                         </>
                     )}
 
-                    {/* Wallet Top-Up Section */}
                     {isWalletAdmin && (
                         <>
                             <DropdownMenuSeparator />
@@ -200,7 +221,7 @@ export const TokenLimitIndicator = () => {
                                         className="w-full gap-2"
                                         onClick={(e) => {
                                             e.preventDefault();
-                                            setShowTopUp(prev => ({ ...prev, [providerKey]: true }));
+                                            setShowTopUp((prev) => ({ ...prev, [providerKey]: true }));
                                         }}
                                     >
                                         <BatteryCharging className="w-4 h-4" />
@@ -213,16 +234,16 @@ export const TokenLimitIndicator = () => {
                                                 <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                                                 <Input
                                                     type="number"
-                                                    placeholder="Amount"
+                                                    placeholder="Amount (USD)"
                                                     value={amountValue}
-                                                    onChange={(e) => setTopUpAmount(prev => ({ ...prev, [providerKey]: e.target.value }))}
+                                                    onChange={(e) => setTopUpAmount((prev) => ({ ...prev, [providerKey]: e.target.value }))}
                                                     className="pl-7 h-8 text-sm"
-                                                    min="0"
+                                                    min="0.01"
                                                     step="0.01"
                                                     autoFocus
                                                     onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') handleTopUp();
-                                                        if (e.key === 'Escape') setShowTopUp(prev => ({ ...prev, [providerKey]: false }));
+                                                        if (e.key === "Enter") handleTopUp();
+                                                        if (e.key === "Escape") setShowTopUp((prev) => ({ ...prev, [providerKey]: false }));
                                                     }}
                                                 />
                                             </div>
@@ -238,11 +259,12 @@ export const TokenLimitIndicator = () => {
                                                 {isToppingUp ? "..." : "Add"}
                                             </Button>
                                         </div>
+                                        <p className="text-[11px] text-center text-muted-foreground">Wallet top-up uses USD.</p>
                                         <button
                                             className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center"
                                             onClick={(e) => {
                                                 e.preventDefault();
-                                                setShowTopUp(prev => ({ ...prev, [providerKey]: false }));
+                                                setShowTopUp((prev) => ({ ...prev, [providerKey]: false }));
                                             }}
                                         >
                                             Cancel
@@ -257,9 +279,5 @@ export const TokenLimitIndicator = () => {
         );
     };
 
-    return (
-        <div className="flex items-center gap-2">
-            {providers.map(p => renderWalletDropdown(p.key, p.label))}
-        </div>
-    );
+    return <div className="flex items-center gap-2">{providers.map((p) => renderWalletDropdown(p.key, p.label))}</div>;
 };

@@ -1,5 +1,13 @@
 # Change Log
 
+## [0.3.14] - Battery Widget Visibility for Agent Roles - 08-04-2026
+
+### Changed
+
+- **Battery Widget for All Agent Roles**: The OpenAI and Gemini battery widgets in the top bar are now visible to `master_agent`, `super_agent`, and `agent` roles in addition to `billing_admin`.
+- **Balance Hidden for Non-Billing Admins**: The Balance (USD) and Battery 100% (USD) fields in the battery dropdown are only shown to `billing_admin`. Other roles see the battery percentage and status indicator only.
+- **Updated**: `src/hooks/useAIWallet.ts`, `src/components/layout/TokenLimitIndicator.tsx`
+
 ## [0.3.13] - Billing Admin Role + Provider Wallets - 07-04-2026
 
 ### Added
