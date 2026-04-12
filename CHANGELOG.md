@@ -1,5 +1,16 @@
 # Change Log
 
+## [0.3.16] - Reopen Thread RLS Fix - 13-04-2026
+
+### Fixed
+
+- **Returning Visitors Can't Chat**: Fixed a critical bug where visitors returning to a previously resolved LiveChat thread would see their message appear in the UI, but the AI never responded and no welcome message was shown.
+  - **Root Cause**: `reopenThreadIfResolved` was calling `supabase.from('threads').update(...)` using the anonymous client (anon key). The RLS policy on `threads` requires `auth.uid() IS NOT NULL` for updates, so the update **silently failed** — the thread remained `closed` in the database while the frontend incorrectly proceeded as if it was reopened.
+  - **Fix**: Moved thread reopening to the `livechat-orchestrator` Edge Function as a new `reopen_thread` action, which runs with service role and bypasses RLS. If the reopen call fails, the frontend now returns `null` and falls through to `ensure_thread` to create a fresh thread instead of silently continuing with a closed one.
+  - **Also Fixed**: Changed the reopened thread status from `'pending'` (assigned) to `'open'` (unassigned) for consistency with new thread creation.
+  - Updated: `src/hooks/useLiveChat.ts`, `supabase/functions/livechat-orchestrator/index.ts`
+  - Deployed Edge Function v8 (PROD) and v4 (DEV)
+
 ## [0.3.15] - Ghost Thread Fix & Conversations Performance - 13-04-2026
 
 ### Fixed

@@ -295,6 +295,48 @@ async function insertUserMessages(p: {
     return { ok: true };
 }
 
+// ───── ACTION: reopen_thread ─────
+// Reopens a previously resolved/closed thread so the visitor can continue chatting.
+// This must run via service role because anon users cannot update threads (RLS blocks it).
+async function reopenThread(p: {
+    thread_id: string;
+}) {
+    if (!p.thread_id) throw new Error("thread_id is required");
+
+    // Verify the thread exists and is actually closed
+    const { data: thread, error: fetchErr } = await sb
+        .from("threads")
+        .select("id, status, channel_id")
+        .eq("id", p.thread_id)
+        .maybeSingle();
+
+    if (fetchErr || !thread) throw new Error("Thread not found: " + p.thread_id);
+
+    const status = (thread.status || "").toLowerCase();
+    if (status !== "closed" && status !== "done" && status !== "resolved") {
+        // Already open — nothing to do
+        return { ok: true, already_open: true, thread_status: thread.status };
+    }
+
+    const { error: updateErr } = await sb
+        .from("threads")
+        .update({
+            status: "open",
+            assignee_user_id: null,
+            collaborator_user_id: null,
+            resolved_at: null,
+            resolved_by_user_id: null,
+            ai_access_enabled: true,
+            ai_handoff_at: null,
+            handover_reason: null,
+        })
+        .eq("id", p.thread_id);
+
+    if (updateErr) throw new Error("reopen_thread update failed: " + updateErr.message);
+
+    return { ok: true, thread_status: "open" };
+}
+
 // ───── ACTION: log_token_usage ─────
 async function logTokenUsage(p: {
     total_tokens: number;
@@ -367,6 +409,7 @@ const ACTIONS: Record<string, (p: any) => Promise<any>> = {
     insert_ai_message: insertAiMessage,
     insert_welcome_message: insertWelcomeMessage,
     insert_user_messages: insertUserMessages,
+    reopen_thread: reopenThread,
     log_token_usage: logTokenUsage,
     check_handover: checkHandover,
 };

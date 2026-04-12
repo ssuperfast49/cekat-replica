@@ -544,29 +544,24 @@ export function useLiveChat() {
         const isClosed = status === 'closed' || status === 'done' || status === 'resolved';
         if (!isClosed || !row?.id) return row?.id || null;
         try {
-            const { error } = await supabase
-                .from('threads')
-                .update({
-                    status: 'pending',
-                    assignee_user_id: null,
-                    collaborator_user_id: null,
-                    resolved_at: null,
-                    resolved_by_user_id: null,
-                    // Re-enable AI access so it responds in the new conversation cycle
-                    ai_access_enabled: true,
-                    ai_handoff_at: null,
-                    handover_reason: null,
-                })
-                .eq('id', row.id);
-            if (error) throw error;
+            // Use orchestrator (service role) to reopen — anon users can't update threads 
+            // directly due to RLS requiring auth.uid() IS NOT NULL.
+            const result = await callOrchestrator('reopen_thread', {
+                thread_id: row.id,
+            });
+            if (!result.ok) throw new Error('reopen_thread returned not ok');
             // Sync refs so the current send call uses the correct AI access state
             aiAccessEnabledRef.current = true;
+            threadStatusRef.current = 'open';
+            setThreadStatus('open');
+            setIsAssignedToHuman(false);
             return row.id;
         } catch (err) {
             console.warn('[LiveChat] failed to reopen resolved thread', err);
-            return row?.id || null;
+            // Return null so the caller falls through to ensure_thread (create new)
+            return null;
         }
-    }, [supabase]);
+    }, []);
 
     const scheduleThreadAttachRetries = useCallback((delays: number[] = []) => {
         clearThreadAttachTimers();
