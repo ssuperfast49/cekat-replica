@@ -1,5 +1,24 @@
 # Change Log
 
+## [0.3.15] - Ghost Thread Fix & Conversations Performance - 13-04-2026
+
+### Fixed
+
+- **Ghost Thread Prevention**: Fixed a critical bug where LiveChat visitor messages were silently lost when the `insert_user_messages` orchestrator call failed. Threads were created in the database but contained zero user messages, resulting in "phantom" conversations visible to agents with no content.
+  - Added retry logic with exponential backoff (3 attempts: instant → 500ms → 1.5s) to `insert_user_messages`.
+  - If all retries fail, the send flow now **aborts entirely** — optimistic messages are removed and the user sees a toast error ("Pesan gagal terkirim. Silakan coba lagi.") instead of silently proceeding with the webhook/AI call.
+  - Added a safety net to always set `threadIdRef.current` directly from the `ensure_thread` response, preventing a race condition where `attachToThreadRef.current` could be null during React effect cleanup.
+  - Identified 20+ ghost threads across all channels (BINUS, MOA, OKMEN21, NMAX4D, OKGAS21, PIM, UNTAR) in the last 7 days caused by this issue.
+  - Updated: `src/hooks/useLiveChat.ts`
+
+### Performance
+
+- **Conversations List 10x Speedup**: Optimized `get_threads_with_details` RPC to bypass Row-Level Security overhead.
+  - **Problem**: With 18k+ closed threads, Postgres RLS policies evaluated an `EXISTS` subquery against `channels` + `channel_agents` for **every candidate row** before `LIMIT 10` could take effect, making pagination useless.
+  - **Solution**: Converted the function to `SECURITY DEFINER` (like `get_tab_counts_v3`) and moved the visibility check inline. Elevated users (master_agent, auditor) skip the filter entirely — `LIMIT 10` now touches only ~11 index rows. Regular agents get the same check as a `WHERE` clause inside the `picked` CTE.
+  - Applied to both DEV and PROD databases.
+  - Migration: `supabase/migrations/20260413000000_optimize_get_threads_security_definer.sql`
+
 ## [0.3.14] - Battery Widget Visibility for Agent Roles - 08-04-2026
 
 ### Changed

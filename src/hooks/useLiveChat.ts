@@ -941,6 +941,10 @@ export function useLiveChat() {
                     isNewThreadRef.current = result.is_new;
                     contactIdRef.current = result.contact_id;
                     if (result.channel_id) resolvedPidRef.current = result.channel_id;
+                    // Safety net: always set threadIdRef directly so step 5
+                    // (insert_user_messages) can proceed even if attachToThread
+                    // hasn't completed or attachToThreadRef is null.
+                    if (!threadIdRef.current) threadIdRef.current = result.thread_id;
                     await attachToThreadRef.current?.(result.thread_id);
                     if (result.ai_profile_id && !aiProfileId) setAiProfileId(result.ai_profile_id);
                     threadStatusRef.current = result.thread_status ?? 'open';
@@ -1033,13 +1037,33 @@ export function useLiveChat() {
         }
 
         // ── 5. Insert user message into DB (always — fixes first-message bug) ──
+        // Retry up to 3 times with exponential backoff to prevent ghost threads
+        // (threads created without any user message persisted).
         if (threadIdRef.current && messagesToInsert.length > 0) {
-            try {
-                await callOrchestrator('insert_user_messages', {
-                    messages: messagesToInsert
-                });
-            } catch (err) {
-                console.warn('[LiveChat] direct insert failed', err);
+            const maxInsertAttempts = 3;
+            let insertSuccess = false;
+            for (let attempt = 0; attempt < maxInsertAttempts; attempt++) {
+                try {
+                    await callOrchestrator('insert_user_messages', {
+                        messages: messagesToInsert
+                    });
+                    insertSuccess = true;
+                    break;
+                } catch (err) {
+                    console.warn(`[LiveChat] insert_user_messages attempt ${attempt + 1}/${maxInsertAttempts} failed`, err);
+                    if (attempt < maxInsertAttempts - 1) {
+                        // Exponential backoff: 500ms, 1500ms
+                        await new Promise(r => setTimeout(r, 500 * Math.pow(3, attempt)));
+                    }
+                }
+            }
+            if (!insertSuccess) {
+                console.error('[LiveChat] insert_user_messages failed after all retries — aborting send');
+                toast.error('Pesan gagal terkirim. Silakan coba lagi.');
+                // Remove optimistic messages so UI doesn't show unsent messages
+                setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
+                setLoading(false);
+                return;
             }
         }
 
