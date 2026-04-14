@@ -1065,13 +1065,13 @@ export function useLiveChat() {
         // ── 6. Check Assigned (Handover) State ──
         // (isAssigned already evaluated at the top of handleSend)
 
-        // ── 7. Fetch AI context via edge fn (Skip if assigned) ──
+        // ── 7. Fetch AI context via edge fn (ALWAYS — n8n needs ai_profile & transfer_conditions even when assigned) ──
         let aiContext: { ai_profile: any; contact_info: any; chat_history: string; super_agent_id: string } | null = null;
-        if (threadIdRef.current && !isAssigned) {
+        if (threadIdRef.current) {
             try {
                 aiContext = await callOrchestrator('get_ai_context', {
                     thread_id: threadIdRef.current,
-                    channel_id: pid,
+                    channel_id: resolvedPidRef.current || pid,
                     contact_id: contactIdRef.current || '',
                 });
             } catch (err) {
@@ -1080,10 +1080,15 @@ export function useLiveChat() {
         }
 
         // ── 7b. Insert welcome message BEFORE AI call (so it renders first) ──
-        if (isNewThreadRef.current && threadIdRef.current && aiContext?.ai_profile?.welcome_message) {
+        // Trigger when: (a) ensure_thread says is_new, OR (b) no persisted messages yet (first real message).
+        // This fixes the ~67% miss rate where ensure_thread finds an existing thread via account_id
+        // and returns is_new=false, or findThreadForCurrentSession finds the thread first.
+        const persistedMsgCount = messages.filter(m => !m.id.startsWith('temp-')).length;
+        const shouldSendWelcome = (isNewThreadRef.current || persistedMsgCount === 0) && threadIdRef.current && aiContext?.ai_profile?.welcome_message;
+        if (shouldSendWelcome) {
             callOrchestrator('insert_welcome_message', {
                 thread_id: threadIdRef.current,
-                welcome_message: aiContext.ai_profile.welcome_message,
+                welcome_message: aiContext!.ai_profile.welcome_message,
             }).catch((e: any) => console.warn('[LiveChat] insert_welcome_message failed', e));
             isNewThreadRef.current = false;
         }
