@@ -1,5 +1,18 @@
 # Change Log
 
+## [0.3.17] - AI Profile Webhook Fix & Welcome Message Reliability - 15-04-2026
+
+### Fixed
+
+- **AI Profile Always Sent to Webhook**: Removed the `!isAssigned` guard on the `get_ai_context` call, so `ai_profile` and `transfer_conditions` are **always** included in the webhook payload — even when the thread is in handover state. Previously, visitors returning to a handed-off thread would trigger a webhook call with `ai_profile: undefined`, preventing n8n from evaluating transfer rules or routing decisions.
+  - Also fixed `channel_id` in the `get_ai_context` call to use `resolvedPidRef.current` (the reconciled channel ID) instead of raw `pid`, preventing stale channel lookups.
+  - Updated: `src/hooks/useLiveChat.ts`
+
+- **Welcome Message Now Delivers ~100% of the Time**: Fixed the welcome message trigger condition which was only firing for ~33% of new threads. 
+  - **Root Cause**: The condition relied on `isNewThreadRef.current` from `ensure_thread`, but `ensure_thread` often returns `is_new: false` because it finds the thread via `account_id` match (from a prior page load), or `findThreadForCurrentSession` finds the thread first (which never sets the flag).
+  - **Fix**: Added a fallback check — if there are zero persisted messages in the chat (excluding optimistic temp messages), treat it as a new conversation and send the welcome message.
+  - Updated: `src/hooks/useLiveChat.ts`
+
 ## [0.3.16] - Reopen Thread RLS Fix - 13-04-2026
 
 ### Fixed
