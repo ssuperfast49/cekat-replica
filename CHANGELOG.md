@@ -1,5 +1,15 @@
 # Change Log
 
+## [0.3.20] - Realtime Private Channel Subscription Fix - 15-04-2026
+
+### Fixed
+
+- **Realtime Channels Subscribed But Receiving No Events**: Two related issues prevented private broadcast channels from delivering events after subscription.
+
+  - **SDK requires explicit subscribe callback**: Calling `.subscribe()` with no arguments causes the Supabase realtime-js SDK to not properly finalize the channel subscription — channels report SUBSCRIBED status but silently drop all incoming broadcast events. **Fix**: All five private channel subscriptions now pass an explicit callback (error-only logging).
+
+  - **HMR duplicate subscriptions**: Vite's Hot Module Replacement preserves React component state across reloads without re-running effect cleanups, leaving stale channel subscriptions active. When new subscriptions are created for the same channel name, the Supabase server sees duplicate JOINs and drops events on both. **Fix**: Each effect now calls `supabase.getChannels().filter(...).forEach(c => supabase.removeChannel(c))` before subscribing to evict any zombie channels from previous HMR cycles.
+
 ## [0.3.19] - Realtime Private Channel Subscription Fix - 15-04-2026
 
 ### Fixed
@@ -2968,7 +2978,7 @@
 ### Updates
 
 - Fixed Live chat error and detail chat
-- Update project branding to **Synka AI**
+- Update project branding to **CS Super**
 - Enhance **chat functionality**
 - Improve **permissions management**
 - Key changes include:

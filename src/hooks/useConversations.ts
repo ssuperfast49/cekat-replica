@@ -1275,7 +1275,7 @@ export const useConversations = (options?: {
       await fetchConversations(undefined, { silent: true });
       await fetchMessages(threadId);
 
-      // Audit log
+      // Audit Log
       try { await logAction({ action: 'thread.assign', resource: 'thread', resourceId: threadId, context: { assignee_user_id: assigneeUserId } }); } catch { }
     } catch (error) {
       console.error('Error assigning thread to user:', error);
@@ -1597,6 +1597,8 @@ export const useConversations = (options?: {
   // Uses Broadcast from Database triggers instead of postgres_changes
   useEffect(() => {
     void supabase.realtime.setAuth(); // Required for Broadcast authorization
+    // Remove any stale channel with this name (guards against HMR duplicate subscriptions)
+    supabase.getChannels().filter(c => c.topic === 'realtime:threads:all').forEach(c => supabase.removeChannel(c));
     const channel = supabase
       .channel('threads:all', { config: { private: true } })
       .on('broadcast', { event: 'UPDATE' }, (payload) => {
@@ -1625,6 +1627,7 @@ export const useConversations = (options?: {
 
   // Realtime Broadcast: update conversation list when any message is inserted
   useEffect(() => {
+    supabase.getChannels().filter(c => c.topic === 'realtime:messages:all').forEach(c => supabase.removeChannel(c));
     const channel = supabase
       .channel('messages:all', { config: { private: true } })
       .on('broadcast', { event: 'INSERT' }, (payload) => {
