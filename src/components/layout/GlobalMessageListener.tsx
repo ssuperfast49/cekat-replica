@@ -12,6 +12,11 @@ export function GlobalMessageListener() {
     const { hasRole } = useRBAC();
 
     const location = useLocation();
+    // Use refs for values that should not trigger channel rebuild on change
+    const locationRef = useRef(location);
+    locationRef.current = location;
+    const hasRoleRef = useRef(hasRole);
+    hasRoleRef.current = hasRole;
     const navigate = useNavigate();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const lastNotificationTime = useRef<number>(0);
@@ -51,12 +56,12 @@ export function GlobalMessageListener() {
                     // Only incoming user messages (filter client-side)
                     if (newMessage.direction !== 'in') return;
 
-                    // Verify it's a user message 
+                    // Verify it's a user message
                     if (newMessage.role !== 'user') return;
 
                     try {
                         // Check authorization
-                        const isSuperAdmin = hasRole('superadmin');
+                        const isSuperAdmin = hasRoleRef.current('superadmin');
 
                         const cacheKey = newMessage.thread_id;
                         let thread = getCachedThread(cacheKey);
@@ -100,12 +105,13 @@ export function GlobalMessageListener() {
 
                         // Determine if we should show a toast
                         // Skip if the user is currently viewing this thread in the chat
-                        const searchParams = new URLSearchParams(location.search);
+                        const loc = locationRef.current;
+                        const searchParams = new URLSearchParams(loc.search);
                         const activeThreadId = searchParams.get('thread');
                         const activeMenu = searchParams.get('menu');
                         const isChatActive = !activeMenu || activeMenu === 'chat';
-                        const isOnChatPage = (location.pathname.startsWith('/chat') || location.pathname === '/') && isChatActive;
-                        const isViewingThisThread = isOnChatPage && (activeThreadId === newMessage.thread_id || location.pathname.includes(newMessage.thread_id));
+                        const isOnChatPage = (loc.pathname.startsWith('/chat') || loc.pathname === '/') && isChatActive;
+                        const isViewingThisThread = isOnChatPage && (activeThreadId === newMessage.thread_id || loc.pathname.includes(newMessage.thread_id));
 
                         if (isViewingThisThread) {
                             return; // Don't toast if looking at it
@@ -137,12 +143,14 @@ export function GlobalMessageListener() {
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status, err) => {
+                if (err) console.error('[RT] notifications:messages error:', err);
+            });
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user, hasRole, location]); // Depend on location to check active thread
+    }, [user]); // user controls subscription lifecycle; location/hasRole accessed via refs
 
     return null;
 }

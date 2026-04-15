@@ -1614,7 +1614,9 @@ export const useConversations = (options?: {
           void fetchTabCountsV2();
         }
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.error('[RT] threads:all error:', err);
+      });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
@@ -1649,7 +1651,9 @@ export const useConversations = (options?: {
           updateConversationPreview(message.thread_id, message);
         }
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.error('[RT] messages:all error:', err);
+      });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
@@ -1686,7 +1690,9 @@ export const useConversations = (options?: {
           return merged;
         });
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.error('[RT] messages:thread error:', err);
+      });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
@@ -1702,7 +1708,9 @@ export const useConversations = (options?: {
         const record = payload.payload?.record || payload.payload?.new;
         if (record) applyThreadRealtimePatch(record);
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.error('[RT] threads:thread error:', err);
+      });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
