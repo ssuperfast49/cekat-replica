@@ -1,5 +1,14 @@
 # Change Log
 
+## [0.3.18] - Realtime Conversation List Fix - 15-04-2026
+
+### Fixed
+
+- **Conversation List Not Updating in Real-Time**: Fixed a critical bug where new messages never appeared in the thread list without a manual page refresh, and all Supabase Realtime subscriptions cycled through TIMED_OUT → CLOSED repeatedly.
+  - **Root Cause**: `applyThreadRealtimePatch` was declared as a `useCallback` with `fetchTabCountsV2` as a dependency. Since `fetchTabCountsV2` is a plain (non-memoized) function, it receives a new reference on every render — causing `applyThreadRealtimePatch` to also change every render. The `threads:all` subscription effect listed `applyThreadRealtimePatch` as a dependency, so it tore down and re-created the `threads:all` Supabase Realtime channel on every single render. This constant subscribe/unsubscribe churn overwhelmed the Realtime WebSocket connection, causing all channels (`messages:all`, `notifications:messages`, etc.) to time out and close.
+  - **Fix**: Changed `applyThreadRealtimePatch`'s `useCallback` dependency array from `[fetchTabCountsV2]` to `[]`. All internal state access within the callback already uses refs or stable React setters, so the stable closure is safe. Also removed `applyThreadRealtimePatch` from the `threads:{selectedThreadId}` effect's dependency array for the same reason.
+  - Updated: `src/hooks/useConversations.ts`
+
 ## [0.3.17] - AI Profile Webhook Fix & Welcome Message Reliability - 15-04-2026
 
 ### Fixed

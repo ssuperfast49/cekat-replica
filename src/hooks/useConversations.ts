@@ -709,7 +709,7 @@ export const useConversations = (options?: {
         return next;
       }
     });
-  }, [fetchTabCountsV2]);
+  }, []); // empty deps: all internals use refs or stable setters — stale closure is safe
 
   // Fetch messages for a specific thread
   const fetchMessages = useCallback(async (threadId: string, options?: { loadMore?: boolean; skipCache?: boolean }) => {
@@ -1707,7 +1707,7 @@ export const useConversations = (options?: {
     return () => {
       try { supabase.removeChannel(channel); } catch { }
     };
-  }, [selectedThreadId, applyThreadRealtimePatch]);
+  }, [selectedThreadId]);
 
   return {
     conversations,
