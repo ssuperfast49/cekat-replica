@@ -1,13 +1,21 @@
 # Change Log
 
-## [0.3.18] - Realtime Conversation List Fix - 15-04-2026
+## [0.3.19] - Realtime Private Channel Subscription Fix - 15-04-2026
 
 ### Fixed
 
-- **Conversation List Not Updating in Real-Time**: Fixed a critical bug where new messages never appeared in the thread list without a manual page refresh, and all Supabase Realtime subscriptions cycled through TIMED_OUT → CLOSED repeatedly.
-  - **Root Cause**: `applyThreadRealtimePatch` was declared as a `useCallback` with `fetchTabCountsV2` as a dependency. Since `fetchTabCountsV2` is a plain (non-memoized) function, it receives a new reference on every render — causing `applyThreadRealtimePatch` to also change every render. The `threads:all` subscription effect listed `applyThreadRealtimePatch` as a dependency, so it tore down and re-created the `threads:all` Supabase Realtime channel on every single render. This constant subscribe/unsubscribe churn overwhelmed the Realtime WebSocket connection, causing all channels (`messages:all`, `notifications:messages`, etc.) to time out and close.
-  - **Fix**: Changed `applyThreadRealtimePatch`'s `useCallback` dependency array from `[fetchTabCountsV2]` to `[]`. All internal state access within the callback already uses refs or stable React setters, so the stable closure is safe. Also removed `applyThreadRealtimePatch` from the `threads:{selectedThreadId}` effect's dependency array for the same reason.
-  - Updated: `src/hooks/useConversations.ts`
+- **Realtime Channels Subscribed But Receiving No Events**: Calling `.subscribe()` with no arguments on Supabase private broadcast channels causes the realtime-js SDK to not properly finalize the subscription — channels report SUBSCRIBED status but silently drop all incoming broadcast events. **Fix**: All five private channel subscriptions (`threads:all`, `messages:all`, `messages:{threadId}`, `threads:{threadId}`, `notifications:messages`) now pass an explicit callback to ensure the SDK initializes the subscription state machine correctly. Callbacks are error-only (no verbose logging).
+  - Updated: `src/hooks/useConversations.ts`, `src/components/layout/GlobalMessageListener.tsx`
+
+## [0.3.18] - Realtime Channel Churn Fix - 15-04-2026
+
+### Fixed
+
+- **Conversation List Not Updating in Real-Time**: Fixed two channel churn bugs that caused all Supabase Realtime subscriptions to cycle through TIMED_OUT → CLOSED repeatedly, preventing new messages from appearing without a manual refresh.
+
+  - **Bug 1 — `useConversations` churn** (`src/hooks/useConversations.ts`): `applyThreadRealtimePatch` was declared as a `useCallback` with `fetchTabCountsV2` as a dependency. Since `fetchTabCountsV2` is a plain (non-memoized) function, it gets a new reference on every render — causing `applyThreadRealtimePatch` to also change every render. The `threads:all` subscription effect listed it as a dependency, so it tore down and re-created the channel on every render, overwhelming the WebSocket. **Fix**: Changed `applyThreadRealtimePatch` deps to `[]` — all internal state access uses refs or stable setters so the stale closure is safe.
+
+  - **Bug 2 — `GlobalMessageListener` churn** (`src/components/layout/GlobalMessageListener.tsx`): The `notifications:messages` channel effect had `location` (from `useLocation()`) and `hasRole` (plain function, new reference every render) in its dependency array. Every URL change or RBAC context update triggered a full channel teardown and rebuild. **Fix**: Replaced both with refs (`locationRef`, `hasRoleRef`) that stay current every render without causing effect re-runs. Effect now only depends on `[user]`.
 
 ## [0.3.17] - AI Profile Webhook Fix & Welcome Message Reliability - 15-04-2026
 
