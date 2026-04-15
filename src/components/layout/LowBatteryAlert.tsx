@@ -83,19 +83,21 @@ export const LowBatteryAlert = () => {
                             ⚠️ Baterai AI Hampir Habis
                         </AlertDialogTitle>
                     </div>
-                    <AlertDialogDescription className="text-sm leading-relaxed space-y-2">
-                        <p>
-                            Baterai AI ({providerLabel}) saat ini berada di <span className="font-bold text-red-600 dark:text-red-400">{lowestWallet.battery_percent}%</span>.
-                        </p>
-                        <p>
-                            Saldo saat ini: <span className="font-semibold">{formatUsd(lowestWallet.balance_usd)}</span>.
-                        </p>
-                        <p>
-                            {isWalletAdmin
-                                ? "Silakan segera lakukan top up saldo AI wallet agar layanan tetap berjalan tanpa gangguan."
-                                : "Silakan hubungi Billing Admin untuk melakukan top up saldo AI wallet agar layanan tetap berjalan."
-                            }
-                        </p>
+                    <AlertDialogDescription asChild>
+                        <div className="text-sm leading-relaxed space-y-2">
+                            <p>
+                                Baterai AI ({providerLabel}) saat ini berada di <span className="font-bold text-red-600 dark:text-red-400">{lowestWallet.battery_percent}%</span>.
+                            </p>
+                            <p>
+                                Saldo saat ini: <span className="font-semibold">{formatUsd(lowestWallet.balance_usd)}</span>.
+                            </p>
+                            <p>
+                                {isWalletAdmin
+                                    ? "Silakan segera lakukan top up saldo AI wallet agar layanan tetap berjalan tanpa gangguan."
+                                    : "Silakan hubungi Billing Admin untuk melakukan top up saldo AI wallet agar layanan tetap berjalan."
+                                }
+                            </p>
+                        </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
