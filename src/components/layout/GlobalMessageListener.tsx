@@ -44,7 +44,7 @@ export function GlobalMessageListener() {
             audioRef.current?.play().catch(e => console.error('Audio play failed:', e));
         };
 
-        supabase.getChannels().filter(c => c.topic === 'notifications:messages').forEach(c => supabase.removeChannel(c));
+        supabase.getChannels().filter(c => c.topic === 'realtime:notifications:messages').forEach(c => supabase.removeChannel(c));
         const channel = supabase
             .channel('notifications:messages', { config: { private: true } })
             .on(

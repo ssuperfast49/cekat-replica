@@ -1598,7 +1598,7 @@ export const useConversations = (options?: {
   useEffect(() => {
     void supabase.realtime.setAuth(); // Required for Broadcast authorization
     // Remove any stale channel with this name (guards against HMR duplicate subscriptions)
-    supabase.getChannels().filter(c => c.topic === 'threads:all').forEach(c => supabase.removeChannel(c));
+    supabase.getChannels().filter(c => c.topic === 'realtime:threads:all').forEach(c => supabase.removeChannel(c));
     const channel = supabase
       .channel('threads:all', { config: { private: true } })
       .on('broadcast', { event: 'UPDATE' }, (payload) => {
@@ -1627,7 +1627,7 @@ export const useConversations = (options?: {
 
   // Realtime Broadcast: update conversation list when any message is inserted
   useEffect(() => {
-    supabase.getChannels().filter(c => c.topic === 'messages:all').forEach(c => supabase.removeChannel(c));
+    supabase.getChannels().filter(c => c.topic === 'realtime:messages:all').forEach(c => supabase.removeChannel(c));
     const channel = supabase
       .channel('messages:all', { config: { private: true } })
       .on('broadcast', { event: 'INSERT' }, (payload) => {
