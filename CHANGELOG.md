@@ -1,5 +1,32 @@
 # Change Log
 
+## [0.3.22] - Contacts Pagination & Query Shape Optimization - 16-04-2026
+
+### Fixed
+
+- **Contacts Pagination Stuck at Page 1 of 1**: Fixed pagination math in Contacts page to use server `totalCount` instead of current page row length. Previously, with large datasets (e.g. 20k+ contacts), UI showed only one page because it calculated total pages from visible rows.
+  - Updated: `src/components/contacts/Contacts.tsx`
+
+- **Contacts Totals Displayed Incorrectly**: Footer/header totals now show real dataset totals from backend (`totalCount`) and current page as "shown", instead of treating visible rows as full total.
+  - Updated: `src/components/contacts/Contacts.tsx`
+
+### Changed
+
+- **Contacts Page Size UX**: Reduced default Contacts page size from 100 to 20 rows for faster rendering and better usability. Added 20-row option in the page-size selector.
+  - Updated: `src/components/contacts/Contacts.tsx`, `src/hooks/useContacts.ts`
+
+- **Pagination State Behavior**: Search, filters, and page-size changes now reset to page 1 to prevent invalid page states after criteria changes.
+  - Updated: `src/components/contacts/Contacts.tsx`
+
+- **Contacts Query Shape Optimization (Frontend Data Flow)**:
+  - For non-thread-filtered views, the app now fetches paginated contacts first, then fetches latest thread data only for those visible contact IDs.
+  - This avoids doing latest-thread lookup work across non-visible contacts and reduces load for large datasets.
+  - The previous `threads!inner` path is retained for thread-filtered scenarios (status/assigned/date range) where server-side filtering is required.
+  - Updated: `src/hooks/useContacts.ts`
+
+- **Consistent Refetch After Mutations**: After create/update/delete/bulk-delete, contacts now refetch using last-used page/limit/search/filter params instead of default arguments.
+  - Updated: `src/hooks/useContacts.ts`
+
 ## [0.3.21] - Realtime Auto-Reconnect & Low Battery Alert Cleanup - 16-04-2026
 
 ### Fixed

@@ -34,22 +34,67 @@ export interface ContactsFilter {
   dateRange?: { from?: string; to?: string };
 }
 
-export const useContacts = () => {
+interface UseContactsOptions {
+  autoFetch?: boolean;
+}
+
+export const useContacts = (options: UseContactsOptions = {}) => {
+  const { autoFetch = false } = options;
   const [contacts, setContacts] = useState<ContactWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const lastQueryRef = useRef<{ page: number; limit: number; searchQuery?: string; filters?: ContactsFilter }>({
     page: 1,
-    limit: 100,
+    limit: 20,
     searchQuery: undefined,
     filters: undefined,
   });
 
+  const formatChatCreatedAt = (iso?: string | null) => {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).replace(',', '');
+  };
+
+  const getThreadChannel = (thread: any) => {
+    if (!thread?.channels) return null;
+    return Array.isArray(thread.channels) ? (thread.channels[0] || null) : thread.channels;
+  };
+
+  const toContactWithDetails = (row: any, lastThread: any): ContactWithDetails => {
+    const channel = getThreadChannel(lastThread);
+    return {
+      id: row.id,
+      org_id: row.org_id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      locale: row.locale,
+      notes: row.notes,
+      created_at: row.created_at,
+      labelNames: '',
+      inbox: channel?.display_name || '—',
+      channelProvider: channel?.provider || null,
+      channelType: channel?.type || null,
+      chatStatus: lastThread?.status || '—',
+      chatCreatedAt: formatChatCreatedAt(lastThread?.created_at || null),
+      chatCreatedAtISO: lastThread?.created_at || null,
+      handledBy: lastThread?.assignee_user_id ? 'assigned' : 'unassigned',
+    } as ContactWithDetails;
+  };
+
   // Fetch contacts with pagination, search, and filters (server-side as much as possible)
   const fetchContacts = async (
     page: number = 1,
-    limit: number = 100,
+    limit: number = 20,
     searchQuery?: string,
     filters?: ContactsFilter
   ) => {
@@ -66,23 +111,84 @@ export const useContacts = () => {
         filters?.handledBy === 'assigned'
       );
 
+      const searchTerm = searchQuery?.trim();
+      const hasSearch = !!searchTerm;
+      const countStrategy = needsThreadInnerJoin || hasSearch ? 'exact' : 'planned';
+
+      // Apply pagination
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      // Fast path: page contacts first, then resolve latest thread for those visible contacts only.
+      if (!needsThreadInnerJoin) {
+        let contactsQuery = protectedSupabase
+          .from('contacts')
+          .select('id, org_id, name, email, phone, locale, notes, created_at', { count: countStrategy })
+          .order('created_at', { ascending: false });
+
+        if (hasSearch) {
+          contactsQuery = contactsQuery.or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+        }
+
+        contactsQuery = contactsQuery.range(from, to);
+
+        const { data: contactsData, error: contactsError, count } = await contactsQuery as any;
+        if (contactsError) throw contactsError;
+
+        const contactIds = (contactsData || []).map((row: any) => row.id).filter(Boolean);
+        const latestThreadByContact = new Map<string, any>();
+
+        if (contactIds.length > 0) {
+          const { data: threadRows, error: threadError } = await protectedSupabase
+            .from('threads')
+            .select(`
+              id, contact_id, status, created_at, assignee_user_id,
+              channels(display_name, provider, type)
+            `)
+            .in('contact_id', contactIds)
+            .order('contact_id', { ascending: true })
+            .order('created_at', { ascending: false });
+
+          if (threadError) throw threadError;
+
+          for (const thread of (threadRows || [])) {
+            if (thread?.contact_id && !latestThreadByContact.has(thread.contact_id)) {
+              latestThreadByContact.set(thread.contact_id, thread);
+            }
+          }
+        }
+
+        let transformedData: ContactWithDetails[] = (contactsData || []).map((row: any) =>
+          toContactWithDetails(row, latestThreadByContact.get(row.id) || null)
+        );
+
+        // Keep this client-side for "unassigned" so we don't force the heavy inner-join path.
+        if (filters?.handledBy) {
+          transformedData = transformedData.filter(contact => contact.handledBy === filters.handledBy);
+        }
+
+        setContacts(transformedData);
+        setTotalCount(count || 0);
+        return;
+      }
+
       let query = protectedSupabase
         .from('contacts')
         .select(
           `
           id, org_id, name, email, phone, locale, notes, created_at,
-          threads${needsThreadInnerJoin ? '!inner' : ''}(
+          threads!inner(
             id, status, created_at, assignee_user_id,
             channels(display_name, provider, type)
           )
           `,
-          { count: 'exact' }
+          { count: countStrategy }
         )
         .order('created_at', { ascending: false });
 
       // Apply search filter if provided
-      if (searchQuery) {
-        query = query.or(`name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`);
+      if (hasSearch) {
+        query = query.or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
       }
 
       // Apply additional filters (server-side) on nested threads when possible
@@ -105,9 +211,6 @@ export const useContacts = () => {
         }
       }
 
-      // Apply pagination
-      const from = (page - 1) * limit;
-      const to = from + limit - 1;
       query = query.range(from, to);
 
       // Ensure we only fetch the latest thread per contact (order + limit on foreign table)
@@ -120,37 +223,7 @@ export const useContacts = () => {
       // Transform data to match the expected format
       let transformedData: ContactWithDetails[] = (data || []).map((row: any) => {
         const lastThread = (row.threads || [])[0] || null;
-        const inboxName = lastThread?.channels?.display_name || '—';
-        const chatCreated = lastThread?.created_at
-          ? new Date(lastThread.created_at).toLocaleString('en-US', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: false,
-            }).replace(',', '')
-          : '—';
-
-        return {
-          id: row.id,
-          org_id: row.org_id,
-          name: row.name,
-          email: row.email,
-          phone: row.phone,
-          locale: row.locale,
-          notes: row.notes,
-          created_at: row.created_at,
-          labelNames: '',
-          inbox: inboxName,
-          channelProvider: lastThread?.channels?.provider || null,
-          channelType: lastThread?.channels?.type || null,
-          chatStatus: lastThread?.status || '—',
-          chatCreatedAt: chatCreated,
-          chatCreatedAtISO: lastThread?.created_at || null,
-          handledBy: lastThread?.assignee_user_id ? 'assigned' : 'unassigned',
-        } as ContactWithDetails;
+        return toContactWithDetails(row, lastThread);
       });
 
       // Apply client-side filtering
@@ -214,8 +287,13 @@ export const useContacts = () => {
 
       if (error) throw error;
 
-      // Refresh contacts list
-      await fetchContacts();
+      // Refresh contacts list with the last-used query params
+      await fetchContacts(
+        lastQueryRef.current.page,
+        lastQueryRef.current.limit,
+        lastQueryRef.current.searchQuery,
+        lastQueryRef.current.filters
+      );
 
       try { await logAction({ action: 'contact.create', resource: 'contact', resourceId: (data as any)?.id ?? null, context: contactData as any }); } catch {}
 
@@ -239,8 +317,13 @@ export const useContacts = () => {
 
       if (error) throw error;
 
-      // Refresh contacts list
-      await fetchContacts();
+      // Refresh contacts list with the last-used query params
+      await fetchContacts(
+        lastQueryRef.current.page,
+        lastQueryRef.current.limit,
+        lastQueryRef.current.searchQuery,
+        lastQueryRef.current.filters
+      );
 
       try { await logAction({ action: 'contact.update', resource: 'contact', resourceId: contactId, context: updateData as any }); } catch {}
 
@@ -265,8 +348,13 @@ export const useContacts = () => {
 
       defaultFallbackHandler.invalidatePattern('^query:contacts');
 
-      // Refresh contacts list
-      await fetchContacts();
+      // Refresh contacts list with the last-used query params
+      await fetchContacts(
+        lastQueryRef.current.page,
+        lastQueryRef.current.limit,
+        lastQueryRef.current.searchQuery,
+        lastQueryRef.current.filters
+      );
 
       try { await logAction({ action: 'contact.delete', resource: 'contact', resourceId: contactId }); } catch {}
 
@@ -291,8 +379,13 @@ export const useContacts = () => {
 
       defaultFallbackHandler.invalidatePattern('^query:contacts');
 
-      // Refresh contacts list
-      await fetchContacts();
+      // Refresh contacts list with the last-used query params
+      await fetchContacts(
+        lastQueryRef.current.page,
+        lastQueryRef.current.limit,
+        lastQueryRef.current.searchQuery,
+        lastQueryRef.current.filters
+      );
 
       try { await logAction({ action: 'contact.bulk_delete', resource: 'contact', context: { ids: contactIds } }); } catch {}
 
@@ -305,9 +398,10 @@ export const useContacts = () => {
 
   // Initial fetch on mount (gate network on visibility)
   useEffect(() => {
+    if (!autoFetch) return;
     const run = () => fetchContacts();
     run();
-  }, []);
+  }, [autoFetch]);
 
   // Authorization changes: clear current UI state and refetch with last-used query params.
   useEffect(() => {

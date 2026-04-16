@@ -41,7 +41,7 @@ export default function Contacts() {
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [itemsPerPage, setItemsPerPage] = useState(100);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
   const [sortKey, setSortKey] = useState<'name' | 'phone' | 'notes' | 'inbox' | 'channelProvider' | 'channelType' | 'chatStatus' | 'chatCreatedAtISO' | 'handledBy' | 'created_at' | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -75,7 +75,7 @@ export default function Contacts() {
     deleteContact, 
     updateContact,
     deleteMultipleContacts 
-  } = useContacts();
+  } = useContacts({ autoFetch: false });
 
   // Handle search with debouncing
   useEffect(() => {
@@ -187,6 +187,7 @@ export default function Contacts() {
   };
 
   const handleFilterChange = <K extends keyof ContactsFilter>(key: K, value: ContactsFilter[K]) => {
+    setCurrentPage(1);
     setFilters(prev => ({
       ...prev,
       [key]: value,
@@ -194,6 +195,7 @@ export default function Contacts() {
   };
 
   const handleDateRangeChange = (key: 'from' | 'to', value: string) => {
+    setCurrentPage(1);
     setFilters(prev => ({
       ...prev,
       dateRange: {
@@ -204,6 +206,7 @@ export default function Contacts() {
   };
 
   const clearFilters = () => {
+    setCurrentPage(1);
     setFilters({ chatStatus: '', handledBy: '', dateRange: {} });
   };
 
@@ -256,6 +259,7 @@ export default function Contacts() {
   })();
 
   const visibleCount = filteredContacts.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
 
   const renderChatStatus = (status?: string) => {
     if (!status || status === '—') return <span className="text-muted-foreground">—</span>;
@@ -279,7 +283,7 @@ export default function Contacts() {
         <div>
           <h1 className="text-2xl font-semibold">Contacts</h1>
           <p className="text-sm text-muted-foreground">
-            Total Contacts: {loading ? '...' : `${visibleCount.toLocaleString()} of ${totalCount.toLocaleString()}`}
+            Total Contacts: {loading ? '...' : `${visibleCount.toLocaleString()} shown of ${totalCount.toLocaleString()}`}
           </p>
         </div>
         
@@ -420,14 +424,20 @@ export default function Contacts() {
                 placeholder="Cari berdasarkan Nama atau Telepon" 
                 className="pl-10 pr-8 w-80"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setSearchQuery(e.target.value);
+                }}
               />
               {searchQuery && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={() => setSearchQuery("")}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSearchQuery("");
+                      }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       aria-label="Clear search"
                     >
@@ -714,7 +724,7 @@ export default function Contacts() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : contacts.length === 0 ? (
+              ) : filteredContacts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8">
                     <div className="text-muted-foreground">
@@ -867,13 +877,13 @@ export default function Contacts() {
           </Button>
           <span className="text-sm">
             Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">
-              {Math.max(1, Math.ceil(visibleCount / itemsPerPage))}
+              {totalPages}
             </span>
           </span>
           <Button 
             variant="outline" 
             size="sm"
-            disabled={currentPage >= Math.ceil(visibleCount / itemsPerPage) || loading}
+            disabled={currentPage >= totalPages || loading}
             onClick={() => setCurrentPage(currentPage + 1)}
           >
             <ChevronRight className="w-4 h-4" />
@@ -883,11 +893,15 @@ export default function Contacts() {
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
             <span>Items per page:</span>
-            <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value))}>
+            <Select value={itemsPerPage.toString()} onValueChange={(value) => {
+              setCurrentPage(1);
+              setItemsPerPage(parseInt(value));
+            }}>
               <SelectTrigger className="w-20 h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="20">20</SelectItem>
                 <SelectItem value="50">50</SelectItem>
                 <SelectItem value="100">100</SelectItem>
                 <SelectItem value="200">200</SelectItem>
@@ -895,7 +909,7 @@ export default function Contacts() {
             </Select>
             <span>rows</span>
           </div>
-          <span>Total: <span className="font-medium">{visibleCount.toLocaleString()}</span></span>
+          <span>Total: <span className="font-medium">{totalCount.toLocaleString()}</span></span>
         </div>
       </div>
 
