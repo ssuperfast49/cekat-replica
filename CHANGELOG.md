@@ -1,5 +1,17 @@
 # Change Log
 
+## [0.3.21] - Realtime Auto-Reconnect & Low Battery Alert Cleanup - 16-04-2026
+
+### Fixed
+
+- **Realtime Channels Don't Recover After Disconnect**: Added automatic reconnect logic to `useConversations`. When any private broadcast channel reports `CLOSED` or `TIMED_OUT`, a debounced 3-second timer increments `rtReconnectKey`, which forces all four channel `useEffect`s (`threads:all`, `messages:all`, `messages:{threadId}`, `threads:{threadId}`) to tear down and re-subscribe. Previously, a dropped WebSocket would leave the UI stale until the page was refreshed.
+  - Updated: `src/hooks/useConversations.ts`
+
+### Changed
+
+- **Balance Hidden in Low Battery Alert for Non-Billing Admins**: The "Saldo saat ini" (current USD balance) line in the low battery popup alert is now only shown to `billing_admin`. All other roles see the battery percentage and the top-up reminder, but not the raw USD balance.
+  - Updated: `src/components/layout/LowBatteryAlert.tsx`
+
 ## [0.3.20] - Realtime Private Channel Subscription Fix - 15-04-2026
 
 ### Fixed
