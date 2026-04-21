@@ -402,6 +402,71 @@ async function checkHandover(p: {
     return { is_handoff: isHandoff };
 }
 
+// ───── ACTION: send_message_full ─────
+// Atmoically ensures the thread, inserts the welcome message, and inserts the user message.
+// This prevents ghost threads if the user disconnects shortly after sending a message.
+async function sendMessageFull(p: {
+    channel_id: string;
+    session_id: string;
+    username: string;
+    account_id: string;
+    web?: string;
+    provider?: string;
+    welcome_message?: string;
+    messages: any[];
+}) {
+    // 1. Ensure Thread
+    const threadData = await ensureThread({
+        channel_id: p.channel_id,
+        session_id: p.session_id,
+        username: p.username,
+        account_id: p.account_id,
+        web: p.web,
+        provider: p.provider,
+    });
+
+    const threadId = threadData.thread_id;
+
+    // 2. Fetch AI Context so we know the ai_profile and can return it to frontend
+    let aiContext: any = null;
+    try {
+        aiContext = await getAiContext({
+            thread_id: threadId,
+            channel_id: threadData.channel_id,
+            contact_id: threadData.contact_id
+        });
+    } catch(e) {
+        console.error("get_ai_context failed inside send_message_full", e);
+    }
+
+    // 3. Insert Welcome Message if it's a new conversation
+    const welcomeMsg = p.welcome_message || aiContext?.ai_profile?.welcome_message;
+    if (threadData.is_new && welcomeMsg) {
+        await insertWelcomeMessage({
+            thread_id: threadId,
+            welcome_message: welcomeMsg,
+        });
+    }
+
+    // 4. Insert User Messages
+    if (p.messages && p.messages.length > 0) {
+        // Ensure the messages have the correct thread_id applied
+        const preparedMessages = p.messages.map(msg => ({
+            ...msg,
+            thread_id: threadId
+        }));
+        await insertUserMessages({
+            messages: preparedMessages
+        });
+    }
+
+    // Return the threadData and aiContext so the frontend can update its state and call webhooks
+    return {
+        threadData,
+        aiContext
+    };
+}
+
 // ───── ROUTER ─────
 const ACTIONS: Record<string, (p: any) => Promise<any>> = {
     ensure_thread: ensureThread,
@@ -412,6 +477,7 @@ const ACTIONS: Record<string, (p: any) => Promise<any>> = {
     reopen_thread: reopenThread,
     log_token_usage: logTokenUsage,
     check_handover: checkHandover,
+    send_message_full: sendMessageFull,
 };
 
 Deno.serve(async (req) => {

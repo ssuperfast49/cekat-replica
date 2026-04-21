@@ -1,5 +1,18 @@
 # Change Log
 
+## [0.3.21] - Ghost Threads & Passive Reopen Fix - 16-04-2026
+
+### Fixed
+
+- **Atomicity in LiveChat Orchestrator**: Addressed "ghost threads" (threads created without any message) by creating a new `send_message_full` atomic Edge Function. The frontend now relies on this single server-side operation to find/create the thread, fetch AI context, insert the welcome message, and insert the user's message simultaneously.
+- **Passive Reopening of Resolved Threads**: Removed active `reopen_thread` calls running automatically during LiveChat widget mount or broadcast receive. The frontend now only updates its local state using `handleClosedThreadState`, relying purely on the backend database trigger `tr_reopen_thread_on_user_message` to "passively" reopen threads only when the user explicitly sends a new message.
+  - Updated: `src/hooks/useLiveChat.ts`, `supabase/functions/livechat-orchestrator/index.ts`
+
+### Changed
+
+- **ChatGPT Battery Always 100%**: Hardcoded the OpenAI/ChatGPT battery percentage to always display 100% visually, preventing the low battery alert from triggering for this provider.
+  - Updated: `src/hooks/useAIWallet.ts`
+
 ## [0.3.20] - Realtime Private Channel Subscription Fix - 15-04-2026
 
 ### Fixed
