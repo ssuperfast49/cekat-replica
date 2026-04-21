@@ -191,6 +191,18 @@ export const useConversations = (options?: {
   const [activeFilters, setActiveFilters] = useState<ThreadFilters>({});
   const conversationsRefreshTimer = useRef<number | null>(null);
 
+  // Realtime reconnect key — incremented when any private channel closes unexpectedly,
+  // which forces all channel useEffects to re-run and re-subscribe.
+  const [rtReconnectKey, setRtReconnectKey] = useState(0);
+  const rtReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRtReconnect = useCallback(() => {
+    if (rtReconnectTimer.current) return; // already queued
+    rtReconnectTimer.current = setTimeout(() => {
+      rtReconnectTimer.current = null;
+      setRtReconnectKey(k => k + 1);
+    }, 3000);
+  }, []);
+
   const scheduleConversationsRefresh = (delayMs: number = 400, jitter: boolean = false) => {
     try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
     const finalDelay = delayMs + (jitter ? Math.floor(Math.random() * 3000) : 0);
@@ -1618,12 +1630,13 @@ export const useConversations = (options?: {
       })
       .subscribe((status, err) => {
         if (err) console.error('[RT] threads:all error:', err);
+        if (status === 'CLOSED' || status === 'TIMED_OUT') scheduleRtReconnect();
       });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
     };
-  }, [applyThreadRealtimePatch]);
+  }, [applyThreadRealtimePatch, scheduleRtReconnect, rtReconnectKey]);
 
   // Realtime Broadcast: update conversation list when any message is inserted
   useEffect(() => {
@@ -1656,13 +1669,15 @@ export const useConversations = (options?: {
       })
       .subscribe((status, err) => {
         if (err) console.error('[RT] messages:all error:', err);
+        if (status === 'CLOSED' || status === 'TIMED_OUT') scheduleRtReconnect();
       });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
       try { if (conversationsRefreshTimer.current) { clearTimeout(conversationsRefreshTimer.current); conversationsRefreshTimer.current = null; } } catch { }
+      try { if (rtReconnectTimer.current) { clearTimeout(rtReconnectTimer.current); rtReconnectTimer.current = null; } } catch { }
     };
-  }, []);
+  }, [scheduleRtReconnect, rtReconnectKey]);
 
   // Realtime Broadcast: keep messages in sync for the selected thread (zero polling)
   useEffect(() => {
@@ -1695,12 +1710,13 @@ export const useConversations = (options?: {
       })
       .subscribe((status, err) => {
         if (err) console.error('[RT] messages:thread error:', err);
+        if (status === 'CLOSED' || status === 'TIMED_OUT') scheduleRtReconnect();
       });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
     };
-  }, [selectedThreadId]);
+  }, [selectedThreadId, scheduleRtReconnect, rtReconnectKey]);
 
   // Realtime Broadcast: thread detail changes (status, assignment, etc.) — pure state mutation
   useEffect(() => {
@@ -1713,12 +1729,13 @@ export const useConversations = (options?: {
       })
       .subscribe((status, err) => {
         if (err) console.error('[RT] threads:thread error:', err);
+        if (status === 'CLOSED' || status === 'TIMED_OUT') scheduleRtReconnect();
       });
 
     return () => {
       try { supabase.removeChannel(channel); } catch { }
     };
-  }, [selectedThreadId]);
+  }, [selectedThreadId, applyThreadRealtimePatch, scheduleRtReconnect, rtReconnectKey]);
 
   return {
     conversations,

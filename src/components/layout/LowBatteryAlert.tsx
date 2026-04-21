@@ -88,9 +88,11 @@ export const LowBatteryAlert = () => {
                             <p>
                                 Baterai AI ({providerLabel}) saat ini berada di <span className="font-bold text-red-600 dark:text-red-400">{lowestWallet.battery_percent}%</span>.
                             </p>
-                            <p>
-                                Saldo saat ini: <span className="font-semibold">{formatUsd(lowestWallet.balance_usd)}</span>.
-                            </p>
+                            {isWalletAdmin && (
+                                <p>
+                                    Saldo saat ini: <span className="font-semibold">{formatUsd(lowestWallet.balance_usd)}</span>.
+                                </p>
+                            )}
                             <p>
                                 {isWalletAdmin
                                     ? "Silakan segera lakukan top up saldo AI wallet agar layanan tetap berjalan tanpa gangguan."
