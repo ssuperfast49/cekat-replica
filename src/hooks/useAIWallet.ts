@@ -66,9 +66,10 @@ export const useAIWallets = () => {
             const next: Record<string, AIWalletData> = {};
             for (const row of data || []) {
                 const provider = (row as any).provider || 'openai';
-                const percent = row.battery_100_usd > 0
+                const rawPercent = row.battery_100_usd > 0
                     ? Math.max(0, Math.min(100, (row.balance_usd / row.battery_100_usd) * 100))
                     : 0;
+                const percent = provider === 'openai' ? 100 : rawPercent;
                 next[provider] = {
                     org_id: row.org_id,
                     balance_usd: row.balance_usd,
