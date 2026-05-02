@@ -80,7 +80,7 @@ export const TokenLimitIndicator = () => {
 
     const providers = [
         { key: "openai", label: "OpenAI" },
-        { key: "gemini", label: "Gemini" },
+        { key: "openrouter", label: "OpenRouter" },
     ];
 
     const hasAnyWallet = providers.some((p) => wallets[p.key]);
