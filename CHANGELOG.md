@@ -1,5 +1,35 @@
 # Change Log
 
+## [0.3.24] - OpenRouter Wallet & Battery Deduction - 02-05-2026
+
+### Added
+
+- **OpenRouter AI Wallet**: Added `openrouter` as a new wallet provider covering Grok 4.1 Fast and Llama 4 Maverick (both routed through OpenRouter). Replaces Gemini in the wallet UI.
+  - Updated: `src/hooks/useAIWallet.ts`, `src/components/layout/TokenLimitIndicator.tsx`, `src/components/layout/LowBatteryAlert.tsx`
+
+- **DB Trigger for Automatic Balance Deduction**: Added Postgres trigger `trg_deduct_ai_wallet_balance` on `token_usage_logs`. Fires after every insert and deducts the call cost from the matching `ai_wallets` row (matched by `org_id` + `provider`). Falls back to hardcoded OpenRouter pricing if `cost_usd` is null. Balance floors at zero via `GREATEST(0, ...)`.
+
+### Changed
+
+- **Removed Gemini Wallet**: Gemini provider removed from wallet display, low battery alert, and provider type — no longer in use.
+  - Updated: `src/hooks/useAIWallet.ts`, `src/components/layout/TokenLimitIndicator.tsx`, `src/components/layout/LowBatteryAlert.tsx`
+
+- **Removed OpenAI 100% Battery Hardcode**: OpenAI battery percentage now calculates normally from `balance_usd / battery_100_usd` instead of always displaying 100%.
+  - Updated: `src/hooks/useAIWallet.ts`
+
+## [0.3.23] - Ghost Threads & Passive Reopen Fix - 21-04-2026
+
+### Fixed
+
+- **Atomicity in LiveChat Orchestrator**: Addressed "ghost threads" (threads created without any message) by creating a new `send_message_full` atomic Edge Function. The frontend now relies on this single server-side operation to find/create the thread, fetch AI context, insert the welcome message, and insert the user's message simultaneously.
+- **Passive Reopening of Resolved Threads**: Removed active `reopen_thread` calls running automatically during LiveChat widget mount or broadcast receive. The frontend now only updates its local state using `handleClosedThreadState`, relying purely on the backend database trigger `tr_reopen_thread_on_user_message` to "passively" reopen threads only when the user explicitly sends a new message.
+  - Updated: `src/hooks/useLiveChat.ts`, `supabase/functions/livechat-orchestrator/index.ts`
+
+### Changed
+
+- **ChatGPT Battery Always 100%**: Hardcoded the OpenAI/ChatGPT battery percentage to always display 100% visually, preventing the low battery alert from triggering for this provider.
+  - Updated: `src/hooks/useAIWallet.ts`
+
 ## [0.3.22] - Contacts Pagination & Query Shape Optimization - 16-04-2026
 
 ### Fixed

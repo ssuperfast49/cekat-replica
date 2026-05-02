@@ -24,7 +24,7 @@ export const LowBatteryAlert = () => {
     const { wallets, isLowBattery, isWalletAdmin, lowBatteryProviders } = useAIWallets();
     const [open, setOpen] = useState(false);
     const lastDismissedRef = useRef<number>(0);
-    const providerLabels: Record<string, string> = { openai: "OpenAI", gemini: "Gemini" };
+    const providerLabels: Record<string, string> = { openai: "OpenAI", openrouter: "OpenRouter" };
 
     const lowWallets = useMemo(
         () => lowBatteryProviders

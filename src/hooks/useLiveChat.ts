@@ -539,28 +539,16 @@ export function useLiveChat() {
         }
     }, [pid, sessionId, username, accountId, supabase]);
 
-    const reopenThreadIfResolved = useCallback(async (row: any) => {
+    const handleClosedThreadState = useCallback(async (row: any) => {
         const status = (row?.status || '').toString().toLowerCase();
         const isClosed = status === 'closed' || status === 'done' || status === 'resolved';
         if (!isClosed || !row?.id) return row?.id || null;
-        try {
-            // Use orchestrator (service role) to reopen — anon users can't update threads 
-            // directly due to RLS requiring auth.uid() IS NOT NULL.
-            const result = await callOrchestrator('reopen_thread', {
-                thread_id: row.id,
-            });
-            if (!result.ok) throw new Error('reopen_thread returned not ok');
-            // Sync refs so the current send call uses the correct AI access state
-            aiAccessEnabledRef.current = true;
-            threadStatusRef.current = 'open';
-            setThreadStatus('open');
-            setIsAssignedToHuman(false);
-            return row.id;
-        } catch (err) {
-            console.warn('[LiveChat] failed to reopen resolved thread', err);
-            // Return null so the caller falls through to ensure_thread (create new)
-            return null;
-        }
+        
+        // Only set the UI state. We no longer forcefully reopen the thread in the DB.
+        // It will organically reopen via trigger when the user actually sends a new message.
+        setThreadStatus('closed');
+        setIsAssignedToHuman(false);
+        return row.id;
     }, []);
 
     const scheduleThreadAttachRetries = useCallback((delays: number[] = []) => {
@@ -572,13 +560,13 @@ export function useLiveChat() {
                 const found = await findThreadForCurrentSession();
                 if (found?.id) {
                     try {
-                        const reopenedId = await reopenThreadIfResolved(found);
-                        if (reopenedId) await attachToThreadRef.current?.(reopenedId);
+                        const targetId = await handleClosedThreadState(found);
+                        if (targetId) await attachToThreadRef.current?.(targetId);
                     } catch (err) { console.warn('[LiveChat] retry attach failed', err); }
                 }
             }, delay),
         );
-    }, [clearThreadAttachTimers, findThreadForCurrentSession, reopenThreadIfResolved]);
+    }, [clearThreadAttachTimers, findThreadForCurrentSession, handleClosedThreadState]);
 
     // Effects
     useEffect(() => {
@@ -767,8 +755,8 @@ export function useLiveChat() {
         const initialize = async () => {
             const found = await findThreadForCurrentSession();
             if (found?.id) {
-                const reopenedId = await reopenThreadIfResolved(found);
-                if (reopenedId) await attachToThread(reopenedId);
+                const targetId = await handleClosedThreadState(found);
+                if (targetId) await attachToThread(targetId);
                 return;
             }
             setBooting(false);
@@ -803,15 +791,15 @@ export function useLiveChat() {
                     try {
                         const found = await findThreadForCurrentSession();
                         if (found?.id) {
-                            const reopenedId = await reopenThreadIfResolved(found);
-                            if (reopenedId) await attachToThread(reopenedId);
+                            const targetId = await handleClosedThreadState(found);
+                            if (targetId) await attachToThread(targetId);
                         }
                     } catch (err) { }
                     return;
                 }
                 try {
-                    const reopenedId = await reopenThreadIfResolved(newThread);
-                    await attachToThread(reopenedId || tid);
+                    const targetId = await handleClosedThreadState(newThread);
+                    await attachToThread(targetId || tid);
                 } catch (err) { }
             })
             .subscribe(() => setBooting(false));
@@ -821,7 +809,7 @@ export function useLiveChat() {
             try { if (threadsSub) supabase.removeChannel(threadsSub); } catch { }
             attachToThreadRef.current = null;
         };
-    }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession, reopenThreadIfResolved, accountId]);
+    }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession, handleClosedThreadState, accountId]);
 
     // Send Handlers
     const handleSend = async () => {
@@ -921,37 +909,8 @@ export function useLiveChat() {
             } catch (err) { }
         }
 
-        // If still no thread, call edge fn to create one (bypasses RLS)
-        if (!threadIdRef.current) {
-            try {
-                const result = await callOrchestrator('ensure_thread', {
-                    account_id: accountId || '',
-                    channel_id: pid,
-                    session_id: sessionId,
-                    username: username || '',
-                    web: webId || '',
-                    provider: 'web',
-                });
-                if (result.thread_id) {
-                    isNewThreadRef.current = result.is_new;
-                    contactIdRef.current = result.contact_id;
-                    if (result.channel_id) resolvedPidRef.current = result.channel_id;
-                    // Safety net: always set threadIdRef directly so step 5
-                    // (insert_user_messages) can proceed even if attachToThread
-                    // hasn't completed or attachToThreadRef is null.
-                    if (!threadIdRef.current) threadIdRef.current = result.thread_id;
-                    await attachToThreadRef.current?.(result.thread_id);
-                    if (result.ai_profile_id && !aiProfileId) setAiProfileId(result.ai_profile_id);
-                    threadStatusRef.current = result.thread_status ?? 'open';
-                }
-            } catch (err) {
-                console.error('[LiveChat] ensure_thread failed', err);
-                // Fallback to old retry behaviour
-                pendingThreadAttachRef.current = true;
-                pendingThreadInfoRef.current = { alias: username, startedAt: new Date().toISOString() };
-                scheduleThreadAttachRetries([0, 300, 900, 2000]);
-            }
-        }
+        // If still no thread, do NOT call ensure_thread here anymore. 
+        // We will natively do it inside send_message_full below.
 
         // ── 2. AI Message Limit check ──
         if (threadIdRef.current) {
@@ -993,16 +952,18 @@ export function useLiveChat() {
 
         // ── 4. Prepare messages ──
         const messagesToInsert: any[] = [];
+        // Use a temporary thread ID if we don't have one (the orchestrator will overwrite it)
+        const tempThreadId = threadIdRef.current || 'temp-thread-id';
 
         if (isAttachment) {
             const attachId = crypto.randomUUID();
             messagesToInsert.push({
                 id: attachId,
-                thread_id: threadIdRef.current,
+                thread_id: tempThreadId,
                 role: 'user',
                 direction: 'in',
-                body: uploadedFile.url,
-                type: uploadedFile.type as any,
+                body: uploadedFile!.url,
+                type: uploadedFile!.type as any,
                 payload: {}
             });
 
@@ -1010,7 +971,7 @@ export function useLiveChat() {
                 const textId = crypto.randomUUID();
                 messagesToInsert.push({
                     id: textId,
-                    thread_id: threadIdRef.current,
+                    thread_id: tempThreadId,
                     role: 'user',
                     direction: 'in',
                     body: text,
@@ -1022,7 +983,7 @@ export function useLiveChat() {
             const textId = crypto.randomUUID();
             messagesToInsert.push({
                 id: textId,
-                thread_id: threadIdRef.current,
+                thread_id: tempThreadId,
                 role: 'user',
                 direction: 'in',
                 body: text,
@@ -1031,66 +992,83 @@ export function useLiveChat() {
             });
         }
 
-        // ── 5. Insert user message into DB (always — fixes first-message bug) ──
-        // Retry up to 3 times with exponential backoff to prevent ghost threads
-        // (threads created without any user message persisted).
-        if (threadIdRef.current && messagesToInsert.length > 0) {
-            const maxInsertAttempts = 3;
-            let insertSuccess = false;
-            for (let attempt = 0; attempt < maxInsertAttempts; attempt++) {
-                try {
-                    await callOrchestrator('insert_user_messages', {
-                        messages: messagesToInsert
-                    });
-                    insertSuccess = true;
-                    break;
-                } catch (err) {
-                    console.warn(`[LiveChat] insert_user_messages attempt ${attempt + 1}/${maxInsertAttempts} failed`, err);
-                    if (attempt < maxInsertAttempts - 1) {
-                        // Exponential backoff: 500ms, 1500ms
-                        await new Promise(r => setTimeout(r, 500 * Math.pow(3, attempt)));
-                    }
+        // ── 5. Atomic Send Message Full ──
+        // This edge function action creates the thread (if needed), fetches the AI Context,
+        // and inserts the welcome message and user messages atomically.
+        // It prevents ghost threads if the client disconnects halfway.
+        
+        let aiContext: { ai_profile: any; contact_info: any; chat_history: string; super_agent_id: string } | null = null;
+        const maxAttempts = 3;
+        let insertSuccess = false;
+        
+        // Check if we manually want to force a welcome message (for the "already existing empty thread" bug)
+        const persistedMsgCount = messages.filter(m => !m.id.startsWith('temp-')).length;
+        // Find if there's any active cached AI profile
+        const lsAiProfileStr = typeof window !== 'undefined' ? window.localStorage.getItem(`livechat_ai_profile_${pid}`) : null;
+        const lsAiProfile = lsAiProfileStr ? JSON.parse(lsAiProfileStr) : null;
+        let forceWelcomeMessage = undefined;
+        if (!isNewThreadRef.current && persistedMsgCount === 0 && lsAiProfile?.welcome_message) {
+            forceWelcomeMessage = lsAiProfile.welcome_message;
+        }
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                // Remove the locally assigned thread_id since the orchestrator will inject the real one
+                const sentMessages = messagesToInsert.map(msg => {
+                    const temp = { ...msg };
+                    delete temp.thread_id;
+                    return temp;
+                });
+                
+                const result = await callOrchestrator('send_message_full', {
+                    channel_id: pid,
+                    session_id: sessionId,
+                    username: username || '',
+                    account_id: accountId || '',
+                    web: webId || '',
+                    provider: 'web',
+                    welcome_message: forceWelcomeMessage,
+                    messages: sentMessages
+                });
+
+                if (result?.threadData) {
+                    const threadData = result.threadData;
+                    // Sync our local references with the definitive backend state
+                    isNewThreadRef.current = threadData.is_new;
+                    contactIdRef.current = threadData.contact_id;
+                    if (threadData.channel_id) resolvedPidRef.current = threadData.channel_id;
+                    if (!threadIdRef.current) threadIdRef.current = threadData.thread_id;
+                    await attachToThreadRef.current?.(threadData.thread_id);
+                    if (threadData.ai_profile_id && !aiProfileId) setAiProfileId(threadData.ai_profile_id);
+                    threadStatusRef.current = threadData.thread_status ?? 'open';
+                }
+
+                if (result?.aiContext) {
+                    aiContext = result.aiContext;
+                }
+                
+                // Unset isNew so subsequent messages don't accidentally trigger logic depending on it
+                if (result?.threadData?.is_new) {
+                    isNewThreadRef.current = false;
+                }
+                
+                insertSuccess = true;
+                break;
+            } catch (err) {
+                console.warn(`[LiveChat] send_message_full attempt ${attempt + 1}/${maxAttempts} failed`, err);
+                if (attempt < maxAttempts - 1) {
+                    await new Promise(r => setTimeout(r, 500 * Math.pow(3, attempt)));
                 }
             }
-            if (!insertSuccess) {
-                console.error('[LiveChat] insert_user_messages failed after all retries — aborting send');
-                toast.error('Pesan gagal terkirim. Silakan coba lagi.');
-                // Remove optimistic messages so UI doesn't show unsent messages
-                setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
-                setLoading(false);
-                return;
-            }
         }
-
-        // ── 6. Check Assigned (Handover) State ──
-        // (isAssigned already evaluated at the top of handleSend)
-
-        // ── 7. Fetch AI context via edge fn (ALWAYS — n8n needs ai_profile & transfer_conditions even when assigned) ──
-        let aiContext: { ai_profile: any; contact_info: any; chat_history: string; super_agent_id: string } | null = null;
-        if (threadIdRef.current) {
-            try {
-                aiContext = await callOrchestrator('get_ai_context', {
-                    thread_id: threadIdRef.current,
-                    channel_id: resolvedPidRef.current || pid,
-                    contact_id: contactIdRef.current || '',
-                });
-            } catch (err) {
-                console.warn('[LiveChat] get_ai_context failed', err);
-            }
-        }
-
-        // ── 7b. Insert welcome message BEFORE AI call (so it renders first) ──
-        // Trigger when: (a) ensure_thread says is_new, OR (b) no persisted messages yet (first real message).
-        // This fixes the ~67% miss rate where ensure_thread finds an existing thread via account_id
-        // and returns is_new=false, or findThreadForCurrentSession finds the thread first.
-        const persistedMsgCount = messages.filter(m => !m.id.startsWith('temp-')).length;
-        const shouldSendWelcome = (isNewThreadRef.current || persistedMsgCount === 0) && threadIdRef.current && aiContext?.ai_profile?.welcome_message;
-        if (shouldSendWelcome) {
-            callOrchestrator('insert_welcome_message', {
-                thread_id: threadIdRef.current,
-                welcome_message: aiContext!.ai_profile.welcome_message,
-            }).catch((e: any) => console.warn('[LiveChat] insert_welcome_message failed', e));
-            isNewThreadRef.current = false;
+        
+        if (!insertSuccess) {
+            console.error('[LiveChat] send_message_full failed after all retries — aborting send');
+            toast.error('Pesan gagal terkirim. Silakan coba lagi.');
+            // Remove optimistic messages so UI doesn't show unsent messages
+            setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
+            setLoading(false);
+            return;
         }
 
         const streamingId = `streaming-${Date.now()}`;
