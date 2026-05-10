@@ -23,6 +23,7 @@ export interface AIProfile {
   followup_message?: string | null;
   enable_followup_message?: boolean | null;
   followup_message_delay?: number | null;
+  api_key_id?: string | null;
 }
 
 export const useAIProfiles = (profileId?: string) => {
