@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/sonner";
 import WEBHOOK_CONFIG from "@/config/webhook";
 import { callWebhook } from "@/lib/webhookClient";
 import { supabase } from "@/integrations/supabase/client";
+import { type OpenRouterModel } from "@/lib/openRouterModels";
 import { useRBAC } from "@/contexts/RBACContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTemperatureValue } from '@/lib/temperatureUtils';
@@ -410,9 +411,12 @@ const ChatPreview = ({
 // Local helpers for model UI
 const formatProvider = (value: string | null | undefined) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Unknown');
 
-const formatCost = (value: number | null | undefined) => {
+const formatCost = (value: number | "variable" | "free" | null | undefined) => {
   if (value == null) return 'Pricing on request';
-  return `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: value >= 1 ? 2 : 3 }).format(value)} / 1M`;
+  if (value === 'free') return 'Free';
+  if (value === 'variable') return 'Variable';
+  const perMillion = value * 1_000_000;
+  return `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: perMillion >= 1 ? 2 : 3 }).format(perMillion)} / 1M`;
 };
 
 const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAgentSettingsProps) => {
@@ -546,21 +550,17 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       : profile?.transfer_conditions || ""
   );
   const [stopAfterHandoff, setStopAfterHandoff] = useState(profile?.stop_ai_after_handoff ?? true);
-  // Model handling now uses ai_models (UUID) foreign key
-  type AIModelOption = {
-    id: string;
-    model_name: string;
-    display_name: string | null;
-    provider: string;
-    cost_per_1m_tokens?: number | null;
-    description?: string | null;
-    max_context_tokens?: number | null;
-  };
-
-  const [availableModels, setAvailableModels] = useState<AIModelOption[]>([]);
-  const [fallbackModels, setFallbackModels] = useState<AIModelOption[]>([]);
+  const [availableModels, setAvailableModels] = useState<OpenRouterModel[]>([]);
+  const [fallbackModels, setFallbackModels] = useState<OpenRouterModel[]>([]);
   const [modelId, setModelId] = useState("");
   const [fallbackModelId, setFallbackModelId] = useState("");
+  const [apiKeyId, setApiKeyId] = useState<string | null>(null);
+  const [apiKeys, setApiKeys] = useState<Array<{ id: string; label: string; key_last4: string; is_active: boolean }>>([]);
+  const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [apiKeysError, setApiKeysError] = useState<string | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [prevModelNotAvailable, setPrevModelNotAvailable] = useState(false);
   const [temperature, setTemperature] = useState(() => {
     const temp = (profile as any)?.temperature ?? 0.3;
     // Guard: ensure temperature is between 0-1
@@ -598,50 +598,83 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     return Number.isNaN(parsed) ? 0 : parsed;
   };
 
-  // Load available AI models (separate regular and fallback)
+  // Load API keys from edge function
   useEffect(() => {
+    let isCancelled = false;
+    const loadApiKeys = async () => {
+      try {
+        setApiKeysLoading(true);
+        setApiKeysError(null);
+        const { data, error } = await supabase.functions.invoke('api-keys', {
+          body: { action: 'list' },
+        });
+        if (isCancelled) return;
+        if (error) throw error;
+        setApiKeys(Array.isArray(data) ? data : (data?.keys ?? []));
+      } catch (e: any) {
+        if (!isCancelled) setApiKeysError(e?.message || 'Failed to load API keys');
+      } finally {
+        if (!isCancelled) setApiKeysLoading(false);
+      }
+    };
+    loadApiKeys();
+    return () => { isCancelled = true; };
+  }, []);
+
+  // Init apiKeyId from profile once it loads
+  useEffect(() => {
+    if ((profile as any)?.api_key_id) {
+      setApiKeyId((profile as any).api_key_id);
+    }
+  }, [(profile as any)?.api_key_id]);
+
+  // Load available AI models when apiKeyId changes
+  useEffect(() => {
+    if (!apiKeyId) {
+      setAvailableModels([]);
+      setFallbackModels([]);
+      setModelId("");
+      return;
+    }
+    let isCancelled = false;
     const loadModels = async () => {
       try {
-        const { data, error } = await (supabase as any)
-          .from('ai_models')
-          .select('*')
-          .eq('is_active', true)
-          .order('display_name', { ascending: true });
+        setModelsLoading(true);
+        setModelsError(null);
+        const { data, error } = await supabase.functions.invoke('api-keys', {
+          body: { action: 'get_models', key_id: apiKeyId },
+        });
+        if (isCancelled) return;
         if (error) throw error;
-        const allModels = (data || []) as any[];
+        const models: OpenRouterModel[] = Array.isArray(data) ? data : (data?.models ?? []);
+        setAvailableModels(models);
+        setFallbackModels([]);
 
-        // Separate regular models from fallback models
-        const regular = allModels.filter((m: any) => (m.display_name || '').toLowerCase() !== 'fallback');
-        const fallback = allModels.filter((m: any) => (m.display_name || '').toLowerCase() === 'fallback');
-
-        setAvailableModels(regular);
-        setFallbackModels(fallback);
-
-        // Initialize model IDs if not already set; prefer profile.model_id or initialModelId
-        const preferredPrimary = (profile as any)?.model_id || initialModelId || '';
-        if (!modelId) {
-          if (preferredPrimary && regular.some((m: any) => m.id === preferredPrimary)) {
-            setModelId(preferredPrimary);
-          } else if (regular.length > 0) {
-            setModelId(regular[0]?.id || "");
-          }
+        const preferredPrimary = (profile as any)?.model || initialModelId || '';
+        if (preferredPrimary) {
+          const found = models.some(m => m.id === preferredPrimary);
+          setPrevModelNotAvailable(!found);
+          setModelId(preferredPrimary);
+        } else if (models.length > 0) {
+          setPrevModelNotAvailable(false);
+          setModelId(models[0].id);
         }
-        if (!fallbackModelId && fallback.length > 0) {
-          setFallbackModelId(fallback[0]?.id || "");
-        }
-      } catch (e) {
-        console.error('Failed to load ai_models', e);
+      } catch (e: any) {
+        if (!isCancelled) setModelsError(e?.message || 'Failed to load models');
+      } finally {
+        if (!isCancelled) setModelsLoading(false);
       }
     };
     loadModels();
-  }, [profile?.id, initialModelId]);
+    return () => { isCancelled = true; };
+  }, [apiKeyId]);
 
-  // If profile.model_id becomes available later and no selection yet, apply it
+  // Apply profile.model once it arrives, overriding any provisional selection
   useEffect(() => {
-    if (!modelId && (profile as any)?.model_id && availableModels.some(m => m.id === (profile as any).model_id)) {
-      setModelId((profile as any).model_id);
+    if ((profile as any)?.model) {
+      setModelId((profile as any).model);
     }
-  }, [availableModels]);
+  }, [(profile as any)?.model]);
 
   useEffect(() => {
     if (!profile) return;
@@ -665,12 +698,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const selectedModel = availableModels.find(m => m.id === modelId) || null;
 
   const historyLimitMax = useMemo(() => {
-    const tokens = selectedModel?.max_context_tokens;
+    const tokens = selectedModel?.context_length;
     if (typeof tokens === 'number' && tokens > 0) {
       return clampNumber(tokens, 0, HISTORY_HARD_MAX);
     }
     return HISTORY_HARD_MAX;
-  }, [selectedModel?.max_context_tokens]);
+  }, [selectedModel?.context_length]);
 
   useEffect(() => {
     if (!historyLimitInput) return;
@@ -1344,6 +1377,16 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
 
   // Save AI profile
   const handleSave = async () => {
+    if (!apiKeyId) {
+      toast.error('Please select an API key before saving this AI agent.');
+      return;
+    }
+
+    if (!modelId) {
+      toast.error('Please select an AI model before saving this AI agent.');
+      return;
+    }
+
     if (!superAgentId) {
       toast.error('Please assign a super agent before saving this AI agent.');
       return;
@@ -1358,7 +1401,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     // Context window is no longer user-configurable in the UI.
     // Persist an existing value (or a sensible default) clamped to the selected model capability.
     const derivedContextLimitMaxK = (() => {
-      const tokens = selectedModel?.max_context_tokens;
+      const tokens = selectedModel?.context_length;
       if (typeof tokens === 'number' && tokens > 0) return Math.max(1, Math.floor(tokens / 1000));
       return CONTEXT_PRACTICAL_MAX;
     })();
@@ -1373,7 +1416,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
       welcome_message: welcomeMessage,
       transfer_conditions: transferConditions,
       stop_ai_after_handoff: stopAfterHandoff,
-      model_id: modelId || null,
+      model: modelId || null,
       name: agentName,
       auto_resolve_after_minutes: autoResolveMinutes,
       enable_resolve: enableResolve,
@@ -1395,6 +1438,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
         .filter((p) => (p.question?.trim() || p.answer?.trim()))
         .map(({ question, answer }) => ({ q: question.trim(), a: answer.trim() })),
       guide_content: guideContent,
+      api_key_id: apiKeyId,
     };
 
     try {
@@ -1620,6 +1664,48 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               {/* Model Selection */}
               <Card className="p-4">
                 <div className="space-y-6">
+                  {/* API Key */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-primary mb-1">API Key</h3>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Select the API key used to call the AI model.
+                    </p>
+                    {apiKeysLoading ? (
+                      <p className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading API keys…
+                      </p>
+                    ) : apiKeysError ? (
+                      <p className="text-sm text-destructive">{apiKeysError}</p>
+                    ) : (
+                      <Select
+                        value={apiKeyId ?? ""}
+                        onValueChange={(val) => {
+                          setApiKeyId(val || null);
+                          setModelId("");
+                          setAvailableModels([]);
+                          setPrevModelNotAvailable(false);
+                        }}
+                        disabled={!isEditing}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select an API key" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background border z-50">
+                          {apiKeys.filter(k => k.is_active).map((key) => (
+                            <SelectItem key={key.id} value={key.id}>
+                              {key.label} (••••{key.key_last4})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {!profile?.api_key_id && !apiKeyId && !apiKeysLoading && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+                        This profile has no API key assigned. Select one above before saving.
+                      </p>
+                    )}
+                  </div>
+
                   {/* Primary AI Model */}
                   <div>
                     <div className="flex items-start justify-between gap-4 mb-4">
@@ -1639,24 +1725,39 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           Choose the balance between speed and intelligence for this agent.
                         </p>
                       </div>
-                      {selectedModel && (
+                      {(selectedModel || modelId) && (
                         <Badge variant="secondary" className="whitespace-nowrap">
-                          {formatProvider((selectedModel as any)?.provider)}
+                          {formatProvider((selectedModel?.id ?? modelId).split('/')[0])}
                         </Badge>
                       )}
                     </div>
 
+                    {modelsLoading && (
+                      <p className="text-sm text-muted-foreground flex items-center gap-2 mb-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading models…
+                      </p>
+                    )}
+                    {modelsError && (
+                      <p className="text-sm text-destructive mb-2">{modelsError}</p>
+                    )}
                     <Select
                       value={modelId}
-                      onValueChange={setModelId}
-                      disabled={availableModels.length === 0 || !isEditing}
+                      onValueChange={(val) => {
+                        setModelId(val);
+                        setPrevModelNotAvailable(false);
+                      }}
+                      disabled={!apiKeyId || availableModels.length === 0 || !isEditing}
                     >
                       <SelectTrigger className="w-full py-3">
-                        {selectedModel ? (
+                        {apiKeyId && selectedModel ? (
                           <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
                             <span className="truncate">
-                              {(selectedModel as any)?.display_name || 'Custom'} · {formatCost((selectedModel as any)?.cost_per_1m_tokens)} · {formatProvider((selectedModel as any)?.provider)}
+                              {selectedModel.name} · {formatCost(selectedModel.pricing.prompt)} · {formatProvider(selectedModel.id.split('/')[0])}
                             </span>
+                          </span>
+                        ) : apiKeyId && modelId ? (
+                          <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
+                            <span className="truncate font-mono text-muted-foreground">{modelId}</span>
                           </span>
                         ) : (
                           <SelectValue placeholder="Select an AI model" />
@@ -1667,12 +1768,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           return (
                             <SelectItem key={model.id} value={model.id}>
                               <div className="flex flex-col text-left">
-                                <span className="font-semibold leading-tight">{(model as any)?.display_name || 'Custom'} · {formatCost((model as any)?.cost_per_1m_tokens)}</span>
+                                <span className="font-semibold leading-tight">{model.name} · {formatCost(model.pricing.prompt)}</span>
                                 <span className="text-xs text-muted-foreground leading-tight">
-                                  {(model as any)?.description || 'No description available'}
+                                  {model.description || 'No description available'}
                                 </span>
                                 <span className="text-[11px] text-muted-foreground font-mono">
-                                  {(model as any)?.model_name} · {formatProvider((model as any)?.provider)}
+                                  {model.id} · {formatProvider(model.id.split('/')[0])}
                                 </span>
                               </div>
                             </SelectItem>
@@ -1680,9 +1781,19 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                         })}
                       </SelectContent>
                     </Select>
-                    {availableModels.length === 0 && (
+                    {!apiKeyId && !modelsLoading && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Select an API key above to load available models.
+                      </p>
+                    )}
+                    {apiKeyId && !modelsLoading && availableModels.length === 0 && !modelsError && (
                       <p className="text-xs text-destructive mt-2">
-                        No AI models available. Please contact your administrator.
+                        No AI models available for this API key.
+                      </p>
+                    )}
+                    {prevModelNotAvailable && modelId && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+                        Previously selected model "{modelId}" is not available for this API key.
                       </p>
                     )}
                   </div>
@@ -1709,7 +1820,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                         </div>
                         {fallbackModels.find(m => m.id === fallbackModelId) && (
                           <Badge variant="secondary" className="whitespace-nowrap">
-                            {formatProvider((fallbackModels.find(m => m.id === fallbackModelId) as any)?.provider)}
+                            {formatProvider(fallbackModels.find(m => m.id === fallbackModelId)!.id.split('/')[0])}
                           </Badge>
                         )}
                       </div>
@@ -1723,7 +1834,7 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           {fallbackModels.find(m => m.id === fallbackModelId) ? (
                             <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
                               <span className="truncate">
-                                {(fallbackModels.find(m => m.id === fallbackModelId) as any)?.display_name || 'Custom'} · {formatCost((fallbackModels.find(m => m.id === fallbackModelId) as any)?.cost_per_1m_tokens)} · {formatProvider((fallbackModels.find(m => m.id === fallbackModelId) as any)?.provider)}
+                                {(() => { const fb = fallbackModels.find(m => m.id === fallbackModelId)!; return `${fb.name} · ${formatCost(fb.pricing.prompt)} · ${formatProvider(fb.id.split('/')[0])}`; })()}
                               </span>
                             </span>
                           ) : (
@@ -1735,12 +1846,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                             return (
                               <SelectItem key={model.id} value={model.id}>
                                 <div className="flex flex-col text-left">
-                                  <span className="font-semibold leading-tight">{(model as any)?.display_name || 'Custom'} · {formatCost((model as any)?.cost_per_1m_tokens)}</span>
+                                  <span className="font-semibold leading-tight">{model.name} · {formatCost(model.pricing.prompt)}</span>
                                   <span className="text-xs text-muted-foreground leading-tight">
-                                    {(model as any)?.description || 'No description available'}
+                                    {model.description || 'No description available'}
                                   </span>
                                   <span className="text-[11px] text-muted-foreground font-mono">
-                                    {(model as any)?.model_name} · {formatProvider((model as any)?.provider)}
+                                    {model.id} · {formatProvider(model.id.split('/')[0])}
                                   </span>
                                 </div>
                               </SelectItem>
@@ -2227,10 +2338,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
               <ChatPreview
                 welcomeMessage={welcomeMessage}
                 systemPrompt={systemPrompt}
-                modelDisplay={selectedModel?.display_name || selectedModel?.model_name || 'Not selected'}
+                modelDisplay={selectedModel?.name || 'Not selected'}
                 profile={profile}
                 profileId={profileId}
-                modelName={selectedModel?.model_name || ''}
+                modelName={selectedModel?.id || ''}
                 temperature={getTemperatureValue(responseTemperature)} // Use mapped value from response_temperature
                 transfer_conditions={transferConditions}
               />

@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSuperAgentScope } from "@/hooks/useSuperAgentScope";
 import { useHumanAgents } from "@/hooks/useHumanAgents";
+import { type OpenRouterModel } from "@/lib/openRouterModels";
 
 interface AIAgent {
   id: string;
@@ -42,9 +43,12 @@ interface AIAgent {
 }
 
 // Helpers for model UI
-const formatCost = (v: number | null | undefined) => {
+const formatCost = (v: number | "variable" | "free" | null | undefined) => {
   if (v == null) return "Pricing on request";
-  return `${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:v>=1?2:3}).format(v)} / 1M`;
+  if (v === "free") return "Free";
+  if (v === "variable") return "Variable";
+  const perMillion = v * 1_000_000;
+  return `${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:perMillion>=1?2:3}).format(perMillion)} / 1M`;
 };
 const formatProvider = (p: string | null | undefined) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : "Unknown");
 
@@ -142,12 +146,14 @@ const AIAgents = () => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("customer-service");
-  const [aiModels, setAiModels] = useState<Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean; description?: string | null }>>([]);
-  const [fallbackModels, setFallbackModels] = useState<Array<{ id: string; display_name: string | null; model_name: string; provider: string; cost_per_1m_tokens: number | null; is_active: boolean; description?: string | null }>>([]);
+  const [aiModels, setAiModels] = useState<OpenRouterModel[]>([]);
+  const [fallbackModels, setFallbackModels] = useState<OpenRouterModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [selectedFallbackModelId, setSelectedFallbackModelId] = useState<string>("");
+  const [apiKeys, setApiKeys] = useState<Array<{ id: string; label: string; key_last4: string; is_active: boolean }>>([]);
+  const [createApiKeyId, setCreateApiKeyId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
@@ -172,7 +178,7 @@ const escapeIlike = (value: string) =>
 const modelMap = useMemo(() => {
   const map = new Map<string, { display_name: string | null; model_name: string; provider: string; description?: string | null }>();
   [...aiModels, ...fallbackModels].forEach((m) => {
-    map.set(m.id, m);
+    map.set(m.id, { display_name: m.name, model_name: m.id, provider: m.id.split('/')[0] });
   });
   return map;
 }, [aiModels, fallbackModels]);
@@ -190,7 +196,7 @@ const buildAgent = (
   creator: "Admin",
   description: profile.description || undefined,
   created_at: profile.created_at,
-  model: (profile as any)?.model_id ?? null,
+  model: (profile as any)?.model ?? null,
   modelName: modelInfo?.display_name ?? modelInfo?.model_name ?? null,
   provider: modelInfo?.provider ?? null,
   superAgentId: (profile as any)?.super_agent_id ?? null,
@@ -271,7 +277,7 @@ const fetchAgents = useCallback(async () => {
 
     let query: any = supabase
       .from('ai_profiles')
-      .select('*, ai_models:ai_models!ai_profiles_model_id_fkey(id, display_name, model_name, provider)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('org_id', DEFAULT_ORG_ID);
 
     if ((scopeMode === 'super' || scopeMode === 'agent')) {
@@ -298,9 +304,9 @@ const fetchAgents = useCallback(async () => {
 
     if (providerFilter !== "all") {
       if (providerFilter === "unknown") {
-        query = query.or('model.is.null,ai_models.provider.is.null');
+        query = query.or('model.is.null,model.not.ilike.%/%');
       } else {
-        query = query.eq('ai_models.provider', providerFilter);
+        query = query.ilike('model', `${providerFilter}/%`);
       }
     }
 
@@ -336,14 +342,11 @@ const fetchAgents = useCallback(async () => {
     }
 
     setFilteredCount(count || 0);
-    const mapped = (data as (AIProfile & { 
-      ai_models?: { display_name: string | null; model_name: string; provider: string | null | undefined } | null;
-      super_agent_id?: string | null;
-    })[] || []).map(
+    const mapped = ((data as any[]) || []).map(
       (profile) =>
         buildAgent(
           profile,
-          profile.ai_models || (profile.model ? modelMap.get(profile.model) : undefined),
+          profile.model ? modelMap.get(profile.model) : undefined,
           superAgentNameMap.get(profile.super_agent_id ?? '') ?? null
         )
     );
@@ -375,7 +378,8 @@ const fetchAgents = useCallback(async () => {
 const providerOptions = useMemo(() => {
   const providers = new Set<string>();
   [...aiModels, ...fallbackModels].forEach((m) => {
-    if (m.provider) providers.add(m.provider);
+    const provider = m.id.split('/')[0];
+    if (provider) providers.add(provider);
   });
   providers.add("unknown");
   return Array.from(providers).sort((a, b) => a.localeCompare(b));
@@ -384,7 +388,7 @@ const providerOptions = useMemo(() => {
 const modelOptions = useMemo(() => {
   const models = new Map<string, string>();
   [...aiModels, ...fallbackModels].forEach((m) => {
-    models.set(m.id, m.display_name || m.model_name || "Unnamed");
+    models.set(m.id, m.name || "Unnamed");
   });
   return Array.from(models.entries()).sort((a, b) => a[1].localeCompare(b[1]));
 }, [aiModels, fallbackModels]);
@@ -450,6 +454,11 @@ const confirmDeleteAgent = async () => {
       return;
     }
 
+    if (!createApiKeyId) {
+      toast.error('Please select an API key');
+      return;
+    }
+
     if (!selectedModelId) {
       toast.error('Please select an AI model');
       return;
@@ -472,10 +481,11 @@ const confirmDeleteAgent = async () => {
           welcome_message: "",
           transfer_conditions: "",
           stop_ai_after_handoff: true,
-          model_id: selectedModelId,
+          model: selectedModelId,
+          api_key_id: createApiKeyId,
           super_agent_id: selectedCreateSuperId,
         }])
-        .select('id, name, created_at, model_id, super_agent_id')
+        .select('id, name, created_at, model, super_agent_id')
         .single();
 
       if (error) throw error;
@@ -490,9 +500,9 @@ const confirmDeleteAgent = async () => {
         initials: ((data as any)?.name || newAgentName.trim()).split(' ').map(w => w.charAt(0)).join('').toUpperCase().slice(0, 2),
         creator: "Admin",
         created_at: (data as any)?.created_at || new Date().toISOString(),
-        model: (data as any)?.model_id || selectedModelId,
-        modelName: aiModels.find((m) => m.id === ((data as any)?.model_id || selectedModelId))?.display_name || undefined,
-        provider: aiModels.find((m) => m.id === ((data as any)?.model_id || selectedModelId))?.provider || null,
+        model: (data as any)?.model || selectedModelId,
+        modelName: aiModels.find((m) => m.id === ((data as any)?.model || selectedModelId))?.name || undefined,
+        provider: (() => { const mid = ((data as any)?.model || selectedModelId); return mid ? mid.split('/')[0] : null; })(),
         superAgentId: (data as any)?.super_agent_id || selectedCreateSuperId,
         superAgentName: undefined,
       };
@@ -515,46 +525,62 @@ const confirmDeleteAgent = async () => {
 
   const modelsInitializedRef = useRef(false);
 
-  const fetchModels = useCallback(async () => {
-    try {
-      setModelsLoading(true);
-      setModelsError(null);
-      const { data, error } = await supabase
-        .from('ai_models')
-        .select('id, display_name, model_name, provider, cost_per_1m_tokens, is_active')
-        .eq('is_active', true)
-        .order('display_name', { ascending: true });
-
-      if (error) throw error;
-
-      const allModels = (data || []) as any[];
-      const regular = allModels.filter(m => (m.display_name || '').toLowerCase() !== 'fallback');
-      const fallback = allModels.filter(m => (m.display_name || '').toLowerCase() === 'fallback');
-
-      setAiModels(regular);
-      setFallbackModels(fallback);
-
-      if (!modelsInitializedRef.current) {
-        if (regular.length > 0) {
-          setSelectedModelId((prev) => prev || regular[0].id);
-        }
-        if (fallback.length > 0) {
-          setSelectedFallbackModelId((prev) => prev || fallback[0].id);
-        }
-        modelsInitializedRef.current = true;
+  // Load API keys on mount; auto-select the first one so filters/labels work
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('api-keys', {
+          body: { action: 'list' },
+        });
+        if (cancelled) return;
+        if (error) throw error;
+        const keys: Array<{ id: string; label: string; key_last4: string; is_active: boolean }> =
+          Array.isArray(data) ? data : (data?.keys ?? []);
+        setApiKeys(keys);
+        const first = keys.find(k => k.is_active);
+        if (first) setCreateApiKeyId(first.id);
+      } catch (e) {
+        console.error('[AIAgents] failed to load api keys', e);
       }
-    } catch (err) {
-      console.error('Error loading AI models:', err);
-      setModelsError('Failed to load AI models');
-      toast.error('Failed to load AI models');
-    } finally {
-      setModelsLoading(false);
-    }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
+  // Fetch models whenever the selected create-dialog API key changes
   useEffect(() => {
-    fetchModels();
-  }, [fetchModels]);
+    if (!createApiKeyId) {
+      setAiModels([]);
+      setFallbackModels([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setModelsLoading(true);
+        setModelsError(null);
+        const { data, error } = await supabase.functions.invoke('api-keys', {
+          body: { action: 'get_models', key_id: createApiKeyId },
+        });
+        if (cancelled) return;
+        if (error) throw error;
+        const models: OpenRouterModel[] = Array.isArray(data) ? data : (data?.models ?? []);
+        setAiModels(models);
+        setFallbackModels([]);
+        if (!modelsInitializedRef.current) {
+          if (models.length > 0) setSelectedModelId((prev) => prev || models[0].id);
+          modelsInitializedRef.current = true;
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setModelsError('Failed to load AI models');
+        }
+      } finally {
+        if (!cancelled) setModelsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [createApiKeyId]);
 
   // Load agents on component mount
   useEffect(() => {
@@ -822,10 +848,34 @@ const confirmDeleteAgent = async () => {
               )}
             </div>
 
+            {/* API Key picker */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">API Key</label>
+              <Select
+                value={createApiKeyId ?? ""}
+                onValueChange={(val) => {
+                  setCreateApiKeyId(val || null);
+                  setSelectedModelId("");
+                  modelsInitializedRef.current = false;
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select an API key" />
+                </SelectTrigger>
+                <SelectContent>
+                  {apiKeys.filter(k => k.is_active).map(k => (
+                    <SelectItem key={k.id} value={k.id}>
+                      {k.label} (••••{k.key_last4})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* AI Model picker */}
             <div className="space-y-2">
               <label className="text-sm font-medium">AI Model</label>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={modelsLoading || aiModels.length === 0}>
+              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={!createApiKeyId || modelsLoading || aiModels.length === 0}>
                     <SelectTrigger className="w-full py-3">
                       {selectedModelId ? (
                     (() => {
@@ -833,7 +883,7 @@ const confirmDeleteAgent = async () => {
                       if (!m) return <SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select an AI model'} />;
                       return (
                         <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
-                          <span className="truncate">{m.display_name || 'Custom'} · {formatCost(m.cost_per_1m_tokens)} · {formatProvider(m.provider)}</span>
+                          <span className="truncate">{m.name} · {formatCost(m.pricing.prompt)} · {formatProvider(m.id.split('/')[0])}</span>
                         </span>
                       );
                     })()
@@ -847,11 +897,11 @@ const confirmDeleteAgent = async () => {
                       <SelectItem key={m.id} value={m.id}>
                         <div className="flex flex-col text-left">
                           <div className="flex items-center justify-between text-sm font-medium">
-                            <span>{m.display_name || 'Custom'}</span>
-                            <span className="text-muted-foreground">{formatCost(m.cost_per_1m_tokens)}</span>
+                            <span>{m.name}</span>
+                            <span className="text-muted-foreground">{formatCost(m.pricing.prompt)}</span>
                           </div>
                           <span className="text-xs text-muted-foreground leading-tight">{m.description || 'No description available'}</span>
-                          <span className="text-[11px] font-mono text-muted-foreground">{m.model_name} · {formatProvider(m.provider)}</span>
+                          <span className="text-[11px] font-mono text-muted-foreground">{m.id} · {formatProvider(m.id.split('/')[0])}</span>
                         </div>
                       </SelectItem>
                     );
@@ -875,7 +925,7 @@ const confirmDeleteAgent = async () => {
                         if (!m) return <SelectValue placeholder={modelsLoading ? 'Loading models...' : 'Select a fallback model'} />;
                         return (
                           <span className="flex w-full items-center gap-2 text-sm font-medium truncate pr-2">
-                            <span className="truncate">{m.display_name || 'Custom'} · {formatCost(m.cost_per_1m_tokens)} · {formatProvider(m.provider)}</span>
+                            <span className="truncate">{m.name} · {formatCost(m.pricing.prompt)} · {formatProvider(m.id.split('/')[0])}</span>
                           </span>
                         );
                       })()
@@ -889,11 +939,11 @@ const confirmDeleteAgent = async () => {
                         <SelectItem key={m.id} value={m.id}>
                           <div className="flex flex-col text-left">
                             <div className="flex items-center justify-between text-sm font-medium">
-                              <span>{m.display_name || 'Custom'}</span>
-                              <span className="text-muted-foreground">{formatCost(m.cost_per_1m_tokens)}</span>
+                              <span>{m.name}</span>
+                              <span className="text-muted-foreground">{formatCost(m.pricing.prompt)}</span>
                             </div>
                             <span className="text-xs text-muted-foreground leading-tight">{m.description || 'No description available'}</span>
-                            <span className="text-[11px] font-mono text-muted-foreground">{m.model_name} · {formatProvider(m.provider)}</span>
+                            <span className="text-[11px] font-mono text-muted-foreground">{m.id} · {formatProvider(m.id.split('/')[0])}</span>
                           </div>
                         </SelectItem>
                       );

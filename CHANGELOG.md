@@ -1,5 +1,56 @@
 # Change Log
 
+## [0.3.25] - OpenRouter Model Catalog, API Key Management & ai_profiles Schema Migration - 09-05-2026
+
+### Added
+
+- **`api-keys` Supabase Edge Function** (`supabase/functions/api-keys/index.ts`): New edge function with two actions:
+  - `list` — returns active, non-deleted API keys (`id`, `label`, `key_last4`, `is_active`). Never exposes the raw key value.
+  - `get_models` — decrypts the selected key via a `get_decrypted_api_key` SECURITY DEFINER RPC, calls `GET https://openrouter.ai/api/v1/models/user` with that key as the Bearer token, and returns a normalised model list. Includes a 10-second upstream timeout and fire-and-forget `touch_api_key_usage` tracking.
+  - Secured with Supabase JWT auth + role gate (`admin` / `owner`). CORS restricted to `ALLOWED_ORIGINS` environment variable.
+
+- **OpenRouter Model Catalog** (`src/lib/openRouterModels.ts`): New module with the `OpenRouterModel` type, full field mapping (pricing, context length, modalities, tokenizer, supported parameters), and pricing normalisation (`"-1"` → `"variable"`, `"0"` → `"free"`, otherwise `parseFloat` × 1 000 000 for per-1M display). Alias redirects (`~…`) and router models (`openrouter/…`) are filtered out before mapping.
+
+- **API Key Selector in AI Profile Editor** (`src/components/aiagents/AIAgentSettings.tsx`): New "API Key" dropdown positioned above the AI Model dropdown in the Model Selection card.
+  - Fetches active API keys from the `api-keys` edge function on load.
+  - Switching keys clears the current model selection and fetches a fresh model list for the chosen key via `get_models`.
+  - Model dropdown is disabled until an API key is selected.
+  - Inline amber warning shown when no API key is assigned to the profile.
+  - Inline amber warning shown when the previously saved model is not available under the newly selected key.
+  - `api_key_id` validated and included in the save payload.
+
+- **API Key Selector in Create Agent Dialog** (`src/components/aiagents/AIAgents.tsx`): API Key picker added above the AI Model picker in the create-agent modal. Model list only loads after a key is chosen; switching key resets model selection. `api_key_id` validated and persisted on agent creation.
+
+- **`api_key_id` Field on `AIProfile`** (`src/hooks/useAIProfiles.ts`): Added `api_key_id?: string | null` to the `AIProfile` TypeScript interface.
+
+### Changed
+
+- **Model Loading Moved Entirely to Edge Function**: All model fetching now goes through the `api-keys` edge function using the user-selected API key. `fetchOpenRouterModels()` is no longer called anywhere in the frontend and `VITE_OPENROUTER_API_KEY` is no longer required at runtime for model loading. The `ai_models` Supabase table is no longer read anywhere.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`, `src/components/aiagents/AIAgents.tsx`
+
+- **Auto-select First Key for Agent List Labels** (`src/components/aiagents/AIAgents.tsx`): On mount, the agent list fetches all active API keys and automatically uses the first one to populate the model catalog used for filter dropdowns and agent card model name labels.
+
+- **`ai_profiles` Schema Migration (`model_id` → `model`)**: The `ai_profiles` table no longer has a `model_id` UUID foreign key column. It now has a plain `model text` column storing the OpenRouter model ID (e.g. `x-ai/grok-4.1-fast`). All reads, writes, and saves updated accordingly.
+  - Removed: `ai_models!ai_profiles_model_id_fkey` JOIN from the agent-list query.
+  - Provider filter rewritten to use `model.ilike.provider/%` pattern instead of the dropped join column.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`, `src/components/aiagents/AIAgents.tsx`
+
+- **`formatCost` Updated for OpenRouter Pricing**: Both components' cost formatter now handles `"variable"` and `"free"` string values in addition to numbers, and multiplies per-token prices by 1 000 000 for correct per-1M display.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`, `src/components/aiagents/AIAgents.tsx`
+
+- **`livechat-orchestrator` Edge Function**: Added missing `send_message_full` and `insert_user_messages` actions. `send_message_full` atomically chains `ensure_thread` → `get_ai_context` → `insert_welcome_message` → `insert_user_messages` in a single server-side call, preventing ghost threads and eliminating the 400 errors seen in the LiveChat widget.
+  - Updated: `supabase/functions/livechat-orchestrator/index.ts`
+
+- **`ai-brain` Edge Function**: Primary model is now resolved from `ai_profile.model` at runtime instead of being hardcoded to `x-ai/grok-4.1-fast`. Falls back to the hardcoded default only when the profile row has no model set.
+
+### Fixed
+
+- **Model Selection Persistence**: When the stored `ai_profile.model` is not present in the model response, the UI no longer silently falls back to the first model in the list (previously causing Gemini to show for Grok profiles). The stored model ID is always preserved; if absent from the catalog the trigger displays it in monospace.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+
+- **Model Trigger Shows Blank When No API Key Selected**: The AI Model `SelectTrigger` no longer shows the raw stored model ID when no API key is selected. The field shows the placeholder until a key is chosen and models are loaded.
+  - Updated: `src/components/aiagents/AIAgentSettings.tsx`
+
 ## [0.3.24] - OpenRouter Wallet & Battery Deduction - 02-05-2026
 
 ### Added
