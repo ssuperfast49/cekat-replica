@@ -1,5 +1,16 @@
 # Change Log
 
+## [0.3.26] - API Key Creation from AI Profile Editor - 11-05-2026
+
+### Added
+
+- **Create API Key Option in AI Profile Editor** (`src/components/aiagents/AIAgentSettings.tsx`): Added a "Create new API key" option inside the API Key dropdown.
+  - Opens an inline dialog for label + raw OpenRouter key entry.
+  - Creates the key through `public.insert_api_key(p_label, p_raw_key)`.
+  - Refreshes the API key list after creation and automatically selects the newly created key for the AI agent.
+
+- **Typed `insert_api_key` Supabase RPC** (`src/integrations/supabase/types.ts`): Added the generated-style type entry for `insert_api_key` with `p_label`, `p_raw_key`, and `uuid` return value.
+
 ## [0.3.25] - OpenRouter Model Catalog, API Key Management & ai_profiles Schema Migration - 09-05-2026
 
 ### Added

@@ -2387,6 +2387,10 @@ export type Database = {
         Args: { p_contact_id: string; p_org_id?: string }
         Returns: Json
       }
+      insert_api_key: {
+        Args: { p_label: string; p_raw_key: string }
+        Returns: string
+      }
       get_agent_kpis: {
         Args: { p_from: string; p_super_agent_id?: string; p_to: string }
         Returns: {

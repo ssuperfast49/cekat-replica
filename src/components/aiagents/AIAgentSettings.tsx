@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -41,6 +42,7 @@ interface ChatMessage {
 }
 
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+const CREATE_API_KEY_VALUE = "__create_api_key__";
 
 const ChatPreview = ({
   welcomeMessage,
@@ -558,6 +560,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   const [apiKeys, setApiKeys] = useState<Array<{ id: string; label: string; key_last4: string; is_active: boolean }>>([]);
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
   const [apiKeysError, setApiKeysError] = useState<string | null>(null);
+  const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false);
+  const [creatingApiKey, setCreatingApiKey] = useState(false);
+  const [newApiKeyLabel, setNewApiKeyLabel] = useState("");
+  const [newApiKeyValue, setNewApiKeyValue] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [prevModelNotAvailable, setPrevModelNotAvailable] = useState(false);
@@ -598,28 +604,39 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
     return Number.isNaN(parsed) ? 0 : parsed;
   };
 
+  const loadApiKeys = useCallback(async (opts: { silent?: boolean } = {}) => {
+    try {
+      if (!opts.silent) setApiKeysLoading(true);
+      setApiKeysError(null);
+      const { data, error } = await supabase.functions.invoke('api-keys', {
+        body: { action: 'list' },
+      });
+      if (error) throw error;
+      const keys = Array.isArray(data) ? data : (data?.keys ?? []);
+      setApiKeys(keys);
+      return keys as Array<{ id: string; label: string; key_last4: string; is_active: boolean }>;
+    } catch (e: any) {
+      setApiKeysError(e?.message || 'Failed to load API keys');
+      throw e;
+    } finally {
+      if (!opts.silent) setApiKeysLoading(false);
+    }
+  }, []);
+
   // Load API keys from edge function
   useEffect(() => {
     let isCancelled = false;
-    const loadApiKeys = async () => {
+    (async () => {
       try {
-        setApiKeysLoading(true);
-        setApiKeysError(null);
-        const { data, error } = await supabase.functions.invoke('api-keys', {
-          body: { action: 'list' },
-        });
+        const keys = await loadApiKeys();
         if (isCancelled) return;
-        if (error) throw error;
-        setApiKeys(Array.isArray(data) ? data : (data?.keys ?? []));
-      } catch (e: any) {
-        if (!isCancelled) setApiKeysError(e?.message || 'Failed to load API keys');
-      } finally {
-        if (!isCancelled) setApiKeysLoading(false);
+        setApiKeys(keys);
+      } catch {
+        // loadApiKeys already updates apiKeysError.
       }
-    };
-    loadApiKeys();
+    })();
     return () => { isCancelled = true; };
-  }, []);
+  }, [loadApiKeys]);
 
   // Init apiKeyId from profile once it loads
   useEffect(() => {
@@ -696,6 +713,50 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
   }, [profile?.id]);
 
   const selectedModel = availableModels.find(m => m.id === modelId) || null;
+
+  const handleCreateApiKey = async () => {
+    const label = newApiKeyLabel.trim();
+    const rawKey = newApiKeyValue.trim();
+
+    if (!label) {
+      toast.error('Please enter an API key label');
+      return;
+    }
+
+    if (!rawKey) {
+      toast.error('Please enter the API key');
+      return;
+    }
+
+    try {
+      setCreatingApiKey(true);
+      const { data, error } = await supabase.rpc('insert_api_key', {
+        p_label: label,
+        p_raw_key: rawKey,
+      });
+
+      if (error) throw error;
+
+      const newKeyId = typeof data === 'string' ? data : null;
+      await loadApiKeys({ silent: true });
+
+      if (newKeyId) {
+        setApiKeyId(newKeyId);
+        setModelId("");
+        setAvailableModels([]);
+        setPrevModelNotAvailable(false);
+      }
+
+      setNewApiKeyLabel("");
+      setNewApiKeyValue("");
+      setCreateApiKeyOpen(false);
+      toast.success('API key created');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to create API key');
+    } finally {
+      setCreatingApiKey(false);
+    }
+  };
 
   const historyLimitMax = useMemo(() => {
     const tokens = selectedModel?.context_length;
@@ -1680,6 +1741,10 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                       <Select
                         value={apiKeyId ?? ""}
                         onValueChange={(val) => {
+                          if (val === CREATE_API_KEY_VALUE) {
+                            setCreateApiKeyOpen(true);
+                            return;
+                          }
                           setApiKeyId(val || null);
                           setModelId("");
                           setAvailableModels([]);
@@ -1691,6 +1756,12 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                           <SelectValue placeholder="Select an API key" />
                         </SelectTrigger>
                         <SelectContent className="bg-background border z-50">
+                          <SelectItem value={CREATE_API_KEY_VALUE}>
+                            <span className="flex items-center gap-2 font-medium">
+                              <Plus className="h-4 w-4" />
+                              Create new API key
+                            </span>
+                          </SelectItem>
                           {apiKeys.filter(k => k.is_active).map((key) => (
                             <SelectItem key={key.id} value={key.id}>
                               {key.label} (••••{key.key_last4})
@@ -1704,6 +1775,63 @@ const AIAgentSettings = ({ agentName, onBack, profileId, initialModelId }: AIAge
                         This profile has no API key assigned. Select one above before saving.
                       </p>
                     )}
+                    <Dialog open={createApiKeyOpen} onOpenChange={setCreateApiKeyOpen}>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Create API Key</DialogTitle>
+                          <DialogDescription>
+                            Add an OpenRouter API key and select it for this AI agent.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium" htmlFor="api-key-label">
+                              Label
+                            </label>
+                            <Input
+                              id="api-key-label"
+                              placeholder="web_id"
+                              value={newApiKeyLabel}
+                              onChange={(event) => setNewApiKeyLabel(event.target.value)}
+                              disabled={creatingApiKey}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium" htmlFor="api-key-value">
+                              API Key
+                            </label>
+                            <Input
+                              id="api-key-value"
+                              type="password"
+                              placeholder="openrouter_apikey"
+                              value={newApiKeyValue}
+                              onChange={(event) => setNewApiKeyValue(event.target.value)}
+                              disabled={creatingApiKey}
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setCreateApiKeyOpen(false)}
+                            disabled={creatingApiKey}
+                          >
+                            Cancel
+                          </Button>
+                          <Button type="button" onClick={handleCreateApiKey} disabled={creatingApiKey}>
+                            {creatingApiKey ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Creating...
+                              </>
+                            ) : (
+                              'Create API Key'
+                            )}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
 
                   {/* Primary AI Model */}
