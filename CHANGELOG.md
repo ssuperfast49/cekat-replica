@@ -1,6 +1,6 @@
 # Change Log
 
-## [0.3.26] - API Key Creation from AI Profile Editor - 11-05-2026
+## [0.3.27] - API Key Creation from AI Profile Editor - 11-05-2026
 
 ### Added
 
