@@ -22,7 +22,11 @@ export const APP_ORIGIN: string = (() => {
   const override = env?.VITE_APP_ORIGIN as string | undefined;
   if (override) return trimTrailingSlash(override);
 
-  return "https://cssuper.com";
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+
+  return "";
 })();
 
 /**
