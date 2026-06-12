@@ -1,5 +1,27 @@
 # Change Log
 
+## [0.3.28] - Escalating Livechat Spam Suspension & Agent Notification - 12-06-2026
+
+### Added
+
+- **Escalating Spam Suspension for Human-Handover Chats** (`src/hooks/useEscalatingBan.ts` [NEW], `src/hooks/useLiveChat.ts`, `src/components/livechat/MessageInput.tsx`, `src/pages/LiveChat.tsx`): When a conversation is handed over to a human agent, an escalating automatic suspension system now activates if the user sends 5+ messages in under 5 seconds.
+  - **Suspension ladder** (resets if more than 1 hour passes since the last suspension):
+    - 1st offense → 30 seconds
+    - 2nd offense (within 1 hour) → 1 minute
+    - 3rd offense (within 1 hour) → 5 minutes
+    - 4th+ offense (within 1 hour) → 10 minutes (max)
+  - Suspension state is persisted in client-side `sessionStorage` so page reloads do not bypass the ban.
+  - The send button and Enter key are blocked for the full suspension duration.
+  - A red warning banner displays the remaining countdown and a **"Peringatan N"** (Warning N) badge showing the escalation level for repeat offenders.
+  - Completely separate from the flat AI-mode rate limit (`useRateLimit`) — the escalating system only activates during human handover.
+
+- **Real-Time Agent Suspension Notice** (`supabase/functions/livechat-orchestrator/index.ts`): When a new suspension is triggered, a system event message is immediately inserted into the thread via a new orchestrator action (`insert_system_notice`) and appears in the agent's chat view in real-time.
+  - Message format: `⚠️ [Auto-Suspension] This user has been automatically suspended for X due to spam (Nth warning). They sent 5+ messages in under 5 seconds.`
+  - Only fires on a **new** ban, not on repeated blocked attempts while already suspended, preventing duplicate notices.
+  - System notices use `role: "system"`, `type: "event"` and are excluded from AI context history.
+
+- **`insert_system_notice` Orchestrator Action** (`supabase/functions/livechat-orchestrator/index.ts`): New reusable edge function action that inserts a system-level event message into any thread with service-role privileges. Accepts `{ thread_id, body }`.
+
 ## [0.3.27] - Livechat Spam Prevention & Rate Limiting - 12-06-2026
 
 ### Added

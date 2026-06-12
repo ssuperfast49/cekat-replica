@@ -402,6 +402,25 @@ async function checkHandover(p: {
     return { is_handoff: isHandoff };
 }
 
+// ───── ACTION: insert_system_notice ─────
+// Inserts a system event message into the thread (visible to agents, not sent to AI).
+async function insertSystemNotice(p: {
+    thread_id: string;
+    body: string;
+}) {
+    if (!p.thread_id) throw new Error("thread_id is required");
+    if (!p.body) throw new Error("body is required");
+    const { error } = await sb.from("messages").insert({
+        thread_id: p.thread_id,
+        role: "system",
+        type: "event",
+        direction: "in",
+        body: p.body,
+    });
+    if (error) throw new Error("insert_system_notice failed: " + error.message);
+    return { ok: true };
+}
+
 // ───── ACTION: send_message_full ─────
 // Atmoically ensures the thread, inserts the welcome message, and inserts the user message.
 // This prevents ghost threads if the user disconnects shortly after sending a message.
@@ -478,6 +497,7 @@ const ACTIONS: Record<string, (p: any) => Promise<any>> = {
     log_token_usage: logTokenUsage,
     check_handover: checkHandover,
     send_message_full: sendMessageFull,
+    insert_system_notice: insertSystemNotice,
 };
 
 Deno.serve(async (req) => {

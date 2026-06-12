@@ -10,6 +10,7 @@ import { uploadFileToStorage, type UploadedFile, type StagedFile } from "@/compo
 import { ChatMessage } from "@/types/liveChat";
 import { toast } from "sonner";
 import { useRateLimit } from "@/hooks/useRateLimit";
+import { useEscalatingBan } from "@/hooks/useEscalatingBan";
 
 // Use provided ringtones from public/tones (can be overridden via window.chatConfig)
 const LOW_TONE_URL = '/tones/mixkit-message-pop-alert-2354.mp3';
@@ -56,6 +57,7 @@ export function useLiveChat() {
 
 
     const rateLimitHook = useRateLimit('cekat_member_rate_limit_ban');
+    const escalatingBan = useEscalatingBan();
 
     // Refs
     const viewportRef = useRef<HTMLDivElement>(null);
@@ -869,8 +871,9 @@ export function useLiveChat() {
         const activeStagedFile = stagedFile;
         if (!text && !activeStagedFile) return;
 
-        // ── Rate-limit guard ──
-        if (rateLimitHook.recordSend()) {
+        // ── Rate-limit guard (AI mode — flat ban) ──
+        const isCurrentlyAssigned = !aiAccessEnabledRef.current;
+        if (!isCurrentlyAssigned && rateLimitHook.recordSend()) {
             const banMsg = rateLimitHook.getBanMessage();
             if (banMsg) {
                 setMessages(prev => [...prev, {
@@ -885,6 +888,41 @@ export function useLiveChat() {
                 setTimeout(() => scrollToBottom(), 50);
             }
             return;
+        }
+
+        // ── Escalating ban guard (human-handover mode) ──
+        if (isCurrentlyAssigned) {
+            const banResult = escalatingBan.recordSend();
+            if (banResult.blocked) {
+                if (banResult.isNewBan) {
+                    // Build a human-readable duration string
+                    const durationMs = banResult.expiresAt - Date.now();
+                    const totalSec = Math.ceil(durationMs / 1000);
+                    const min = Math.floor(totalSec / 60);
+                    const sec = totalSec % 60;
+                    const durationStr = min > 0
+                        ? `${min} minute${min > 1 ? 's' : ''}${sec > 0 ? ` ${sec}s` : ''}`
+                        : `${sec} second${sec !== 1 ? 's' : ''}`;
+                    const warningLabel = banResult.level === 0
+                        ? '1st warning'
+                        : banResult.level === 1
+                            ? '2nd warning'
+                            : banResult.level === 2
+                                ? '3rd warning'
+                                : `${banResult.level + 1}th warning (max)`;
+                    const noticeBody = `⚠️ [Auto-Suspension] This user has been automatically suspended for ${durationStr} due to spam (${warningLabel}). They sent 5+ messages in under 5 seconds.`;
+
+                    // Fire-and-forget — send to the agent's thread view
+                    const tid = threadIdRef.current;
+                    if (tid) {
+                        callOrchestrator('insert_system_notice', {
+                            thread_id: tid,
+                            body: noticeBody,
+                        }).catch(() => {}); // non-fatal
+                    }
+                }
+                return;
+            }
         }
 
         // ── Suspension guard (secondary safety) ──
@@ -1278,8 +1316,9 @@ export function useLiveChat() {
         threadStatus,
         isAssignedToHuman,
         blockedUntil,
-        isBanned: rateLimitHook.isBanned,
-        banCountdown: rateLimitHook.banCountdown,
+        isBanned: rateLimitHook.isBanned || escalatingBan.isBanned,
+        banCountdown: escalatingBan.isBanned ? escalatingBan.banCountdown : rateLimitHook.banCountdown,
+        escalatingSuspensionLevel: escalatingBan.suspensionLevel,
         isSpamBlocked,
         cooldownTimeLeft,
     };
