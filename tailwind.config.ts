@@ -119,6 +119,11 @@ export default {
 						'0%': { transform: 'translateY(0)' },
 						'50%': { transform: 'translateY(-2px)' },
 						'100%': { transform: 'translateY(0)' }
+					},
+					shake: {
+						'0%, 100%': { transform: 'translateX(0)' },
+						'20%, 60%': { transform: 'translateX(-4px)' },
+						'40%, 80%': { transform: 'translateX(4px)' }
 					}
 				},
 				animation: {
@@ -126,7 +131,8 @@ export default {
 					'accordion-up': 'accordion-up 0.2s ease-out',
 					'collapsible-down': 'collapsible-down 0.3s ease-out',
 					'collapsible-up': 'collapsible-up 0.3s ease-out',
-					float: 'float 3s ease-in-out infinite'
+					float: 'float 3s ease-in-out infinite',
+					shake: 'shake 0.4s ease-in-out'
 				}
 			}
 	},

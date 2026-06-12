@@ -1,5 +1,18 @@
 # Change Log
 
+## [0.3.27] - Livechat Spam Prevention & Rate Limiting - 12-06-2026
+
+### Added
+
+- **Anti-Spam Rate Limiting for Livechat UI** (`src/components/livechat/MessageInput.tsx`, `src/hooks/useLiveChat.ts`, `src/pages/LiveChat.tsx`): Prevented spamming by requiring customer users to wait up to 1 minute for an AI response before they can send another message.
+  - Automatically resets when the AI starts and finishes responding or if the send action fails (allowing immediate retry).
+  - Does not apply to human agents, and is bypassed if the thread is assigned to a human agent.
+  - Persists the rate-limiting cooldown state in client-side `sessionStorage` (tied to `sessionId`) to remain immune to page reloads and client-server clock drift.
+  - Displays a warning banner with a Clock icon and a countdown timer in Amber when the user is spam-blocked.
+  - Intercepts Enter keypresses and Send button clicks when blocked, triggering a horizontal shake animation on the warning banner to alert the user without disabling key/click input.
+
+- **Shake Animation Utility** (`tailwind.config.ts`): Added a reusable `shake` keyframes animation and `animate-shake` class configuration to extend the Tailwind CSS design system.
+
 ## [0.3.26] - API Key Creation from AI Profile Editor - 11-05-2026
 
 ### Added

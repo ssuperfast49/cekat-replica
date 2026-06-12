@@ -51,6 +51,8 @@ export default function LiveChat() {
     isBanned,
     banCountdown,
     blockedUntil,
+    isSpamBlocked,
+    cooldownTimeLeft,
   } = useLiveChat();
 
 
@@ -86,6 +88,8 @@ export default function LiveChat() {
               isBanned={isBanned}
               banCountdown={banCountdown}
               blockedUntil={blockedUntil}
+              isSpamBlocked={isSpamBlocked}
+              cooldownTimeLeft={cooldownTimeLeft}
             />
 
           </CardContent>

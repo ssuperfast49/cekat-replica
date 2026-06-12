@@ -129,6 +129,58 @@ export function useLiveChat() {
         return generated;
     });
 
+    const [lastSentTime, setLastSentTime] = useState<number>(() => {
+        if (typeof window === 'undefined') return 0;
+        try {
+            const stored = sessionStorage.getItem(`last_sent_time_${sessionId}`);
+            return stored ? Number(stored) : 0;
+        } catch {
+            return 0;
+        }
+    });
+
+    const [cooldownTimeLeft, setCooldownTimeLeft] = useState<number>(0);
+
+    const isSpamBlocked = useMemo(() => {
+        if (isAssignedToHuman) return false;
+        if (!lastSentTime) return false;
+
+        const elapsed = Date.now() - lastSentTime;
+        if (elapsed >= 60000) return false;
+
+        // Check if AI responded in the messages list
+        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+        const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
+
+        if (!lastUserMsg) return false; // no user message yet
+
+        const lastUserTime = new Date(lastUserMsg.at).getTime();
+        const lastAssistantTime = lastAssistantMsg ? new Date(lastAssistantMsg.at).getTime() : 0;
+
+        const aiHasResponded = lastAssistantMsg && 
+                               (lastAssistantTime > lastUserTime || (lastAssistantTime === lastUserTime && !lastAssistantMsg.streaming)) &&
+                               !loading;
+
+        return !aiHasResponded;
+    }, [messages, loading, isAssignedToHuman, lastSentTime]);
+
+    useEffect(() => {
+        if (!isSpamBlocked || !lastSentTime) {
+            setCooldownTimeLeft(0);
+            return;
+        }
+
+        const updateTimer = () => {
+            const elapsed = Date.now() - lastSentTime;
+            const remaining = Math.max(0, Math.ceil((60000 - elapsed) / 1000));
+            setCooldownTimeLeft(remaining);
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [isSpamBlocked, lastSentTime]);
+
     const supabase = useMemo(() => {
         return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
             auth: { persistSession: false, autoRefreshToken: false },
@@ -852,6 +904,11 @@ export function useLiveChat() {
         const isAssigned = !aiAccessEnabledRef.current; // Use ref for absolute latest state (bypasses React render lag)
         if (!isAssigned) {
             setLoading(true);
+            const now = Date.now();
+            setLastSentTime(now);
+            try {
+                sessionStorage.setItem(`last_sent_time_${sessionId}`, String(now));
+            } catch {}
         }
 
         const optimisticMessages: any[] = [];
@@ -922,11 +979,15 @@ export function useLiveChat() {
                     if (assignResult.success) {
                         toast.error(`Batas pesan AI telah tercapai. Percakapan dialihkan ke super agent.`);
                         setLoading(false);
+                        setLastSentTime(0);
+                        try { sessionStorage.removeItem(`last_sent_time_${sessionId}`); } catch {}
                         return;
                     }
                 } else if (limitInfo.isExceeded) {
                     toast.error(`Batas pesan AI tercapai. Tidak ada agen tersedia.`);
                     setLoading(false);
+                    setLastSentTime(0);
+                    try { sessionStorage.removeItem(`last_sent_time_${sessionId}`); } catch {}
                     return;
                 }
             } catch (error) { }
@@ -942,6 +1003,8 @@ export function useLiveChat() {
                 toast.error(`Upload failed: ${error.message}`);
                 setIsUploadingFile(false);
                 setLoading(false);
+                setLastSentTime(0);
+                try { sessionStorage.removeItem(`last_sent_time_${sessionId}`); } catch {}
                 return;
             }
             setIsUploadingFile(false);
@@ -1068,6 +1131,8 @@ export function useLiveChat() {
             // Remove optimistic messages so UI doesn't show unsent messages
             setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
             setLoading(false);
+            setLastSentTime(0);
+            try { sessionStorage.removeItem(`last_sent_time_${sessionId}`); } catch {}
             return;
         }
 
@@ -1215,6 +1280,8 @@ export function useLiveChat() {
         blockedUntil,
         isBanned: rateLimitHook.isBanned,
         banCountdown: rateLimitHook.banCountdown,
+        isSpamBlocked,
+        cooldownTimeLeft,
     };
 
 }
