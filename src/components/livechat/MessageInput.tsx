@@ -16,6 +16,8 @@ interface MessageInputProps {
     isBanned?: boolean;
     banCountdown?: string;
     blockedUntil?: string | null;
+    isSpamBlocked?: boolean;
+    cooldownTimeLeft?: number;
 }
 
 function formatCountdown(ms: number): string {
@@ -41,8 +43,16 @@ export function MessageInput({
     isBanned = false,
     banCountdown = '',
     blockedUntil = null,
+    isSpamBlocked = false,
+    cooldownTimeLeft = 0,
 }: MessageInputProps) {
     const [suspensionTimeLeft, setSuspensionTimeLeft] = useState<string>('');
+    const [shouldShake, setShouldShake] = useState<boolean>(false);
+
+    const triggerShake = () => {
+        setShouldShake(true);
+        setTimeout(() => setShouldShake(false), 400);
+    };
 
     useEffect(() => {
         if (!blockedUntil) {
@@ -71,9 +81,22 @@ export function MessageInput({
     const onKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
+            if (isSpamBlocked) {
+                triggerShake();
+                return;
+            }
             if ((!draft.trim() && !stagedFile) || isUploadingFile || isBanned || isSuspended) return;
             onSend();
         }
+    };
+
+    const handleSendClick = () => {
+        if (isSpamBlocked) {
+            triggerShake();
+            return;
+        }
+        if ((!draft.trim() && !stagedFile) || isUploadingFile || isBanned || isSuspended) return;
+        onSend();
     };
 
     const inputDisabled = isUploadingFile || isBanned || isSuspended;
@@ -98,6 +121,18 @@ export function MessageInput({
 
     return (
         <div className="p-3 border-t border-blue-100 sm:rounded-b-2xl rounded-none bg-blue-50/40">
+            {isSpamBlocked && (
+                <div className={`mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium flex items-center justify-between gap-2 transition-transform ${shouldShake ? 'animate-shake border-amber-400 bg-amber-100' : ''}`}>
+                    <div className="flex items-center gap-2">
+                        <span className="text-base">⏳</span>
+                        <span>Mohon tunggu respons AI sebelum mengirim pesan baru</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-amber-200/50 px-2 py-0.5 rounded-md font-bold text-amber-800">
+                        <Clock className="w-3 h-3" />
+                        <span>{cooldownTimeLeft}s</span>
+                    </div>
+                </div>
+            )}
             {isSuspended && (
                 <div className="mb-2 px-3 py-2 rounded-lg bg-red-100 border border-red-200 text-red-700 text-xs font-medium flex items-center justify-between gap-2 animate-in fade-in slide-in-from-bottom-1">
                     <div className="flex items-center gap-2">
@@ -147,9 +182,11 @@ export function MessageInput({
                     className="rounded-xl min-h-[40px] max-h-[120px] resize-none px-4 py-2 border-blue-200 focus-visible:ring-blue-500 placeholder:text-slate-400 bg-white text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <Button
-                    onClick={onSend}
-                    disabled={(!draft.trim() && !stagedFile) || inputDisabled}
-                    className="rounded-full h-10 w-10 p-0 bg-blue-600 hover:bg-blue-700 text-blue-50"
+                    onClick={handleSendClick}
+                    disabled={((!draft.trim() && !stagedFile) || inputDisabled) && !isSpamBlocked}
+                    className={`rounded-full h-10 w-10 p-0 bg-blue-600 hover:bg-blue-700 text-blue-50 ${
+                        isSpamBlocked && (draft.trim() || stagedFile) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                 >
                     <Send className="h-4 w-4" />
                 </Button>
