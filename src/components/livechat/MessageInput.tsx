@@ -18,6 +18,7 @@ interface MessageInputProps {
     blockedUntil?: string | null;
     isSpamBlocked?: boolean;
     cooldownTimeLeft?: number;
+    escalatingSuspensionLevel?: number;
 }
 
 function formatCountdown(ms: number): string {
@@ -45,6 +46,7 @@ export function MessageInput({
     blockedUntil = null,
     isSpamBlocked = false,
     cooldownTimeLeft = 0,
+    escalatingSuspensionLevel = 0,
 }: MessageInputProps) {
     const [suspensionTimeLeft, setSuspensionTimeLeft] = useState<string>('');
     const [shouldShake, setShouldShake] = useState<boolean>(false);
@@ -148,7 +150,15 @@ export function MessageInput({
             {isBanned && !isSuspended && banCountdown && (
                 <div className="mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
                     <span className="text-base">⛔</span>
-                    <span>Terlalu banyak aksi, mohon tunggu <strong>{banCountdown}</strong></span>
+                    <div className="flex-1">
+                        <span>Terlalu banyak pesan, mohon tunggu </span>
+                        <strong>{banCountdown}</strong>
+                        {escalatingSuspensionLevel > 0 && (
+                            <span className="ml-1.5 inline-flex items-center gap-0.5 bg-red-200/70 text-red-800 rounded px-1.5 py-0.5 font-bold">
+                                Peringatan {escalatingSuspensionLevel + 1}
+                            </span>
+                        )}
+                    </div>
                 </div>
             )}
             {isAssignedToHuman && !isBanned && !isSuspended && (

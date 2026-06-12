@@ -53,6 +53,7 @@ export default function LiveChat() {
     blockedUntil,
     isSpamBlocked,
     cooldownTimeLeft,
+    escalatingSuspensionLevel,
   } = useLiveChat();
 
 
@@ -90,6 +91,7 @@ export default function LiveChat() {
               blockedUntil={blockedUntil}
               isSpamBlocked={isSpamBlocked}
               cooldownTimeLeft={cooldownTimeLeft}
+              escalatingSuspensionLevel={escalatingSuspensionLevel}
             />
 
           </CardContent>
