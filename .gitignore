@@ -3,3 +3,5 @@
 .env.sync.local
 sync/.sync-state.json
 node_modules
+.claude
+.cursor

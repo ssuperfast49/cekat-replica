@@ -4,7 +4,18 @@
       "mcp__supabase__list_projects",
       "mcp__supabase__get_project",
       "mcp__supabase__list_tables",
-      "mcp__supabase__list_branches"
+      "mcp__supabase__list_branches",
+      "Read(//c/Users/resha/**)",
+      "Read(//c/Users/resha/.claude//**)",
+      "Bash(npx -y @supabase/mcp-server-supabase@latest --help)",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__get_logs",
+      "mcp__supabase__execute_sql",
+      "Bash(python3 -c \"print\\(open\\(r'C:\\\\Users\\\\resha\\\\.claude\\\\projects\\\\C--Users-resha-OneDrive---Sumindex-Desktop-Kerjaan-Vino-cekat-replica\\\\560c39d1-fa82-4658-8222-eaaa637b51ca\\\\tool-results\\\\mcp-supabase-get_advisors-1781352162858.txt'\\).read\\(\\)[0:80000]\\)\")",
+      "PowerShell($content = Get-Content -Raw -Path 'C:\\\\Users\\\\resha\\\\.claude\\\\projects\\\\C--Users-resha-OneDrive---Sumindex-Desktop-Kerjaan-Vino-cekat-replica\\\\560c39d1-fa82-4658-8222-eaaa637b51ca\\\\tool-results\\\\mcp-supabase-get_advisors-1781352162858.txt'; Write-Output \"Total length: $\\($content.Length\\)\"; Write-Output $content.Substring\\(0, [Math]::Min\\(20000, $content.Length\\)\\))",
+      "PowerShell($content = Get-Content -Raw -Path 'C:\\\\Users\\\\resha\\\\.claude\\\\projects\\\\C--Users-resha-OneDrive---Sumindex-Desktop-Kerjaan-Vino-cekat-replica\\\\560c39d1-fa82-4658-8222-eaaa637b51ca\\\\tool-results\\\\mcp-supabase-get_advisors-1781352162858.txt'; Write-Output $content.Substring\\(20000, 20000\\))",
+      "mcp__supabase__deploy_edge_function",
+      "mcp__supabase__apply_migration"
     ]
   }
 }
