@@ -1568,19 +1568,10 @@ export const useConversations = (options?: {
     }
   }, [conversations, fetchUnreadCounts]);
 
-  // Periodic unread count refresh (when visible)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!unreadEnabledRef.current) return;
-      if (isDocumentHidden()) return;
-      const ids = conversationsRef.current.filter((c) => c.assigned).map((c) => c.id);
-      if (ids.length > 0) {
-        void fetchUnreadCounts(ids);
-      }
-    }, 45000);
-
-    return () => clearInterval(interval);
-  }, [fetchUnreadCounts]);
+  // Polling removed. Coverage is now:
+  //  - Foreground updates: realtime broadcast triggers (see useEffect below).
+  //  - Background/closed-tab notifications: Web Push via the send-push Edge Function.
+  //  - Catch-up on tab refocus: the visibilitychange handler below.
 
   // Refresh unread counts and mark selected thread read when tab becomes visible
   useEffect(() => {
