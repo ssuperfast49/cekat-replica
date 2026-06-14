@@ -1,5 +1,33 @@
 # Change Log
 
+## [0.3.29] - Web Push Notifications & Polling Cleanup - 14-06-2026
+
+### Added
+
+- **Web Push Notifications for Backgrounded Agents** (`public/sw.js` [NEW], `src/hooks/usePushNotifications.ts` [NEW], `src/components/layout/GlobalMessageListener.tsx`, `supabase/functions/send-push/index.ts` [NEW], `supabase/migrations/20260614000000_create_push_subscriptions.sql` [NEW], `supabase/migrations/20260614000001_create_get_push_targets.sql` [NEW], `supabase/migrations/20260614000002_create_push_notification_trigger.sql` [NEW]): Agents now receive OS-level desktop push notifications for incoming customer messages even when the browser tab is backgrounded, closed, or the laptop has just woken from sleep. Replaces the previous browser-polling approach (which was throttled to 1+ minute by browsers on backgrounded tabs and stopped entirely when the laptop slept).
+  - New `public.push_subscriptions` table with RLS — each user can only insert/select/update/delete their own row. `service_role` queries it via the Edge Function.
+  - New `public.get_push_targets(p_thread_id, p_sender_user_id)` SECURITY DEFINER SQL function mirrors the existing `GlobalMessageListener.tsx` recipient rules: assignee + collaborator + superadmins, filtered by `auth.users.raw_user_meta_data->notifications_enabled`, sender excluded. Encapsulates all recipient logic in one place.
+  - New `send-push` Edge Function (`verify_jwt: false`) signs push payloads with VAPID keys via `web-push` and dispatches to Google FCM / Apple APNs / Mozilla Push. Auto-prunes stale subscriptions on 410/404 responses.
+  - New `tr_notify_new_inbound_message` AFTER INSERT trigger on `public.messages` fires `send-push` via `net.http_post` (fire-and-forget) whenever `direction='in' AND role='user'`. Same async pattern as the existing `process-followups` cron, so it does not slow the message insert.
+  - Payload includes the contact name, the message preview (truncated to 80 chars), and a `Click to open the thread.` hint. The service worker uses `thread_id` as the notification `tag` so successive messages from the same thread coalesce instead of stacking.
+  - Service worker (`public/sw.js`) handles `push` (decrypt + `showNotification`) and `notificationclick` (focuses an existing tab and navigates via `postMessage`, or opens a new window). Click target is `/?menu=chat&thread=<id>`.
+  - `usePushNotifications` React hook is mounted globally inside `GlobalMessageListener`. Auto-subscribes when an agent logs in (logged-in = opted-in), handles `pushsubscriptionchange` (browser key rotation), upserts subscriptions into `push_subscriptions` by endpoint, and forwards SW notification clicks into React Router. Also exports `enablePushNotificationsInteractive(userId)` for an optional Settings toggle if the browser blocks the auto-prompt.
+  - Requires `VITE_VAPID_PUBLIC_KEY` in the client `.env` and `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` as Edge Function secrets. Use a separate VAPID key pair per environment (dev branch vs main) — subscriptions are bound to the public key.
+  - iOS Safari Web Push not enabled in this release (it requires PWA install via "Add to Home Screen").
+
+### Changed
+
+- **LiveChat Widget Polling Efficiency** (`src/hooks/useLiveChat.ts`): The periodic fallback poll in the customer-facing LiveChat widget was running every 5 seconds and fetching the entire message history every tick, against tables with millions of RLS-protected rows. Rebuilt to be roughly an order of magnitude cheaper without changing realtime delivery latency.
+  - Interval reduced from 5 s to 30 s — matches the existing in-code comment that already documented the intended behavior, restores the original design intent.
+  - `requestCatchUpFetch` is now incremental. A new `lastSeenCreatedAtRef` tracks the latest `created_at` seen for the active thread; subsequent catch-ups query with `.gt('created_at', lastSeen)` and fetch only new rows instead of the full thread.
+  - Polling skips entirely when `document.hidden` is true (widget backgrounded inside an iframe). On `visibilitychange` to visible, a catch-up fires immediately so customers see any missed messages the moment they return to focus, with no wait for the next interval tick.
+  - Cursor resets on thread switch; initial-load fetch seeds the cursor.
+  - No change to the Supabase realtime subscription — sub-second primary delivery path is preserved.
+
+### Removed
+
+- **45-second Unread-Count Poll in Agent Inbox** (`src/hooks/useConversations.ts`): The `setInterval` that called `fetchUnreadCounts` every 45 seconds has been removed. Its original purpose (delivering notifications when realtime drops or the tab is backgrounded) is now fully covered by the new Web Push path; the existing `visibilitychange` handler still triggers a one-shot catch-up when an agent returns to the tab.
+
 ## [0.3.28] - Escalating Livechat Spam Suspension & Agent Notification - 12-06-2026
 
 ### Added

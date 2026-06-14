@@ -5,11 +5,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRBAC } from '@/contexts/RBACContext';
 import { supabase } from '@/integrations/supabase/client';
 import { getCachedThread, setCachedThread } from '@/lib/threadCache';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { toast } from 'sonner';
 
 export function GlobalMessageListener() {
     const { user } = useAuth();
     const { hasRole } = useRBAC();
+
+    // Register Web Push for background/closed-tab notifications.
+    // No-ops if user is null, VITE_VAPID_PUBLIC_KEY is unset, or permission is denied.
+    usePushNotifications();
 
     const location = useLocation();
     // Use refs for values that should not trigger channel rebuild on change

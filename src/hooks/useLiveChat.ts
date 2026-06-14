@@ -80,6 +80,8 @@ export function useLiveChat() {
     const catchUpTimersRef = useRef<number[]>([]);
     const pendingCatchUpRef = useRef(false);
     const periodicCatchUpRef = useRef<number | null>(null);
+    const lastSeenCreatedAtRef = useRef<string | null>(null);
+    const livechatVisibilityHandlerRef = useRef<((this: Document, ev: Event) => any) | null>(null);
     const notificationsReadyRef = useRef(false);
     const systemNotificationIdsRef = useRef<Set<string>>(new Set());
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
@@ -530,12 +532,22 @@ export function useLiveChat() {
 
     const requestCatchUpFetch = async (threadId: string | null, hydrate: (rows: any[]) => void) => {
         if (!threadId) return;
-        const { data } = await supabase
+        let query = supabase
             .from('messages')
             .select('id, role, body, created_at, type, payload')
             .eq('thread_id', threadId)
             .order('created_at', { ascending: true });
-        if (Array.isArray(data)) hydrate(data);
+        if (lastSeenCreatedAtRef.current) {
+            query = query.gt('created_at', lastSeenCreatedAtRef.current);
+        }
+        const { data } = await query;
+        if (Array.isArray(data) && data.length > 0) {
+            hydrate(data);
+            const newest = data[data.length - 1]?.created_at;
+            if (newest && (!lastSeenCreatedAtRef.current || newest > lastSeenCreatedAtRef.current)) {
+                lastSeenCreatedAtRef.current = newest;
+            }
+        }
     };
 
     const scheduleCatchUps = (threadId: string | null, hydrate: (rows: any[]) => void, delays: number[]) => {
@@ -673,6 +685,10 @@ export function useLiveChat() {
                 clearInterval(periodicCatchUpRef.current);
                 periodicCatchUpRef.current = null;
             }
+            if (livechatVisibilityHandlerRef.current) {
+                try { document.removeEventListener('visibilitychange', livechatVisibilityHandlerRef.current); } catch { }
+                livechatVisibilityHandlerRef.current = null;
+            }
         };
     }, []);
 
@@ -705,6 +721,9 @@ export function useLiveChat() {
             systemNotificationIdsRef.current = new Set();
             notificationsReadyRef.current = false;
             clearCatchUpTimers();
+            // Reset incremental cursor for the new thread - the initial fetch below
+            // will populate it from the latest loaded message.
+            lastSeenCreatedAtRef.current = null;
             try {
                 // Fetch current thread status and contact
                 const { data: threadRow } = await supabase
@@ -727,7 +746,11 @@ export function useLiveChat() {
                     .select('id, role, body, created_at, type, payload')
                     .eq('thread_id', tid)
                     .order('created_at', { ascending: true });
-                if (Array.isArray(data)) upsertFromRows(data);
+                if (Array.isArray(data)) {
+                    upsertFromRows(data);
+                    const newest = data[data.length - 1]?.created_at;
+                    if (newest) lastSeenCreatedAtRef.current = newest;
+                }
                 const subscribeToThread = (thread: string) =>
                     supabase
                         .channel(`livechat-msgs-${thread}`)
@@ -763,41 +786,55 @@ export function useLiveChat() {
                 sub = subscribeToThread(tid);
                 scheduleCatchUps(tid, upsertFromRows, [0, 800, 2000, 5000, 10000]);
 
-                // Periodic fallback polling: if realtime subscription goes silent
-                // (e.g. network hiccup, iframe background, etc.) this guarantees
-                // messages and thread status are re-synced every 30 seconds.
+                // Fallback safety net for when realtime drops silently
+                // (e.g. iframe background, network hiccup). Realtime is the primary
+                // path; this runs every 30s only while the widget is visible, and is
+                // incremental (lastSeenCreatedAtRef bounds the message fetch).
+                const runCatchUp = async () => {
+                    if (!threadIdRef.current) return;
+                    try {
+                        await requestCatchUpFetch(threadIdRef.current, upsertFromRows);
+                        const { data: tRow } = await supabase
+                            .from('threads')
+                            .select('status, ai_access_enabled')
+                            .eq('id', threadIdRef.current)
+                            .maybeSingle();
+                        if (tRow) {
+                            const st = tRow.status || null;
+                            if (st !== threadStatusRef.current) {
+                                threadStatusRef.current = st;
+                                setThreadStatus(st);
+                            }
+                            const aiEnabled = tRow.ai_access_enabled ?? true;
+                            if (aiEnabled !== aiAccessEnabledRef.current) {
+                                aiAccessEnabledRef.current = aiEnabled;
+                                setIsAssignedToHuman(!aiEnabled);
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[LiveChat] catch-up failed', err);
+                    }
+                };
+
                 if (periodicCatchUpRef.current) {
                     clearInterval(periodicCatchUpRef.current);
                     periodicCatchUpRef.current = null;
                 }
-                periodicCatchUpRef.current = window.setInterval(async () => {
-                    try {
-                        // Re-fetch messages
-                        await requestCatchUpFetch(threadIdRef.current, upsertFromRows);
-                        // Also re-sync thread status (ai_access_enabled, status)
-                        if (threadIdRef.current) {
-                            const { data: tRow } = await supabase
-                                .from('threads')
-                                .select('status, ai_access_enabled')
-                                .eq('id', threadIdRef.current)
-                                .maybeSingle();
-                            if (tRow) {
-                                const st = tRow.status || null;
-                                if (st !== threadStatusRef.current) {
-                                    threadStatusRef.current = st;
-                                    setThreadStatus(st);
-                                }
-                                const aiEnabled = tRow.ai_access_enabled ?? true;
-                                if (aiEnabled !== aiAccessEnabledRef.current) {
-                                    aiAccessEnabledRef.current = aiEnabled;
-                                    setIsAssignedToHuman(!aiEnabled);
-                                }
-                            }
-                        }
-                    } catch (err) {
-                        console.warn('[LiveChat] periodic catch-up failed', err);
-                    }
-                }, 5_000) as unknown as number;
+                periodicCatchUpRef.current = window.setInterval(() => {
+                    if (typeof document !== 'undefined' && document.hidden) return;
+                    void runCatchUp();
+                }, 30_000) as unknown as number;
+
+                // Instant catch-up the moment the widget returns to focus.
+                if (livechatVisibilityHandlerRef.current) {
+                    try { document.removeEventListener('visibilitychange', livechatVisibilityHandlerRef.current); } catch { }
+                    livechatVisibilityHandlerRef.current = null;
+                }
+                const visibilityHandler = () => {
+                    if (typeof document !== 'undefined' && !document.hidden) void runCatchUp();
+                };
+                document.addEventListener('visibilitychange', visibilityHandler);
+                livechatVisibilityHandlerRef.current = visibilityHandler;
             } finally {
                 notificationsReadyRef.current = true;
                 setBooting(false);
