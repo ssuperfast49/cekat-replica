@@ -1,5 +1,32 @@
 # Change Log
 
+## [0.3.30] - Postgres CPU Relief: auth.uid() Wrap & LiveChat Awaiting-Reply Gate - 26-06-2026
+
+### Changed
+
+- **Wrapped `auth.uid()` in two hot RPCs** (`supabase/migrations/20260626000000_wrap_auth_uid_hot_rpcs.sql` [NEW]): Both `public.get_tab_counts_v3` and `public.get_unread_counts` were re-evaluating `auth.uid()` per row inside their EXISTS/IN clauses, multiplying CPU cost across every scanned row.
+  - `get_tab_counts_v3` (plpgsql): the user id is now cached into a `v_uid` local at the top of the function and referenced from the three EXISTS/IN sites in the dynamic path (`channels.super_agent_id`, `channel_agents.user_id`, `org_members.user_id`).
+  - `get_unread_counts` (sql): `tr.user_id = auth.uid()` rewritten as `tr.user_id = (select auth.uid())` so the planner folds it to an InitPlan constant.
+  - Both functions return identical results — `auth.uid()` is constant within a query so this is a pure planner-cost reduction, not a behavior change.
+  - These two RPCs alone were 55.7% of total Postgres CPU time before this change. The wrap is the highest-impact structural fix available without rewriting the application.
+
+- **Wrapped `auth.uid()` in shared RLS helper functions** (`supabase/migrations/20260626000001_wrap_auth_uid_in_rls_helpers.sql` [NEW]): The RLS policies on `public.messages` and `public.threads` already wrapped `auth.uid()` correctly, but they delegated row-visibility decisions to seven helper functions that were each re-evaluating `auth.uid()` per row of their internal queries. Recreated each helper to use `(select auth.uid())`:
+  - `public.is_master_agent()` and `public.is_auditor()` — called from the `read_all` permissive policies on both tables.
+  - `public.is_master_agent_in_org(target_org uuid)` — called from the `threads delete/insert perm channel_owned` policies.
+  - `public.has_perm(action, resource)` — called from `messages delete perm delete_own`, `update messages perm`, and the `threads create/delete perm channel_owned` policies.
+  - `public.can_access_channel_scope(p_channel_id uuid)` — called transitively from messages and threads SELECT paths.
+  - `public.can_access_super_scope(uuid)` and `public.can_access_super_scope(uuid, uuid)` — both overloads, called by `can_access_message_scope` and downstream of several RLS checks.
+  - Function bodies are otherwise unchanged. Same `SECURITY DEFINER`, same `STABLE`, same query shape, same security model.
+
+- **LiveChat polling now gated on awaiting-reply state** (`src/hooks/useLiveChat.ts`, `public/widget.js`): The customer-facing chat widget previously kept polling and held both realtime subscriptions open even when the chat panel was closed (CSS-minimized) or the customer was idle reading the latest reply. Rebuilt so the polling interval is the narrowest possible safety net — it only runs when all five of: panel open, browser tab visible, thread attached, status not closed/resolved/done, and the customer's last message is unanswered.
+  - `public/widget.js`: the parent now postMessages `{type: 'CEKAT_PANEL_STATE', open: boolean}` into the iframe on every panel toggle and on initial iframe load. The minimize button on the iframe side still works the same way (it now also triggers the state notification).
+  - `src/hooks/useLiveChat.ts`: added `panelVisibleRef`, `awaitingReplyRef`, `isResolvedRef`, plus a `recomputePollingState` helper that owns the 30-second `setInterval` and starts/stops it whenever any gate flips. Inputs:
+    - `panelVisibleRef` is driven by the new `CEKAT_PANEL_STATE` listener. On `open: false` the hook also calls `supabase.removeChannel(...)` on both `livechat-msgs-<thread>` and `livechat-threads-<pid>` so a minimized iframe holds zero WebSocket connections. On `open: true` it re-subscribes via a `resubscribeRealtimeRef` helper and fires one immediate catch-up.
+    - `awaitingReplyRef` is recomputed inside `upsertFromRows` from the most recent non-system message's role: customer-authored (`role === 'user'`) means awaiting; anything else (assistant/agent reply) clears it. Also set to `true` at the top of `handleSend` so polling resumes the moment the customer sends a follow-up, without waiting for the round-trip.
+    - `isResolvedRef` mirrors `threadStatus` via a small `useEffect` and treats `closed | resolved | done` as terminal.
+    - The existing `document.visibilitychange` listener now also calls `recomputePollingState`, so polling pauses when the host tab is backgrounded and resumes on focus return alongside the instant catch-up that was already there.
+  - Net effect: a customer who opens chat once and leaves the panel minimized for the rest of their session consumes zero further DB queries and zero realtime connections. A customer with the panel open but reading the latest reply also stops polling. Polling fires only in the narrow window where the customer's last message has no reply yet.
+
 ## [0.3.29] - Web Push Notifications & Polling Cleanup - 14-06-2026
 
 ### Added
