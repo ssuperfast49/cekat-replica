@@ -1,5 +1,17 @@
 # Change Log
 
+## [0.3.32] - Server-Side Fallback for AI Handover Trigger Phrase - 26-06-2026
+
+### Fixed
+
+- **AI handover now guaranteed when the model emits the trigger phrase** (`supabase/migrations/20260626100000_force_handover_on_ai_trigger_phrase.sql` [NEW]): The `ai_profiles.system_prompt` instructs the model to invoke the Handover Tool whenever it emits a sentence like `"aku bantu transfer chat ke senior aku"`. Small / cheap models (`google/gemini-3.1-flash-lite` is the current default) sometimes generate that text but forget the parallel `tool_call`, leaving the customer told they'd be transferred while the bot keeps replying. Observed in production: a customer reported a login problem at 11:55 AM, was told `"transfer chat ke senior"`, then kept looping with bot wrap-up messages for ~5 minutes until they re-phrased the problem at 11:59 and the AI finally invoked the tool.
+  - New trigger function `public.force_handover_on_ai_trigger_phrase()` runs `AFTER INSERT ON public.messages FOR EACH ROW`.
+  - Filters by `actor_kind = 'ai' AND role = 'agent'` so customer / agent / system messages are ignored.
+  - Matches `body ILIKE '%transfer chat ke senior%'` — chosen for the unambiguous intent fragment, robust to "aku bantu", "bisa bantu", trailing "ya kak", etc.
+  - On match (and only if `ai_handoff_at IS NULL`) the trigger stamps `ai_handoff_at = now()`, fills `handover_reason` if blank (the `enforce_handover_reason` trigger requires it), and flips `ai_access_enabled = false` so the AI stops responding to subsequent customer messages.
+  - The existing orchestrator `check_handover` action will see the new state on its next run and insert the `"Auto-handover triggered by AI agent."` system event as usual — no change to that path.
+  - Zero behavior change when the AI invokes the Handover Tool correctly (the original path is untouched).
+
 ## [0.3.31] - Web Push Suppressed When Tab Is Closed or Focused - 26-06-2026
 
 ### Changed
