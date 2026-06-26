@@ -1,5 +1,19 @@
 # Change Log
 
+## [0.3.33] - Auto-Assign Handover to an Online Agent - 26-06-2026
+
+### Added
+
+- **Handover now auto-routes to an online agent** (`supabase/migrations/20260626110000_auto_assign_handover_to_online_agent.sql` [NEW]): Threads were entering handover state but staying "Unassigned" until a human manually clicked **Takeover Chat**, leaving customers waiting on a thread no one was looking at. A new `BEFORE UPDATE` trigger on `public.threads` now picks an online channel agent at the moment `ai_handoff_at` transitions to set, so the thread lands on a human in real time.
+  - New function `public.auto_assign_handover_to_online_agent()` runs `BEFORE UPDATE ON public.threads FOR EACH ROW`.
+  - Fires only when `ai_handoff_at` transitions from `NULL` to a value **and** `collaborator_user_id` is still `NULL` (does not fight any path that already chose a human).
+  - **Candidate pool**: agents listed in `public.channel_agents` for that channel, plus the channel's `super_agent_id` owner.
+  - **Online definition**: `users_profile.is_active = true AND last_seen_at >= now() - interval '3 minutes'`. The existing `PresenceContext` keeps `last_seen_at` fresh while the agent has the app open; 3 minutes covers brief tab switches and short network blips without picking agents who have actually left.
+  - **Tiebreak**: agent with the fewest currently-open/pending threads first (load-balancing), then the most recently seen.
+  - On a match the trigger sets `collaborator_user_id`, `status = 'pending'` (so the conversation shows up in the agent's "Assigned" tab immediately), and `assigned_at = now()` (preserves prior value if already set).
+  - **Fallback when no one is online**: the trigger is a no-op. `ai_handoff_at` and `ai_access_enabled = false` still get set by the existing handover path, the thread shows up unassigned, and the existing **Takeover Chat** button keeps working as the manual fallback. No regression in that case.
+  - Works for both handover origins — the n8n Handover Tool path and the 0.3.32 server-side trigger-phrase fallback — because both end with the same `UPDATE threads SET ai_handoff_at = ...` write that this trigger watches.
+
 ## [0.3.32] - Server-Side Fallback for AI Handover Trigger Phrase - 26-06-2026
 
 ### Fixed
