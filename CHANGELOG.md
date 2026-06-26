@@ -1,5 +1,16 @@
 # Change Log
 
+## [0.3.31] - Web Push Suppressed When Tab Is Closed or Focused - 26-06-2026
+
+### Changed
+
+- **Service worker now uses tab state to gate push display** (`public/sw.js`): The `push` event handler queries `self.clients.matchAll({type: 'window', includeUncontrolled: true})` before calling `showNotification`. The list is the browser's authoritative answer to "are any tabs of the app open right now?", so the decision happens client-side with zero added DB or Edge Function cost.
+  - **No tab open** (every tab closed, or browser quit): the push is dropped silently. Web Push for the agent app now respects the agent leaving — they won't get OS notifications for a chat they walked away from.
+  - **A tab is focused and visible**: the push is dropped. The in-page `GlobalMessageListener` already plays sound + a Sonner toast for that realtime event, so the OS push would have been a duplicate.
+  - **A tab exists but is backgrounded** (other tab focused, browser minimized, laptop just woke from sleep): the push is shown. This is the gap the in-page handler can't cover.
+  - Laptop sleep is handled correctly: the tab still exists across sleep, so on wake the SW finds it via `matchAll()` and shows the queued notification.
+  - The existing `notificationclick` handler (focus the open tab and navigate, or open a new window) is unchanged.
+
 ## [0.3.30] - Postgres CPU Relief: auth.uid() Wrap & LiveChat Awaiting-Reply Gate - 26-06-2026
 
 ### Changed
