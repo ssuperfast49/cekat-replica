@@ -82,6 +82,17 @@ export function useLiveChat() {
     const periodicCatchUpRef = useRef<number | null>(null);
     const lastSeenCreatedAtRef = useRef<string | null>(null);
     const livechatVisibilityHandlerRef = useRef<((this: Document, ev: Event) => any) | null>(null);
+    // Awaiting-reply polling gate. Polling only fires while the customer is waiting
+    // for a reply from agent/AI and the panel + tab are both visible.
+    const panelVisibleRef = useRef<boolean>(true);
+    const awaitingReplyRef = useRef<boolean>(false);
+    const isResolvedRef = useRef<boolean>(false);
+    const recomputePollingStateRef = useRef<(() => void) | null>(null);
+    const resubscribeRealtimeRef = useRef<(() => void) | null>(null);
+    const realtimeMsgSubRef = useRef<any>(null);
+    const realtimeThreadsSubRef = useRef<any>(null);
+    const livechatPanelHandlerRef = useRef<((this: Window, ev: MessageEvent) => any) | null>(null);
+    const runCatchUpRef = useRef<(() => Promise<void>) | null>(null);
     const notificationsReadyRef = useRef(false);
     const systemNotificationIdsRef = useRef<Set<string>>(new Set());
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
@@ -511,6 +522,18 @@ export function useLiveChat() {
             const arr = Array.from(map.values());
             arr.sort((a, b) => a.order - b.order);
 
+            // Customer is awaiting a reply iff the most recent non-system message is from them.
+            let nextAwaiting = false;
+            for (let i = arr.length - 1; i >= 0; i -= 1) {
+                if (arr[i].role === 'system') continue;
+                nextAwaiting = arr[i].role === 'user';
+                break;
+            }
+            if (awaitingReplyRef.current !== nextAwaiting) {
+                awaitingReplyRef.current = nextAwaiting;
+                recomputePollingStateRef.current?.();
+            }
+
             if (!changed && arr.length === prev.length) {
                 let identical = true;
                 for (let i = 0; i < arr.length; i += 1) {
@@ -706,6 +729,8 @@ export function useLiveChat() {
     useEffect(() => {
         let sub: any = null;
         let threadsSub: any = null;
+        let pidForResubscribe: string | null = null;
+        let subscribeToThreadFn: ((thread: string) => any) | null = null;
 
         const attachToThread = async (tid: string) => {
             if (threadIdRef.current === tid && sub) {
@@ -713,7 +738,7 @@ export function useLiveChat() {
                 scheduleCatchUps(tid, upsertFromRows, [0, 1200]);
                 return;
             }
-            if (sub) { try { supabase.removeChannel(sub); } catch { } sub = null; }
+            if (sub) { try { supabase.removeChannel(sub); } catch { } sub = null; realtimeMsgSubRef.current = null; }
             threadIdRef.current = tid; // Sync ref
             pendingThreadAttachRef.current = false;
             pendingThreadInfoRef.current = null;
@@ -781,15 +806,19 @@ export function useLiveChat() {
                                 scheduleCatchUps(threadIdRef.current, upsertFromRows, [0, 1500]);
                                 if (sub) try { supabase.removeChannel(sub); } catch { }
                                 sub = subscribeToThread(thread);
+                                realtimeMsgSubRef.current = sub;
                             }
                         });
                 sub = subscribeToThread(tid);
+                realtimeMsgSubRef.current = sub;
+                subscribeToThreadFn = subscribeToThread;
                 scheduleCatchUps(tid, upsertFromRows, [0, 800, 2000, 5000, 10000]);
 
-                // Fallback safety net for when realtime drops silently
-                // (e.g. iframe background, network hiccup). Realtime is the primary
-                // path; this runs every 30s only while the widget is visible, and is
-                // incremental (lastSeenCreatedAtRef bounds the message fetch).
+                // Fallback safety net for when realtime drops silently. The interval
+                // is owned by `recomputePollingState` which only runs it while ALL of:
+                // panel visible, tab visible, thread exists, status not closed/resolved,
+                // and customer is awaiting a reply. Realtime stays connected; only this
+                // PostgREST poll is gated.
                 const runCatchUp = async () => {
                     if (!threadIdRef.current) return;
                     try {
@@ -815,23 +844,20 @@ export function useLiveChat() {
                         console.warn('[LiveChat] catch-up failed', err);
                     }
                 };
+                runCatchUpRef.current = runCatchUp;
 
-                if (periodicCatchUpRef.current) {
-                    clearInterval(periodicCatchUpRef.current);
-                    periodicCatchUpRef.current = null;
-                }
-                periodicCatchUpRef.current = window.setInterval(() => {
-                    if (typeof document !== 'undefined' && document.hidden) return;
-                    void runCatchUp();
-                }, 30_000) as unknown as number;
+                // Tell the standalone polling-gate effect that thread state changed.
+                recomputePollingStateRef.current?.();
 
-                // Instant catch-up the moment the widget returns to focus.
+                // Instant catch-up the moment the parent tab returns to focus.
                 if (livechatVisibilityHandlerRef.current) {
                     try { document.removeEventListener('visibilitychange', livechatVisibilityHandlerRef.current); } catch { }
                     livechatVisibilityHandlerRef.current = null;
                 }
                 const visibilityHandler = () => {
-                    if (typeof document !== 'undefined' && !document.hidden) void runCatchUp();
+                    if (typeof document === 'undefined') return;
+                    recomputePollingStateRef.current?.();
+                    if (!document.hidden) void runCatchUp();
                 };
                 document.addEventListener('visibilitychange', visibilityHandler);
                 livechatVisibilityHandlerRef.current = visibilityHandler;
@@ -856,7 +882,7 @@ export function useLiveChat() {
 
         initialize();
 
-        threadsSub = supabase
+        const subscribeToThreadsForPid = () => supabase
             .channel(`livechat-threads-${pid}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'threads', filter: `channel_id=eq.${pid}` }, async (payload: any) => {
                 const tid = payload?.new?.id;
@@ -895,12 +921,110 @@ export function useLiveChat() {
             })
             .subscribe(() => setBooting(false));
 
+        threadsSub = subscribeToThreadsForPid();
+        realtimeThreadsSubRef.current = threadsSub;
+        pidForResubscribe = pid;
+
+        // Called by the panel-state listener when the customer reopens the chat panel
+        // after we had dropped subscriptions on minimize. Recreates both channels and
+        // fires one immediate catch-up to fill the gap.
+        resubscribeRealtimeRef.current = () => {
+            if (!realtimeThreadsSubRef.current && pidForResubscribe === pid) {
+                threadsSub = subscribeToThreadsForPid();
+                realtimeThreadsSubRef.current = threadsSub;
+            }
+            if (!realtimeMsgSubRef.current && threadIdRef.current && subscribeToThreadFn) {
+                sub = subscribeToThreadFn(threadIdRef.current);
+                realtimeMsgSubRef.current = sub;
+            }
+            if (runCatchUpRef.current) void runCatchUpRef.current();
+        };
+
         return () => {
             try { if (sub) supabase.removeChannel(sub); } catch { }
             try { if (threadsSub) supabase.removeChannel(threadsSub); } catch { }
+            realtimeMsgSubRef.current = null;
+            realtimeThreadsSubRef.current = null;
+            resubscribeRealtimeRef.current = null;
+            runCatchUpRef.current = null;
+            subscribeToThreadFn = null;
             attachToThreadRef.current = null;
         };
     }, [pid, sessionId, username, upsertFromRows, findThreadForCurrentSession, handleClosedThreadState, accountId]);
+
+    // Awaiting-reply polling gate. The 30s safety-net interval only runs while ALL
+    // of these are true:
+    //   - panel visible (CSS-not-minimized; signaled from widget.js)
+    //   - browser tab visible (document.visibilityState)
+    //   - we have a thread attached
+    //   - thread is not closed/resolved/done
+    //   - last non-system message is from the customer (they're awaiting a reply)
+    // Anything else turns polling off. Realtime stays connected the whole time the
+    // panel is open; only the PostgREST poll is gated.
+    useEffect(() => {
+        const recomputePollingState = () => {
+            const shouldPoll =
+                panelVisibleRef.current &&
+                (typeof document === 'undefined' || !document.hidden) &&
+                !!threadIdRef.current &&
+                !isResolvedRef.current &&
+                awaitingReplyRef.current &&
+                !!runCatchUpRef.current;
+
+            if (shouldPoll) {
+                if (!periodicCatchUpRef.current) {
+                    periodicCatchUpRef.current = window.setInterval(() => {
+                        if (runCatchUpRef.current) void runCatchUpRef.current();
+                    }, 30_000) as unknown as number;
+                }
+            } else if (periodicCatchUpRef.current) {
+                clearInterval(periodicCatchUpRef.current);
+                periodicCatchUpRef.current = null;
+            }
+        };
+        recomputePollingStateRef.current = recomputePollingState;
+
+        const panelHandler = (e: MessageEvent) => {
+            if (!e.data || e.data.type !== 'CEKAT_PANEL_STATE') return;
+            const open: boolean = !!e.data.open;
+            if (open === panelVisibleRef.current) {
+                recomputePollingState();
+                return;
+            }
+            panelVisibleRef.current = open;
+
+            if (!open) {
+                // Minimized: drop both realtime subs, stop polling.
+                try { if (realtimeMsgSubRef.current) supabase.removeChannel(realtimeMsgSubRef.current); } catch { }
+                try { if (realtimeThreadsSubRef.current) supabase.removeChannel(realtimeThreadsSubRef.current); } catch { }
+                realtimeMsgSubRef.current = null;
+                realtimeThreadsSubRef.current = null;
+                recomputePollingState();
+            } else {
+                // Restored: re-subscribe to both channels and fire one immediate catch-up.
+                resubscribeRealtimeRef.current?.();
+                recomputePollingState();
+            }
+        };
+        livechatPanelHandlerRef.current = panelHandler;
+        window.addEventListener('message', panelHandler);
+        recomputePollingState();
+
+        return () => {
+            window.removeEventListener('message', panelHandler);
+            livechatPanelHandlerRef.current = null;
+            recomputePollingStateRef.current = null;
+        };
+    }, []);
+
+    // Mirror threadStatus into the polling-gate ref.
+    useEffect(() => {
+        const next = threadStatus === 'closed' || threadStatus === 'resolved' || threadStatus === 'done';
+        if (isResolvedRef.current !== next) {
+            isResolvedRef.current = next;
+            recomputePollingStateRef.current?.();
+        }
+    }, [threadStatus]);
 
     // Send Handlers
     const handleSend = async () => {
@@ -968,6 +1092,13 @@ export function useLiveChat() {
             return;
         }
         const createdAt = new Date().toISOString();
+
+        // Customer is about to send -> they are now awaiting a reply. Flip the gate
+        // before the round-trip so polling resumes immediately if it was off.
+        if (!awaitingReplyRef.current) {
+            awaitingReplyRef.current = true;
+            recomputePollingStateRef.current?.();
+        }
 
         // ── 0. Optimistic UI & Local State Reset ──
         setDraft("");

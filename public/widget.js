@@ -19,10 +19,23 @@
     if (qs.length) iframeSrc += '?' + qs.join('&');
     var iframe = d.createElement('iframe'); iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = '0'; panel.appendChild(iframe);
     var iframeLoaded = false;
+    var iframeReady = false;
+    function notifyPanelState() {
+        if (!iframeReady || !iframe.contentWindow) return;
+        try { iframe.contentWindow.postMessage({ type: 'CEKAT_PANEL_STATE', open: panel.classList.contains('open') }, '*'); } catch (_) { }
+    }
+    iframe.addEventListener('load', function () { iframeReady = true; notifyPanelState(); });
     bubble.addEventListener('click', function () {
         if (!iframeLoaded) { iframe.src = iframeSrc; iframeLoaded = true; }
         panel.classList.toggle('open');
+        notifyPanelState();
     });
-    w.addEventListener('message', function (e) { if (e.data && e.data.type === 'CEKAT_CHAT_MINIMIZE') { panel.classList.remove('open'); } });
+    w.addEventListener('message', function (e) {
+        if (!e.data) return;
+        if (e.data.type === 'CEKAT_CHAT_MINIMIZE') {
+            panel.classList.remove('open');
+            notifyPanelState();
+        }
+    });
     d.body.appendChild(bubble); d.body.appendChild(panel);
 })();
