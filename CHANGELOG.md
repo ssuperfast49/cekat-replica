@@ -1,5 +1,24 @@
 # Change Log
 
+## [0.3.35] - Widget Bug Fixes & Tab-Counts Fast Path for All Agents - 27-06-2026
+
+### Fixed
+
+- **Widget send no longer references an undefined function** (`src/hooks/useLiveChat.ts`): The customer send handler called `reopenThreadIfResolved(existingThread)`, but that function was never defined — a latent `ReferenceError` on the send path whenever an existing thread was found for the session (present since 0.3.21). Replaced with the existing `handleClosedThreadState`, which has the same signature and purpose (resolves the target thread id; a closed/resolved thread reopens organically via trigger on the next send). No behavior change beyond removing the crash.
+
+- **Widget stops polling the instant the AI reply appears** (`src/hooks/useLiveChat.ts`): The awaiting-reply polling gate (0.3.30/0.3.33) was only flipped off inside `upsertFromRows`, but the AI streams its reply through `finalizeAssistantMessage` / `setMessages`, which bypassed it. So after the AI answered, the widget kept its 30s catch-up poll running until the persisted copy echoed back via realtime/catch-up. `finalizeAssistantMessage` now clears `awaitingReplyRef` and recomputes the polling state immediately, so polling stops the moment the reply is shown. If the customer sends again, the send handler re-arms the gate.
+
+### Changed
+
+- **Tab counts served from the counter table for all agents** (`supabase/migrations/20260627000000_extend_tab_counts_fast_path_non_elevated.sql` [NEW]): `get_tab_counts_v3` previously served its cheap fast path (reading the trigger-maintained `channel_status_counts` counter) only to elevated users (master_agent / auditor); every normal agent hit a full `threads` scan on every count refresh — the dominant slow path (~30% of DB time). The fast path now applies to any no-filter request: elevated users sum all channels, normal agents sum only channels they own (`super_agent_id`) or are assigned to (`channel_agents`). Filtered requests (search, date, agent, inbox, platform) still use the dynamic scan, which is rare and click-driven.
+  - Reuses the existing `channel_status_counts` table already maintained by the `channel_counts_trigger` on `threads` — no new counter infrastructure, and the elevated path already trusted this data.
+  - Status mapping is identical to the dynamic path (`pending`→assigned, `open`→unassigned, `closed`→done), so counts are consistent.
+
+### Notes / flagged for decision (not changed)
+
+- **Apparent double wallet deduction** on `token_usage_logs`: two triggers both deduct from `ai_wallets` for the same row — `apply_wallet_cost_from_token_log` (BEFORE INSERT) and `deduct_ai_wallet_balance` (AFTER INSERT). This looks like a billing bug (every AI usage log deducts ~2× the cost). Not touched autonomously because it affects money; needs a decision on which trigger is canonical.
+- **Slow `token_usage_logs` insert (~2.5s)**: caused by two `FOR EACH STATEMENT` full-refresh triggers (`refresh_daily_monthly_tokens`, `refresh_used_tokens_for_super_agents`) that recompute aggregates on every insert. Should be moved to a periodic/debounced job; deferred as it touches reporting infrastructure.
+
 ## [0.3.34] - Throttle Agent-Side Count RPCs Under High Load - 27-06-2026
 
 ### Changed
