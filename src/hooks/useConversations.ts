@@ -269,10 +269,20 @@ export const useConversations = (options?: {
     )));
   }, []);
 
-  const fetchUnreadCounts = useCallback(async (threadIds: string[], threadsOverride?: ConversationWithDetails[]) => {
-    if (!threadIds || threadIds.length === 0) return;
-    if (!unreadEnabledRef.current) return;
-    if (isDocumentHidden()) return;
+  // Throttle for get_unread_counts. Unread badges already update instantly via
+  // incrementThreadUnread on every realtime message, so this RPC is only periodic
+  // reconciliation and does NOT need to fire on every conversation refresh.
+  // Leading-edge throttle with trailing coalesce: runs at most once per
+  // UNREAD_MIN_INTERVAL_MS; calls that arrive during the cooldown are collapsed
+  // into the latest, which runs when the cooldown clears. Pass force=true to
+  // bypass the cooldown for explicit reconciliation (e.g. tab refocus).
+  const UNREAD_MIN_INTERVAL_MS = 10000;
+  const unreadPendingRef = useRef<boolean>(false);
+  const unreadCooldownRef = useRef<number | null>(null);
+  const unreadQueuedRef = useRef<{ threadIds: string[]; threadsOverride?: ConversationWithDetails[] } | null>(null);
+
+  const runUnreadFetch = useCallback(async (threadIds: string[], threadsOverride?: ConversationWithDetails[]) => {
+    unreadPendingRef.current = true;
     try {
       // Use provided threads or ref as fallback for filtering
       const threadsToFilter = threadsOverride || conversationsRef.current || [];
@@ -291,8 +301,36 @@ export const useConversations = (options?: {
       applyUnreadCounts((data || []) as any);
     } catch (err) {
       console.warn('[useConversations] Failed to fetch unread counts', err);
+    } finally {
+      unreadPendingRef.current = false;
+      if (unreadCooldownRef.current) { try { clearTimeout(unreadCooldownRef.current); } catch { } }
+      unreadCooldownRef.current = window.setTimeout(() => {
+        unreadCooldownRef.current = null;
+        const queued = unreadQueuedRef.current;
+        if (queued) {
+          unreadQueuedRef.current = null;
+          void runUnreadFetch(queued.threadIds, queued.threadsOverride);
+        }
+      }, UNREAD_MIN_INTERVAL_MS) as unknown as number;
     }
   }, [applyUnreadCounts]);
+
+  const fetchUnreadCounts = useCallback((threadIds: string[], threadsOverride?: ConversationWithDetails[], force: boolean = false) => {
+    if (!threadIds || threadIds.length === 0) return;
+    if (!unreadEnabledRef.current) return;
+    if (isDocumentHidden()) return;
+    // Never run two RPCs at once; coalesce to the latest requested set.
+    if (unreadPendingRef.current) {
+      unreadQueuedRef.current = { threadIds, threadsOverride };
+      return;
+    }
+    // Respect the cooldown unless the caller explicitly forces a reconciliation.
+    if (!force && unreadCooldownRef.current) {
+      unreadQueuedRef.current = { threadIds, threadsOverride };
+      return;
+    }
+    void runUnreadFetch(threadIds, threadsOverride);
+  }, [runUnreadFetch]);
 
   const markThreadRead = useCallback(async (threadId: string, lastReadSeq?: number | null) => {
     if (!threadId || lastReadSeq == null) return;
@@ -459,10 +497,13 @@ export const useConversations = (options?: {
       console.warn('[useConversations] Failed to fetch tab counts', err);
     } finally {
       tabCountsPendingRef.current = false;
-      const jitter = Math.floor(Math.random() * 2000); // 1-3s minimum between requests
+      // Cooldown between get_tab_counts_v3 calls. Tab badges tolerate a few seconds
+      // of staleness, so under sustained realtime load we cap the RPC to ~1 call per
+      // 3-6s per dashboard instead of firing on every message event.
+      const jitter = Math.floor(Math.random() * 3000); // 3-6s minimum between requests
       tabCountsTimeoutRef.current = window.setTimeout(() => {
         tabCountsTimeoutRef.current = null;
-      }, 1000 + jitter) as unknown as number;
+      }, 3000 + jitter) as unknown as number;
     }
 
     return null;
@@ -1579,7 +1620,8 @@ export const useConversations = (options?: {
       if (isDocumentHidden()) return;
       const ids = conversationsRef.current.filter((c) => c.assigned).map((c) => c.id);
       if (ids.length > 0) {
-        void fetchUnreadCounts(ids);
+        // Force an immediate reconciliation on tab refocus (bypasses the throttle).
+        void fetchUnreadCounts(ids, undefined, true);
       }
       const currentThreadId = selectedThreadIdRef.current;
       if (currentThreadId && messages.length > 0) {

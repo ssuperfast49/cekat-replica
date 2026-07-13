@@ -1,5 +1,22 @@
 # Change Log
 
+## [0.3.34] - Throttle Agent-Side Count RPCs Under High Load - 27-06-2026
+
+### Changed
+
+- **Throttled `get_unread_counts` in the agent inbox** (`src/hooks/useConversations.ts`): At tens of thousands of customer messages per hour, every incoming message fans out via realtime to every open agent dashboard, and each dashboard was re-running `get_unread_counts` over all assigned threads on every `fetchConversations`. Measured at 19.2M calls / ~25% of total DB time — the single highest-volume query on the database. Unread badges already update instantly and locally via `incrementThreadUnread` on each realtime message, so this RPC is only periodic reconciliation and does not need to fire per-refresh.
+  - `fetchUnreadCounts` now uses a leading-edge throttle with trailing coalesce: it runs at most once per 10 seconds per dashboard; calls arriving during the cooldown collapse into the latest requested thread set, which runs when the cooldown clears.
+  - An in-flight lock prevents two `get_unread_counts` RPCs from overlapping.
+  - A new `force` parameter bypasses the cooldown for explicit reconciliation; the tab-refocus (`visibilitychange`) handler passes `force=true` so counts are immediately accurate when an agent returns to the tab.
+  - Net effect: `get_unread_counts` call volume drops from roughly one-per-message-per-dashboard to at most one-per-10s-per-dashboard, while badges stay live via the existing local increment path.
+
+- **Widened the `get_tab_counts_v3` cooldown** (`src/hooks/useConversations.ts`): `fetchTabCountsV2` already had an execution lock plus a 1–3s post-request cooldown. Raised the cooldown to 3–6s. Tab badges (assigned / unassigned / done counts) tolerate a few seconds of staleness, so under sustained realtime load this roughly halves the `get_tab_counts_v3` call rate per dashboard — the #2 DB consumer (~30% of DB time).
+
+### Notes
+
+- These are frontend-only throttles; no schema or Edge Function changes. The structural follow-ups (a `thread_counters` table to replace `get_tab_counts_v3` entirely, and deriving unread counts fully from the realtime stream) remain planned for a later cycle.
+- The customer LiveChat widget catch-up poll was measured at 0.3% of DB time and is intentionally left unchanged — it is not a meaningful contributor to database load.
+
 ## [0.3.33] - Auto-Assign Handover to an Online Agent - 26-06-2026
 
 ### Added
