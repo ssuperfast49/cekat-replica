@@ -1,5 +1,16 @@
 # Change Log
 
+## [0.3.37] - Fix Drifting / Negative Tab Counts - 27-06-2026
+
+### Fixed
+
+- **Assigned / Unassigned tab counts now reflect real thread counts** (`supabase/migrations/20260627010000_tab_counts_direct_active_count.sql` [NEW]): The inbox showed impossible values on main — Assigned **-9561** (negative), Unassigned 9539 — while the real counts were 5 pending / 0 open. Root cause: `get_tab_counts_v3` served its fast path from the `channel_status_counts` counter table, which had accumulated permanent drift (17 negative rows, min -3857). Incremental trigger-maintained counters drift when thread status changes bypass the trigger — here the ~130k historical closed threads were bulk-loaded without the counter ever seeing their increments, so every subsequent close pushed the pending/open counters negative.
+  - The no-filter fast path now **counts active (open/pending) threads directly** from `public.threads` instead of reading the counter. This set is small (single digits to low thousands) and the count is always accurate — no drift is possible.
+  - Backed by a new partial index `idx_threads_active_status ON threads (status, channel_id) WHERE status IN ('open','pending')`. Verified `EXPLAIN` shows an Index Only Scan at ~0.13 ms.
+  - The `channel_status_counts` counter table is now unused for tab counts and effectively vestigial (its maintenance trigger still runs harmlessly). It can be retired in a later cleanup.
+  - The "done"/closed count is intentionally not computed in the fast path — it is hidden in the UI (0.3.36) and counting ~130k closed rows every refresh would be wasteful. Filtered requests still use the dynamic scan unchanged.
+  - Applied to both the dev branch and the main Supabase project (the negative count was a live production display bug). The partial index was created with `CREATE INDEX CONCURRENTLY` out-of-band to avoid a write lock.
+
 ## [0.3.36] - Hide the Done Tab Count - 27-06-2026
 
 ### Changed
