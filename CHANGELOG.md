@@ -1,5 +1,19 @@
 # Change Log
 
+## [0.3.38] - Fix Double Wallet Deduction & Slow Token-Usage Insert - 13-07-2026
+
+### Fixed
+
+- **Double wallet deduction on AI usage** (`supabase/migrations/20260713000000_fix_double_wallet_deduction.sql` [NEW]): Every `token_usage_logs` insert deducted the cost from `ai_wallets` **twice** — two enabled triggers both performed the deduction: `tr_apply_wallet_cost` (BEFORE INSERT) and `trg_deduct_ai_wallet_balance` (AFTER INSERT). Both deducted the same `cost_usd` from the same wallet row, so wallets drained at ~2× the real AI cost. Dropped the AFTER trigger (`trg_deduct_ai_wallet_balance`), a legacy duplicate with hardcoded 2-model pricing. Kept `tr_apply_wallet_cost`, which is load-bearing — it computes and stores `NEW.cost_usd` (from the `ai_models` pricing table with provider inference) and performs the single correct deduction. Applied to dev and main Supabase.
+  - Note: this stops future double-charging. It does **not** retroactively credit wallets that were already over-drained while both triggers were active — that's a separate reconciliation decision.
+
+### Changed
+
+- **Token-usage insert no longer recomputes all aggregates per row** (`supabase/migrations/20260713000001_token_usage_refresh_via_cron.sql` [NEW]): The `token_usage_logs` insert averaged ~2.5s (≈4% of total DB time) because two `FOR EACH STATEMENT` triggers (`tr_refresh_daily_monthly_after_log`, `tr_refresh_used_tokens_after_log`) each recomputed usage aggregates over the **entire** `token_usage_logs` table with large joins on every insert — O(all logs) per insert, which only worsens as logs grow. Those triggers were removed and their refresh functions moved to a pg_cron job (`refresh_token_usage_counters`, every 2 minutes).
+  - Safe because the counters they populate (`users_profile.used_tokens` / `daily_used_tokens` / `monthly_used_tokens`) feed usage dashboards only; the AI message limit (`checkAIMessageLimit`) counts assistant messages directly, not these counters.
+  - Trade-off: dashboard token counters now lag up to ~2 minutes instead of updating instantly. The insert itself drops from ~2.5s to milliseconds.
+  - Future optimization: make the refresh incremental (per affected super agent) rather than a full recompute; the periodic full recompute still scans all logs and will eventually want that.
+
 ## [0.3.37] - Fix Drifting / Negative Tab Counts - 27-06-2026
 
 ### Fixed
