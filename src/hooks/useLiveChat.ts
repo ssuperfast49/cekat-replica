@@ -416,6 +416,13 @@ export function useLiveChat() {
         });
         setStreamingMessageId(null);
         lastOptimisticIdRef.current = null;
+        // The assistant reply is now shown locally, so the customer is no longer
+        // awaiting a response. Flip the polling gate immediately instead of waiting
+        // for the persisted message to echo back via realtime/catch-up.
+        if (awaitingReplyRef.current) {
+            awaitingReplyRef.current = false;
+            recomputePollingStateRef.current?.();
+        }
     };
 
     const upsertFromRows = useCallback((rows: any[]) => {
@@ -1166,7 +1173,9 @@ export function useLiveChat() {
                 const existingThread = await findThreadForCurrentSession();
                 if (existingThread?.id) {
                     if (existingThread.contact_id) contactIdRef.current = existingThread.contact_id;
-                    const reopenedId = await reopenThreadIfResolved(existingThread);
+                    // Resolve which thread to attach to (reopens organically via trigger
+                    // on the next send if the thread was closed/resolved).
+                    const reopenedId = await handleClosedThreadState(existingThread);
                     if (reopenedId) await attachToThreadRef.current?.(reopenedId);
                 }
             } catch (err) { }
