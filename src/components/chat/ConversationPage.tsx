@@ -1923,9 +1923,12 @@ export default function ConversationPage() {
                       >
                         {tab.key === 'done' ? <CheckCircle className="h-4 w-4" /> : null}
                         <span>{tab.label}</span>
-                        <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
-                          {tab.count}
-                        </Badge>
+                        {/* The "done" tab count grows unbounded (all closed threads), so we hide it. */}
+                        {tab.key !== 'done' && (
+                          <Badge variant="secondary" className="h-5 text-xs" aria-live="polite" aria-atomic="true">
+                            {tab.count}
+                          </Badge>
+                        )}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>

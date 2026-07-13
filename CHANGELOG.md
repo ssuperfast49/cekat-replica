@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.3.36] - Hide the Done Tab Count - 27-06-2026
+
+### Changed
+
+- **Removed the count badge from the "Done" inbox tab** (`src/components/chat/ConversationPage.tsx`): The Done tab's number reflects all closed/resolved threads, which only ever grows and became a large, unhelpful number. The badge is now hidden for the Done tab (the tab keeps its check icon and label); the Assigned and Unassigned tabs still show their counts. No query change — `get_tab_counts_v3` still returns all three buckets in one call; the value is simply not rendered.
+
 ## [0.3.35] - Widget Bug Fixes & Tab-Counts Fast Path for All Agents - 27-06-2026
 
 ### Fixed
