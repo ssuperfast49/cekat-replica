@@ -419,8 +419,8 @@ const ConnectedPlatforms = () => {
 window.chatConfig = {
   baseUrl: '${APP_ORIGIN}',
   platformId: '${selectedPlatformData?.id || '{platform_id}'}',
-  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier (e.g. 'simegantara')
-  web: '${selectedPlatformData?.website_id || ''}', // Optional site/brand name (e.g. 'beat4d')
+  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier
+  web: '${selectedPlatformData?.website_id || ''}', // Optional site/brand name
 };
 (function(w, d) {
   var s = d.createElement('script');
@@ -441,7 +441,7 @@ window.chatConfig = {
                         size="icon"
                         className="h-8 w-8"
                         onClick={async () => {
-                          const embedCode = `<!-- Start of Chat Widget -->\n<script>\nwindow.chatConfig = {\n  baseUrl: '${APP_ORIGIN}',\n  platformId: '${selectedPlatformData?.id || '{platform_id}'}',\n  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier (e.g. 'simegantara')\n  web: '${selectedPlatformData?.website_id || ''}', // Optional site/brand name (e.g. 'beat4d')\n};\n(function(w, d) {\n  var s = d.createElement('script');\n  s.async = true;\n  s.src = window.chatConfig.baseUrl + '/widget.js';\n  d.head.appendChild(s);\n})(window, document);\n</script>\n<!-- End of Chat Widget -->`;
+                          const embedCode = `<!-- Start of Chat Widget -->\n<script>\nwindow.chatConfig = {\n  baseUrl: '${APP_ORIGIN}',\n  platformId: '${selectedPlatformData?.id || '{platform_id}'}',\n  username: document.querySelector('.navbar-right strong')?.innerText.trim() || '', // Optional identifier\n  web: '${selectedPlatformData?.website_id || ''}', // Optional site/brand name\n};\n(function(w, d) {\n  var s = d.createElement('script');\n  s.async = true;\n  s.src = window.chatConfig.baseUrl + '/widget.js';\n  d.head.appendChild(s);\n})(window, document);\n</script>\n<!-- End of Chat Widget -->`;
                           try {
                             await navigator.clipboard.writeText(embedCode);
                             toast({

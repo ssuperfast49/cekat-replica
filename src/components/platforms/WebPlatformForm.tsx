@@ -307,7 +307,7 @@ const WebPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false }: We
               </div>
               <Input
                 id="websiteId"
-                placeholder="beat4d"
+                placeholder="Website ID"
                 value={formData.websiteId}
                 onChange={(e) => setFormData(prev => ({ ...prev, websiteId: e.target.value }))}
               />

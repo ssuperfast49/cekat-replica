@@ -461,13 +461,13 @@ const WhatsAppPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
                     collisionPadding={20}
                     sticky="always"
                   >
-                    <p>ID unik website (misal: beat4d)</p>
+                    <p>ID unik website</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
               <Input
                 id="websiteId"
-                placeholder="beat4d"
+                placeholder="Website ID"
                 value={formData.websiteId}
                 onChange={(e) => setFormData(prev => ({ ...prev, websiteId: e.target.value }))}
               />

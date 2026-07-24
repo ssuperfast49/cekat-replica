@@ -401,7 +401,7 @@ const TelegramPlatformForm = ({ isOpen, onClose, onSubmit, isSubmitting = false 
               </div>
               <Input
                 id="websiteId"
-                placeholder="beat4d"
+                placeholder="Website ID"
                 value={formData.websiteId}
                 onChange={(e) => setFormData(prev => ({ ...prev, websiteId: e.target.value }))}
               />

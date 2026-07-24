@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.3.39] - 24-07-2026
+
+### Fixed
+
+- Removed website placeholder for development branch
+
 ## [0.3.38] - Fix Double Wallet Deduction & Slow Token-Usage Insert - 13-07-2026
 
 ### Fixed
